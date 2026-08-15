@@ -1408,6 +1408,38 @@
   screen (a client list with every optional column on), not against prose, and it binds only above a
   1888 px window, so laptops are untouched. A screen that genuinely needs the whole width opts out
   by not using the class — never by raising the number for everyone.
+- **A measure is a rule about reading, and a grid is not read.** The entry above says the number was
+  chosen against the densest screen this app has. It was not: /tasks with every optional column
+  switched on wants 1812 px, and no width in that set is a taste — it is the arithmetic of the
+  columns the user switched on. On a 2560 px monitor the page was held at 1600 with every column
+  about a tenth under what it asked for (Titel 286 of 360, Labels 180 of 200) and 720 px of screen
+  sitting idle beside it; below a 1600 px window the same shortfall starts costing rows, and it was
+  worse still before the shrink was made to share (the finding that started this: Titel at its
+  160 px floor with nine of eleven titles truncated, next to a 198 px column of em-dashes). So a
+  page-level table now **claims** the width its columns actually ask for
+  (`$lib/core/ui/measure.svelte.ts`), and the shell grants it bounded twice — never below the
+  measure, so a short list still reads inside it and is never stretched thin, and never past the
+  room that exists. Tasks with twelve columns lands at 1814 px with every column at its declared
+  width and 253 px of margin still to spare: the point is not full bleed. How wide a grid is, is
+  arithmetic; how wide a paragraph is, stays a judgement. The header's controls take the same
+  measure, or the avatar drifts off the table it sits over. The claim is made from an effect, so a
+  wide grid widens once at hydration — the shell cannot see its own content until the content
+  exists.
+- **That arithmetic now lives in `$lib/core/table/widths.ts`, pure and tested.** #346 has been fixed
+  twice — the identity column handed *zero*, then the identity column handed its *floor* while a
+  column of em-dashes kept 99 % of its width — and both times the fix read fine in the diff. It is
+  invisible in every functional test (each row renders, every value is right; only the columns are
+  absurd) and invisible in any screenshot taken at the width you happen to develop at, which is why
+  it is now asserted at the widths nobody develops at rather than measured in a browser once. One
+  detail came out of the pinning: round a shrunken width *down*. A dozen columns each rounded up sum
+  past the box, and the grid answers a two-pixel overshoot with a scrollbar.
+- **An `sr-only` label can give the whole document a sideways scrollbar.** It is absolutely
+  positioned, and with no positioned ancestor inside the scroll box its containing block is the page
+  — and a clip does not apply to a box whose containing block sits outside it. So on any grid too
+  wide for its screen, the ⋯ header's 1 px screen-reader label stood at the *table's* right edge and
+  the shell scrolled sideways behind a scroller that was already doing the scrolling. `relative` on
+  the scroll box is the whole fix. Worth remembering the shape: when a document scrolls horizontally
+  and everything visible fits, look for what is positioned, not for what is wide.
 - **An inline-SVG chart with a constant `viewBox` and `class="w-full"`.** That pair does not size a
   chart, it fixes its *aspect ratio*, and the browser then scales every user unit inside it —
   gridlines, strokes and, fatally, type. The marketing trend chart was drawn 720×200; on a 3178 px

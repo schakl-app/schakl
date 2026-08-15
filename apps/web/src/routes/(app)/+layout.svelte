@@ -33,12 +33,17 @@
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
   import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
+  import { measureStyle, providePageMeasure } from "$lib/core/ui/measure.svelte";
   import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import ToastHost from "$lib/core/ui/ToastHost.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
+
+  // How wide this page's own grid asked to be — see the `<main>` comment below and
+  // `measure.svelte.ts`. 0 while nothing claims, which is every screen that is not a table.
+  const pageMeasure = providePageMeasure();
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
@@ -430,6 +435,7 @@
     <header class="h-14 border-b border-border bg-surface-raised px-4 text-sm sm:px-6">
       <div
         class="mx-auto flex h-full w-full max-w-content items-center justify-between gap-4 sm:justify-end"
+        style={measureStyle(pageMeasure())}
       >
         <button
           type="button"
@@ -533,9 +539,15 @@
          truncating both*, and a dashboard tile put "Bakkerij Jansen" and its number at opposite
          ends of the screen. Wider is not more readable past a point; it is further to look. The
          cap binds only above a 1888px window (a 1920 desktop loses 16px a side, a laptop
-         nothing), and it centres, so the space beyond it becomes margin rather than stretch. -->
+         nothing), and it centres, so the space beyond it becomes margin rather than stretch.
+
+         It is a measure for *reading*, though, and a grid is not read — its width is the sum of
+         the columns the user switched on, and that sum is knowable. A page-level table that
+         outgrows the measure claims what it needs (`measure.svelte.ts`), bounded below by the
+         measure and above by the room that exists, so /tasks with every column on stops
+         truncating the record's own name while 720px of monitor sits empty beside it. -->
     <main class="flex-1 p-6">
-      <div class="mx-auto w-full max-w-content">
+      <div class="mx-auto w-full max-w-content" style={measureStyle(pageMeasure())}>
         {#if !isPortal}
           <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
                path, the route's own parameter names, the page's own loaded data and the nav this
