@@ -75,6 +75,11 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 #: Listings are live-as-the-viewer with a short Redis cache — snappy, Drive authoritative.
 BROWSE_CACHE_TTL = 45
 _BROWSE_FIELDS = "nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,size)"
+#: One page, and the response says so when there is a second (``truncated``). A list that is
+#: silently a prefix of a folder is the failure §17 names for imports — it looks like it worked.
+BROWSE_PAGE_SIZE = 100
+#: A search term long enough for any filename, short enough that the Drive query stays a query.
+MAX_BROWSE_QUERY = 100
 
 _ENTITY_TABLES = {"company": "companies", "project": "projects", "task": "tasks"}
 _ENTITY_NAME_COLUMNS = {"company": "name", "project": "name", "task": "title"}
@@ -82,6 +87,16 @@ _ENTITY_NAME_COLUMNS = {"company": "name", "project": "name", "task": "title"}
 
 def _drive_query_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _browse_cache_key(org_id: uuid.UUID, user_id: uuid.UUID, folder: str, term: str = "") -> str:
+    """The listing cache is per user, per folder **and per search term**.
+
+    Without the term the two are the same entry: one person's search would be served to the
+    next person opening that folder as its contents, for the length of the TTL — a filtered
+    list presenting as the whole folder, which is the very lie the search exists to avoid.
+    """
+    return f"schakl:gdrive:browse:{org_id}:{user_id}:{folder}:{term}"
 
 
 class DriveService:
@@ -164,7 +179,16 @@ class DriveService:
         )
 
     # --- browse (as the viewing user) ------------------------------------------- #
-    async def browse(self, folder_id: str | None, *, refresh: bool = False) -> dict[str, Any]:
+    async def browse(
+        self, folder_id: str | None, *, q: str | None = None, refresh: bool = False
+    ) -> dict[str, Any]:
+        """One folder's children, optionally filtered by name **at Drive** (#336).
+
+        Server-side because the listing is one capped page: a filter applied in the browser
+        over the first 100 rows would answer "geen resultaten" for a file that is merely 101st
+        alphabetically. And the search covers this folder only — the breadcrumb is the promise
+        the screen makes about where you are, and a hit three folders down carries no path.
+        """
         settings_row = await self._settings()
         target = folder_id or drive_root(settings_row)
         if not target:
@@ -173,7 +197,8 @@ class DriveService:
             )
         connection = await self._connection()
 
-        cache_key = f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{target}"
+        term = (q or "").strip()[:MAX_BROWSE_QUERY]
+        cache_key = _browse_cache_key(self._org_id, self.ctx.user.id, target, term)
         if not refresh:
             try:
                 cached = await get_redis().get(cache_key)
@@ -182,11 +207,16 @@ class DriveService:
             if cached:
                 return json.loads(cached)
 
+        # Every interpolated value is escaped, the search term included: an apostrophe typed
+        # into a search box must not be able to rewrite the query it lands in.
+        clauses = [f"'{_drive_query_escape(target)}' in parents", "trashed=false"]
+        if term:
+            clauses.insert(0, f"name contains '{_drive_query_escape(term)}'")
         params = {
-            "q": f"'{_drive_query_escape(target)}' in parents and trashed=false",
+            "q": " and ".join(clauses),
             "fields": _BROWSE_FIELDS,
             "orderBy": "folder,name",
-            "pageSize": "100",
+            "pageSize": str(BROWSE_PAGE_SIZE),
             "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true",
         }
@@ -224,6 +254,11 @@ class DriveService:
                 }
                 for item in body.get("files", [])
             ],
+            #: What produced this list, so the screen can say so in words rather than
+            #: presenting a filtered set as the folder.
+            "query": term or None,
+            #: There is a page two we do not follow. Stated, never swallowed.
+            "truncated": bool(body.get("nextPageToken")),
         }
         try:
             await get_redis().set(cache_key, json.dumps(listing), ex=BROWSE_CACHE_TTL)
@@ -529,10 +564,12 @@ class DriveService:
                 folder = await _find_or_create_folder(
                     client, parent_id, cleaned, template_id=None
                 )
-        # Bust this viewer's cached listing of the parent so the new folder appears at once.
+        # Bust this viewer's cached *listing* of the parent so the new folder appears at once.
+        # Only the unfiltered entry: the browser hides "nieuwe map" while a search is active,
+        # so no search result set can be showing this folder to this viewer right now.
         try:
             await get_redis().delete(
-                f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{parent_id}"
+                _browse_cache_key(self._org_id, self.ctx.user.id, parent_id)
             )
         except Exception:  # noqa: BLE001 — Redis down just means the ~45 s TTL applies
             pass

@@ -243,6 +243,106 @@ async def test_browse_caches_and_refresh_busts(client_for, monkeypatch) -> None:
         assert refreshed.status_code == 200 and stub2.script == []
 
 
+async def test_browse_search_filters_at_drive_and_keys_its_own_cache(
+    client_for, monkeypatch
+) -> None:
+    """#336: the filter is Drive's, the apostrophe is escaped, and the cache entry is its own.
+
+    The listing is one page of 100 with no paging, so filtering in the browser would answer
+    "nothing found" for a file that is merely 101st alphabetically. And the search entry may
+    never be the folder's: sharing the key would serve one person's filtered list to the next
+    person opening that folder, as its contents, for the length of the TTL.
+    """
+    t = await make_tenant("gdrive-search")
+    await _seed(t)
+    org_id, user_id = t.org.id, t.user.id
+    headers = await auth_cookie(t.user)
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: fake_redis)
+
+    folder_meta = _StubResponse(200, {"id": "parent-1", "name": "Klanten"})
+    hits = _StubResponse(200, {"files": [{"id": "f-9", "name": "O'Neill offerte.pdf"}]})
+    stub = _StubClient([("GET", hits), ("GET", folder_meta)])
+    monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        searched = await c.get(
+            "/api/v1/google/drive/browse", params={"q": "o'neill"}, headers=headers
+        )
+        assert searched.status_code == 200, searched.text
+        body = searched.json()
+        assert [item["name"] for item in body["items"]] == ["O'Neill offerte.pdf"]
+        # Echoed, so the screen can name the term this list actually answers.
+        assert body["query"] == "o'neill"
+        # The escape is the point: a quote typed in a search box may not rewrite the query.
+        assert stub.call_kwargs[0]["params"]["q"] == (
+            "name contains 'o\\'neill' and 'parent-1' in parents and trashed=false"
+        )
+
+        # Same term again: served from the search's own cache entry, no second round-trip.
+        assert (
+            await c.get(
+                "/api/v1/google/drive/browse", params={"q": "o'neill"}, headers=headers
+            )
+        ).json() == body
+
+        # The *folder* is a different entry: a plain browse re-reads Drive and gets the
+        # folder's real contents, not the filtered set.
+        plain_files = _StubResponse(
+            200,
+            {
+                "files": [
+                    {"id": "f-1", "name": "Aanvraag.pdf"},
+                    {"id": "f-9", "name": "O'Neill offerte.pdf"},
+                ]
+            },
+        )
+        stub2 = _StubClient([("GET", plain_files), ("GET", folder_meta)])
+        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub2))
+        plain = (await c.get("/api/v1/google/drive/browse", headers=headers)).json()
+        assert [i["name"] for i in plain["items"]] == ["Aanvraag.pdf", "O'Neill offerte.pdf"]
+        assert plain["query"] is None and stub2.script == []
+
+    # Two distinct entries, and the folder's own one is the empty-term key.
+    assert sorted(fake_redis.store) == [
+        f"schakl:gdrive:browse:{org_id}:{user_id}:parent-1:",
+        f"schakl:gdrive:browse:{org_id}:{user_id}:parent-1:o'neill",
+    ]
+
+
+async def test_browse_says_when_the_page_is_a_prefix_of_the_folder(
+    client_for, monkeypatch
+) -> None:
+    """A truncated list that presents as complete is the §17 import failure, on a screen."""
+    t = await make_tenant("gdrive-cap")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+    folder_meta = _StubResponse(200, {"id": "parent-1", "name": "Klanten"})
+
+    async with client_for(t.host) as c:
+        capped = _StubResponse(
+            200, {"files": [{"id": "f-1", "name": "A.pdf"}], "nextPageToken": "p2"}
+        )
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", capped), ("GET", folder_meta)])),
+        )
+        assert (await c.get("/api/v1/google/drive/browse", headers=headers)).json()["truncated"]
+
+        whole = _StubResponse(200, {"files": [{"id": "f-1", "name": "A.pdf"}]})
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", whole), ("GET", folder_meta)])),
+        )
+        listing = (
+            await c.get(
+                "/api/v1/google/drive/browse", params={"refresh": True}, headers=headers
+            )
+        ).json()
+        assert listing["truncated"] is False
+
+
 def _google_error(status_code: int, reason: str | None, message: str) -> _StubResponse:
     """A Drive refusal shaped like Google's, so the reason survives to the response body."""
     body: dict = {"error": {"code": status_code, "message": message, "status": "PERMISSION_DENIED"}}

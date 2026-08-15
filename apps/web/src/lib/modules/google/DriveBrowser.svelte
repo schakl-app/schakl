@@ -23,6 +23,20 @@
    * every folder row offers "choose", and so does the folder you are standing in — the folder
    * you want is usually the one you just navigated into, not one you can see listed.
    *
+   * **Searching is the API's job** (#336). The listing is one page of 100 items, so a filter
+   * box over `listing.items` would answer "geen resultaten" for a file that is merely 101st
+   * alphabetically — the truncation-that-looks-like-it-worked §17 already names. `q` therefore
+   * goes to Drive, this folder only, and the header says in words what is on screen. Where the
+   * page really is a prefix of the folder, the list says so rather than presenting as complete.
+   *
+   * **A file's name links the file** (#336, reversing #150 for files). You are in this browser
+   * because you came to attach something; opening it in Drive is the incidental act and the row
+   * already carries ↗ for it. The name submits the *same* `?/linkDriveFile` form the 🔗 button
+   * posts — one action, one code path — via the `form=` attribute, so the row keeps its flex
+   * layout instead of being wrapped in a form. Where there is no link action to take (`pick`
+   * mode, or a caller who cannot write) the name falls back to opening Drive: a control that
+   * always refuses is worse than no control (#253).
+   *
    * **Host contract:** the page exposes `?/linkDriveFile`, and `?/setDriveFolder` when the
    * host renders this in pick mode (spread `driveActions`).
    */
@@ -33,6 +47,7 @@
     FolderPlus,
     Link2,
     RefreshCw,
+    Search,
     Upload,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
@@ -58,6 +73,10 @@
   interface Listing {
     folder: { id: string | null; name: string | null; web_view_link: string | null };
     items: BrowseItem[];
+    /** The term this list answers — the API's echo, never what is in the box right now. */
+    query: string | null;
+    /** Drive had a page two nobody follows: this list is a prefix of the folder. */
+    truncated: boolean;
   }
 
   let {
@@ -104,14 +123,33 @@
   let newFolderName = $state("");
   let savingFolder = $state(false);
   let folderNameInput = $state<HTMLInputElement | null>(null);
+  // What is typed in the box; `listing.query` is what the list on screen actually answers.
+  let search = $state("");
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   const current = $derived(crumbs[crumbs.length - 1]);
+  const searching = $derived(!!listing?.query);
+
+  // Read off the *response*, never off the box: with a debounce in between, the two disagree
+  // for a moment, and the sentence has to describe the rows underneath it.
+  const searchSummary = $derived.by(() => {
+    if (!listing?.query) return "";
+    const params = {
+      count: listing.items.length,
+      term: listing.query,
+      folder: listing.folder.name ?? t("google.drive.root"),
+    };
+    if (listing.items.length === 0) return t("google.drive.search_none", params);
+    if (listing.items.length === 1) return t("google.drive.search_one", params);
+    return t("google.drive.search_results", params);
+  });
 
   async function load(refresh = false) {
     loading = true;
     errorKey = "";
     const params = new URLSearchParams();
     if (current.id) params.set("folder_id", current.id);
+    if (search.trim()) params.set("q", search.trim());
     if (refresh) params.set("refresh", "true");
     try {
       const response = await fetch(`/api/v1/google/drive/browse?${params}`, {
@@ -132,15 +170,31 @@
     }
   }
 
+  // A search belongs to the folder it was typed in, so descending or jumping drops it —
+  // otherwise you arrive in a folder already filtered by a term you typed somewhere else.
   function open(item: BrowseItem) {
     if (!item.is_folder) return;
     crumbs = [...crumbs, { id: item.id, name: item.name }];
+    clearSearch(false);
     void load();
   }
 
   function jump(index: number) {
     crumbs = crumbs.slice(0, index + 1);
+    clearSearch(false);
     void load();
+  }
+
+  /** Debounced so typing costs one Drive round-trip, not one per keystroke. */
+  function onSearchInput() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void load(), 250);
+  }
+
+  function clearSearch(reload = true) {
+    clearTimeout(searchTimer);
+    search = "";
+    if (reload) void load();
   }
 
   // Go back to the folder one level up in the trail we descended (the breadcrumb does the same
@@ -274,7 +328,8 @@
     input: () => fileInput,
     // `pick` for the same reason the Upload button hides in it: while you are choosing a
     // folder, a dropped file would land in whichever one you happen to be passing through.
-    disabled: pick || !canWrite || uploading || !listing?.folder?.id,
+    // `searching` for the same reason again: a result set is not a folder to drop into.
+    disabled: pick || searching || !canWrite || uploading || !listing?.folder?.id,
   }}
 >
   <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
@@ -301,6 +356,30 @@
         </button>
       {/each}
     </nav>
+    <!-- Server-side, this folder only (#336). A box that filtered the array below it would be
+         a worse answer than none: the array is one capped page. -->
+    <div class="relative shrink-0">
+      <Search
+        size={13}
+        class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-muted"
+        aria-hidden="true"
+      />
+      <input
+        bind:value={search}
+        type="search"
+        maxlength="100"
+        oninput={onSearchInput}
+        onkeydown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clearSearch();
+          }
+        }}
+        placeholder={t("google.drive.search_placeholder")}
+        aria-label={t("google.drive.search_placeholder")}
+        class="w-36 rounded-lg border border-border py-1 pl-7 pr-2 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand sm:w-44"
+      />
+    </div>
     {#if pick && listing?.folder?.id}
       <!-- The folder you are standing in. Navigating into "Klanten/Acme" and then hunting for
            an "Acme" row that is one level up was the whole trap this avoids. -->
@@ -317,7 +396,9 @@
         </button>
       </form>
     {/if}
-    {#if canWrite}
+    {#if canWrite && !searching}
+      <!-- Hidden while filtered: uploading into a search result set is not a thing, and a new
+           folder would be created in a list that is not a folder. -->
       <input
         bind:this={fileInput}
         type="file"
@@ -357,7 +438,7 @@
     </button>
   </div>
 
-  {#if canWrite && creatingFolder}
+  {#if canWrite && creatingFolder && !searching}
     <!-- Inline "new folder" row: create inside the folder currently shown. -->
     <form
       class="flex items-center gap-2 border-b border-border bg-surface px-3 py-2"
@@ -398,8 +479,20 @@
   {:else if errorKey}
     <p class="px-3 py-4 text-sm text-text-muted">{t(errorKey)}</p>
   {:else if listing}
+    {#if listing.query}
+      <!-- A list that is silently a subset of a folder tells the same lie the cap does, so
+           the header states the term, the count and the folder it searched. -->
+      <p class="border-b border-border px-3 py-1.5 text-xs text-text-muted">{searchSummary}</p>
+    {/if}
+    {#if listing.truncated}
+      <p class="border-b border-border px-3 py-1.5 text-xs text-text-muted">
+        {t("google.drive.truncated")}
+      </p>
+    {/if}
     {#if listing.items.length === 0}
-      <p class="px-3 py-4 text-sm text-text-muted">{t("google.drive.empty_folder")}</p>
+      {#if !listing.query}
+        <p class="px-3 py-4 text-sm text-text-muted">{t("google.drive.empty_folder")}</p>
+      {/if}
     {:else}
       <ul class="max-h-72 divide-y divide-border overflow-y-auto">
         {#each listing.items as item (item.id)}
@@ -415,9 +508,28 @@
               >
                 {item.name}
               </button>
+            {:else if canWrite && !pick}
+              <!-- The name *is* the link action (#336): same form, same action, same code path
+                   as the 🔗 button further along the row, associated by `form=` so the row
+                   keeps its layout. ↗ at the end is now the only thing that opens Drive. -->
+              <button
+                type="submit"
+                form={`drive-link-${item.id}`}
+                class="group flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left text-sm text-text hover:underline"
+                aria-label={t("google.drive.link_file")}
+                title={t("google.drive.link_file")}
+              >
+                <span class="min-w-0 truncate">{item.name}</span>
+                <Link2
+                  size={12}
+                  class="shrink-0 text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                  aria-hidden="true"
+                />
+              </button>
             {:else if item.web_view_link}
-              <!-- A file's name opens it in Drive (#150) — the icon column already says what
-                   it is; making people hunt for the tiny external-link icon was the bug. -->
+              <!-- Nothing to link here (pick mode, or a caller who cannot write), so the name
+                   keeps #150's behaviour: open it in Drive. A control that always refuses is
+                   worse than no control (#253). -->
               <a
                 href={item.web_view_link}
                 target="_blank"
@@ -450,8 +562,9 @@
                 </form>
               {/if}
             {:else if canWrite}
-              <!-- Link this file/folder to the record the panel hangs off. -->
-              <form method="POST" action="?/linkDriveFile" use:enhance>
+              <!-- Link this file/folder to the record the panel hangs off. The row's name
+                   button submits this very form (`form={id}`) — one write path, not two. -->
+              <form id={`drive-link-${item.id}`} method="POST" action="?/linkDriveFile" use:enhance>
                 <input type="hidden" name="entity_type" value={entityType} />
                 <input type="hidden" name="entity_id" value={entityId} />
                 <input type="hidden" name="drive_file_id" value={item.id} />

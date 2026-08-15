@@ -3106,7 +3106,10 @@ export interface paths {
         /**
          * Browse
          * @description Live folder contents **as the viewing user** — Drive's permissions are authoritative.
-         *     Redis-cached ~45 s per user+folder; ``refresh=1`` busts it.
+         *
+         *     ``q`` filters by name **inside this folder**, at Drive rather than in the browser (#336):
+         *     the listing is one page of 100, so a client-side filter would answer "nothing found" for
+         *     the 101st file. Redis-cached ~45 s per user+folder+term; ``refresh=1`` busts it.
          */
         get: operations["browse_api_v1_google_drive_browse_get"];
         put?: never;
@@ -14971,6 +14974,13 @@ export interface components {
             folder: components["schemas"]["DriveBrowseFolder"];
             /** Items */
             items: components["schemas"]["DriveBrowseItem"][];
+            /** Query */
+            query?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** DriveBulkProvisionResult */
         DriveBulkProvisionResult: {
@@ -34182,6 +34192,7 @@ export interface operations {
         parameters: {
             query?: {
                 folder_id?: string | null;
+                q?: string | null;
                 refresh?: boolean;
             };
             header?: never;
