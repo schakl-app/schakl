@@ -265,9 +265,14 @@
         {:else}
           {@const open = isGroupOpen(entry)}
           {@const GroupIcon = entry.items[0].icon ?? Handshake}
+          <!-- Tighter than a leaf row on purpose (#347): a group carries a chevron the leaves
+               do not, and at `gap-3 px-3` that left `Domeinen & websites` one pixel short of
+               its own box — the permanent navigation read `Domeinen & websit…`. The gap and the
+               right padding are the two places that pixel can come from without shortening a
+               label a tenant reads a hundred times a day. -->
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface"
+            class="flex w-full items-center gap-2.5 rounded-lg py-2 pl-3 pr-2 text-sm text-text hover:bg-surface"
             onclick={() => toggleGroup(entry.key)}
             aria-expanded={open}
           >

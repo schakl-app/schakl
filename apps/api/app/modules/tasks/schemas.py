@@ -125,6 +125,13 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     recurrence: Recurrence | None = None
+    #: Create-then-edit (#230): this row exists so the user can be landed on its detail page in
+    #: edit mode, and the title it carries is a placeholder nobody typed. Marks the row so a
+    #: list can say so, in the *reader's* language, and so an abandoned one can be found (#350).
+    #: A caller who supplies a real title never sets this. Nullable so that the generated
+    #: client makes it optional: every existing caller creating a *named* task must keep
+    #: compiling without saying so.
+    unnamed: bool | None = None
 
 
 class TaskLogTime(BaseModel):
@@ -186,6 +193,10 @@ class TaskRead(TaskBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    #: Nobody has typed a title for this task. The stored ``title`` is still a real string (a
+    #: placeholder), so a surface that has not been taught about this reads exactly as before;
+    #: one that has renders its own locale's word for *unnamed* (#350).
+    unnamed: bool = False
     # Always present on a stored task (the create default has been resolved to a real key).
     status: str
     position: float

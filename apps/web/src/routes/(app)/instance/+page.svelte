@@ -96,14 +96,24 @@
       <p class="px-4 py-6 text-sm text-text-muted">{t("instance.audit_empty")}</p>
     {:else}
       <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase text-text-muted">
+            <th class="px-4 py-3">{t("instance.audit.col_when")}</th>
+            <th class="px-4 py-3">{t("instance.audit.col_action")}</th>
+            <th class="px-4 py-3">{t("instance.audit.col_org")}</th>
+            <th class="px-4 py-3">{t("instance.audit.col_actor")}</th>
+          </tr>
+        </thead>
         <tbody>
           {#each data.audit as entry (entry.id)}
             <tr class="border-b border-border last:border-0">
               <td class="whitespace-nowrap px-4 py-2 text-text-muted">
                 {fmtDateTime(entry.created_at)}
               </td>
-              <td class="px-4 py-2 font-mono text-xs text-text">{entry.action}</td>
-              <td class="px-4 py-2 text-text-muted">{entry.org_slug ?? ""}</td>
+              <!-- An unrecognised action degrades to its key, the way the tenant activity
+                   trail does: a module ahead of its translations still prints a row. -->
+              <td class="px-4 py-2 text-text">{t(`instance.audit.action.${entry.action}`)}</td>
+              <td class="px-4 py-2 text-text-muted">{entry.org_slug ?? "—"}</td>
               <td class="px-4 py-2 text-text-muted">{entry.actor_email}</td>
             </tr>
           {/each}

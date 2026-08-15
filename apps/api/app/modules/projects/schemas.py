@@ -45,6 +45,9 @@ class ProjectCreate(ProjectBase):
     # ``None`` (not ``[]``) means the caller didn't say: fall back to ``responsible_user_id``,
     # else inherit the company's primary.
     assignees: list[AssigneeWrite] | None = None
+    #: Create-then-edit (#230): the name this row carries is a placeholder nobody typed. See
+    #: ``TaskCreate.unnamed`` (#350). Nullable for the same reason it is there.
+    unnamed: bool | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -85,6 +88,8 @@ class ProjectRead(ProjectBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    #: Nobody has typed a name for this project — see ``TaskRead.unnamed`` (#350).
+    unnamed: bool = False
     created_at: datetime
     updated_at: datetime
     # The client's name, resolved for the page in one batched query (`hosting`/`domains` do the

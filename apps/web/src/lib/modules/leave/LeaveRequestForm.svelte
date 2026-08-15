@@ -17,7 +17,7 @@
   import { Clock } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtPeriod } from "$lib/core/format";
+  import { capitalizeFirst, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getLocale } from "$lib/paraglide/runtime";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -412,9 +412,7 @@
           {@const reason = dayReasonKey(day.reason)}
           <li class="flex justify-between text-xs {reason ? 'text-text-muted' : 'text-text'}">
             <span>
-              <span class="capitalize">{fmtPeriod(day.date)}</span>
-              <!-- `capitalize` uppercases every word, so the reason stays outside it: the day
-                   reads "5 Nov", the reason reads "geen werkdag", not "Geen Werkdag". -->
+              <span>{capitalizeFirst(fmtPeriod(day.date))}</span>
               {#if reason}<span class="text-text-muted">· {t(reason)}</span>{/if}
             </span>
             <span class="tabular-nums">

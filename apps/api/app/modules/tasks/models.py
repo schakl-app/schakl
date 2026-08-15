@@ -176,6 +176,22 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
+    #: Nobody has named this task yet — a create-then-edit row (#230) whose author never got as
+    #: far as typing a title (#350).
+    #:
+    #: A *flag*, not an absent title, because the title stays ``NOT NULL`` and every surface that
+    #: prints one keeps working. It exists because the placeholder is indistinguishable from a
+    #: real name: eight of eleven open tasks on the dev database were called "Naamloze taak" or
+    #: "Untitled task", sorted in among real work with no marker, and — since the placeholder was
+    #: written in the *creator's* locale — clustered into two alphabetical clumps no search could
+    #: gather. The flag is what lets a list filter, count or grey them, and what lets the reader's
+    #: own locale name them instead of the author's.
+    #:
+    #: Cleared by the first write that sets a title. Never set by an ordinary create: a caller
+    #: who supplies a title has named the thing.
+    unnamed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # A tenant-configured status key (issue #62), not a closed enum. Wide enough for a custom
     # slug; the ``TaskStatus`` default keeps a fresh row valid before the service sets it.

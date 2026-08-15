@@ -12,7 +12,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { CALENDAR_VIEWS, shiftDate, weekGrid, type CalendarView } from "$lib/core/calendar";
-  import { dateLocale, fmtDayMonth, RANGE_DASH } from "$lib/core/format";
+  import { capitalizeFirst, dateLocale, fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
@@ -269,7 +269,7 @@
     >
       <ChevronRight size={16} />
     </a>
-    <span class="ml-1 text-sm font-medium capitalize text-text">{navLabel}</span>
+    <span class="ml-1 text-sm font-medium text-text">{capitalizeFirst(navLabel)}</span>
 
     <div
       class="ml-2 flex overflow-hidden rounded-lg border border-border"

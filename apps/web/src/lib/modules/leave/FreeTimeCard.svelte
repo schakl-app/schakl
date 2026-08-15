@@ -16,7 +16,13 @@
   import { CalendarClock, Ban, Pencil } from "@lucide/svelte";
 
   import { page } from "$app/state";
-  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
+  import {
+    capitalizeFirst,
+    fmtClockTime,
+    fmtNumericDate,
+    fmtWeekdayShort,
+    RANGE_DASH,
+  } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -105,7 +111,7 @@
     <!-- The lead is the next day off, not a balance: it is the question this card exists for. -->
     <p class="text-2xl font-semibold text-text">
       {#if freeTime.next_date}
-        <span class="capitalize">{fmtWeekdayShort(freeTime.next_date)}</span>
+        <span>{capitalizeFirst(fmtWeekdayShort(freeTime.next_date))}</span>
         {fmtNumericDate(freeTime.next_date)}
       {:else}
         {t("leave.free_time.none_planned")}
@@ -147,7 +153,7 @@
             <CalendarClock size={14} class="shrink-0 text-text-muted" />
             <span class="min-w-0 flex-1">
               <span class="text-text">
-                <span class="capitalize">{fmtWeekdayShort(day.date)}</span>
+                <span>{capitalizeFirst(fmtWeekdayShort(day.date))}</span>
                 {fmtNumericDate(day.date)}
               </span>
               <span class="ml-1 text-xs text-text-muted">

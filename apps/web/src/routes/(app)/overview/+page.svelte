@@ -11,7 +11,8 @@
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Button from "$lib/core/ui/Button.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -153,6 +154,20 @@
     if (anyInvoiced) out.push({ action: "uninvoice", label: t("time.overview.unmark_invoiced") });
     return out;
   });
+
+  // The ✎ mode, like every other list (#353). This report drew a checkbox column from first
+  // paint while fourteen of the sixteen list screens waited to be asked (CLAUDE.md §18).
+  let selecting = $state(false);
+  // Each action is a form action, so the bar's button submits the hidden form beside it rather
+  // than posting itself — the shared bar knows about `onclick`, and this page's whole write
+  // surface is `use:enhance`d server actions.
+  let actionForms: Record<string, HTMLFormElement | undefined> = $state({});
+  const bulkConfig = $derived({
+    items: bulkActions.map((a) => ({
+      label: a.label,
+      onclick: () => actionForms[a.action]?.requestSubmit(),
+    })),
+  });
 </script>
 
 <svelte:head>
@@ -240,7 +255,7 @@
       >{t(`time.overview.status.${status}`)}</button
     >
   {/each}
-  <div class="ml-auto">
+  <div class="ml-auto flex items-center gap-2">
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -248,6 +263,8 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always (CLAUDE.md §18). -->
+    <BulkToggle bind:selecting bind:selected {...bulkConfig} />
   </div>
 </div>
 
@@ -257,20 +274,20 @@
 
 <!-- Cells ------------------------------------------------------------------- -->
 {#snippet dateCell(e: Entry)}
-  <span class="whitespace-nowrap tabular-nums text-text">
+  <span class="block truncate tabular-nums text-text">
     {fmtNumericDate(e.started_at.slice(0, 10))}
     <span class="text-xs text-text-muted">{formatTime(e.started_at)}</span>
   </span>
 {/snippet}
 
 {#snippet employeeCell(e: Entry)}
-  <span class="whitespace-nowrap font-medium text-text">{memberName(e.user_id) || "—"}</span>
+  <span class="block truncate font-medium text-text">{memberName(e.user_id) || "—"}</span>
 {/snippet}
 
 {#snippet companyCell(e: Entry)}
   {@const name = companyName(e.company_id)}
   {#if name}
-    <a href="/companies/{e.company_id}" class="truncate text-text hover:text-brand">{name}</a>
+    <a href="/companies/{e.company_id}" class="block truncate text-text hover:text-brand">{name}</a>
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -279,7 +296,7 @@
 {#snippet projectCell(e: Entry)}
   {@const name = projectName(e.project_id)}
   {#if name}
-    <a href="/projects/{e.project_id}" class="truncate text-text hover:text-brand">{name}</a>
+    <a href="/projects/{e.project_id}" class="block truncate text-text hover:text-brand">{name}</a>
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -288,7 +305,7 @@
 {#snippet taskCell(e: Entry)}
   {@const title = taskTitle(e.task_id)}
   {#if title}
-    <a href="/tasks/{e.task_id}" class="truncate text-text hover:text-brand">{title}</a>
+    <a href="/tasks/{e.task_id}" class="block truncate text-text hover:text-brand">{title}</a>
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -299,7 +316,7 @@
 {/snippet}
 
 {#snippet entryTypeCell(e: Entry)}
-  <span class="truncate text-text-muted"
+  <span class="block truncate text-text-muted"
     >{e.entry_type_key ? entryTypeName(e.entry_type_key) : "—"}</span
   >
 {/snippet}
@@ -326,7 +343,7 @@
 {/snippet}
 
 {#snippet approverCell(e: Entry)}
-  <span class="truncate text-text-muted">{memberName(e.approved_by_user_id) || "—"}</span>
+  <span class="block truncate text-text-muted">{memberName(e.approved_by_user_id) || "—"}</span>
 {/snippet}
 
 {#snippet invoicedAtCell(e: Entry)}
@@ -389,33 +406,22 @@
   </div>
 {/snippet}
 
-<!-- Bulk bar. Selection is per page, and says so: "select all" can only ever mean the rows that
-     were fetched, and a bulk approve must not reach records the user never saw. -->
-{#snippet selection(ids: string[])}
-  <div
-    class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2"
+<!-- The bulk actions are server actions, so each keeps its own `use:enhance`d form; the shared
+     bar's button submits it. Hidden rather than rendered inline, because the bar decides where
+     the controls live and this page decides what they post. Selection is per page — "select
+     all" can only ever mean the rows that were fetched, and a bulk approve must not reach
+     records the user never saw. -->
+{#each bulkActions as bulkAction (bulkAction.action)}
+  <form
+    method="POST"
+    action={`?/${bulkAction.action}`}
+    use:enhance={busy.wrap(bulkAction.action)}
+    bind:this={actionForms[bulkAction.action]}
+    class="hidden"
   >
-    <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-    <span class="text-xs text-text-muted">{t("table.selection_page_only")}</span>
-    {#each bulkActions as bulkAction (bulkAction.action)}
-      <form
-        method="POST"
-        action={`?/${bulkAction.action}`}
-        use:enhance={busy.wrap(bulkAction.action)}
-      >
-        <input type="hidden" name="entry_ids" value={ids.join(",")} />
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={busy.is(bulkAction.action)}
-          disabled={busy.active}
-        >
-          {bulkAction.label}
-        </Button>
-      </form>
-    {/each}
-  </div>
-{/snippet}
+    <input type="hidden" name="entry_ids" value={selected.join(",")} />
+  </form>
+{/each}
 
 {#snippet empty()}
   <p
@@ -427,14 +433,16 @@
   </p>
 {/snippet}
 
+<!-- The bar already says the selection is per page; the report does not repeat it. -->
+<BulkBar {selecting} bind:selected {...bulkConfig} />
+
 <DataTable
   rows={entries}
   columns={table.columns}
   sort={table.sort}
   widths={table.widths}
-  selectable
+  {selecting}
   bind:selected
-  {selection}
   actions={rowActions}
   {mobileRow}
   {empty}

@@ -21646,6 +21646,8 @@ export interface components {
             start_date?: string | null;
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
+            /** Unnamed */
+            unnamed?: boolean | null;
         };
         /**
          * ProjectHoursSource
@@ -21730,6 +21732,11 @@ export interface components {
             start_date?: string | null;
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
+            /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -24917,6 +24924,8 @@ export interface components {
             status?: string | null;
             /** Title */
             title: string;
+            /** Unnamed */
+            unnamed?: boolean | null;
             /**
              * Visible To Client
              * @default false
@@ -24993,6 +25002,11 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+            /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -25089,6 +25103,11 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+            /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -25196,6 +25215,11 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+            /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -27411,6 +27435,8 @@ export interface components {
              * @default false
              */
             uptime_enabled: boolean;
+            /** Uptime Status */
+            uptime_status?: string | null;
         };
         /**
          * WebsiteRef
@@ -45201,6 +45227,8 @@ export interface operations {
                 /** @description Lifecycle status; comma-separate for several ('active,on_hold'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
                 status?: string | null;
                 q?: string | null;
+                /** @description Only projects nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
+                unnamed?: boolean | null;
                 /** @description Only projects I'm assigned to (primary or not) */
                 mine?: boolean;
                 /** @description name | status | start_date | end_date | budget_hours | …, '-' desc */
@@ -47573,6 +47601,8 @@ export interface operations {
                 /** @description Deadline window end (inclusive) */
                 due_to?: string | null;
                 q?: string | null;
+                /** @description Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
+                unnamed?: boolean | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */

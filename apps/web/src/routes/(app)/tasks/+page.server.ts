@@ -28,6 +28,10 @@ export const load: PageServerLoad = async (event) => {
     label_id: q.get("label_id") || undefined,
     due: (q.get("due") as "overdue" | "today" | "week" | null) || undefined,
     q: q.get("q") || undefined,
+    // "Show me the ones nobody named" (#350). A create-then-edit row that was never finished
+    // reads as ordinary work, so without a filter there is no way to find — let alone clear —
+    // the ones an interrupted afternoon left behind.
+    unnamed: q.get("unnamed") === "1" || undefined,
   };
 
   // Opening /tasks with no assignee filter shows *your* tasks first, not the whole org's — the
@@ -120,9 +124,13 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
-        // The API requires a non-empty title; the placeholder is stored in the creator's
-        // locale and replaced the moment they type a real one on the detail page.
+        // The API requires a non-empty title, so the row still carries one — but it is a
+        // placeholder nobody typed, and `unnamed` is what says so (#350). Before the flag, an
+        // abandoned create-then-edit row was indistinguishable from real work, and the
+        // placeholder was frozen in the *creator's* locale, so one org held both "Naamloze
+        // taak" and "Untitled task" and neither was searchable as "the ones nobody named".
         title: t("tasks.untitled"),
+        unnamed: true,
         // Status is omitted so the API assigns the org's default status (issue #62).
         priority: "normal",
         company_id: String(form.get("company_id") ?? "").trim() || null,

@@ -8,6 +8,8 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -119,6 +121,10 @@
   const highlightAvailability = page.url.searchParams.get("availability") ?? "";
 
   // Bulk cancel: the one bulk act your own list has — everything else is per-request.
+  // The ✎ mode, like every other list (#353). This screen used to draw a checkbox column from
+  // first paint and offer no way to close it, so two of sixteen lists behaved differently from
+  // the fourteen a user had already learned (CLAUDE.md §18).
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const bulkCancellableIds = $derived(
     data.requests
@@ -126,6 +132,22 @@
       .map((r: Request) => r.id),
   );
   let bulkCancelOpen = $state(false);
+  // One configuration, spread into the ✎ and the strip above the table. `eligible` is what turns
+  // "greyed out, no reason given" into a sentence: six of nine rows on this list are cancelled
+  // free-time days, so a selection that can do nothing is the common case, not the edge one.
+  const bulkConfig = $derived({
+    items: [
+      {
+        label: t("leave.requests.cancel"),
+        icon: Ban,
+        danger: true,
+        eligible: bulkCancellableIds.length,
+        disabledReason:
+          bulkCancellableIds.length === 0 ? t("leave.bulk.cancel_none") : undefined,
+        onclick: () => (bulkCancelOpen = true),
+      },
+    ],
+  });
   // Deep link from a calendar chip (#106): `?request=<id>` opens that request's edit modal on
   // arrival. Resolved once, into state initializers, not a derived — the surface opens on
   // load and the user can then close it (the same pattern as core/edit-intent.ts).
@@ -409,27 +431,20 @@
   <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
     {t("leave.requests.heading")}
   </h2>
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <div class="flex items-center gap-2">
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always (CLAUDE.md §18). -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
 
-{#snippet bulkBar(ids: string[])}
-  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <button
-    type="button"
-    disabled={bulkCancellableIds.length === 0}
-    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
-    onclick={() => (bulkCancelOpen = true)}
-  >
-    <Ban size={13} />
-    {t("leave.requests.cancel")}
-  </button>
-{/snippet}
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <DataTable
   rows={data.requests}
@@ -440,9 +455,8 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable
+  {selecting}
   bind:selected={bulkSelected}
-  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
 />

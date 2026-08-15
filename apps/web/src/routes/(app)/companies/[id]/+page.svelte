@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { ListChecks, Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -15,6 +15,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -52,11 +53,20 @@
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
+  // #348: the task-template picker used to sit bare under the status chip — an unlabelled
+  // native <select> whose only visible text was the first template's name ("Onboarding", which
+  // is also a company status), so the page read as if this client held two statuses. It is an
+  // action, so it lives with the actions and names itself before it is used.
+  let showTemplate = $state(false);
+  let templateId = $state("");
   const busy = new InFlight();
 
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
+  const canApplyTemplate = $derived(
+    data.templates.length > 0 && can(page.data.user, "tasks.template.apply"),
+  );
 
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
   // client pinned. The panel's own ＋ stays; this is the reachable top-of-page entry.
@@ -150,11 +160,20 @@
       {#if hasReporting}
         <CompanyAIActions companyId={company.id} companyName={company.name} />
       {/if}
-      {#if canWrite || canDelete}
+      {#if canWrite || canDelete || canApplyTemplate}
         <ActionsMenu
           items={[
             ...(canWrite
               ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
+              : []),
+            ...(canApplyTemplate
+              ? [
+                  {
+                    label: t("companies.actions.apply_template_menu"),
+                    icon: ListChecks,
+                    onclick: () => (showTemplate = true),
+                  },
+                ]
               : []),
             ...(canDelete
               ? [
@@ -171,36 +190,10 @@
       {/if}
     </div>
   </div>
-  {#if data.templates.length > 0 && can(page.data.user, "tasks.template.apply")}
-    <form
-      method="POST"
-      action="?/applyTemplate"
-      use:enhance={busy.clear("apply-template")}
-      class="mt-3 flex items-center gap-2"
-    >
-      <select
-        name="template_id"
-        class="rounded-lg border border-border px-2 py-1.5 text-sm"
-        required
-      >
-        {#each data.templates as template (template.id)}
-          <option value={template.id}>{template.name}</option>
-        {/each}
-      </select>
-      <Button
-        variant="secondary"
-        size="sm"
-        loading={busy.is("apply-template")}
-        disabled={busy.active}
-      >
-        {t("companies.actions.apply_template")}
-      </Button>
-      {#if form?.templateApplied}
-        <span class="text-xs text-green-600 dark:text-green-400"
-          >{t("companies.template_applied")}</span
-        >
-      {/if}
-    </form>
+  {#if form?.templateApplied}
+    <p class="mt-3 text-xs text-green-600 dark:text-green-400">
+      {t("companies.template_applied")}
+    </p>
   {/if}
 </div>
 
@@ -222,6 +215,53 @@
     </section>
   {/each}
 </div>
+
+{#if canApplyTemplate}
+  <Modal bind:open={showTemplate} title={t("companies.actions.apply_template_menu")}>
+    <form
+      method="POST"
+      action="?/applyTemplate"
+      use:enhance={busy.wrap("apply-template", () => ({ update }) => {
+        showTemplate = false;
+        // Applying a template starts something new, so the picker empties: a second client
+        // process is a fresh pick, not an edit of the one just applied.
+        templateId = "";
+        void update({ reset: true });
+      })}
+      class="space-y-3"
+    >
+      <div>
+        <label for="template_id" class="mb-1 block text-sm font-medium text-text">
+          {t("companies.template_label")}
+        </label>
+        <Combobox
+          name="template_id"
+          bind:value={templateId}
+          allowEmpty={false}
+          placeholder={t("companies.template_placeholder")}
+          items={data.templates.map((template) => ({
+            value: template.id,
+            label: template.name,
+          }))}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("companies.template_hint")}</p>
+      </div>
+      <div class="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onclick={() => (showTemplate = false)}
+          disabled={busy.active}
+        >
+          {t("common.cancel")}
+        </Button>
+        <Button loading={busy.is("apply-template")} disabled={busy.active || !templateId}>
+          {t("companies.actions.apply_template")}
+        </Button>
+      </div>
+    </form>
+  </Modal>
+{/if}
 
 <Modal bind:open={showLogInteraction} title={t("interactions.add")}>
   <InteractionForm

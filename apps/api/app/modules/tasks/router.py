@@ -86,6 +86,13 @@ async def list_tasks(
     due_from: date | None = Query(None, description="Deadline window start (the Agenda feed)"),
     due_to: date | None = Query(None, description="Deadline window end (inclusive)"),
     q: str | None = Query(None, max_length=200),
+    unnamed: bool | None = Query(
+        None,
+        description=(
+            "Only tasks nobody named (create-then-edit rows never finished), or only named "
+            "ones. Omitted returns both."
+        ),
+    ),
     sort: str | None = Query(
         None, description="title | due_date | priority | status | assignee | …, '-' desc"
     ),
@@ -114,6 +121,7 @@ async def list_tasks(
         due_from=due_from,
         due_to=due_to,
         q=q,
+        unnamed=unnamed,
         sort=sort,
         with_meta=meta,
         hours=hours,

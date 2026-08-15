@@ -20,6 +20,9 @@ from __future__ import annotations
 
 from arq import cron
 
+# Importing this registers the seam `websites` reads through (#356, app/core/monitoring.py):
+# a disabled module never imports, so it never answers, and the list claims nothing.
+from app.modules.uptime import status as _status  # noqa: F401
 from app.modules.uptime.automation import UPTIME_AUTOMATION_ACTIONS
 from app.modules.uptime.bulk import UPTIME_MONITOR_BULK
 from app.modules.uptime.impex import UPTIME_MONITOR_IMPEX, UPTIME_WEBSITE_COLUMNS

@@ -17,7 +17,7 @@
     isoDiffDays,
     monthGrid,
   } from "$lib/core/calendar";
-  import { fmtWeekdayShort } from "$lib/core/format";
+  import { capitalizeFirst, fmtWeekdayShort } from "$lib/core/format";
   import AgendaList from "$lib/core/ui/AgendaList.svelte";
   import type { CalendarEvent } from "$lib/core/registry";
 
@@ -72,7 +72,7 @@
 <div class="hidden overflow-hidden rounded-xl border border-border bg-surface-raised sm:block">
   <div class="grid grid-cols-7 border-b border-border bg-surface">
     {#each weekdayHeaders as label (label)}
-      <div class="px-2 py-2 text-xs font-medium capitalize text-text-muted">{label}</div>
+      <div class="px-2 py-2 text-xs font-medium text-text-muted">{capitalizeFirst(label)}</div>
     {/each}
   </div>
   <div class="grid grid-cols-7">

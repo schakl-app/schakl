@@ -17,6 +17,8 @@
    * dry run, "Importeren" is the save — and it only arms after a clean preview of the mapping
    * as it stands. The server re-validates regardless; the arming is courtesy, not the gate.
    */
+  import { Upload } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
 
   import { t } from "$lib/core/i18n";
@@ -31,6 +33,7 @@
 
   let {
     open = $bindable(false),
+    entity,
     action = "?/impex",
     locale = "nl",
     report = null,
@@ -39,6 +42,13 @@
     error = null,
   }: {
     open?: boolean;
+    /**
+     * What is being imported. The dialog said only "Importeren" (#361), and the user reached it
+     * from one of thirteen identically-labelled buttons stacked vertically — nothing on screen
+     * confirmed they had hit Klanten rather than Contactpersonen until the mapping options
+     * appeared, three steps in.
+     */
+    entity: string;
     action?: string;
     locale?: string;
     /** The page's form result for this action (`form?.impex`). */
@@ -52,6 +62,8 @@
   const SHOWN_ERRORS = 10;
 
   const busy = new InFlight();
+  /** Blocks the way out while there is work to lose, and holds the "are you sure?" (#361). */
+  let confirmDiscard = $state(false);
   /** Results belong to this modal session and to the picked source. */
   let submitted = $state(false);
   let stale = $state(false);
@@ -77,6 +89,7 @@
   });
 
   function reset() {
+    confirmDiscard = false;
     submitted = false;
     stale = false;
     mapping = {};
@@ -119,6 +132,23 @@
     current != null && !current.applied && current.error_count === 0 && !busy.active,
   );
 
+  /**
+   * Is there anything in here a close would destroy?
+   *
+   * A pasted table of up to 2 000 rows and a hand-built column mapping, neither staged anywhere
+   * — closing is the only way to lose them and there is no way back. A finished import has
+   * nothing left to lose, so it closes on the first ask like every other dialog.
+   */
+  const hasWork = $derived(
+    step !== "done" && (Boolean(fileName) || pasted.trim().length > 0 || held !== null),
+  );
+
+  function guardClose(): boolean {
+    if (!hasWork) return true;
+    confirmDiscard = true;
+    return false;
+  }
+
   const unmapped = $derived(
     source ? source.columns.filter((column) => !mapping[column.index]).length : 0,
   );
@@ -134,7 +164,19 @@
   }
 </script>
 
-<Modal bind:open title={t("impex.import_title")} size="lg">
+<!--
+  `3xl`, not `lg` (#361). At 512 px the mapping grid was wider than the dialog that held it, so
+  53 px of every "Importeren als" control — the end with the clear and the dropdown affordance —
+  was painted outside and clipped, focusing one scrolled the file's own column name out of view
+  mid-decision, and the option list came up behind the button row. The grid is the one screen in
+  this flow that has to be readable; the dialog is now wide enough to hold it.
+-->
+<Modal
+  bind:open
+  title={t("impex.import_title_entity", { entity: t(`impex.entity.${entity}`) })}
+  size="3xl"
+  closeGuard={guardClose}
+>
   <form
     method="POST"
     {action}
@@ -156,7 +198,27 @@
       <label for="impex-file" class="mb-1 block text-sm font-medium text-text">
         {t("impex.file")}
       </label>
+      <!--
+        A house control, not the browser's own (#361). The native input renders `Choose File /
+        No file chosen` — in English, whatever the tenant's language — inside a dialog of
+        Dutch controls, and the line under it promised "of sleep een bestand hierheen" beside
+        no visible drop target at all. The input is still the input (`use:filedrop` assigns to
+        it, and the form still posts it); it is only made invisible, and the label is what the
+        user sees and clicks.
+      -->
       <div use:filedrop={{ onerror: (key) => (dropError = key) }}>
+        <label
+          for="impex-file"
+          class="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border px-4 py-6 text-center text-sm text-text-muted hover:border-brand hover:text-text"
+        >
+          <Upload size={18} />
+          {#if fileName}
+            <span class="font-medium text-text">{fileName}</span>
+          {:else}
+            <span>{t("impex.drop_target")}</span>
+          {/if}
+          <span class="text-xs">{t("impex.file_hint")}</span>
+        </label>
         <input
           id="impex-file"
           name="file"
@@ -168,11 +230,9 @@
             if (fileName) pasted = "";
             invalidate();
           }}
-          class="w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-surface file:px-3 file:py-1 file:text-sm file:text-text"
+          class="sr-only"
         />
       </div>
-      <p class="mt-1 text-xs text-text-muted">{t("common.drop_hint")}</p>
-      <p class="mt-2 text-xs text-text-muted">{t("impex.file_hint")}</p>
       {#if dropError}
         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t(dropError)}</p>
       {/if}
@@ -336,10 +396,39 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (open = false)}
+        onclick={() => {
+          if (guardClose()) open = false;
+        }}
       >
         {step === "done" ? t("common.close") : t("common.cancel")}
       </button>
     </div>
   </form>
+</Modal>
+
+<!--
+  Asked, never assumed: a wizard that can hold 2 000 pasted rows and a column mapping built by
+  hand must not lose them to a mis-aimed click on the backdrop.
+
+  A plain Modal rather than `ConfirmDialog`, which posts a form action — discarding what was
+  never sent anywhere is a decision, not a request.
+-->
+<Modal bind:open={confirmDiscard} title={t("impex.discard_title")}>
+  <p class="text-sm text-text-muted">{t("impex.discard_message")}</p>
+  <div class="mt-5 flex justify-end gap-2">
+    <button
+      type="button"
+      class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+      onclick={() => (confirmDiscard = false)}>{t("common.cancel")}</button
+    >
+    <Button
+      variant="danger"
+      onclick={() => {
+        confirmDiscard = false;
+        open = false;
+      }}
+    >
+      {t("impex.discard_confirm")}
+    </Button>
+  </div>
 </Modal>

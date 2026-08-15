@@ -38,6 +38,18 @@ export function t(key: string, params?: Record<string, unknown>): string {
   return fn ? fn(params) : key;
 }
 
+/**
+ * Whether the catalogue actually holds this key.
+ *
+ * `t()` degrades a missing key to the key itself, which is right for a dynamic key the API hands
+ * us and useless for *choosing between* two keys — `t(k) === k` cannot tell a missing message
+ * from one whose text happens to equal its own name. Callers that offer an optional variant (the
+ * system-voice phrasing of an actor-prefixed event, #358) ask here first.
+ */
+export function hasMessage(key: string): boolean {
+  return typeof (messages as unknown as Record<string, MessageFn>)[key] === "function";
+}
+
 export function localeLabel(locale: string): string {
   return t(`locale.${locale}`);
 }

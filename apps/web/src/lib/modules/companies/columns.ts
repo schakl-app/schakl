@@ -33,12 +33,16 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
   },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
   { key: "website", labelKey: "companies.website", defaultVisible: true, width: 180 },
+  // 150, not 120 (#347). A status is a short closed vocabulary and is exactly the value that
+  // must never be cut, and 120 left an 88 px content box for a chip needing 89: `Onboardi…`,
+  // one pixel short. The width is measured against the longest label the column can hold, in
+  // both locales, rather than against the one that happened to be on screen.
   {
     key: "status",
     labelKey: "companies.field.status",
     sortKey: "status",
     defaultVisible: true,
-    width: 120,
+    width: 150,
   },
   // Sorts by the *primary* assignee's display name; the API orders by it, not by user id.
   {

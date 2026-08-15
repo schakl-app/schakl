@@ -5,7 +5,13 @@
   import { goto } from "$app/navigation";
   import { aiEnabled } from "$lib/core/ai";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
-  import { fmtDayMonth, fmtLongDay, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
+  import {
+    capitalizeFirst,
+    fmtDayMonth,
+    fmtLongDay,
+    fmtWeekdayShort,
+    RANGE_DASH,
+  } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -628,8 +634,8 @@
   <main class="min-w-0 rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h2 class="text-base font-semibold capitalize text-text">
-          {fmtLongDay(data.selectedDate)}
+        <h2 class="text-base font-semibold text-text">
+          {capitalizeFirst(fmtLongDay(data.selectedDate))}
         </h2>
         {#if data.selectedDate === data.today}
           <span
@@ -1075,10 +1081,19 @@
   {/key}
 </Modal>
 
-<!-- Floating "add hours" button -->
+<!--
+  Floating "add hours" button — mobile only (#345).
+
+  `lg` is exactly the breakpoint where the layout above becomes `1fr 360px` and the whole
+  Nieuwe registratie panel sits open beside the day, so from there up this control scrolls to a
+  form that is already on screen: nothing to do, and it did it *on top of* the Taak picker's
+  right end — 27 × 20 px of chevron where `elementFromPoint` answered "Uren toevoegen", so the
+  reflex click opened the wrong thing. A fixed control that overlaps a field is a bug whether or
+  not it is useful; this one was neither.
+-->
 <button
   type="button"
-  class="fixed bottom-6 right-6 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:opacity-90"
+  class="fixed bottom-6 right-6 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:opacity-90 lg:hidden"
   onclick={jumpToNewEntry}
   aria-label={t("time.add_hours")}
   title={t("time.add_hours")}

@@ -25,7 +25,7 @@
     eventTitleAttr,
     isoDiffDays,
   } from "$lib/core/calendar";
-  import { fmtWeekdayShort } from "$lib/core/format";
+  import { capitalizeFirst, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getTimeZone } from "$lib/core/timezone";
   import type { CalendarEvent } from "$lib/core/registry";
@@ -200,7 +200,7 @@
                 ? 'font-bold text-brand'
                 : 'text-text-muted'}"
             >
-              <span class="capitalize">{fmtWeekdayShort(day)}</span>
+              <span>{capitalizeFirst(fmtWeekdayShort(day))}</span>
               {Number(day.slice(8, 10))}
             </p>
           {/each}

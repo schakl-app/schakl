@@ -12,7 +12,7 @@
 
   import { addMonths, isoAddDays, monthGrid, monthOf } from "$lib/core/calendar";
   import { type DateFormat, getDateFormat } from "$lib/core/dateformat";
-  import { fmtLongDay, fmtMonthYear, fmtWeekdayShort } from "$lib/core/format";
+  import { capitalizeFirst, fmtLongDay, fmtMonthYear, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
   let {
@@ -267,7 +267,7 @@
         >
           ‹
         </button>
-        <span class="text-sm font-medium capitalize text-text">{fmtMonthYear(viewMonth)}</span>
+        <span class="text-sm font-medium text-text">{capitalizeFirst(fmtMonthYear(viewMonth))}</span>
         <button
           type="button"
           class="rounded p-1 text-text-muted hover:bg-surface hover:text-brand"

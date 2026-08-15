@@ -24,8 +24,16 @@ _STATUS_NAMESPACE: dict[str, str] = {
     "company": "companies.status",
 }
 
-#: Date-only payload keys, printed as a European day rather than an ISO string.
-_DATE_KEYS = ("due_date", "start_date", "end_date", "week_start")
+#: Wall-clock day payload keys, printed European rather than as an ISO string.
+#:
+#: An allow-list of four missed ``scheduled_date`` the moment #188 added it (#358), so the rule
+#: is the key's *shape*: anything ending ``_date`` whose value parses as ``yyyy-mm-dd``.
+#: ``week_start`` is the one such value whose key does not say so, and is named explicitly.
+_EXTRA_DATE_KEYS = ("week_start",)
+
+
+def _is_date_key(key: str) -> bool:
+    return key.endswith("_date") or key in _EXTRA_DATE_KEYS
 
 
 def _fmt_day(value: str) -> str:
@@ -52,14 +60,21 @@ def event_sentence(event, actor_name: str | None, locale: str) -> str:  # noqa: 
             value = payload.get(key)
             if isinstance(value, str):
                 payload[key] = translate(f"{namespace}.{value}", locale)
-    for key in _DATE_KEYS:
-        value = payload.get(key)
-        if isinstance(value, str):
+    for key, value in list(payload.items()):
+        if _is_date_key(key) and isinstance(value, str):
             payload[key] = _fmt_day(value)
     minutes = payload.get("minutes")
     if isinstance(minutes, (int, float)):
         payload["hours"] = _fmt_hours(minutes, locale)
     key = f"notifications.event.{event.event_type}"
+    if not actor_name:
+        # An actor-prefixed message is a predicate, and a cron has no name to put in front of
+        # it. An event a person *can* emit but a scheduler also emits therefore carries a
+        # second, whole-sentence phrasing under ``.system``; it is used only when nobody
+        # stands in front of the line (#358, format.ts twin).
+        system_key = f"{key}.system"
+        if translate(system_key, locale) != system_key:
+            key = system_key
     sentence = translate(key, locale, **payload)
     if sentence == key:
         # An event type without a catalog line (a module ahead of its translations) still

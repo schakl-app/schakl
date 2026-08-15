@@ -59,6 +59,16 @@ class WebsiteRead(BaseModel):
     hosting_id: uuid.UUID | None = None
     hosting_name: str | None = None
     uptime_enabled: bool = False
+    #: What the monitor last reported — ``up`` / ``down`` / ``pending`` / ``maintenance``,
+    #: the monitor's own vocabulary (#356). ``None`` means *nothing has looked*: either no
+    #: monitor is attached, or one is and has never reported. It is deliberately **not** the
+    #: same value as ``uptime_enabled``, which is a tick in a box and says nothing about
+    #: health — a green pill drawn from that flag showed a site that had been down for two
+    #: hours exactly as it showed one that was up.
+    #:
+    #: Resolved through :mod:`app.core.monitoring`, so this module never learns what a monitor
+    #: is (§6); `None` is also the honest answer on an instance with no uptime module at all.
+    uptime_status: str | None = None
     custom: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime

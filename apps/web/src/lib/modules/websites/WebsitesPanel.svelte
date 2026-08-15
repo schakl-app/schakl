@@ -3,6 +3,7 @@
    *  panel there — hosting is shared infrastructure, the websites are the client's). */
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
   import { can } from "$lib/core/permissions";
 
   interface PanelWebsite {
@@ -36,11 +37,10 @@
         {#if site.hosting_name}
           <span class="text-xs text-text-muted">{site.hosting_name}</span>
         {/if}
-        {#if site.uptime_enabled}
-          <span
-            class="rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
-          >
-            {t("websites.uptime_short")}
+        {#if uptimeState(site)}
+          {@const state = uptimeState(site)!}
+          <span class="rounded-full px-2 py-0.5 text-[11px] {uptimeChipClass(state)}">
+            {uptimeLabel(state)}
           </span>
         {/if}
       </li>

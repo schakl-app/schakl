@@ -4,7 +4,7 @@
    * screens get a list instead of cramped grid cells).
    */
   import { eventLinkAttrs } from "$lib/core/calendar";
-  import { fmtLongDay } from "$lib/core/format";
+  import { capitalizeFirst, fmtLongDay } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { labelDotParts } from "$lib/core/ui/colors";
   import type { CalendarEvent } from "$lib/core/registry";
@@ -32,11 +32,11 @@
   {#each listDays as day (day)}
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <h3
-        class="mb-2 text-xs font-semibold capitalize {day === today
+        class="mb-2 text-xs font-semibold {day === today
           ? 'text-brand'
           : 'text-text-muted'}"
       >
-        {fmtLongDay(day)}
+        {capitalizeFirst(fmtLongDay(day))}
       </h3>
       {#if (eventsByDay[day] ?? []).length > 0}
         <ul class="space-y-1.5">

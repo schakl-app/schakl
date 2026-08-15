@@ -3404,6 +3404,9 @@ class LeaveService:
             sort,
             SORTABLE,
             default=LeaveRequest.start_date.desc(),
+            # Grouped by employee, leave reads forward: the next absence first (#360). The
+            # default stays newest-first, which is what an unsorted list of requests means.
+            tiebreak=LeaveRequest.start_date.asc(),
         ).limit(limit).offset(offset)
         items = (await self.ctx.session.execute(stmt)).scalars().all()
         count_stmt = (

@@ -10,7 +10,7 @@
  * - a date is a wall-clock day and must print European (`docs/UX.md`), never an ISO string.
  */
 import { fmtDayMonth, fmtLongDay, fmtNumber } from "$lib/core/format";
-import { t } from "$lib/core/i18n";
+import { hasMessage, t } from "$lib/core/i18n";
 import { getTimeZone } from "$lib/core/timezone";
 
 export interface NotificationLike {
@@ -19,6 +19,11 @@ export interface NotificationLike {
   entity_id: string;
   /** Optional because the API gives it a default: an event may carry no parameters at all. */
   payload?: Record<string, unknown>;
+  /**
+   * Who did it, when a person did — `null` for anything a cron emitted. It decides the
+   * *grammar* of the sentence, not merely whether a name is drawn in front of it (#358).
+   */
+  actor_name?: string | null;
 }
 
 /** Each entity type keeps its status vocabulary in its own namespace. */
@@ -28,8 +33,16 @@ const STATUS_NAMESPACE: Record<string, string> = {
   company: "companies.status",
 };
 
-/** Date-only payload keys, printed as a European day rather than an ISO string. */
-const DATE_KEYS = ["due_date", "start_date", "end_date", "week_start"] as const;
+/**
+ * Payload values that must not print as their raw wire form.
+ *
+ * The old allow-list of four date keys silently missed `scheduled_date` when #188 added it, so a
+ * notification read "…in op 2026-08-13" beside a sibling saying "12 jul" — and every future date
+ * key would have done the same. The rule is now the key's *shape*: anything ending `_date` whose
+ * value is a `yyyy-mm-dd` is a wall-clock day and prints European (`docs/UX.md`). Matching on
+ * the value too keeps a key that merely ends in `_date` but carries something else intact.
+ */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The local calendar day an instant falls on, in the tenant's zone (CLAUDE.md §8).
@@ -84,14 +97,25 @@ export function notificationText(item: NotificationLike): string {
     if (typeof payload.from === "string") params.from = t(`${namespace}.${payload.from}`);
     if (typeof payload.to === "string") params.to = t(`${namespace}.${payload.to}`);
   }
-  for (const key of DATE_KEYS) {
-    const value = payload[key];
-    if (typeof value === "string") params[key] = fmtDayMonth(value);
+  for (const [key, value] of Object.entries(payload)) {
+    if (key.endsWith("_date") && typeof value === "string" && ISO_DAY.test(value)) {
+      params[key] = fmtDayMonth(value);
+    }
+  }
+  // `week_start` is the one wall-clock day whose key does not end in `_date`.
+  if (typeof payload.week_start === "string" && ISO_DAY.test(payload.week_start)) {
+    params.week_start = fmtDayMonth(payload.week_start);
   }
   // Minutes are the API's unit; hours are what a person signs off.
   if (typeof payload.minutes === "number") params.hours = fmtNumber(payload.minutes / 60);
 
-  return t(`notifications.event.${item.event_type}`, params);
+  // An actor-prefixed message ("plande {title} in op …") is a predicate, and a cron has no name
+  // to put in front of it — so an event a person *can* emit but a scheduler also emits needs a
+  // second, whole-sentence phrasing. `.system` is that phrasing, used only when no actor stands
+  // in front of the line; an event that never has one keeps its single key.
+  const base = `notifications.event.${item.event_type}`;
+  const key = !item.actor_name && hasMessage(`${base}.system`) ? `${base}.system` : base;
+  return t(key, params);
 }
 
 /** Where the notification opens. Every number opens (docs/UX.md, Principle 7). */

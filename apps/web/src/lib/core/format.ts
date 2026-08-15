@@ -85,6 +85,19 @@ export function fmtPeriod(startIso: string, endIso: string = startIso): string {
   return `${fmtDayMonth(startIso)} ${RANGE_DASH} ${end}`;
 }
 
+/**
+ * Sentence-case a rendered string: the first letter only, everything else untouched.
+ *
+ * Tailwind's `capitalize` is `text-transform: capitalize`, which uppercases **every word** —
+ * so "zaterdag 15 augustus" printed "Zaterdag 15 Augustus", and Dutch capitalises neither
+ * weekday nor month names (#344). `first-letter:uppercase` is not the fix either: CSS
+ * `::first-letter` only applies to block containers, and most of these labels are `<span>`s.
+ * The decision therefore lives with the formatter, so a caller cannot choose the wrong one.
+ */
+export function capitalizeFirst(text: string): string {
+  return text ? text[0].toLocaleUpperCase(dateLocale()) + text.slice(1) : text;
+}
+
 /** "ma 7" — weekday + day, for grid column headers. Date-only ISO string. */
 export function fmtWeekdayDay(isoDate: string): string {
   return fmt({ weekday: "short", day: "numeric", timeZone: zone(isoDate) }).format(
@@ -176,6 +189,22 @@ export function fmtMoney(amount: number): string {
     currency: getCurrency(),
     trailingZeroDisplay: "stripIfInteger",
   }).format(amount);
+}
+
+/**
+ * The tenant currency's own symbol ("€", "£", "$") for a label that has to *name* the unit
+ * rather than format an amount — "Uurtarief (€)", an input's suffix.
+ *
+ * It exists so no catalogue ever hardcodes one (#357): the currency is per-org configuration
+ * and a message file cannot know it. Derived from `Intl` rather than a table, so a tenant on a
+ * currency nobody anticipated still gets its own mark.
+ */
+export function currencySymbol(): string {
+  const parts = new Intl.NumberFormat(dateLocale(), {
+    style: "currency",
+    currency: getCurrency(),
+  }).formatToParts(0);
+  return parts.find((p) => p.type === "currency")?.value ?? getCurrency();
 }
 
 /** Short month labels for chart axes ("jan" … "dec") in the active locale. */

@@ -74,11 +74,29 @@
   );
 </script>
 
-<div class="overflow-x-auto">
-  <table class="w-full min-w-[34rem] text-sm">
+<!--
+  `overflow-visible` from `sm` up (#361). `overflow-x: auto` computes `overflow-y` to `auto`
+  too, so the whole table was a clipping box: the open option list came up *inside* it and was
+  cut off after two options, behind the wizard's own button row. Above `sm` the dialog is wide
+  enough that nothing needs to scroll, so nothing needs to clip; on a phone the sideways scroll
+  stays, because a grid genuinely wider than the screen has to go somewhere.
+
+  The file's own column name is `sticky left-0`, which is what keeps it on screen while its
+  mapping is being chosen — mid-interaction the header read `UW BESTAND` over a blank cell, and
+  on a fifteen-column spreadsheet knowing *which* column you are mapping is the whole task.
+-->
+<div class="overflow-x-auto sm:overflow-x-visible">
+  <table class="w-full min-w-[30rem] table-fixed text-sm">
+    <colgroup>
+      <col class="w-[9rem]" />
+      <col />
+      <col class="w-[16rem]" />
+    </colgroup>
     <thead>
       <tr class="border-b border-border text-left text-xs uppercase text-text-muted">
-        <th class="py-2 pr-3 font-medium">{t("impex.mapping.source_column")}</th>
+        <th class="sticky left-0 bg-surface-raised py-2 pr-3 font-medium"
+          >{t("impex.mapping.source_column")}</th
+        >
         <th class="py-2 pr-3 font-medium">{t("impex.mapping.samples")}</th>
         <th class="py-2 font-medium">{t("impex.mapping.target_column")}</th>
       </tr>
@@ -86,8 +104,8 @@
     <tbody class="divide-y divide-border">
       {#each inspect.columns as column (column.index)}
         <tr>
-          <td class="py-2 pr-3 align-top">
-            <span class="font-medium text-text">
+          <td class="sticky left-0 bg-surface-raised py-2 pr-3 align-top">
+            <span class="block break-words font-medium text-text">
               {column.header || t("impex.mapping.column_n", { n: column.index + 1 })}
             </span>
           </td>
@@ -111,7 +129,7 @@
               ariaLabel={t("impex.mapping.target_for", {
                 column: column.header || String(column.index + 1),
               })}
-              listClass="w-72"
+              listClass="w-full"
             />
           </td>
         </tr>

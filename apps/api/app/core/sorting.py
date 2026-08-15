@@ -60,11 +60,20 @@ def apply_sort(
     allowed: dict[str, Any],
     *,
     default: Any,
+    tiebreak: Any | None = None,
 ) -> Select:
     """Order ``stmt`` by the requested column, else by ``default``.
 
     ``NULLS LAST`` on every sort: a row with no due date or no budget belongs at the bottom in
     both directions, not floating to the top of a descending list.
+
+    **A sort on a non-unique column always carries a tiebreaker** (#360). Without one the rows
+    inside a group come back in whatever order the plan produced — ``/leave/team`` sorted by
+    Medewerker listed one employee's twelve requests as *13 nov, 27 nov, 11 dec, 30 okt, 24 jul,
+    …*, which is worse than an obviously wrong order because it is *nearly* right and so nobody
+    checks it. The tiebreaker defaults to the list's own default ordering, so every caller gets
+    one without asking; a list whose grouped reading order differs from its default (leave reads
+    next absence first and defaults to most recent first) names its own.
     """
     parsed = parse_sort(sort, allowed)
     if parsed is None:
@@ -72,4 +81,4 @@ def apply_sort(
     key, descending = parsed
     column = allowed[key]
     ordering = column.desc().nulls_last() if descending else column.asc().nulls_last()
-    return stmt.order_by(ordering)
+    return stmt.order_by(ordering, tiebreak if tiebreak is not None else default)

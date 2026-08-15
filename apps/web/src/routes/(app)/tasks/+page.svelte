@@ -13,6 +13,7 @@
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
   import { memberLabel } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -325,6 +326,16 @@
     onclick={() => setFilter("unlinked", data.filters.unlinked ? "" : "1")}
     >{t("tasks.filter.unlinked")}</button
   >
+  <!-- The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or
+       deleted; without it they sit among real work with nothing to gather them by. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.filters.unnamed
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => setFilter("unnamed", data.filters.unnamed ? "" : "1")}
+    >{t("tasks.filter.unnamed")}</button
+  >
   {#each data.labels as label (label.id)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
@@ -369,11 +380,14 @@
         aria-label={t("tasks.toggle_done")}>✓</span
       >
     {/if}
+    <!-- A task nobody named reads as unnamed, in the *reader's* language, and is marked as
+         unfinished rather than passed off as a title (#350). -->
     <a
       href="/tasks/{task.id}"
       class="truncate font-medium {done
         ? 'text-text-muted line-through'
-        : 'text-text hover:text-brand'}">{task.title}</a
+        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}"
+      >{taskTitle(task)}</a
     >
     <!-- Client-portal visibility rides the title cell rather than becoming a column the user can
          turn off (#41's rule): "a client is reading this" is the one piece of task metadata you

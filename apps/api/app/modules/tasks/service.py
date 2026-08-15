@@ -455,6 +455,7 @@ class TaskService:
         due_from: date | None = None,
         due_to: date | None = None,
         q: str | None = None,
+        unnamed: bool | None = None,
         sort: str | None = None,
         with_meta: bool = True,
         hours: bool = False,
@@ -463,6 +464,11 @@ class TaskService:
         stmt = self.repo.scoped_select()
         if q:
             stmt = stmt.where(Task.title.ilike(f"%{q.strip()}%"))
+        # "The ones nobody named" (#350): a create-then-edit row whose author never finished is
+        # indistinguishable from real work by its title, so the flag is the only thing that can
+        # gather them — and gathering them is what makes clearing them possible at all.
+        if unnamed is not None:
+            stmt = stmt.where(Task.unnamed.is_(unnamed))
         if company_id is not None:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
@@ -862,6 +868,9 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.require("tasks.task.create")
         values = data.model_dump()
+        # Nullable on the wire so an existing caller need not mention it (#350); the column is
+        # `NOT NULL`, and "the caller said nothing" means the task has a title somebody chose.
+        values["unnamed"] = bool(values.get("unnamed"))
         # A task's company/project FKs must live in this tenant (audit F19).
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
@@ -1110,6 +1119,12 @@ class TaskService:
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])
+        # Naming the thing is what un-marks it (#350). Cleared here rather than left to the
+        # caller, so no write path can set a real title and leave the row filed under "nobody
+        # named this"; a caller cannot set the flag through an update at all.
+        values.pop("unnamed", None)
+        if values.get("title") and task.unnamed:
+            values["unnamed"] = False
 
         # Accountability: pushing an existing deadline back requires a reason, which lands
         # in the activity feed.

@@ -318,7 +318,12 @@
   function headerWidth(column: ColumnSpec<T>): number | undefined {
     // A width the user dragged is authoritative even on the flexible column: they asked for
     // that number, and under a fixed layout they now actually get it.
-    return widths[column.key] ?? (column.key === flexKey ? undefined : column.width);
+    const dragged = widths[column.key];
+    if (dragged !== undefined) return dragged;
+    if (column.key === flexKey) return undefined;
+    const declared = column.width;
+    if (declared === undefined) return undefined;
+    return shrink === 1 ? declared : Math.max(FIXED_MIN, Math.round(declared * shrink));
   }
 
   /**
@@ -331,6 +336,51 @@
    * is what a grid genuinely too wide for its screen should do.
    */
   const FLEX_MIN = 160;
+
+  /**
+   * The floor under a *fixed* column once the shrink below starts biting. Wide enough for a
+   * short chip, a date or an amount; below it a column stops carrying information at all.
+   */
+  const FIXED_MIN = 90;
+
+  /** The scroll container's own width, measured — 0 until mount, and 0 means "do not shrink". */
+  let viewportWidth = $state(0);
+
+  /**
+   * The factor every declared width is multiplied by when the column set no longer fits (#346).
+   *
+   * `table-fixed` honours a declared width exactly, which is what makes `truncate` work — and
+   * it also means the one column with no width of its own pays the entire shortfall. On /tasks
+   * at 1440 px with Project and Klant switched on, the declared widths summed to 1022 in a 1152
+   * box, so **Titel** — the only cell that links out of the row — was handed its 160 px floor
+   * and truncated nine of eleven rows, while `Labels` kept 200 px for a column of em-dashes and
+   * `Vervaldatum` kept 120 for one date. Turning a column on should not cost you the ability to
+   * read any row's name.
+   *
+   * So the fixed columns give way first, proportionally, down to `FIXED_MIN` each; only when
+   * even that does not fit does the table fall back to the honest sideways scroll it had. A
+   * width the user *dragged* is left alone: that number is an instruction, not a default.
+   *
+   * Measured rather than assumed, because the available width is a fact about the container and
+   * nothing in the column set knows it. Before mount `viewportWidth` is 0 and this is 1, so the
+   * SSR HTML is exactly what it always was and the first paint never jumps wider.
+   */
+  const shrink = $derived.by(() => {
+    if (!viewportWidth) return 1;
+    const chrome = (pickable ? SELECT_COL : 0) + (actions ? actionsWidth : 0);
+    let shrinkable = 0;
+    let pinned = 0;
+    for (const column of columns) {
+      if (column.key === flexKey) continue;
+      const dragged = widths[column.key];
+      if (dragged !== undefined) pinned += dragged;
+      else shrinkable += column.width ?? 0;
+    }
+    const flexFloor = widths[flexKey ?? ""] ?? FLEX_MIN;
+    const room = viewportWidth - chrome - pinned - flexFloor;
+    if (shrinkable === 0 || room >= shrinkable) return 1;
+    return Math.max(0, room) / shrinkable;
+  });
 
   function cellStyle(column: ColumnSpec<T>): string | undefined {
     const width = headerWidth(column);
@@ -407,6 +457,7 @@
   {/if}
 
   <div
+    bind:clientWidth={viewportWidth}
     class="overflow-x-auto rounded-xl border border-border bg-surface-raised
       {mobileRow ? 'hidden sm:block' : ''}"
   >

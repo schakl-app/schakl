@@ -138,5 +138,32 @@ export function activityText(item: ActivityLike): string {
   // payload keys are exactly its message's placeholders (`{email}`, `{title}`, `{count}`), so a
   // module can add an action without touching this file. An unknown action still falls back to
   // its key rather than throwing.
-  return t(`activity.action.${item.action}`, item.payload ?? {});
+  return t(`activity.action.${item.action}`, presentPayload(item.payload));
+}
+
+/**
+ * Money and dates in a payload print like money and dates (#357).
+ *
+ * `price_increased` already ran its two amounts through `money()`; `payment_registered` and
+ * `payment_deleted` — which arrive on the generic path — did not, so the invoice trail read
+ * "een betaling van -1164.02" inside a card whose every other number said "€ -1.164,02". Naming
+ * the *keys* rather than the actions is what stops the next module recording a sum from
+ * repeating it: a value is formatted for what its key says it is, not for which branch happened
+ * to catch it.
+ */
+const MONEY_PAYLOAD_KEYS = new Set(["amount", "price", "total", "subtotal", "unit_price"]);
+
+function presentPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!payload) return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (MONEY_PAYLOAD_KEYS.has(key) && value !== null && value !== undefined && value !== "") {
+      out[key] = money(value);
+    } else if (key.endsWith("_date") && typeof value === "string") {
+      out[key] = isoDate(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
 }
