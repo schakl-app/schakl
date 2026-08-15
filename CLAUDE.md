@@ -590,6 +590,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   finding is the ordinary one: `qr_appearance` is now the single resolution read by the document,
   the mail and the preview alike — before it, the mail drew the org's brand colour
   unconditionally, so a template set to `plain` printed mono on paper and mailed a coloured code.
+- **A stored decision is gated when it is written, because whoever executes it later is nobody**
+  (#335, `docs/UX.md`). A repeat rule may now carry a *plan* — who, what time, how long — and every
+  occurrence it spawns books itself onto a calendar through `TaskScheduleService`, so the Google
+  mirror, the "taak ingepland" notification and the org's wall clock all ride along exactly as they
+  do for a hand-planned block (#188's one-emit-site rule; the leave module's recurring free-day
+  generator, #107, is the in-house precedent for a stored pattern placing concrete calendar items).
+  The generator runs as the system — a completion's request context, or the cron's
+  `system_context` — which is precisely why `tasks.schedule.write` is asked **when the rule is
+  saved**, at `:any` to name someone else: a permission checked only at execution time is no
+  permission at all. Two consequences worth copying. A background writer has no person behind it,
+  so `created_by_user_id` is **NULL** rather than the placeholder user a `SystemContext` carries —
+  its FK would refuse it, and a NULL scheduler is what the snapshot pair already means by "the
+  system" (#64, the shape `Task.ai_status` states for the same reason). And the block is a
+  convenience while the occurrence is the point, so a refusal there is swallowed **inside a
+  SAVEPOINT** (§18) rather than rolling back a spawn the cron will never retry. The anchors
+  (`on_weekday` / `on_day` / `on_month`) and the plan live inside the existing `recurrence` JSONB —
+  no migration, and a rule stored before #335 keeps its exact behaviour because absent *is* the old
+  behaviour. What repeats is now **enumerated** (`COPIED_FIELDS` / `NOT_COPIED_FIELDS`) and swept
+  against `Task.__table__.columns` by a test: `visible_to_client`, `assignee_contact_id` and the
+  task links were not decided against, they were added years after `spawn_next` was written and
+  nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
+  `tasks` without a repeat decision is a build break, not a silent drop next release.
+
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

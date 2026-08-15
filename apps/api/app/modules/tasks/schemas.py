@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.tasks.models import (
     RecurrenceFreq,
@@ -16,10 +16,88 @@ from app.modules.tasks.models import (
 )
 
 
+class RecurrencePlan(BaseModel):
+    """"Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+
+    The **day** comes from the occurrence — its due date, which the anchors below pin — so this
+    carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
+    *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
+    task whose assignee moves to a colleague must plan the colleague's calendar, not the person
+    who happened to write the rule.
+    """
+
+    user_id: uuid.UUID | None = None
+    start_time: time
+    duration_minutes: int = Field(ge=1, le=24 * 60)
+
+
 class Recurrence(BaseModel):
+    """A repeat rule, stored whole in ``tasks.recurrence`` (JSONB — no migration, #335).
+
+    The anchors are **optional and absent by default**, which is what keeps every rule stored
+    before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
+    date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
+    maand op dag 1" rather than "a month after whatever the deadline happens to be".
+
+    Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
+    422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
+    repeats every Tuesday is worse than one that refuses to save.
+    """
+
     freq: RecurrenceFreq
     interval: int = Field(default=1, ge=1, le=365)
     mode: RecurrenceMode = RecurrenceMode.AFTER_COMPLETION
+    #: Weekly only. ``date.weekday()`` numbering — Monday 0 … Sunday 6.
+    on_weekday: int | None = Field(default=None, ge=0, le=6)
+    #: Monthly/quarterly/yearly. Clamped to the month's length, so 31 lands on 28/29/30 Feb.
+    on_day: int | None = Field(default=None, ge=1, le=31)
+    #: Yearly only, and only together with ``on_day``.
+    on_month: int | None = Field(default=None, ge=1, le=12)
+    #: Book each occurrence onto a calendar as it is created (#335, phase 5).
+    plan: RecurrencePlan | None = None
+
+    @model_validator(mode="after")
+    def _anchors_match_freq(self) -> Recurrence:
+        allowed: dict[str, set[str]] = {
+            RecurrenceFreq.DAILY.value: set(),
+            RecurrenceFreq.WEEKLY.value: {"on_weekday"},
+            RecurrenceFreq.MONTHLY.value: {"on_day"},
+            RecurrenceFreq.QUARTERLY.value: {"on_day"},
+            RecurrenceFreq.YEARLY.value: {"on_day", "on_month"},
+        }[self.freq.value]
+        for field in ("on_weekday", "on_day", "on_month"):
+            if getattr(self, field) is not None and field not in allowed:
+                raise ValueError(f"errors.tasks_recurrence_anchor:{field}")
+        # A year needs both halves or neither: "on day 15" with no month is not a date, and a
+        # month with no day would have to invent one.
+        if self.freq is RecurrenceFreq.YEARLY and (self.on_day is None) != (self.on_month is None):
+            raise ValueError("errors.tasks_recurrence_anchor:on_month")
+        return self
+
+
+class RecurrencePreview(BaseModel):
+    """"Volgende taak: za 13 sep" — the number that will be stored, and why (#48's precedent).
+
+    The editor composes a rule and asks the API what it resolves to, rather than re-deriving the
+    dates in the browser: the arithmetic (clamping, leap years, the org's own "today") is
+    server-side and stays there (#312's "a second opinion" rule).
+    """
+
+    recurrence: Recurrence
+    due_date: date | None = None
+
+
+class RecurrencePreviewRead(BaseModel):
+    #: The next occurrence's due date. For after-completion mode this is what it *would* get if
+    #: the carrier were finished today — never presented as a certainty by the editor.
+    next_date: date
+    #: A few more, so a rule that reads right for one date can be checked against its rhythm.
+    following: list[date] = Field(default_factory=list)
+    #: True for ``after_completion``: the next one appears when this one is finished, not on a day.
+    on_completion: bool
+    #: The block the rule would book on ``next_date`` (#335 phase 5), when it carries a plan.
+    planned_start: time | None = None
+    planned_end: time | None = None
 
 
 class TaskBase(BaseModel):
@@ -114,6 +192,11 @@ class TaskRead(TaskBase):
     completed_at: datetime | None
     closing_interaction_id: uuid.UUID | None = None
     recurrence: Recurrence | None
+    # When the daily cron will materialize the next occurrence (schedule mode; ``None`` on an
+    # after-completion rule and on a task that does not repeat). Stored since #62 and read by
+    # nobody until #335 — which is why a rule could not be read back anywhere: the card had a
+    # frequency and no date, so "↻ Maandelijks" was the whole answer to "when is the next one?".
+    recurrence_next_run: date | None = None
     created_at: datetime
     updated_at: datetime
     # The hour budget's burn (#313). On a list row only when asked for (``?hours=true``) — a row

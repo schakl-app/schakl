@@ -9686,6 +9686,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/recurrence/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Recurrence
+         * @description What the rule being composed resolves to — "Volgende taak: za 13 sep 2026".
+         *
+         *     ``POST /leave/requests/preview``'s precedent (#48): show the number that will be stored, and
+         *     why, rather than letting the browser re-derive it. Clamping, leap years, the anchor rules and
+         *     the org's own "today" all live server-side; a preview that re-implemented them in TypeScript
+         *     would be a second opinion about a question the API already answers (#312).
+         *
+         *     A read — it stores nothing. It exists so a rule can be *checked* before it is saved.
+         */
+        post: operations["preview_recurrence_api_v1_tasks_recurrence_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/schedules": {
         parameters: {
             query?: never;
@@ -21981,7 +22008,19 @@ export interface components {
             /** Read */
             read: boolean;
         };
-        /** Recurrence */
+        /**
+         * Recurrence
+         * @description A repeat rule, stored whole in ``tasks.recurrence`` (JSONB — no migration, #335).
+         *
+         *     The anchors are **optional and absent by default**, which is what keeps every rule stored
+         *     before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
+         *     date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
+         *     maand op dag 1" rather than "a month after whatever the deadline happens to be".
+         *
+         *     Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
+         *     422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
+         *     repeats every Tuesday is worse than one that refuses to save.
+         */
         Recurrence: {
             freq: components["schemas"]["RecurrenceFreq"];
             /**
@@ -21991,6 +22030,13 @@ export interface components {
             interval: number;
             /** @default after_completion */
             mode: components["schemas"]["RecurrenceMode"];
+            /** On Day */
+            on_day?: number | null;
+            /** On Month */
+            on_month?: number | null;
+            /** On Weekday */
+            on_weekday?: number | null;
+            plan?: components["schemas"]["RecurrencePlan"] | null;
         };
         /**
          * RecurrenceFreq
@@ -22002,6 +22048,56 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /**
+         * RecurrencePlan
+         * @description "Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+         *
+         *     The **day** comes from the occurrence — its due date, which the anchors below pin — so this
+         *     carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
+         *     *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
+         *     task whose assignee moves to a colleague must plan the colleague's calendar, not the person
+         *     who happened to write the rule.
+         */
+        RecurrencePlan: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * RecurrencePreview
+         * @description "Volgende taak: za 13 sep" — the number that will be stored, and why (#48's precedent).
+         *
+         *     The editor composes a rule and asks the API what it resolves to, rather than re-deriving the
+         *     dates in the browser: the arithmetic (clamping, leap years, the org's own "today") is
+         *     server-side and stays there (#312's "a second opinion" rule).
+         */
+        RecurrencePreview: {
+            /** Due Date */
+            due_date?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+        };
+        /** RecurrencePreviewRead */
+        RecurrencePreviewRead: {
+            /** Following */
+            following?: string[];
+            /**
+             * Next Date
+             * Format: date
+             */
+            next_date: string;
+            /** On Completion */
+            on_completion: boolean;
+            /** Planned End */
+            planned_end?: string | null;
+            /** Planned Start */
+            planned_start?: string | null;
+        };
         /** RecurringBacklogGroup */
         RecurringBacklogGroup: {
             /** Amount */
@@ -24586,6 +24682,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -24680,6 +24778,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -24785,6 +24885,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -47377,6 +47479,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_recurrence_api_v1_tasks_recurrence_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurrencePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurrencePreviewRead"];
                 };
             };
             /** @description Validation Error */

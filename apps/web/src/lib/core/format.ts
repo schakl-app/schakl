@@ -180,3 +180,22 @@ export function monthLabels(): string[] {
   const formatter = fmt({ month: "short", timeZone: "UTC" });
   return Array.from({ length: 12 }, (_, i) => formatter.format(new Date(Date.UTC(2024, i, 1))));
 }
+
+/** Full month names ("januari" … "december") — a picker's options, not a chart's axis. */
+export function monthNames(): string[] {
+  const formatter = fmt({ month: "long", timeZone: "UTC" });
+  return Array.from({ length: 12 }, (_, i) => formatter.format(new Date(Date.UTC(2024, i, 1))));
+}
+
+/**
+ * Weekday names, **Monday first**, indexed the way the API numbers them (`date.weekday()`).
+ *
+ * From `Intl` rather than seven message keys, exactly like `monthLabels`: a weekday is a
+ * calendar fact the platform already knows in every locale, and a hand-translated list is one
+ * more place for a newly added language to arrive half-filled. 2024-01-01 is a Monday, which is
+ * what anchors index 0 to the API's own numbering.
+ */
+export function weekdayNames(): string[] {
+  const formatter = fmt({ weekday: "long", timeZone: "UTC" });
+  return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(Date.UTC(2024, 0, 1 + i))));
+}

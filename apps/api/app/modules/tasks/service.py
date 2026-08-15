@@ -75,6 +75,8 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    RecurrencePreview,
+    RecurrencePreviewRead,
     StatusCreate,
     StatusUpdate,
     TaskAIStatusRead,
@@ -885,6 +887,7 @@ class TaskService:
         values["status"] = self._resolve_status(statuses, data.status, allow_default=True)
         values["priority"] = data.priority.value
         values["recurrence"] = data.recurrence.model_dump(mode="json") if data.recurrence else None
+        await self._validate_recurrence_plan(values["recurrence"])
         values["recurrence_next_run"] = rec_mod.compute_next_run(
             values["recurrence"],
             data.due_date,
@@ -974,6 +977,69 @@ class TaskService:
             status_code=422,
             fields={"assignee_contact_id": "errors.tasks_assignee_contact_company"},
         )
+
+    async def preview_recurrence(self, data: RecurrencePreview) -> RecurrencePreviewRead:
+        """Resolve a *composed* (not yet stored) rule to the dates it will produce (#335).
+
+        After-completion mode gets ``on_completion=True`` rather than a promise: the next
+        occurrence appears when this one is finished, and the date shown is the one it *would*
+        be given today — no fake certainty, which is the same honesty ``/leave/preview`` shows
+        about a manager's override.
+        """
+        rec = data.recurrence.model_dump(mode="json")
+        today = await org_today(self.ctx.session, self.ctx.org.id)
+        dates = rec_mod.upcoming(data.due_date, rec, today=today, count=3)
+        planned_start = planned_end = None
+        if data.recurrence.plan is not None:
+            planned_start = data.recurrence.plan.start_time
+            planned_end = (
+                datetime.combine(dates[0], planned_start)
+                + timedelta(minutes=data.recurrence.plan.duration_minutes)
+            ).time()
+        return RecurrencePreviewRead(
+            next_date=dates[0],
+            following=dates[1:],
+            on_completion=data.recurrence.mode is RecurrenceMode.AFTER_COMPLETION,
+            planned_start=planned_start,
+            planned_end=planned_end,
+        )
+
+    async def _validate_recurrence_plan(self, rec: dict | None) -> None:
+        """Gate "herhaal ook de planning" on the keys the *scheduling* module declares (#335).
+
+        The route says ``tasks.task.write`` and the licence gate says ``tasks``; neither is an
+        answer to "may this person put a block on a colleague's calendar". So the stored decision
+        asks exactly what pressing Inplannen would ask — ``tasks.schedule.write``, at ``:any`` to
+        name someone else — because the generator will later *execute* it as the system, and a
+        permission checked only at execution time is no permission at all (§18, one layer down).
+
+        The person must also be a member of this org: unlike a hand-planned block, this id is
+        stored for months and spent by a cron, so a stale or foreign one would surface as a
+        silently skipped occurrence rather than a 403 somebody could read.
+        """
+        plan = (rec or {}).get("plan")
+        if not plan:
+            return
+        target = plan.get("user_id")
+        target_id = uuid.UUID(str(target)) if target else None
+        if target_id is not None and target_id != self.ctx.user.id:
+            if not self.ctx.can("tasks.schedule.write", scope="any"):
+                raise AppError("forbidden", "errors.forbidden", status_code=403)
+            known = await self.ctx.session.scalar(
+                sql_text(
+                    "SELECT 1 FROM memberships WHERE org_id = :oid AND user_id = :uid"
+                ),
+                {"oid": self.ctx.org.id, "uid": target_id},
+            )
+            if not known:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"recurrence": "errors.invalid_assignee"},
+                )
+        elif not self.ctx.can("tasks.schedule.write"):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
 
     async def _next_position(self) -> float:
         result = await self.ctx.session.scalar(
@@ -1072,6 +1138,7 @@ class TaskService:
             values["recurrence"] = (
                 data.recurrence.model_dump(mode="json") if data.recurrence else None
             )
+            await self._validate_recurrence_plan(values["recurrence"])
 
         terminal = terminal_keys(statuses)
         old_status = task.status
@@ -1196,6 +1263,9 @@ class TaskService:
                 task,
                 actor_user_id=self.ctx.user.id,
                 actor_name=_display_name(self.ctx.user),
+                # So a rule carrying a plan books the occurrence's block through the schedule
+                # service's one emit site (#335 phase 5) rather than not at all.
+                ctx=self.ctx,
             )
             # spawn_next mutates the source (recurrence handed off); reload server-side
             # defaults so serialization never lazy-loads.

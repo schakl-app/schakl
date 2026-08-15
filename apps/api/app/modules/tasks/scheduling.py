@@ -192,14 +192,20 @@ class TaskScheduleService:
         zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
         starts_at, ends_at = _window(data.day, data.start_time, data.duration_minutes, zone)
 
+        # A background writer (the recurrence auto-plan's cron, #335) has no person behind it: its
+        # ``system_context`` user is a placeholder that exists in no table, and
+        # ``created_by_user_id``'s FK would refuse it — the same rule ``Task.ai_status`` already
+        # states (#327). A NULL scheduler *is* the system, which is what the snapshot column pair
+        # was built to distinguish (issue #64).
+        by_system = getattr(self.ctx, "is_system", False)
         block = await self.repo.create(
             task_id=task.id,
             user_id=user_id,
             starts_at=starts_at,
             ends_at=ends_at,
             note=data.note,
-            created_by_user_id=self.ctx.user.id,
-            created_by_name=_display_name(self.ctx.user),
+            created_by_user_id=None if by_system else self.ctx.user.id,
+            created_by_name=None if by_system else _display_name(self.ctx.user),
         )
         await self._emit_saved(block, task)
         await self._notify_scheduled(block, task)

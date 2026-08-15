@@ -1427,3 +1427,40 @@
   child with the manager it must be reached through, and **no screen called it**: `grep` found it
   only in `schema.d.ts`. A finished endpoint with no caller is not a spare part; it is a screen
   somebody still has to write.
+- **One subject, three widgets, three places.** The task card treated "when is this happening" as
+  three unrelated controls: Vervaldatum in the details card, Planning in the main column, and
+  Herhaling as a three-control box at the very bottom of the sidebar, below Labels, edit-mode only.
+  The seams between them were where the UX failed, and every failure was a *seam* failure — a
+  recurrence you could not read back, a repeat that dropped fields nobody had decided about, a
+  completed task keeping its planned block while its successor started unplanned. Four rules came
+  out of fixing it (#335).
+
+  **A rule you can write is a rule you can read.** `{freq, interval, mode}` was writable in three
+  boxes and readable nowhere: use mode showed a chip saying `↻ Maandelijks` and no interval, no
+  mode and no next date — and it *could not have* shown one, because `recurrence_next_run` was
+  stored and exposed to no caller. A control whose stored value has no read state is half a
+  feature; the read state is what makes a wrong setting findable. So the rule is one sentence
+  ("Elke maand · op dag 1 · op schema") assembled by one function, and the chip, the Planning card
+  and the editor's own preview all print it.
+
+  **The number that will be stored is shown while it is being typed, and the API is the one who
+  says it** (`POST /leave/requests/preview`'s precedent, #48). Clamping, leap years and "never in
+  the past" are arithmetic; a browser that re-derived them would be a second opinion about a
+  question the API already answers (#312). The preview goes through a `+server.ts` beside the
+  page, never `fetch("/api/v1/…")` from the browser — only traefik routes that prefix, so the same
+  call 404s on every dev server and the preview would silently never appear.
+
+  **A control that acts on the *stored* record, offered inside an edit form, saves first.** #230's
+  create-then-edit is right — the record exists, so Inplannen is reachable without a save — but
+  the schedule modal prefills from what is stored, so typing a title and a budget and pressing
+  Inplannen booked a block called "Naamloze taak" for a default hour, Google event included. One
+  round trip ahead of the one the user asked for, through the same single save, and edit mode
+  stays open because the user asked to plan and not to stop editing. Disabling the button was the
+  rejected alternative: a padlock on the thing the user is most likely to want next (#253).
+
+  **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
+  successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an
+  ordinary task. Both ends now carry a dated, linked activity line, and the finish prompt is where
+  the two remaining consequences are stated: a future planned block that would otherwise stay
+  standing in the Agenda and in Google (removable in the same confirm, named with its date), and
+  the good news that the rule has already scheduled the next one.

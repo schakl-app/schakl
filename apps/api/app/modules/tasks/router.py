@@ -39,6 +39,8 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    RecurrencePreview,
+    RecurrencePreviewRead,
     StatusCreate,
     StatusRead,
     StatusUpdate,
@@ -389,6 +391,35 @@ async def apply_template(
 ) -> list[TaskRead]:
     tasks = await TemplateService(ctx).apply(template_id, payload.company_id)
     return [TaskRead.model_validate(t) for t in tasks]
+
+
+# --------------------------------------------------------------------------- #
+# Recurrence preview (#335) — a literal path, so registered before ``/{task_id}``
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/recurrence/preview",
+    response_model=RecurrencePreviewRead,
+    # `tasks.task.write`, not `.read`: the only place this is ever reached from is the rule
+    # editor, which is edit mode, which is a write. Declaring the read would have widened the
+    # one POST surface a client-role login can reach (`tests/test_rbac_deny_by_default.py`'s
+    # sweep) for a route no client will ever open — deny-by-default is about the tightest key
+    # the caller genuinely needs, and anyone composing a repeat rule holds this one.
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def preview_recurrence(
+    payload: RecurrencePreview,
+    ctx: RequestContext = Depends(require_context),
+) -> RecurrencePreviewRead:
+    """What the rule being composed resolves to — "Volgende taak: za 13 sep 2026".
+
+    ``POST /leave/requests/preview``'s precedent (#48): show the number that will be stored, and
+    why, rather than letting the browser re-derive it. Clamping, leap years, the anchor rules and
+    the org's own "today" all live server-side; a preview that re-implemented them in TypeScript
+    would be a second opinion about a question the API already answers (#312).
+
+    A read — it stores nothing. It exists so a rule can be *checked* before it is saved.
+    """
+    return await TaskService(ctx).preview_recurrence(payload)
 
 
 # --------------------------------------------------------------------------- #

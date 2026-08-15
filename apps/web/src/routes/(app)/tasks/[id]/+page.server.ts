@@ -5,6 +5,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { apiBaseUrl } from "$lib/core/api/client";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
@@ -18,6 +19,8 @@ import {
   updateScheduleAction,
 } from "$lib/modules/tasks/schedule-actions.server";
 
+import type { components } from "$lib/core/api/schema";
+
 import type { Actions, PageServerLoad } from "./$types";
 
 /** A hidden field's comma-joined ids, cleaned — the reorder forms' one input shape. */
@@ -26,6 +29,57 @@ function idList(raw: FormDataEntryValue | null): string[] {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+/** The rule shape the API takes, straight off the generated client — never a hand-kept copy. */
+type Rule = components["schemas"]["Recurrence"];
+
+/** An optional whole number a `<select>`/`<input type=number>` posts, or `null` for "not set". */
+function optionalInt(form: FormData, name: string): number | null {
+  const raw = String(form.get(name) ?? "").trim();
+  if (raw === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : null;
+}
+
+/**
+ * The repeat rule the editor composed (#335).
+ *
+ * An empty `freq` is "Herhaalt niet" and clears the rule. An anchor left on its "volg de
+ * vervaldatum" option is **absent**, not zero: the API reads absence as the pre-#335 behaviour
+ * (the cadence hangs off the due date), and a `0` would mean Monday.
+ *
+ * The auto-plan reads *presence* (`$lib/core/forms.checked`), never a particular posted value —
+ * an unticked checkbox posts nothing at all, and comparing against a literal is how a whole
+ * module came to post `false` whatever the user ticked (the reporting post-mortem).
+ */
+function readRecurrence(form: FormData): Rule | null {
+  const freq = String(form.get("freq") ?? "").trim();
+  if (!freq) return null;
+  const rule: Rule = {
+    freq: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly",
+    interval: Math.max(1, Number(form.get("interval") ?? 1) || 1),
+    mode: String(form.get("mode") ?? "after_completion") as "after_completion" | "schedule",
+  };
+  const weekday = optionalInt(form, "on_weekday");
+  const day = optionalInt(form, "on_day");
+  const month = optionalInt(form, "on_month");
+  if (weekday !== null) rule.on_weekday = weekday;
+  // A yearly anchor is a whole date or nothing (the API refuses half of one), so the pair goes
+  // together — and the editor only ever shows both boxes at once.
+  if (day !== null && (freq !== "yearly" || month !== null)) rule.on_day = day;
+  if (month !== null && day !== null && freq === "yearly") rule.on_month = month;
+
+  const start = String(form.get("plan_start") ?? "").trim();
+  const minutes = parsePostedMinutes(form.get("plan_duration"));
+  if (checked(form, "plan_enabled") && start && minutes) {
+    rule.plan = {
+      user_id: String(form.get("plan_user_id") ?? "").trim() || null,
+      start_time: `${start}:00`,
+      duration_minutes: minutes,
+    };
+  }
+  return rule;
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -136,14 +190,7 @@ export const actions: Actions = {
       body.visible_to_client = visibleToClient[visibleToClient.length - 1] === "true";
     }
     if (form.has("freq")) {
-      const freq = String(form.get("freq") ?? "").trim();
-      body.recurrence = freq
-        ? {
-            freq: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly",
-            interval: Math.max(1, Number(form.get("interval") ?? 1) || 1),
-            mode: String(form.get("mode") ?? "after_completion") as "after_completion" | "schedule",
-          }
-        : null;
+      body.recurrence = readRecurrence(form);
     }
     // "Ook de uren registreren" (#314): the entry rides along on the finish, in one request and
     // one transaction — a finished task whose hours were lost to a second, failed call is the
@@ -164,7 +211,8 @@ export const actions: Actions = {
         schedule_id: scheduleId || null,
       };
     }
-    const { error: apiError } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+    const api = apiFor(event);
+    const { error: apiError } = await api.PATCH("/api/v1/tasks/{task_id}", {
       params: { path: { task_id: event.params.id } },
       body,
     });
@@ -181,24 +229,24 @@ export const actions: Actions = {
           e.key,
       });
     }
+    // The blocks a finished task left standing (#335 F6). **After** the finish, never before: a
+    // status move the API refuses must not take somebody's calendar with it. Through the ordinary
+    // delete route, so `task_schedule.removed` fires and the pushed Google event goes too — the
+    // one thing a raw row delete could never do (#188's one-emit-site rule).
+    for (const schedule_id of idList(form.get("remove_schedule_ids"))) {
+      await api.DELETE("/api/v1/tasks/schedules/{schedule_id}", {
+        params: { path: { schedule_id } },
+      });
+    }
     return { updated: true };
   },
 
+  /** The rule on its own (no other field touched) — one reader, so the two cannot drift. */
   setRecurrence: async (event) => {
     const form = await event.request.formData();
-    const freq = String(form.get("freq") ?? "").trim();
-    const body = {
-      recurrence: freq
-        ? {
-            freq: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly",
-            interval: Math.max(1, Number(form.get("interval") ?? 1) || 1),
-            mode: String(form.get("mode") ?? "after_completion") as "after_completion" | "schedule",
-          }
-        : null,
-    };
     const { error: apiError } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
       params: { path: { task_id: event.params.id } },
-      body,
+      body: { recurrence: readRecurrence(form) },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { updated: true };
