@@ -988,6 +988,14 @@ class UptimeWriteService(UptimeService):
         The local row is written first and the push follows, so a failed push leaves a
         ``pending`` monitor an admin can retry — rather than a monitor at Kuma that schakl has no
         record of, which is the half nobody can clean up from this side.
+
+        The anchor goes through :meth:`_resolve_anchor`, which is the same resolution
+        ``link_monitor`` and ``update_monitor`` use (#366). Taking ``company_id`` from the payload
+        and the anchor ids on trust was the shape #321 spent a whole issue removing from the sync
+        path: a monitor created from a website page posts ``website_id`` and no client, and landed
+        at ``company_id IS NULL`` — visible to staff outside that client's group and invisible to
+        the client whose site it watches (§285, #266). Back through the other door, and this time
+        for monitors we made ourselves.
         """
         instance = await self.instances.get_or_404(payload.instance_id)
         parent = (
@@ -995,6 +1003,7 @@ class UptimeWriteService(UptimeService):
             if payload.parent_id is not None
             else None
         )
+        kind, anchor_id, company_id = await self._resolve_anchor(payload)
         monitor = await self.monitors.create(
             instance_id=instance.id,
             name=payload.name,
@@ -1005,10 +1014,10 @@ class UptimeWriteService(UptimeService):
             retries=payload.retries,
             parent_id=parent.id if parent is not None else None,
             profile_id=payload.profile_id,
-            website_id=payload.website_id,
-            domain_id=payload.domain_id,
-            hosting_id=payload.hosting_id,
-            company_id=payload.company_id,
+            website_id=anchor_id if kind == "website" else None,
+            domain_id=anchor_id if kind == "domain" else None,
+            hosting_id=anchor_id if kind == "hosting" else None,
+            company_id=company_id,
             active=payload.active,
             # Ours, not found: this is what makes a later difference *drift* rather than truth.
             adopted=False,
@@ -1078,6 +1087,40 @@ class UptimeWriteService(UptimeService):
                 resolved = await self._anchor_companies({(kind, anchor_id)})
                 return resolved.get((kind, anchor_id))
         return None
+
+    async def _resolve_anchor(
+        self, payload: UptimeMonitorCreate
+    ) -> tuple[str | None, uuid.UUID | None, uuid.UUID | None]:
+        """The one anchor a new monitor gets, and whose it is (#366).
+
+        **One anchor, not three columns** — ``UptimeMonitorLink``'s rule, applied to the create
+        payload, which for compatibility still carries all three ids. The most specific wins, in
+        ``_company_for_link``'s order, and the others are dropped rather than stored: a monitor
+        claiming to watch one client's website *and* another client's hosting is a row no screen
+        can render honestly, and ``company_id`` could only ever agree with one of them.
+
+        The anchor is resolved through the horizon, so an id the caller cannot see is a **404**
+        and not a silently-written link (§15: a refusal must not confirm that the row exists).
+        Without it the create route would be the one way past the fence ``link_monitor`` and
+        ``update_monitor`` both stand behind.
+
+        An explicit ``company_id`` still wins, exactly as it does on the update path — *unless the
+        caller said otherwise* is the same sentence in both places.
+        """
+        for kind, field in zip(_ANCHOR_KINDS, _ANCHOR_FIELDS, strict=True):
+            anchor_id = getattr(payload, field)
+            if anchor_id is None:
+                continue
+            resolved = await self._anchor_companies({(kind, anchor_id)})
+            if (kind, anchor_id) not in resolved:
+                raise AppError("not_found", "errors.not_found", status_code=404)
+            company_id = (
+                payload.company_id
+                if payload.company_id is not None
+                else resolved[(kind, anchor_id)]
+            )
+            return kind, anchor_id, company_id
+        return None, None, payload.company_id
 
     async def _anchor_companies(
         self, anchors: set[tuple[str, uuid.UUID]]

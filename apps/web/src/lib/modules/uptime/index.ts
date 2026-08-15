@@ -59,9 +59,38 @@ function loadPanel(api: ApiClient, entityId: string, anchorType: "website" | "do
     // already attached are the half of this panel that matters, and they are on screen.
     .catch(() => []);
 
+  // What the *create* form needs (#366). Streamed for `attachable`'s reason and more strongly:
+  // making a monitor is something a person does once per record, so three lookups on every
+  // website and domain page load would be paying for the rare case on every read. One `Promise`
+  // for all three, because the form draws them together and a partial one is not a form.
+  const createForm = Promise.all([
+    api.GET("/api/v1/uptime/instances/selectable"),
+    // A group *is* a monitor (`monitor_type = "group"`, docs/UPTIME.md §7), so the group picker's
+    // options are a filtered monitor list rather than a second endpoint. `meta=false`: the form
+    // draws the group's own name and its instance is decided by the picker above it.
+    api.GET("/api/v1/uptime/monitors", {
+      params: {
+        query: { monitor_type: "group", limit: 100, offset: 0, count: false, meta: false },
+      },
+    }),
+    // Readable on `monitor.read`, which is what this panel already holds — the create form has to
+    // *show* which defaults a monitor will follow, and that is why `list_profiles` is not gated
+    // on `profile.manage` (#310).
+    api.GET("/api/v1/uptime/profiles"),
+  ])
+    .then(([instances, groups, profiles]) => ({
+      instances: instances.data ?? [],
+      groups: groups.data?.items ?? [],
+      profiles: profiles.data ?? [],
+    }))
+    // A form that cannot load its pickers must not take the page down with it: the monitors
+    // already attached are the half of this panel that matters, and they are on screen.
+    .catch(() => ({ instances: [], groups: [], profiles: [] }));
+
   return attached.then((r) => ({
     monitors: r.data?.items ?? [],
     attachable,
+    createForm,
     anchorType,
   }));
 }

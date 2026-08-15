@@ -10664,6 +10664,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uptime/instances/selectable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Selectable Instances
+         * @description Which Uptime Kumas a monitor may be created on — the create form's picker (#366).
+         *
+         *     Declared **before** `/instances/{instance_id}` so the literal segment is matched as itself
+         *     rather than as an id, and read on `monitor.read` rather than `instance.manage` for
+         *     `list_profiles`' reason: the form needs to show where a monitor lands, and a gate naming a
+         *     permission the create route does not require is #310's mistake in miniature.
+         *
+         *     `writable` is computed here rather than left to the caller so the rule lives in one place: a
+         *     `linked` instance holds no credential, and a monitor created against one can never be pushed.
+         */
+        get: operations["list_selectable_instances_api_v1_uptime_instances_selectable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/instances/{instance_id}": {
         parameters: {
             query?: never;
@@ -26644,6 +26672,36 @@ export interface components {
              * @default true
              */
             ssl_verify: boolean;
+        };
+        /**
+         * UptimeInstanceOption
+         * @description One instance as the *create-a-monitor* form needs it, and nothing more (#366).
+         *
+         *     A second, leaner read of the same rows exists for the reason ``list_profiles`` is readable on
+         *     ``monitor.read``: the form that creates a monitor has to **show which Uptime Kuma it lands
+         *     on**, and gating that on ``instance.manage`` would leave a member who holds exactly the
+         *     permission the create route declares with a picker they cannot populate (#310). Every field
+         *     here is already visible to such a caller — ``instance_name`` rides every monitor row under
+         *     ``meta=true`` — so this reveals nothing new, which is what makes the wider gate safe.
+         *
+         *     What is **not** here is the whole point: no ``base_url``, no ``username``, no
+         *     ``token_configured``, no connect-header names. Those are facts about a credential, and they
+         *     stay behind ``instance.manage`` where the settings screen reads them.
+         */
+        UptimeInstanceOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            mode: components["schemas"]["InstanceMode"];
+            /** Name */
+            name: string;
+            /**
+             * Writable
+             * @default false
+             */
+            writable: boolean;
         };
         /** UptimeInstanceRead */
         UptimeInstanceRead: {
@@ -49988,6 +50046,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_selectable_instances_api_v1_uptime_instances_selectable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceOption"][];
                 };
             };
         };

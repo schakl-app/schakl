@@ -117,6 +117,35 @@ class UptimeInstanceRead(BaseModel):
     group_count: int = 0
 
 
+class UptimeInstanceOption(BaseModel):
+    """One instance as the *create-a-monitor* form needs it, and nothing more (#366).
+
+    A second, leaner read of the same rows exists for the reason ``list_profiles`` is readable on
+    ``monitor.read``: the form that creates a monitor has to **show which Uptime Kuma it lands
+    on**, and gating that on ``instance.manage`` would leave a member who holds exactly the
+    permission the create route declares with a picker they cannot populate (#310). Every field
+    here is already visible to such a caller — ``instance_name`` rides every monitor row under
+    ``meta=true`` — so this reveals nothing new, which is what makes the wider gate safe.
+
+    What is **not** here is the whole point: no ``base_url``, no ``username``, no
+    ``token_configured``, no connect-header names. Those are facts about a credential, and they
+    stay behind ``instance.manage`` where the settings screen reads them.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    mode: InstanceMode
+
+    #: Whether a monitor created here can actually reach Uptime Kuma. A ``linked`` instance has no
+    #: credential by definition (docs/UPTIME.md §4), so ``_push`` cannot write to it and a monitor
+    #: created against one would sit at ``pending`` for ever. Offering it would be #253's control
+    #: that always refuses — so the picker draws only the instances where this is true, and says
+    #: so in words when there are none.
+    writable: bool = False
+
+
 class UptimeLinkCandidate(BaseModel):
     """One anchor a found monitor could belong to (#321).
 

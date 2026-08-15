@@ -42,6 +42,11 @@
     instance_name?: string | null;
   };
 
+  type InstanceOption = { id: string; name: string; mode: string; writable: boolean };
+  type Group = { id: string; name: string; instance_id: string };
+  type Profile = { id: string; name: string; monitor_type: string; is_default: boolean };
+  type CreateForm = { instances: InstanceOption[]; groups: Group[]; profiles: Profile[] };
+
   // `data: unknown` and narrow here, matching every other entity panel: the registry types the
   // component contract, and a narrower prop type makes the component unassignable to it.
   let { data }: { data: unknown } = $props();
@@ -50,12 +55,16 @@
       monitors?: Monitor[];
       /** Streamed: the options arrive after the page, because most visits never open the picker. */
       attachable?: Promise<Monitor[]>;
+      /** Streamed for the same reason: the create form's three pickers (#366). */
+      createForm?: Promise<CreateForm>;
       /** `website` or `domain` — what a link posted from here attaches to. */
       anchorType?: string;
     },
   );
   const monitors = $derived(panel.monitors ?? []);
   const attachable = $derived(panel.attachable ?? Promise.resolve([] as Monitor[]));
+  const empty: CreateForm = { instances: [], groups: [], profiles: [] };
+  const createForm = $derived(panel.createForm ?? Promise.resolve(empty));
   const anchorType = $derived(panel.anchorType ?? "website");
 
   // The key the call actually makes, not the one the screen is about (#310): the link route
@@ -65,6 +74,68 @@
   const busy = new InFlight();
   let picked = $state("");
   let attaching = $state(false);
+  let creating = $state(false);
+
+  /**
+   * The hostname this record *is*, for the create form's suggestion (#366).
+   *
+   * A website has no URL column of its own: its host is the apex or `www.` plus the apex,
+   * depending on `websites.root` — which is exactly what `matching.build_index` derives on the
+   * API side when it decides which website a found monitor belongs to. Mirrored here rather than
+   * fetched, because the host page has already loaded the record and one more request per website
+   * and domain page load, to serve a form most visits never open, is the trade docs/PERFORMANCE.md
+   * bans. The suggestion is put **in a visible field** the user can correct, so a drift between
+   * the two is something you see rather than something you find out about later.
+   */
+  const anchorHost = $derived.by(() => {
+    if (anchorType === "domain") return String(page.data.domain?.name ?? "").toLowerCase();
+    const site = page.data.website;
+    const apex = String(site?.domain_name ?? "").toLowerCase();
+    if (!apex) return "";
+    return site?.root ? apex : `www.${apex}`;
+  });
+
+  const inputClass =
+    "w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+  const labelClass = "mb-1 block text-sm font-medium text-text";
+
+  /** The types worth offering: one target field each, and nothing needing a payload we cannot ask
+   *  for. Everything else stays Uptime Kuma's own screen, which is better at it than a panel. */
+  const TYPES = ["http", "keyword", "ping", "port", "dns"] as const;
+
+  /** What a type wants in the target box — a URL for the HTTP family, a bare host for the rest.
+   *  `profiles.target_field` says the same thing on the API side. */
+  const suggestFor = (type: string) =>
+    !anchorHost ? "" : type === "http" || type === "keyword" ? `https://${anchorHost}` : anchorHost;
+
+  let monitorType = $state("http");
+  let target = $state("");
+  let instanceId = $state("");
+
+  /**
+   * Open the form with everything already filled in that we can honestly fill in.
+   *
+   * The instance defaults to the only writable one when there *is* only one, and is left unchosen
+   * otherwise: picking one of several on the tenant's behalf would be deciding which client's
+   * Uptime Kuma a monitor lands on.
+   */
+  function openCreate(form: CreateForm) {
+    const writable = form.instances.filter((i) => i.writable);
+    monitorType = "http";
+    target = suggestFor("http");
+    instanceId = writable.length === 1 ? writable[0].id : "";
+    creating = true;
+  }
+
+  /**
+   * Re-suggest the target when the type changes — but only while the box still holds *our* last
+   * suggestion. Once somebody has typed in it, that is the answer, and overwriting it because a
+   * dropdown moved is the form throwing away the one field it cannot guess.
+   */
+  function onTypeChange(next: string) {
+    if (target === suggestFor(monitorType)) target = suggestFor(next);
+    monitorType = next;
+  }
 
   /** One monitor as a picker option. The instance only disambiguates when there are several. */
   function options(rows: Monitor[]) {
@@ -203,11 +274,169 @@
       <Button type="submit" disabled={busy.active || !picked}>{t("uptime.link.attach")}</Button>
       <Button variant="secondary" onclick={() => (attaching = false)}>{t("common.cancel")}</Button>
     </form>
+  {:else if creating}
+    <!--
+      Create a monitor for this record (#366). `keep()`: the fields stay filled after a save, so a
+      failed push is something you retry rather than retype — SvelteKit's default reset would blank
+      the box the user just filled in (docs/UX.md, enforced by `pnpm forms:check`).
+    -->
+    {#await createForm then form}
+      {@const writable = form.instances.filter((i) => i.writable)}
+      {@const groups = form.groups.filter((g) => g.instance_id === instanceId)}
+      <form
+        method="POST"
+        action="?/uptimeCreateMonitor"
+        class="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2"
+        use:enhance={busy.keep("uptime-create")}
+      >
+        <input type="hidden" name="entity_type" value={anchorType} />
+
+        <div class="sm:col-span-2">
+          <label class={labelClass} for="uptime-new-name">{t("uptime.field.name")}</label>
+          <input
+            id="uptime-new-name"
+            name="name"
+            class={inputClass}
+            required
+            value={anchorHost}
+            maxlength="255"
+          />
+        </div>
+
+        <div>
+          <label class={labelClass} for="uptime-new-type">{t("uptime.field.monitor_type")}</label>
+          <select
+            id="uptime-new-type"
+            name="monitor_type"
+            class={inputClass}
+            value={monitorType}
+            onchange={(e) => onTypeChange(e.currentTarget.value)}
+          >
+            {#each TYPES as type (type)}
+              <option value={type}>{t(`uptime.type.${type}`)}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <label class={labelClass} for="uptime-new-target">{t("uptime.field.target")}</label>
+          <input id="uptime-new-target" name="target" class={inputClass} bind:value={target} />
+        </div>
+
+        {#if monitorType === "port"}
+          <div>
+            <label class={labelClass} for="uptime-new-port">{t("uptime.field.port")}</label>
+            <input
+              id="uptime-new-port"
+              name="port"
+              type="number"
+              min="1"
+              max="65535"
+              class={inputClass}
+              required
+            />
+          </div>
+        {/if}
+
+        <div>
+          <label class={labelClass} for="uptime-new-instance">{t("uptime.group.instance")}</label>
+          <select
+            id="uptime-new-instance"
+            name="instance_id"
+            class={inputClass}
+            required
+            bind:value={instanceId}
+          >
+            <option value="">{t("uptime.create.pick_instance")}</option>
+            {#each writable as i (i.id)}
+              <option value={i.id}>{i.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <!-- The group is Uptime Kuma's own folder and a group *is* a monitor (doc §7). Only the
+               selected instance's groups are offered: a monitor cannot sit in a folder on a
+               different server, and offering one would be a choice that can only fail. -->
+          <label class={labelClass} for="uptime-new-group">{t("uptime.field.parent")}</label>
+          <select id="uptime-new-group" name="parent_id" class={inputClass}>
+            <option value="">{t("uptime.create.no_group")}</option>
+            {#each groups as g (g.id)}
+              <option value={g.id}>{g.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <label class={labelClass} for="uptime-new-profile">{t("uptime.field.profile")}</label>
+          <select id="uptime-new-profile" name="profile_id" class={inputClass}>
+            <!-- An empty value is a real answer and the default one: `null` means *follow the
+                 tenant's default profile*, resolved at read time (`profiles.pick_profile`). -->
+            <option value="">{t("uptime.field.profile_inherit")}</option>
+            {#each form.profiles as p (p.id)}
+              <option value={p.id}>{p.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <!-- Left blank on purpose: an empty box is not a zero. Absent means inherit, from the
+             profile and then from the built-in defaults, which is what "volg de standaard" is. -->
+        <div>
+          <label class={labelClass} for="uptime-new-interval">{t("uptime.field.interval")}</label>
+          <input
+            id="uptime-new-interval"
+            name="interval_seconds"
+            type="number"
+            min="20"
+            max="86400"
+            class={inputClass}
+            placeholder={t("uptime.create.inherit")}
+          />
+        </div>
+
+        <div>
+          <label class={labelClass} for="uptime-new-retries">{t("uptime.field.retries")}</label>
+          <input
+            id="uptime-new-retries"
+            name="retries"
+            type="number"
+            min="0"
+            max="10"
+            class={inputClass}
+            placeholder={t("uptime.create.inherit")}
+          />
+        </div>
+
+        {#if writable.length === 0}
+          <!-- Said in words rather than left as an empty dropdown: no Uptime Kuma at all and one
+               that only reports to us are different problems with different next steps, and a
+               `linked` instance can never be written to (doc §4). -->
+          <p class="text-xs text-muted sm:col-span-2">{t("uptime.create.no_instance")}</p>
+        {/if}
+
+        <div class="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={busy.active || !instanceId}>
+            {t("uptime.create.submit")}
+          </Button>
+          <Button variant="secondary" onclick={() => (creating = false)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </form>
+    {/await}
   {:else}
-    <div class="mt-3">
+    <div class="mt-3 flex flex-wrap gap-2">
       <Button variant="secondary" onclick={() => (attaching = true)}>
         {t("uptime.link.add")}
       </Button>
+      <!-- The other half of the same question. Attaching answers "which existing monitor watches
+           this", creating answers "nothing does yet" — and until now only the first had a
+           control, on a record whose whole point is that it may not be monitored at all. -->
+      {#await createForm then form}
+        <Button variant="secondary" onclick={() => openCreate(form)}>
+          {t("uptime.create.add")}
+        </Button>
+      {/await}
     </div>
   {/if}
 {/if}

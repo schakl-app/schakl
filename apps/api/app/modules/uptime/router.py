@@ -16,9 +16,11 @@ from app.core.entitlements import license_exempt
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.uptime import matching
+from app.modules.uptime.models import InstanceMode
 from app.modules.uptime.schemas import (
     UptimeEnrol,
     UptimeInstanceCreate,
+    UptimeInstanceOption,
     UptimeInstanceRead,
     UptimeInstanceUpdate,
     UptimeLinkApplyResult,
@@ -102,6 +104,38 @@ async def create_instance(
 ) -> UptimeInstanceRead:
     service = UptimeService(ctx)
     return await _read_instance(service, await service.create_instance(payload))
+
+
+@router.get(
+    "/instances/selectable",
+    response_model=list[UptimeInstanceOption],
+    dependencies=[require_permission("uptime.monitor.read")],
+)
+async def list_selectable_instances(
+    ctx: RequestContext = Depends(require_context),
+) -> list[UptimeInstanceOption]:
+    """Which Uptime Kumas a monitor may be created on — the create form's picker (#366).
+
+    Declared **before** `/instances/{instance_id}` so the literal segment is matched as itself
+    rather than as an id, and read on `monitor.read` rather than `instance.manage` for
+    `list_profiles`' reason: the form needs to show where a monitor lands, and a gate naming a
+    permission the create route does not require is #310's mistake in miniature.
+
+    `writable` is computed here rather than left to the caller so the rule lives in one place: a
+    `linked` instance holds no credential, and a monitor created against one can never be pushed.
+    """
+    instances = await UptimeService(ctx).list_instances()
+    return [
+        UptimeInstanceOption(
+            id=i.id,
+            name=i.name,
+            mode=i.mode,
+            writable=(
+                i.active and i.mode == InstanceMode.MANAGED.value and bool(i.token_encrypted)
+            ),
+        )
+        for i in instances
+    ]
 
 
 @router.get(
