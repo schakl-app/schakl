@@ -934,6 +934,7 @@
   "time.budget.remaining_label": "Nog beschikbaar",
   "time.budget.from_subscription": "Uit: {name}",
   "time.budget.none": "Dit project heeft geen urenbudget.",
+  "time.budget.none_for_company": "Deze klant heeft geen projecten met een urenbudget.",
   "time.draft.chip": "Concept",
   "time.draft.saved": "Concept opgeslagen {time}",
   "time.draft.discard": "Verwerpen",

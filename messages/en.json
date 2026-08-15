@@ -934,6 +934,7 @@
   "time.budget.remaining_label": "Still available",
   "time.budget.from_subscription": "From: {name}",
   "time.budget.none": "This project has no hour budget.",
+  "time.budget.none_for_company": "This client has no projects with an hour budget.",
   "time.draft.chip": "Draft",
   "time.draft.saved": "Draft saved {time}",
   "time.draft.discard": "Discard",

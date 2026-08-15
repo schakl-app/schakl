@@ -7,6 +7,8 @@
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
+  import { untrack } from "svelte";
+
   import { formatDurationInput, parseDurationText } from "$lib/core/duration";
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { hoursBurn } from "$lib/core/hours";
@@ -94,6 +96,7 @@
     ondone,
     oncreatecompany,
     oncreateproject,
+    onscope,
   }: {
     action: string;
     entry?: EntryLike | null;
@@ -129,6 +132,13 @@
     /** The form's currently-picked client rides along (#247), so the project quick-create
      *  dialog opens with the same client instead of blank. */
     oncreateproject?: (name: string, companyId: string) => void;
+    /**
+     * What this entry is about, whenever it changes: the client and project it is being logged
+     * on. The selection lives in here and moves while the form is filled, so anything drawn
+     * *beside* the form that is about the same entry — today the "Beschikbare uren" panel — is
+     * told, rather than guessing from the entry the host handed in.
+     */
+    onscope?: (scope: { companyId: string; projectId: string }) => void;
   } = $props();
 
   // --- form state (prefilled when editing; a restored draft fills the create form, #44) ---
@@ -256,6 +266,19 @@
     // is the form showing the answer up front, not deciding it.
     if (project && !billableTouched) fBillable = project.billable_default ?? true;
   }
+
+  // Tell the host what this entry is about — on mount and on every change of either field, so a
+  // panel drawn beside the form narrows with it instead of listing the whole agency.
+  //
+  // The two fields are read *outside* `untrack` — they are the dependencies — and the callback is
+  // both read and called *inside* it, so this effect depends on the selection and on nothing else.
+  // A tracked read of `onscope` would add the host's closure identity to that list: it stores what
+  // we hand it, re-renders, and passes down a fresh function, which is a feedback edge into an
+  // effect whose whole job is to write to the host.
+  $effect(() => {
+    const scope = { companyId: fCompany, projectId: fProject };
+    untrack(() => onscope?.(scope));
+  });
 
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
   // picked project's budget is left *before* saving, not on another screen afterwards. Hours

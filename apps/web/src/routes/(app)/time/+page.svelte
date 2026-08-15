@@ -99,6 +99,15 @@
   $effect(() => {
     if (editingId && !editingEntry) editingId = null;
   });
+  // What the form beside the list is currently about: the budgets panel under it answers
+  // for *this* entry's client and project, not for every project the agency has. Reported by the
+  // form because the selection lives there and moves as it is filled — the create form starts on
+  // the last-used pair and an edit starts on the entry's own.
+  let entryScope = $state<{ companyId: string; projectId: string }>({
+    companyId: "",
+    projectId: "",
+  });
+
   function rowClick(e: (typeof entries)[number]) {
     if (e.is_running) return;
     if (e.approved_at && !canApprove) return; // approved hours are locked
@@ -895,6 +904,7 @@
             oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
             oncreateproject={(name, companyId) =>
               quickCreateProject(name, "entry_project", companyId)}
+            onscope={(scope) => (entryScope = scope)}
           />
         {/key}
       {:else}
@@ -920,6 +930,7 @@
             oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
             oncreateproject={(name, companyId) =>
               quickCreateProject(name, "entry_project", companyId)}
+            onscope={(scope) => (entryScope = scope)}
           />
         {/key}
       {/if}
@@ -927,8 +938,14 @@
 
     <!-- "Hoeveel uren zijn er nog?" — answered where the hours are logged, from the project
          lookup this page already holds (#225: a covered project's budget *is* the agreement's
-         included hours, so this is also where retainer hours live now). -->
-    <ProjectBudgetsPanel projects={data.projects} companies={data.companies} />
+         included hours, so this is also where retainer hours live now). Narrowed to what the
+         form above is about: this entry's project, or its client's projects. -->
+    <ProjectBudgetsPanel
+      projects={data.projects}
+      companies={data.companies}
+      companyId={entryScope.companyId}
+      projectId={entryScope.projectId}
+    />
   </div>
 </div>
 

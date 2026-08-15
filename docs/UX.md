@@ -692,12 +692,24 @@
   to log against. Two pickers meant two places a retainer's remaining hours could be counted, and
   they could disagree. What replaced it is the answer itself, on the screen that spends the hours:
   the picked project's **remaining** hours under the project field (named after the agreement they
-  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form listing
-  every budgeted project on the one burn scale, hottest first. Both render from the project lookup
+  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form on the
+  one burn scale, hottest first. Both render from the project lookup
   the page already loads with `hours=true` — a number this useful should cost no extra call, and the
   form asks for one *less* than it did. The "no budget" hint only appears when the caller actually
   asked for the burn: a lookup fetched without `hours=true` knows nothing, and silence beats a
   confident "geen urenbudget" that is really "didn't look".
+  **And a panel beside a form is about the form's record, not about the org.** The panel listed
+  *every* budgeted project the agency has — a scrolling column of other clients' work, next to a
+  form filling in one of them, where the useful line was already off the bottom. It now follows the
+  entry's own selection: a picked project **is** the answer, a picked client shows exactly what its
+  project picker offers (its own projects, plus the client-less ones that are loggable under every
+  client), and only an entry naming neither falls back to the full list. Two rules generalise. The
+  selection lives in the form, so the form **reports** it (`onscope`) rather than the host guessing
+  from the record it handed in — a create form's client and project move while it is being filled.
+  And a narrowed panel that finds nothing says so in words instead of unmounting: a box that
+  vanishes the moment you pick a client reads as broken. The one exception is a picked project with
+  no budget, which the form already answers under the project picker — where the question was
+  asked, and where it is not a second empty box.
 - **Forms are SSR form actions** with `use:enhance` — and **a form that stays mounted after a
   successful save always passes `update({ reset: false })`.** The default success path calls
   `form.reset()`, which rewinds every control to its server-rendered default *without firing any
