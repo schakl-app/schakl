@@ -86,6 +86,23 @@ incoming channel/notification back to org + connection via our own channel token
 - Start **one-way** where it's cheap: §14 already wants approved leave → Google Calendar.
   Two-way is much harder — don't sign up for it in v1.
 
+**The Agenda drops the mirror of anything it already draws natively, and the identity it drops it
+by has to survive the round trip.** A leave request, a freelance availability row and a planned
+task block all mirror outwards *and* come back through the events cache, so `events_feed` filters
+that cache against the outbox: an event whose id sits in `calendar_event_links` is the same item
+twice. **A row that repeats breaks that in the one way an id comparison cannot see.** A repeating
+availability mirrors as a *single* event carrying an RRULE — which is what keeps an edit an edit
+and a delete a delete, instead of a diff against whatever horizon was last placed — while the sync
+expands recurrences (`singleEvents=true`), so what comes back is a series of *instances*, each
+under an id of its own that the outbox has never held. Every occurrence of a freelancer's weekly
+availability was drawn twice, natively and as its own mirror. An instance names its master in
+`recurringEventId` and nowhere else, so the cache stores it
+(`google_calendar_events.recurring_event_id`, migration `c5d81b3f7a26`, which clears every
+`sync_token` so the next pull refills the parentage it could not have known) and the feed tests
+both identities: the event's own id, or the series it belongs to. Worth generalising — **when you
+mirror a rule rather than its occurrences, what comes back is not the thing you sent**, and any
+dedup keyed on what you sent passes every test written against a one-off.
+
 **A database cascade announces nothing, so the mirror has to be told.** The outbox learns that a
 local record is gone from one place only — the emit at the removal site — and a link is the *only*
 record that a Google event exists at all: once its `local_id` names a row nobody will write again,

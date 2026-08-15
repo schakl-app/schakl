@@ -774,6 +774,96 @@ async def test_events_feed_hides_events_schakl_pushed(client_for) -> None:
         assert [item["title"] for item in feed] == ["Externe afspraak"]
 
 
+async def test_events_feed_hides_every_occurrence_of_a_pushed_series(
+    client_for, monkeypatch
+) -> None:
+    """A repeating row mirrors as **one** event with an RRULE, and the sync expands it — so the
+    outbox holds the master id and the cache holds instance ids that match nothing.
+
+    That is how a freelancer's weekly availability came back drawn twice on every occurrence:
+    the native chip and its own mirror. An instance names its master in ``recurringEventId``,
+    which the sync now stores and the feed now tests alongside the event's own id.
+    """
+    t = await make_tenant("gcal-feed-series")
+    connection_id = await _seed(t)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(
+            CalendarEventLink(
+                org_id=t.org.id,
+                local_type="availability",
+                local_id=uuid.uuid4(),
+                user_id=t.user.id,
+                connection_id=connection_id,
+                status="pushed",
+                google_event_id="gev-series",
+                payload={},
+            )
+        )
+        await session.commit()
+
+    def _instance(event_id: str, day: str, next_day: str) -> dict:
+        """One expanded occurrence of `gev-series`, as `singleEvents=true` hands it back
+        (Google's all-day `end.date` is exclusive)."""
+        return {
+            "id": event_id,
+            "status": "confirmed",
+            "summary": "Beschikbaar",
+            "recurringEventId": "gev-series",
+            "start": {"date": day},
+            "end": {"date": next_day},
+        }
+
+    # What Google hands back for that series with `singleEvents=true`: instances under ids of
+    # their own, plus an ordinary one-off that must survive the filter.
+    stub = _StubClient(
+        [
+            (
+                "GET",
+                _StubResponse(
+                    200,
+                    {
+                        "items": [
+                            _instance(
+                                "gev-series_20260821T070000Z", "2026-08-21", "2026-08-22"
+                            ),
+                            _instance(
+                                "gev-series_20260904T070000Z", "2026-09-04", "2026-09-05"
+                            ),
+                            {
+                                "id": "ev-standup",
+                                "status": "confirmed",
+                                "summary": "Externe afspraak",
+                                "start": {"date": "2026-08-24"},
+                                "end": {"date": "2026-08-25"},
+                            },
+                        ],
+                        "nextSyncToken": "token-1",
+                    },
+                ),
+            ),
+        ]
+    )
+    monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        await sync_connection(session, t.org, connection)
+        await session.commit()
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        feed = (
+            await c.get(
+                "/api/v1/google/calendar/events",
+                params={"date_from": "2026-08-01", "date_to": "2026-09-30"},
+                headers=headers,
+            )
+        ).json()
+    # The one-off keeps its place: `NOT IN` over a NULL series must not swallow it.
+    assert [item["title"] for item in feed] == ["Externe afspraak"]
+
+
 # --------------------------------------------------------------------------- #
 # Task schedules (#188): the mirror has to hear about every way a block can go
 # --------------------------------------------------------------------------- #

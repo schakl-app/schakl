@@ -102,6 +102,11 @@ class GoogleCalendarEvent(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, B
         index=True,
     )
     google_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The series this row is an *instance* of, or ``None`` for a one-off. The sync expands
+    #: recurrences (``singleEvents=true``), so an instance arrives under an id of its own and
+    #: names its master only here — which is the only way to recognise an occurrence of an
+    #: event schakl pushed as a rule (a repeating availability row) as one of ours.
+    recurring_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     calendar_id: Mapped[str] = mapped_column(
         String(255), nullable=False, default="primary", server_default="primary"
     )

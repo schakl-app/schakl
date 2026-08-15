@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Org
@@ -92,6 +92,7 @@ async def _upsert_event(
     updated = item.get("updated")
     values = dict(
         calendar_id=calendar_id,
+        recurring_event_id=(item.get("recurringEventId") or "")[:255] or None,
         summary=(item.get("summary") or "")[:1000] or None,
         status=item.get("status") or "confirmed",
         html_link=(item.get("htmlLink") or "")[:500] or None,
@@ -211,8 +212,17 @@ async def events_feed(
     window_start = datetime.fromisoformat(date_from).replace(tzinfo=zone)
     window_end = datetime.fromisoformat(date_to).replace(tzinfo=zone) + timedelta(days=1)
 
-    # Events schakl itself pushed (approved leave, #148) already render natively on the
-    # Agenda through the leave feed — showing the Google mirror too is the same item twice.
+    # Events schakl itself pushed (approved leave #148, freelance availability, task blocks
+    # #188) already render natively on the Agenda through their own feeds — showing the Google
+    # mirror too is the same item twice.
+    #
+    # **A row that repeats is one event and many occurrences, and only the first carries the id
+    # we pushed.** A repeating availability row mirrors as a single event with an RRULE (that is
+    # what keeps an edit an edit), while the sync expands recurrences (``singleEvents=true``) —
+    # so what comes back is a *series of instances*, each under an id of its own that the outbox
+    # has never heard of. Every occurrence of a freelancer's weekly availability was therefore
+    # drawn twice: once natively, once as its own mirror. An instance names its master in
+    # ``recurringEventId``, so the test is "this event, or the series it belongs to".
     pushed = select(CalendarEventLink.google_event_id).where(
         CalendarEventLink.org_id == ctx.org.id,
         CalendarEventLink.google_event_id.is_not(None),
@@ -224,6 +234,12 @@ async def events_feed(
                     GoogleCalendarEvent.org_id == ctx.org.id,
                     GoogleCalendarEvent.connection_id == connection.id,
                     GoogleCalendarEvent.google_event_id.not_in(pushed),
+                    # `NOT IN` answers NULL for a NULL left-hand side, which would drop every
+                    # one-off event on the calendar — so the absence of a series is stated.
+                    or_(
+                        GoogleCalendarEvent.recurring_event_id.is_(None),
+                        GoogleCalendarEvent.recurring_event_id.not_in(pushed),
+                    ),
                     # Two shapes, one window: timed events by instant overlap, all-day by date.
                     (
                         GoogleCalendarEvent.start_at.is_not(None)
