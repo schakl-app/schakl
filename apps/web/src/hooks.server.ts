@@ -24,8 +24,10 @@ import { parseFormatCookie } from "$lib/core/dateformat";
 import { withRequestFormat } from "$lib/core/dateformat-context.server";
 import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS, parseLocaleCookie } from "$lib/core/i18n";
 import { withRequestLocale } from "$lib/core/locale-context.server";
-import { apiFor, fetchTenant, fetchUser } from "$lib/core/session";
-import { themeStyle } from "$lib/core/theme";
+import { renderStandaloneError } from "$lib/core/errors/standalone.server";
+import { apiFor, fetchTenant, fetchUser, isApiUnavailable } from "$lib/core/session";
+import { lastKnownTheme, rememberTheme } from "$lib/core/tenant-cache.server";
+import { themeStyle, type OrgTheme } from "$lib/core/theme";
 import { withRequestTimezone } from "$lib/core/timezone-context.server";
 import { parseThemeCookie } from "$lib/core/theme-mode";
 import { paraglideMiddleware } from "$lib/paraglide/server";
@@ -59,14 +61,54 @@ const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
   return response;
 };
 
-const handleContext: Handle = async ({ event, resolve }) => {
-  // The container liveness probe resolves no tenant and no user (routes/healthz/+server.ts).
-  // This hook runs on *every* request, endpoints included, so without this line `/healthz` would
-  // fetch /meta/tenant like anything else — and answer 500 in exactly the situation it exists to
-  // report on, pulling every web replica out of rotation whenever the API restarts.
-  if (event.url.pathname === "/healthz") return resolve(event);
+/**
+ * Routes that must render while the API is unreachable, and therefore must not be sent through
+ * the tenant fetch at all. `/healthz` answers "is Node listening yet?" and would otherwise pull
+ * every web replica out of rotation whenever the API restarts (docs/DEPLOY.md); `/edge-error/*`
+ * is what Traefik asks for when it *already knows* the API is unreachable, so making it prove
+ * that again would leave the edge with no page to serve.
+ */
+function bypassesContext(pathname: string): boolean {
+  return pathname === "/healthz" || pathname.startsWith("/edge-error/");
+}
 
-  const [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
+const handleContext: Handle = async ({ event, resolve }) => {
+  if (bypassesContext(event.url.pathname)) return resolve(event);
+
+  const host = event.request.headers.get("host");
+  let theme: OrgTheme;
+  let user: Awaited<ReturnType<typeof fetchUser>>;
+  try {
+    [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    // The API is down and this app is up — which is the whole point of rolling it `start-first`
+    // (CLAUDE.md §11). Serving SvelteKit's default 500 here was the web app being alive
+    // *precisely so that it could render an error*; serving the tenant's own maintenance page is
+    // the answer that deployment shape was always missing. It is a self-contained document
+    // rather than a rendered route because routing needs the data we just failed to get.
+    return new Response(
+      renderStandaloneError({
+        status: 503,
+        theme: lastKnownTheme(host) ?? undefined,
+        locale: parseLocaleCookie(event.request.headers.get("cookie")),
+        retryHref: event.url.pathname + event.url.search,
+      }),
+      {
+        status: 503,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          // Seconds, not minutes: a rolling redeploy is over in well under a minute, and this
+          // is also the hint a crawler and a monitoring probe read as "come back", not "gone".
+          "retry-after": "15",
+          // Never cache an outage. A CDN or a service worker that kept this would outlive the
+          // outage and turn a two-minute rollover into a support ticket.
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
+  rememberTheme(host, theme);
   event.locals.theme = theme;
   event.locals.user = user;
 

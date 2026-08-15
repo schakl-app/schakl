@@ -434,6 +434,51 @@ There is also a `migrate` entrypoint command (`docker run --rm … migrate`) for
 would rather land the schema as an explicit step before rolling the service. It is optional, and
 safe to run *during* a rolling deploy — it takes the same lock.
 
+## What a visitor sees while something is down
+
+The section above ends with "something is always serving". It does not end with "nothing ever
+goes wrong", and a service kept alive **through** a dependency's outage needs an answer for what
+it serves during it. Three surfaces now give one, and each lives in a different place for the
+same reason: **an error page cannot live in the service that is down.**
+
+| Situation | Who answers | What the visitor gets |
+|---|---|---|
+| A route 404s, a permission refuses, a load throws | the SSR app (`+error.svelte`) | the tenant's branded card, in their language |
+| The **API** is unreachable from the SSR app | the SSR app's server hook | a branded `503` "Even niet bereikbaar", `Retry-After: 15` |
+| The **API** is unreachable from the edge | the SSR app (`/edge-error/api/{status}`) | the standard `{error:{code,message}}` envelope |
+| The **SSR app** is unreachable from the edge | the API (`GET /error/{status}`) | the same branded card, rendered in Python |
+| SvelteKit cannot render at all | `apps/web/src/error.html` | a neutral, unbranded card — see below |
+
+Three things are worth knowing before you change any of it.
+
+**The edge intercepts `502-504` and nothing else.** Those are the codes Traefik itself invents
+when a backend does not answer; every other status came from an application that already has a
+better page for it, and intercepting a 404 would replace a good page with a generic one. The
+wiring is two `errors` middlewares per config (`infra/traefik/dynamic*.yml`, and the generated
+`custom-domains.yml` for cloud CNAME domains), cross-covering: the API's routes take their error
+page from `web`, the web route takes its from `api`. Traefik forwards the original `Host`, which
+is what lets both sides resolve the tenant and render *their* branding rather than a stranger's.
+Both services down at once means the whole stack is down, in which case Traefik is not serving
+either.
+
+**The API's paths get an envelope, not a page.** `/api/` and `/mcp` answer the generated client,
+browser `fetch` and MCP clients, all of which parse `{ error: { code, message } }`. HTML there
+would be worse than Traefik's plain 502: a screen would report "er ging iets mis" over an
+unparseable body.
+
+**Branding during an API outage comes from a per-process cache** of the last tenant that
+resolved on that hostname (`apps/web/src/lib/core/tenant-cache.server.ts`). It is not a
+performance cache — `/meta/tenant` is still fetched on every request — and a freshly started web
+replica has nothing in it until it has served one good request, so the very first seconds of a
+cold start can show the neutral palette. That is the honest trade: the alternative store is
+Redis, which is behind the same failure the page exists to survive.
+
+`error.html` is the only surface in the product that is neither translated nor branded, and both
+are structural: it renders when Paraglide and the API fetch are the things that failed. It says
+one short sentence in both shipped locales rather than picking one, and it deliberately does not
+print the error message — our messages are i18n *keys*, so that would show `errors.server` to a
+visitor. Practically nothing should reach it.
+
 ## Version stamping
 
 `SCHAKL_VERSION`, `SCHAKL_GIT_SHA` and `SCHAKL_BUILT_AT` are baked into both images at build time

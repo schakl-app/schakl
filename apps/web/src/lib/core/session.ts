@@ -60,8 +60,47 @@ export function apiFor(event: ApiEvent): ApiClient {
   });
 }
 
+/**
+ * The API could not answer at all — a refused connection, a DNS failure, a gateway 5xx.
+ *
+ * Distinct from "the API answered, and the answer was no": an unknown host is a 404 and a real
+ * product state (a fresh install, a typo'd domain), while this one means the web app is serving
+ * into nothing. They used to be the same line of code — `if (!data) return DEFAULT_THEME` — and
+ * a network throw did not even reach it, which is the whole of docs/DEPLOY.md's "every redeploy
+ * answered 500": the hook threw, nothing caught it, and the page that rendered was SvelteKit's.
+ */
+export class ApiUnavailableError extends Error {
+  readonly apiUnavailable = true;
+  constructor(cause?: unknown) {
+    super("errors.page.unavailable.title", { cause });
+    this.name = "ApiUnavailableError";
+  }
+}
+
+/**
+ * Marker-property check rather than `instanceof`: this is caught in `hooks.server.ts`, and a
+ * module evaluated twice (SSR graph vs. a bundled copy) would make two classes that no
+ * `instanceof` relates — failing open into the very 500 page this exists to replace.
+ */
+export function isApiUnavailable(err: unknown): err is ApiUnavailableError {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    (err as { apiUnavailable?: boolean }).apiUnavailable === true
+  );
+}
+
 export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
-  const { data } = await apiFor(event).GET("/api/v1/meta/tenant");
+  const { data, response } = await apiFor(event)
+    .GET("/api/v1/meta/tenant")
+    // `fetch` rejects on a refused connection; openapi-fetch does not catch it, so without this
+    // the rejection is a bare TypeError that no caller can tell apart from a bug.
+    .catch((cause) => {
+      throw new ApiUnavailableError(cause);
+    });
+  // A 5xx here is the API failing, not this tenant being unknown — an edge 502/503 while the
+  // container restarts looks exactly like a valid host with no org unless the status is read.
+  if (!data && response.status >= 500) throw new ApiUnavailableError();
   if (!data) return DEFAULT_THEME; // resolved: false — unknown host or fresh install
   return {
     brandName: data.brand_name,
@@ -92,7 +131,13 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
 
 export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
   // /meta/me resolves the user *within the tenant*, so it also carries the membership role.
-  const { data } = await apiFor(event).GET("/api/v1/meta/me");
+  // Same rejection handling as the tenant fetch above: these two run under one `Promise.all`, so
+  // whichever loses the race still has to reject with something the caller recognises.
+  const { data } = await apiFor(event)
+    .GET("/api/v1/meta/me")
+    .catch((cause) => {
+      throw new ApiUnavailableError(cause);
+    });
   if (!data) return null;
   return {
     id: data.id,

@@ -31,11 +31,32 @@ export function asLocale(value: string | null | undefined): string | null {
   return value && (LOCALES as readonly string[]).includes(value) ? value : null;
 }
 
-type MessageFn = (params?: Record<string, unknown>) => string;
+type MessageFn = (params?: Record<string, unknown>, options?: { locale: string }) => string;
 
 export function t(key: string, params?: Record<string, unknown>): string {
   const fn = (messages as unknown as Record<string, MessageFn>)[key];
   return fn ? fn(params) : key;
+}
+
+/**
+ * `t()` for a caller that must **name** the locale instead of inheriting the request's.
+ *
+ * Paraglide resolves the locale from an AsyncLocalStorage store bound by its middleware
+ * (hooks.server.ts). Exactly one surface renders outside that middleware on purpose: the
+ * standalone error document (`errors/standalone.server.ts`), which exists for the request where
+ * the tenant fetch failed and the hook chain never got that far. It has a locale — the cookie,
+ * or the last-known tenant default — and no way to bind one, so it passes it.
+ *
+ * Not a general escape hatch: anywhere the middleware *has* run, `t()` is the call.
+ */
+export function tIn(
+  locale: string | null | undefined,
+  key: string,
+  params?: Record<string, unknown>,
+): string {
+  const fn = (messages as unknown as Record<string, MessageFn>)[key];
+  if (!fn) return key;
+  return locale ? fn(params, { locale }) : fn(params);
 }
 
 /**

@@ -21,7 +21,7 @@ http:
       priority: 1000
       entryPoints: [web-secure]
       service: schakl-api
-      middlewares: [compress]
+      middlewares: [compress, schakl-api-unreachable]
       tls: {}
 
     # Everything else goes to the SSR web app; the Host header decides whether that renders
@@ -31,10 +31,34 @@ http:
       priority: 1
       entryPoints: [web-secure]
       service: schakl-web
-      middlewares: [compress]
+      middlewares: [compress, schakl-web-unreachable]
       tls: {}
 
   middlewares:
+    # --- What the edge serves when the edge is the one producing the error -------------------
+    #
+    # An error page cannot live in the service that is down, so the two cross-cover: the API's
+    # routes take their error page from the web app, and the web route takes its from the API.
+    # Both are branded per tenant, resolved from the Host header this request already carries.
+    #
+    # Names are prefixed like everything else in this file: Traefik runs in its own stack and
+    # this fragment shares a middleware namespace with whatever else that stack routes.
+    #
+    # `status: 502-504` is exact: those are the codes Traefik invents when a backend does not
+    # answer. Anything else came from an app that already has a better page for it.
+    schakl-api-unreachable:
+      errors:
+        status: ["502-504"]
+        service: schakl-web
+        # A JSON envelope, not a page: these paths answer the generated client, `fetch` and MCP
+        # clients, all of which parse `{ error: { code, message } }` (CLAUDE.md §9).
+        query: "/edge-error/api/{status}"
+    schakl-web-unreachable:
+      errors:
+        status: ["502-504"]
+        service: schakl-api
+        # A page, because the caller is a browser that asked for one (app/core/errorpage.py).
+        query: "/error/{status}"
     # Compress responses at the edge, not in the app (#290). The SSR HTML and the JSON list
     # payloads behind it are highly compressible text, and this is the one place that can
     # gzip/brotli them without a Python process spending CPU on it per request.

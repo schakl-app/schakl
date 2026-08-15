@@ -1178,6 +1178,25 @@
   eleven-control grid under a heading that promised only "logo, kleuren en merknaam", so "waar stel
   ik de valuta in?" had no scent to follow. Naming the halves costs nothing; it is still one form
   and one save button, because splitting the save is the mistake this page would make next.
+- **An error page is a screen, and a tenant's client sees it too** (docs/DEPLOY.md). One card,
+  the same shape as the login card: the tenant's logo or name, a sentence naming what happened, a
+  single link, and the status code last and quietest — a visitor is not helped by "404" set at
+  48px. What it says comes from one table (`$lib/core/errors/copy.ts`), shared by the in-app page
+  and the two standalone renderers, so the wording cannot drift between "the API is restarting"
+  and "the whole app is gone". Three rules are load-bearing:
+  - **The status is what we interpret, never the message.** The old page printed
+    `t(page.error.message)` — an i18n key on an API error and English prose on a SvelteKit one,
+    so roughly half the time it showed the visitor the literal text `errors.not_found`. A
+    message is used only when the catalogue actually holds it (`hasMessage`), which is what tells
+    one of ours apart from the framework's.
+  - **A gateway status says "even niet bereikbaar", never "er ging iets mis".** That is what a
+    rolling redeploy looks like from outside; telling an agency's client that something broke,
+    over a planned rollover, sends them to the phone — and it is not true.
+  - **"Probeer opnieuw" is only offered where retrying can work**, and it is a full document
+    load (`data-sveltekit-reload`): the thing that failed is the server, so re-running the same
+    load inside the same page proves nothing. A 404 and a 403 answer identically however many
+    times they are asked, so there the link goes home instead (#253, a control that always
+    refuses is a broken control).
 
 ## Known mistakes to not repeat
 

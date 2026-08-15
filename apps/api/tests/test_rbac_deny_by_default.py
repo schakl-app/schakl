@@ -159,7 +159,22 @@ def _operations() -> list[tuple[str, str, list[str]]]:
 
 def test_leaf_traversal_sees_every_operation() -> None:
     """If this fails, the two tests below have quietly stopped checking anything."""
-    assert len(_leaves()) == len(_operations())
+    in_schema = [route for route in _leaves() if route.include_in_schema]
+    assert len(in_schema) == len(_operations())
+
+
+def test_every_route_kept_out_of_the_schema_is_named_here() -> None:
+    """``include_in_schema=False`` removes a route from the count above **and** from the marker
+    sweep, so it is the one flag that can make a route invisible to this whole file.
+
+    Exactly one route uses it: the edge's branded error page (``app/core/errorpage.py``), which
+    is not product API — it must not become an MCP tool or a method on the generated client
+    (CLAUDE.md §12), and it renders public branding with no session, in the situation where the
+    SSR app is unreachable. Anything else appearing here is a route that has slipped out of
+    deny-by-default, which is precisely the failure this module exists to make loud.
+    """
+    hidden = {route.name for route in _leaves() if not route.include_in_schema}
+    assert hidden == {"edge_error_page"}
 
 
 def test_every_route_declares_a_permission_or_an_exemption() -> None:

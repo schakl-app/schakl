@@ -810,6 +810,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   API downtime"*) is worth measuring — this one omitted the migration and the lifespan reconcile
   that the healthcheck already budgeted 90s for. And a service kept alive **through** a dependency's
   planned outage needs an answer for what it serves during it; "it stays up" is not one.
+- **The answer is that an error page cannot live in the service that is down** (`docs/DEPLOY.md`).
+  The rule above named the obligation and left it open, so a redeploy still ended at SvelteKit's
+  default 500 and an unreachable backend at Traefik's plain-text 502 — on a white-label product,
+  where the page a client meets when something is wrong is the agency's page. Four surfaces now
+  answer and the placement of each follows from that one sentence. The **SSR hook catches an
+  unreachable API** and returns a branded `503` itself: routing needs the data it just failed to
+  get, so the outage page is a self-contained document with no stylesheet, script or second
+  request — and its branding comes from a per-process cache of the last tenant that resolved on
+  that hostname, because the alternative store is Redis, which is behind the same failure. The
+  **edge cross-covers**: `errors` middlewares on `502-504` only (the codes Traefik itself invents;
+  every other status came from an app that already has a better page), each router taking its page
+  from the *other* service, `Host` forwarded so both sides brand it. The **API's paths get the
+  `{error:{code,message}}` envelope, not HTML** — their callers are the generated client and MCP,
+  and an unparseable body surfaces as "er ging iets mis" over a JSON parse error. Two consequences
+  are worth stating on their own. **A distinction that only exists in a status code has to be
+  read**: `if (!data) return DEFAULT_THEME` treated "this host is unknown" and "the API is not
+  answering" as one fact, and a network throw never reached even that line. And **an error page
+  must not depend on anything that can be down with it** — no API call from the edge-error route,
+  no raise out of the API's renderer, and a `Retry-After` with `no-store`, because an outage page
+  that outlives the outage is worse than the outage.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.
