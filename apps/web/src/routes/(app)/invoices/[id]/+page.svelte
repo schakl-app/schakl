@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ban, Bell, Download, FileMinus, Pencil, Printer, Send, Trash2 } from "@lucide/svelte";
+  import { Ban, Bell, Download, FileMinus, Printer, Send, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -14,6 +14,7 @@
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
@@ -165,11 +166,16 @@
         >
       {/if}
     {/if}
-    <ActionsMenu
+    <!-- The item read "Bewerken" in both modes and toggled, so pressing it while editing left
+         edit mode under the label for entering it. Entering is the menu item, leaving is the
+         button beside it (#337); the editor keeps its own Opslaan/Annuleren. -->
+    <EditToggle
+      {editing}
+      canEdit={data.canWrite && (isDraft || invoice.status === "open")}
+      exit="cancel"
+      onedit={() => (editing = true)}
+      onexit={() => (editing = false)}
       items={[
-        ...(data.canWrite && (isDraft || invoice.status === "open")
-          ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (editing = !editing) }]
-          : []),
         ...(!isDraft
           ? [
               {

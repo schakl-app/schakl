@@ -11,6 +11,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -110,28 +111,25 @@
 <div class="mb-6">
   <div class="mt-2 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-text">{domain.name}</h1>
+    <!-- Entering edit mode is a menu item, leaving it is a button (#337); the form keeps its own
+         Opslaan/Annuleren at the bottom and the ⋯ no longer holds a third exit. -->
     {#if canWrite || canDelete}
-      <ActionsMenu
-        items={[
-          ...(canWrite
-            ? [
-                {
-                  label: editing ? t("common.cancel") : t("common.edit"),
-                  onclick: () => (editing = !editing),
-                },
-              ]
-            : []),
-          ...(canDelete
-            ? [
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => (confirmDelete = true),
-                },
-              ]
-            : []),
-        ]}
+      <EditToggle
+        {editing}
+        canEdit={canWrite}
+        exit="cancel"
+        onedit={() => (editing = true)}
+        onexit={() => (editing = false)}
+        items={canDelete
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []}
       />
     {/if}
   </div>

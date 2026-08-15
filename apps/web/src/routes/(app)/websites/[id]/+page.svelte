@@ -19,10 +19,10 @@
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -99,28 +99,25 @@
   <a href="/websites" class="text-sm text-text-muted hover:text-brand">{t("websites.title")}</a>
   <div class="mt-2 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-text">{title}</h1>
+    <!-- Entering edit mode is a menu item, leaving it is a button (#337); the form keeps its own
+         Opslaan/Annuleren at the bottom and the ⋯ no longer holds a third exit. -->
     {#if canWrite || canDelete}
-      <ActionsMenu
-        items={[
-          ...(canWrite
-            ? [
-                {
-                  label: editing ? t("common.cancel") : t("common.edit"),
-                  onclick: () => (editing ? (editing = false) : startEdit()),
-                },
-              ]
-            : []),
-          ...(canDelete
-            ? [
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => (confirmDelete = true),
-                },
-              ]
-            : []),
-        ]}
+      <EditToggle
+        {editing}
+        canEdit={canWrite}
+        exit="cancel"
+        onedit={startEdit}
+        onexit={() => (editing = false)}
+        items={canDelete
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []}
       />
     {/if}
   </div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Trash2 } from "@lucide/svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
@@ -14,13 +14,13 @@
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -201,29 +201,25 @@
         {t("interactions.add")}
       </button>
     {/if}
+    <!-- Entering edit mode is a menu item, leaving it is a button (#337); the form keeps its own
+         Opslaan/Annuleren at the bottom and the ⋯ no longer holds a third exit. -->
     {#if canWrite || canDelete}
-      <ActionsMenu
-        items={[
-          ...(canWrite
-            ? [
-                {
-                  label: editing ? t("common.cancel") : t("common.edit"),
-                  icon: Pencil,
-                  onclick: () => (editing = !editing),
-                },
-              ]
-            : []),
-          ...(canDelete
-            ? [
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => (confirmDelete = true),
-                },
-              ]
-            : []),
-        ]}
+      <EditToggle
+        {editing}
+        canEdit={canWrite}
+        exit="cancel"
+        onedit={() => (editing = true)}
+        onexit={() => (editing = false)}
+        items={canDelete
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []}
       />
     {/if}
   </div>

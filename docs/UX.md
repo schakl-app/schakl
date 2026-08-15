@@ -19,6 +19,12 @@
    changing status, logging time) is the default surface. Changing a record's *definition*
    (title, relations, budgets, recurrence) lives behind an explicit edit mode, reached via
    the ⋯ (dots) menu. Destructive actions live in the same menu and always confirm.
+   **Entering a mode is a menu item; leaving it is a button** (#337). The toggle changes *shape*
+   with the mode, not only its label: use mode is ⋯ → Bewerken, edit mode is a visible **Klaar**
+   (or **Annuleren**, where the surface posts) standing where the ⋯ stood. A ⋯ whose only item is
+   "Klaar" is the tell — a button wearing a menu's coat, and two clicks plus a menu for the one
+   act the user still wants. Both shapes live in `EditToggle` (`$lib/core/ui/`), which keeps
+   drawing the menu for whatever *else* the screen put in it.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -756,7 +762,11 @@
 - **One save button per editing surface — never per field.** An edit mode collects all its
   fields into a single form (use the HTML `form="…"` attribute / the `formId` prop on
   `Combobox`/`DateInput` when fields live in different layout columns) with one save at the
-  end. Per-field save buttons are a known corrected mistake.
+  end. Per-field save buttons are a known corrected mistake. **And one exit, in one place**
+  (#337): a detail page keeps its Opslaan/Annuleren at the foot of the form *and* an
+  `EditToggle` exit at the heading — a long record scrolls its own buttons out of view — but
+  never a third one folded back into the ⋯. A panel that saves each act as it happens exits
+  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses.
 - **Native controls inherit the huisstijl** via `accent-color: var(--brand-primary)` on
   `:root` (checkboxes, radios). But `<html lang>` does **not** control how they format:
   browsers render `<input type="date">` and `<input type="time">` after the *browser/OS*

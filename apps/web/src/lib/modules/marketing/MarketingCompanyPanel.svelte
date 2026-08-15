@@ -8,13 +8,13 @@
    * contacts-panel pattern): ⋯ → Bewerken reveals removable chips + the account pickers, which post
    * to the host page's `?/marketingLink` / `?/marketingUnlink` actions. Empty states teach.
    */
-  import { Pencil, Check, ExternalLink, X } from "@lucide/svelte";
+  import { ExternalLink, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Sparkline from "$lib/core/ui/charts/Sparkline.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
 
   import MarketingAccountPicker from "./MarketingAccountPicker.svelte";
   import {
@@ -95,13 +95,7 @@
       {/if}
     </div>
     {#if canManage}
-      <ActionsMenu
-        items={[
-          editing
-            ? { label: t("common.done"), icon: Check, onclick: () => (editing = false) }
-            : { label: t("common.edit"), icon: Pencil, onclick: () => (editing = true) },
-        ]}
-      />
+      <EditToggle {editing} onedit={() => (editing = true)} onexit={() => (editing = false)} />
     {/if}
   </div>
 

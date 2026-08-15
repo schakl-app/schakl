@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Download, Check, FileText, Pencil, Printer, Trash2, X } from "@lucide/svelte";
+  import { Download, Check, FileText, Printer, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -9,9 +9,9 @@
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
@@ -113,11 +113,16 @@
         >{t("invoicing.action.view_invoice")}</a
       >
     {/if}
-    <ActionsMenu
+    <!-- The item read "Bewerken" in both modes and toggled, so pressing it while editing left
+         edit mode under the label for entering it. Entering is the menu item, leaving is the
+         button beside it (#337); the editor keeps its own Opslaan/Annuleren. -->
+    <EditToggle
+      {editing}
+      canEdit={data.canWrite && (isDraft || quote.status === "open")}
+      exit="cancel"
+      onedit={() => (editing = true)}
+      onexit={() => (editing = false)}
       items={[
-        ...(data.canWrite && (isDraft || quote.status === "open")
-          ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (editing = !editing) }]
-          : []),
         ...(!isDraft
           ? [
               {
