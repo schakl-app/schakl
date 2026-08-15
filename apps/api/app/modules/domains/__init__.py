@@ -18,6 +18,7 @@ from app.modules.domains.jobs import (
 from app.modules.domains.panels import domains_company_panel
 from app.modules.domains.permissions import DOMAIN_PERMISSIONS
 from app.modules.domains.router import router
+from app.modules.domains.summary import domains_company_summary
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -28,6 +29,8 @@ module = ModuleDescriptor(
     # hosting) is bundled in *license documents* (a plan lists all three skus), never in code.
     sku="domains",
     panels=[domains_company_panel],
+    # The client's vital-signs strip (#364) — the panels seam one level up.
+    summaries=[domains_company_summary],
     permissions=DOMAIN_PERMISSIONS,
     impex=[DOMAIN_IMPEX, TLD_PRICE_IMPEX],
     bulk=[DOMAIN_BULK],

@@ -1,0 +1,61 @@
+"""What tasks contributes to a client's vital signs (#364).
+
+*Open taken, waarvan n over tijd.* The tasks panel already knew the open count and the page still
+made the reader scroll to it and count the red dates themselves; two grouped scalars put the
+answer above the fold, and the tile opens the filtered list it counted.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from app.core.tenancy import RequestContext
+from app.core.timezone import org_today
+from app.modules.tasks.models import Task
+from app.modules.tasks.statuses import load_statuses, non_terminal_keys
+from app.registry import SummarySpec, SummaryTile
+
+
+async def _open_tasks(ctx: RequestContext, company_id: uuid.UUID) -> list[SummaryTile]:
+    repo = ctx.repo(Task)
+    # "Open" is every non-terminal *configured* status (#62), never a fixed open/in_progress pair.
+    statuses = await load_statuses(ctx.session, ctx.org.id)
+    open_keys = non_terminal_keys(statuses)
+    today = await org_today(ctx.session, ctx.org.id)
+
+    base = (
+        repo.scoped_count_select()
+        .where(Task.company_id == company_id)
+        .where(Task.status.in_(open_keys))
+    )
+    open_count = int(await ctx.session.scalar(base) or 0)
+    if not open_count:
+        return []
+    overdue = int(
+        await ctx.session.scalar(base.where(Task.due_date < today)) or 0
+    )
+    return [
+        SummaryTile(
+            key="tasks.open",
+            label_key="companies.summary.open_tasks",
+            value=str(open_count),
+            format="number",
+            tone="bad" if overdue else "neutral",
+            hint_key="companies.summary.tasks_overdue" if overdue else None,
+            hint_params={"count": overdue},
+            href=f"/tasks?company_id={company_id}",
+            position=20,
+        )
+    ]
+
+
+tasks_company_summary = SummarySpec(
+    key="tasks.company",
+    entity_type="company",
+    provider=_open_tasks,
+    requires_permission="tasks.task.read",
+    position=20,
+)
+
+
+__all__ = ["tasks_company_summary"]

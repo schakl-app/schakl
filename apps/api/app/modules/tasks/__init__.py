@@ -20,6 +20,7 @@ from app.modules.tasks.permissions import TASK_PERMISSIONS
 from app.modules.tasks.recurrence import spawn_scheduled_recurrences
 from app.modules.tasks.reminders import send_task_reminders
 from app.modules.tasks.router import router
+from app.modules.tasks.summary import tasks_company_summary
 from app.modules.tasks.templates import on_company_status, on_subscription_activated
 from app.registry import ModuleDescriptor, registry
 
@@ -28,6 +29,8 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="tasks",
     panels=[tasks_company_panel],
+    # The client's vital-signs strip (#364) — the panels seam one level up.
+    summaries=[tasks_company_summary],
     permissions=TASK_PERMISSIONS,
     impex=[TASK_IMPEX],
     bulk=[TASK_BULK],

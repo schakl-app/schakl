@@ -15,6 +15,7 @@ from app.modules.time.panels import time_company_panel
 from app.modules.time.permissions import TIME_PERMISSIONS
 from app.modules.time.reminders import send_timesheet_reminders
 from app.modules.time.router import router
+from app.modules.time.summary import time_company_summary
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -25,6 +26,8 @@ module = ModuleDescriptor(
     # past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
     sku="time",
     panels=[time_company_panel],
+    # The client's vital-signs strip (#364) — the panels seam one level up.
+    summaries=[time_company_summary],
     permissions=TIME_PERMISSIONS,
     impex=[TIME_ENTRY_IMPEX],
     mcp_tools=TIME_MCP_TOOLS,

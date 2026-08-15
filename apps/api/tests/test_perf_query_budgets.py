@@ -304,7 +304,21 @@ _MEMBER_REQUEST_BUDGET = 8
 #: correlated EXISTS now), so it went 3 statements -> 2, and the domains panel stopped
 #: transferring 400 rows to render 5. The measurement below is the worst case for this change
 #: and the best case for the code it replaced; raise it knowingly, as this comment asks.
-_PANELS_BUDGET = 43
+#:
+#: 43 -> 44 (#364): the projects panel stopped taking the newest 50 rows and sorting them
+#: active-first *in Python* — a client with 60 projects could lose active ones off a list that
+#: claims to lead with them — so it caps at 5, orders in SQL, and pays one grouped `count(*)` for
+#: the honest total the "Alle N bekijken" link needs. One statement for a silent truncation, on
+#: the two panels beside it (domains, websites) that already made the same trade.
+#:
+#: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
+#: composer skips every panel the caller may not read, so a restricted member's page costs
+#: strictly less than this. The budget stays measured as the owner, which is the worst case.
+_PANELS_BUDGET = 44
+
+#: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
+#: context and the org timezone each of them resolves. Measured, not guessed — see the test.
+_SUMMARY_BUDGET = 26
 
 
 async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(
@@ -758,6 +772,40 @@ async def test_company_panels_have_a_query_budget(client_for, count_queries) -> 
         assert len(res.json()) >= 4
         assert len(counter) <= _PANELS_BUDGET, (
             f"{len(counter)} statements, budget {_PANELS_BUDGET}:\n"
+            + "\n".join(counter.statements)
+        )
+
+
+async def test_company_summary_has_a_query_budget(client_for, count_queries) -> None:
+    """The vital-signs strip is an aggregate per module, never a list (#364).
+
+    Every tile is a `count`/`sum`/`min`/`max` over one indexed predicate, so a client with four
+    hundred invoices and ten years of hours costs what a new one does. The failure this budget
+    catches is the tempting one: answering "openstaand" by loading the ledger and summing it in
+    Python, which passes every functional test and is invisible in the JSON.
+
+    Same umbrella shape as the panels budget above — the providers run in sequence on one
+    session, so the cost is the sum. Raise it knowingly when a module contributes a sign.
+    """
+    t = await make_tenant("perf-summary-budget")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        await _entry(c, headers, company_id=company, minutes=60, day=0)
+        await _task(c, headers, company_id=company, title="Werk")
+        await _interaction(c, headers, company_id=company, subject="Hoi", body="tekst")
+
+        with count_queries() as counter:
+            res = await c.get(f"/api/v1/companies/{company}/summary", headers=headers)
+        assert res.status_code == 200, res.text
+        tiles = {tile["key"] for tile in res.json()}
+        # Anti-vacuum: an empty strip would meet any budget, so the assertion names tiles this
+        # client actually has. `time.month` is deliberately absent — `_entry` books against a
+        # fixed 2026-03 date and the tile counts *this* month, which is the "nothing is not a
+        # number" rule doing its job rather than a gap in the fixture.
+        assert {"tasks.open", "interactions.last"} <= tiles, tiles
+        assert len(counter) <= _SUMMARY_BUDGET, (
+            f"{len(counter)} statements, budget {_SUMMARY_BUDGET}:\n"
             + "\n".join(counter.statements)
         )
 

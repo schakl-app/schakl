@@ -17,6 +17,7 @@ from app.modules.invoicing.jobs import invoicing_daily, invoicing_payments_recon
 from app.modules.invoicing.panels import invoicing_company_panel
 from app.modules.invoicing.permissions import INVOICING_PERMISSIONS
 from app.modules.invoicing.router import router
+from app.modules.invoicing.summary import invoicing_company_summary
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -27,6 +28,8 @@ module = ModuleDescriptor(
     # goes read-only (mutations 402) — reads, prints and exports stay.
     sku="invoicing",
     panels=[invoicing_company_panel],
+    # The client's vital-signs strip (#364) — the panels seam one level up.
+    summaries=[invoicing_company_summary],
     permissions=INVOICING_PERMISSIONS,
     bulk=[INVOICE_BULK],
     # The three mails a client reads (invoice, quote, reminder), rewritable per locale in

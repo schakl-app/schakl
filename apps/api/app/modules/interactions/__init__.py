@@ -17,6 +17,7 @@ from app.modules.interactions.jobs import (
 from app.modules.interactions.panels import interactions_company_panel
 from app.modules.interactions.permissions import INTERACTION_PERMISSIONS
 from app.modules.interactions.router import router
+from app.modules.interactions.summary import interactions_company_summary
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -27,6 +28,8 @@ module = ModuleDescriptor(
     # sku; past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
     sku="interactions",
     panels=[interactions_company_panel],
+    # The client's vital-signs strip (#364) — the panels seam one level up.
+    summaries=[interactions_company_summary],
     permissions=INTERACTION_PERMISSIONS,
     bulk=[INTERACTION_BULK],
     # "Laat schakl deze taak invullen" (#327) runs in the worker: an email's body lands *after*
