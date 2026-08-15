@@ -114,34 +114,56 @@
 <svelte:window {onkeydown} />
 
 {#if open}
-  <div class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-    <!-- `absolute`, not `fixed`: a fixed backdrop is positioned against the viewport rather than
-         against this wrapper, so it is not part of the wrapper's scroll chain and the wheel over
-         it fell through to the document. It covers the same rectangle either way. -->
-    <button
-      type="button"
-      class="absolute inset-0 min-h-full bg-neutral-900/40"
-      aria-label="Close"
-      onclick={close}
-    ></button>
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      class="relative z-50 mt-8 w-full {maxWidth[
-        size
-      ]} rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
-    >
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-text">{title}</h2>
-        <button
-          type="button"
-          class="text-text-muted hover:text-text"
-          aria-label="Close"
-          onclick={close}>✕</button
+  <!-- The scroll port. It is transparent and carries no padding of its own: everything that has
+       to grow with a tall dialog lives in the wrapper below, which is the element the backdrop
+       is measured against. `overscroll-contain` keeps a flick past the end from reaching the
+       page, which the overflow lock above already froze. -->
+  <div class="fixed inset-0 z-40 overflow-y-auto overscroll-contain">
+    <!-- `min-h-full` so a short dialog still dims the whole viewport, and ordinary flow so a tall
+         one makes this taller than the port. The backdrop is `absolute` against *this* — not
+         against the port and not `fixed` — because those two both measure one viewport and stop:
+         on a 2 555 px meeting note the dim ended 720 px down and the rest of the page sat there
+         at full brightness, reading as a broken dialog rather than a long one. And of those two
+         wrong answers, `fixed` is the worse one: it is outside the port's scroll chain, so the
+         wheel over the dim area fell through to the document (#364). -->
+    <div class="relative flex min-h-full items-start justify-center p-4 sm:p-8">
+      <button
+        type="button"
+        class="absolute inset-0 bg-neutral-900/40"
+        aria-label="Close"
+        onclick={close}
+      ></button>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        class="relative z-50 mt-8 w-full {maxWidth[
+          size
+        ]} rounded-xl border border-border bg-surface-raised shadow-xl"
+      >
+        <!-- Sticky, so the title says what you are reading and the ✕ stays reachable however far
+             down the body you are — the alternative on a long one is scrolling back up to close
+             it. Opaque and ruled, or the body scrolling underneath shows through it; the same
+             header shape `SlideOver` already uses. `line-clamp-2` because this title is an
+             e-mail subject on the surface that needed the sticky header in the first place, and
+             an unbounded one would push the body off the screen it is pinned to. -->
+        <div
+          class="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-xl border-b border-border bg-surface-raised px-5 py-3"
         >
+          <h2 class="line-clamp-2 break-words text-base font-semibold text-text" {title}>
+            {title}
+          </h2>
+          <button
+            type="button"
+            class="shrink-0 leading-6 text-text-muted hover:text-text"
+            aria-label="Close"
+            onclick={close}>✕</button
+          >
+        </div>
+        <div class="p-5">
+          {@render children()}
+        </div>
       </div>
-      {@render children()}
     </div>
   </div>
 {/if}

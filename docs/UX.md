@@ -1695,3 +1695,32 @@
   wrapper, plus `overflow: hidden` on the documentElement while open (`position: fixed` would jump
   the page to the top).
 
+- **A backdrop is measured against the thing that scrolls, not against the viewport.** The same
+  `Modal`, the other half of the same bug. `absolute inset-0 min-h-full` on a child of the
+  `fixed inset-0 overflow-y-auto` port resolves to exactly *one viewport height*, because that is
+  the port's own height — it does not grow with what is inside it. So an online-meeting note that
+  laid out 2 555 px tall dimmed the first 720 px and left the rest of the page at full brightness,
+  with the title and the ✕ scrolled off the top: the dialog read as broken rather than as long,
+  and closing it meant scrolling back up to find the ✕. Three rules come out of fixing it.
+  - **The element the backdrop is measured against must be the one that grows.** The port is now
+    transparent and holds a single `relative flex min-h-full` wrapper *in flow* — at least the
+    viewport, taller when the dialog is — and the backdrop is `absolute` against that. It still
+    may not be `fixed`, for the scroll-chain reason above: `fixed` and `absolute`-against-the-port
+    both cover one viewport and stop, and only one of them also breaks the wheel.
+  - **A header that scrolls out of reach is not a header.** Title and ✕ are `sticky top-0`, opaque
+    and ruled — the shape `SlideOver` has always had, so the two dialogs now agree — and the title
+    is `line-clamp-2`, because on the surface that needed this (an e-mail subject) an unbounded
+    one would push the body off the screen it is pinned to.
+  - **Internal scrolling is the tempting fix and the wrong one here.** Capping the card and giving
+    the *body* `overflow-y-auto` is what most dialogs do, and it would clip every absolutely
+    positioned descendant whether or not anything overflows — including the `Combobox` list, which
+    deliberately hangs past the bottom edge of a short dialog. Scroll the whole overlay; pin the
+    header.
+
+  `SessionGuard` (deliberately not a `Modal`) had the sibling flaw: an item centred *in* its own
+  scroll port overflows equally in both directions, and the part above the top is unreachable at
+  any scroll position — so on a short window the product name and the title of a dialog you cannot
+  dismiss were simply not there. Centre on a `min-h-full` wrapper inside the port, never on the
+  port itself. Those two are the app's only full-screen scroll ports; everything else that scrolls
+  is a `max-h-*` list inside a card.
+
