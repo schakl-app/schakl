@@ -29,7 +29,15 @@ export const GET: RequestHandler = async (event) => {
   return json({
     tasks: schedulable,
     members: members.data ?? [],
-    companies: (companies.data?.items ?? []).map((c) => ({ id: c.id, name: c.name })),
-    projects: (projects.data?.items ?? []).map((p) => ({ id: p.id, name: p.name })),
+    companies: (companies.data?.items ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+    })),
+    projects: (projects.data?.items ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+    })),
   });
 };

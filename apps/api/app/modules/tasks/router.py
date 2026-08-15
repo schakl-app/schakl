@@ -39,9 +39,12 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    RecurrencePreview,
+    RecurrencePreviewRead,
     StatusCreate,
     StatusRead,
     StatusUpdate,
+    TaskAIStatusRead,
     TaskCreate,
     TaskDetail,
     TaskLabelsSet,
@@ -391,6 +394,35 @@ async def apply_template(
 
 
 # --------------------------------------------------------------------------- #
+# Recurrence preview (#335) — a literal path, so registered before ``/{task_id}``
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/recurrence/preview",
+    response_model=RecurrencePreviewRead,
+    # `tasks.task.write`, not `.read`: the only place this is ever reached from is the rule
+    # editor, which is edit mode, which is a write. Declaring the read would have widened the
+    # one POST surface a client-role login can reach (`tests/test_rbac_deny_by_default.py`'s
+    # sweep) for a route no client will ever open — deny-by-default is about the tightest key
+    # the caller genuinely needs, and anyone composing a repeat rule holds this one.
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def preview_recurrence(
+    payload: RecurrencePreview,
+    ctx: RequestContext = Depends(require_context),
+) -> RecurrencePreviewRead:
+    """What the rule being composed resolves to — "Volgende taak: za 13 sep 2026".
+
+    ``POST /leave/requests/preview``'s precedent (#48): show the number that will be stored, and
+    why, rather than letting the browser re-derive it. Clamping, leap years, the anchor rules and
+    the org's own "today" all live server-side; a preview that re-implemented them in TypeScript
+    would be a second opinion about a question the API already answers (#312).
+
+    A read — it stores nothing. It exists so a rule can be *checked* before it is saved.
+    """
+    return await TaskService(ctx).preview_recurrence(payload)
+
+
+# --------------------------------------------------------------------------- #
 # Task CRUD
 # --------------------------------------------------------------------------- #
 @router.post(
@@ -418,6 +450,26 @@ async def get_task(
 ) -> TaskDetail:
     """The full card: labels, checklists, comments and recent activity included."""
     return await TaskService(ctx).detail(task_id)
+
+
+@router.get(
+    "/{task_id}/ai-status",
+    response_model=TaskAIStatusRead,
+    dependencies=[require_permission("tasks.task.read")],
+)
+async def get_task_ai_status(
+    task_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskAIStatusRead:
+    """Just the "is schakl still filling this in?" flag (#327).
+
+    Its own endpoint because it is *polled*. The card shows a live pill while an email is being
+    read, and re-fetching ``GET /{task_id}`` every few seconds to learn one short string would
+    drag the whole detail — labels, checklists, every comment and the activity trail — across
+    the wire each time, for a screen that already has all of it. One indexed row, one column
+    (docs/PERFORMANCE.md: a row carries only what its screen draws).
+    """
+    return await TaskService(ctx).ai_status(task_id)
 
 
 @router.patch(

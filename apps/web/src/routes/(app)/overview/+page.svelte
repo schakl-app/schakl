@@ -23,6 +23,8 @@
   import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
   import TimeEntryRow from "$lib/modules/time/TimeEntryRow.svelte";
   import { entryTypeLabel, entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
   let { data, form } = $props();
 
@@ -56,6 +58,15 @@
   };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
+  // The two lookup filters: an archived client and a finished project are legitimate things to
+  // *filter* by, so neither is dropped — they are moved behind the search and wear their
+  // status, and whichever is currently filtering stays on offer (`core/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.filters.company_id }),
+  );
+  const projectPicker = $derived(
+    splitProjectOptions(data.projects, { selectedId: data.filters.project_id }),
+  );
   const taskTitle = (id?: string | null) => data.tasks.find((tk) => tk.id === id)?.title ?? "";
   const entryTypeName = (key?: string | null) => {
     const def = data.entryTypes.find((et) => et.key === key);
@@ -167,7 +178,9 @@
   </div>
   <div class="w-44">
     <Combobox
-      items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
+      items={companyPicker.live}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_f_company"
       id="f-company"
       value={data.filters.company_id}
@@ -177,7 +190,9 @@
   </div>
   <div class="w-44">
     <Combobox
-      items={data.projects.map((p) => ({ value: p.id, label: p.name }))}
+      items={projectPicker.live}
+      archived={projectPicker.retired}
+      archivedLabel={projectArchivedLabel()}
       name="_f_project"
       id="f-project"
       value={data.filters.project_id}

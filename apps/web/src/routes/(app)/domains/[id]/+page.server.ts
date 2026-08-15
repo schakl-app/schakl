@@ -16,6 +16,9 @@ import { cloudflareActions } from "$lib/modules/cloudflare/cloudflare-actions.se
 import { readInvoiceable } from "$lib/modules/domains/normalize";
 // The registrar panel edits through this page too (#296) — same contract, one import.
 import { oxxaActions } from "$lib/modules/oxxa/oxxa-actions.server";
+// And the uptime panel, which is on a domain because a monitor may watch a host inside this zone
+// that will never be a website — a client's mail server, VPN endpoint or NAS.
+import { uptimeActions } from "$lib/modules/uptime/uptime-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -80,6 +83,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   ...cloudflareActions,
   ...oxxaActions,
+  ...uptimeActions,
 
   update: async (event) => {
     const form = await event.request.formData();

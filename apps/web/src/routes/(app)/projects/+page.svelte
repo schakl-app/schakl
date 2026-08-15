@@ -30,8 +30,13 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
-  import { PROJECT_STATUSES } from "$lib/modules/projects/status";
+  import {
+    PROJECT_STATUS_ALL,
+    PROJECT_STATUSES,
+    statusPillClass,
+  } from "$lib/modules/projects/status";
 
   let { data, form } = $props();
 
@@ -128,12 +133,27 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Client filter (#154) — the tasks page's URL-param shape; the API applies it. Archived
+  // clients sit behind the search rather than among the live ones, and the one this list is
+  // *currently* filtered by stays on offer whatever its status (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
+  );
+  const companyItems = $derived(companyPicker.live);
   function setFilter(key: string, value: string) {
     const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
+
+  /** The status pills. Absent = the working set, `all` = everything; see `+page.server.ts`. */
+  function setStatusFilter(status: string) {
+    const url = resetPage(new URL(page.url));
+    // A second press on the pill you are already on goes back to the default view rather than
+    // doing nothing: a filter you cannot unset with the control you set it with is a trap.
+    if (status && status !== data.statusFilter) url.searchParams.set("status", status);
+    else url.searchParams.delete("status");
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
@@ -197,8 +217,12 @@
 {/snippet}
 
 {#snippet statusCell(project: Project)}
+  <!-- Coloured like the client list's, and for the same reason: once the default view leaves the
+       archive out, "which of these is still running?" is a question the row has to be able to
+       answer at a glance rather than by being read. -->
   <span
-    class="inline-block max-w-full truncate rounded-full bg-surface px-2.5 py-0.5 align-middle text-xs font-medium text-text-muted"
+    class="inline-block max-w-full truncate rounded-full px-2.5 py-0.5 align-middle text-xs font-medium
+      {statusPillClass(project.status)}"
   >
     {t(`projects.status.${project.status}`)}
   </span>
@@ -286,10 +310,7 @@
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
   <!-- Create-then-edit (docs/UX.md Principle 3, same as tasks #230): the server creates a
        minimal project and redirects to its detail page in edit mode — creating and editing
        share one surface instead of a duplicate inline form. -->
@@ -327,6 +348,8 @@
   <div class="w-44">
     <Combobox
       items={companyItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.companyFilter}
       placeholder={t("projects.filter.company")}
@@ -334,6 +357,35 @@
       id="filter-company"
     />
   </div>
+  <!-- The default view is a pill of its own, not the absence of one: a list that silently leaves
+       the archive out looks identical to a list that has none, and the only thing that can say
+       which is a control showing itself selected. "Alles" sits beside it for the other half. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.statusFilter === ''
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.statusFilter === ""}
+    onclick={() => setStatusFilter("")}>{t("projects.filter.not_archived")}</button
+  >
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.statusFilter === PROJECT_STATUS_ALL
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.statusFilter === PROJECT_STATUS_ALL}
+    onclick={() => setStatusFilter(PROJECT_STATUS_ALL)}>{t("projects.filter.all")}</button
+  >
+  {#each PROJECT_STATUSES as status (status)}
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.statusFilter === status
+        ? 'ring-2 ring-brand ' + statusPillClass(status)
+        : statusPillClass(status) + ' opacity-70 hover:opacity-100'}"
+      aria-pressed={data.statusFilter === status}
+      onclick={() => setStatusFilter(status)}>{t(`projects.status.${status}`)}</button
+    >
+  {/each}
   <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
        with the list sits at the far end, and that is the same on every list here. -->
   <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -344,6 +396,9 @@
       filters={{
         q: page.url.searchParams.get("q"),
         company_id: data.companyFilter,
+        // The resolved filter, not the URL token: the default narrows, and `?status=` on the
+        // export means to the API exactly what it means to the list.
+        status: data.statusQuery,
         mine: data.mine,
         sort: data.table.sort,
       }}
@@ -364,7 +419,7 @@
   </div>
 </div>
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -390,7 +445,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
@@ -413,6 +468,8 @@
       >
       <Combobox
         items={companyItems}
+        archived={companyPicker.retired}
+        archivedLabel={companyArchivedLabel()}
         name="company_id"
         bind:value={newCompany}
         id="new-project-company"

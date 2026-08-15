@@ -286,3 +286,89 @@ async def test_naming_the_clients_of_a_page_costs_one_query(client_for, count_qu
         f"{len(small.statements)} queries for 3 projects, {len(large.statements)} for 30 — "
         "something resolves per row"
     )
+
+
+async def _project(c, headers, company_id: str, name: str, status: str) -> None:
+    r = await c.post(
+        "/api/v1/projects",
+        json={"name": name, "company_id": company_id, "status": status},
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+
+
+async def test_status_filter_takes_a_set_and_absent_still_means_everything(client_for) -> None:
+    """``status`` takes several values, the way the client list already does (#329).
+
+    A project list is normally wanted *without* the archive, and a single-valued filter could
+    not say that: ``status=active`` also hides the paused work and the work just delivered,
+    both of which are still the agency's. The screen picks that narrowing default; this
+    endpoint only makes it expressible — no ``status`` still means every status, because the
+    pickers, the impex export and the generated MCP surface all read this one endpoint.
+    """
+    t = await make_tenant("proj-status-set")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id = (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).json()["id"]
+        await _project(c, headers, company_id, "Archiefkast", "archived")
+        await _project(c, headers, company_id, "Bouwput", "active")
+        await _project(c, headers, company_id, "Cadeaubon", "completed")
+        await _project(c, headers, company_id, "Dakkapel", "on_hold")
+
+        every = (await c.get("/api/v1/projects", headers=headers)).json()
+        assert every["total"] == 4
+
+        one = (
+            await c.get("/api/v1/projects", params={"status": "active"}, headers=headers)
+        ).json()
+        assert [p["name"] for p in one["items"]] == ["Bouwput"]
+
+        # The working set the screen opens on: every status except the archive.
+        working = (
+            await c.get(
+                "/api/v1/projects",
+                params={"status": "active,on_hold,completed"},
+                headers=headers,
+            )
+        ).json()
+        assert [p["name"] for p in working["items"]] == ["Bouwput", "Cadeaubon", "Dakkapel"]
+        # The count is the filter's, not the page's — a total counted over everything would
+        # report four above a list of three.
+        assert working["total"] == 3
+
+
+async def test_a_project_status_token_that_names_nothing_falls_back_to_the_whole_list(
+    client_for,
+) -> None:
+    """``status`` arrives from a query string anyone can edit, so it never 422s (#316's rule).
+
+    The *failure* direction, kept separate: a filter resolving to no statuses at all leaves the
+    list alone rather than emptying it, an unknown status still matches nothing, and an unknown
+    name among known ones narrows to the known ones instead of poisoning them.
+    """
+    t = await make_tenant("proj-status-junk")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id = (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).json()["id"]
+        await _project(c, headers, company_id, "Archiefkast", "archived")
+        await _project(c, headers, company_id, "Bouwput", "active")
+
+        for token in (",", " , ", ",,"):
+            r = await c.get("/api/v1/projects", params={"status": token}, headers=headers)
+            assert r.status_code == 200, r.text
+            assert r.json()["total"] == 2, token
+
+        empty = await c.get("/api/v1/projects", params={"status": "klaar"}, headers=headers)
+        assert empty.status_code == 200
+        assert empty.json()["items"] == []
+
+        mixed = (
+            await c.get(
+                "/api/v1/projects", params={"status": "klaar,active"}, headers=headers
+            )
+        ).json()
+        assert [p["name"] for p in mixed["items"]] == ["Bouwput"]

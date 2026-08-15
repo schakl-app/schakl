@@ -22,6 +22,7 @@
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
   import { docMoney, docStatus, MAX_ARCHIVE_DOCUMENTS } from "$lib/modules/invoicing/types";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
 
@@ -90,7 +91,12 @@
     data.canReadRegister ? navLabel("invoicing", t("invoicing.title")) : t("invoicing.title_own"),
   );
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
+  );
+  const companyItems = $derived(companyPicker.live);
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
 
@@ -189,6 +195,8 @@
     <div class="w-44">
       <Combobox
         items={companyItems}
+        archived={companyPicker.retired}
+        archivedLabel={companyArchivedLabel()}
         name="_filter_company"
         value={data.companyFilter}
         placeholder={t("invoicing.filter.company")}
@@ -365,7 +373,7 @@
   <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -378,7 +386,7 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

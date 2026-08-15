@@ -13,6 +13,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -51,6 +52,9 @@
     currentUserId,
     canWrite = false,
     canScheduleAny = false,
+    bare = false,
+    preparing = false,
+    beforeOpen,
   }: {
     schedules?: Block[];
     task: TaskRef;
@@ -58,6 +62,19 @@
     currentUserId: string;
     canWrite?: boolean;
     canScheduleAny?: boolean;
+    /** Render without card chrome — it is part of the task page's Planning section (#335). */
+    bare?: boolean;
+    /** The host is saving on our behalf; the button says so rather than looking dead. */
+    preparing?: boolean;
+    /**
+     * Run before the modal opens, and open only if it resolves truthy (#335 F7).
+     *
+     * The modal prefills from the **stored** record, so on a task whose edit form has unsaved
+     * changes the block would carry the old title and the old budget — and so would its Google
+     * event. The host uses this to save first; refusing to open on a failed save is the point,
+     * since the alternative is a block built from a record the user thinks they changed.
+     */
+    beforeOpen?: () => Promise<boolean>;
   } = $props();
 
   const blocks = $derived([...schedules].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
@@ -66,7 +83,7 @@
   let editingBlock = $state<Block | null>(null);
   let logOpen = $state(false);
   let logBlock = $state<Block | null>(null);
-  let logMinutes = $state(0);
+  let logMinutes = $state<number | null>(0);
   let logDescription = $state("");
   let logBillable = $state(true);
   let deleteOpen = $state(false);
@@ -88,11 +105,13 @@
     );
   }
 
-  function openCreate() {
+  async function openCreate() {
+    if (beforeOpen && !(await beforeOpen())) return;
     editingBlock = null;
     modalOpen = true;
   }
-  function openEdit(block: Block) {
+  async function openEdit(block: Block) {
+    if (beforeOpen && !(await beforeOpen())) return;
     editingBlock = block;
     modalOpen = true;
   }
@@ -109,76 +128,92 @@
   }
 </script>
 
-{#if blocks.length > 0 || canWrite}
-  <section class="rounded-xl border border-border bg-surface-raised p-5">
-    <div class="mb-3 flex items-center justify-between gap-2">
-      <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.schedule.panel_title")}
-      </h3>
-      {#if canWrite}
-        <button
-          type="button"
-          class="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text hover:border-brand hover:text-brand"
-          onclick={openCreate}
-        >
-          <CalendarClock size={14} />
-          {t("tasks.schedule.action")}
-        </button>
-      {/if}
-    </div>
-
-    {#if blocks.length === 0}
-      <p class="text-sm text-text-muted">{t("tasks.schedule.panel_empty")}</p>
-    {:else}
-      <ul class="space-y-2">
-        {#each blocks as block (block.id)}
-          <li
-            class="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
-          >
-            <div class="min-w-0">
-              <p class="text-sm text-text">{fmtDayMonth(block.start)} · {timeRange(block)}</p>
-              <p class="flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
-                {#if block.user_id && block.user_id !== currentUserId}
-                  <span>{block.user_name}</span>
-                {/if}
-                <span>{formatMinutes(durationMinutes(block.starts_at, block.ends_at))}</span>
-                {#if block.time_entry_id}
-                  <span class="text-emerald-600 dark:text-emerald-400"
-                    >· {t("tasks.schedule.logged")}</span
-                  >
-                {/if}
-              </p>
-            </div>
-            <div class="flex shrink-0 items-center gap-1">
-              {#if isLoggable(block)}
-                <button
-                  type="button"
-                  class="rounded-lg border border-border px-2 py-1 text-xs text-text hover:border-brand hover:text-brand"
-                  onclick={() => openLog(block)}
-                >
-                  {t("tasks.schedule.log_time")}
-                </button>
-              {/if}
-              {#if canEditBlock(block)}
-                <ActionsMenu
-                  compact
-                  items={[
-                    { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(block) },
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () => openDelete(block),
-                    },
-                  ]}
-                />
-              {/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
+{#snippet body()}
+  <div class="mb-3 flex items-center justify-between gap-2">
+    <!-- "Geplande blokken", not "Planning": inside the task page's Planning card the section
+         heading already says Planning, and in Dutch the two keys are the same word — a card whose
+         heading and first sub-label read identically tells the reader nothing twice. -->
+    <span
+      class="text-xs font-medium {bare
+        ? 'text-text-muted'
+        : 'uppercase tracking-wide text-text-muted'}"
+    >
+      {bare ? t("tasks.schedule.blocks_title") : t("tasks.schedule.panel_title")}
+    </span>
+    {#if canWrite}
+      <button
+        type="button"
+        disabled={preparing}
+        class="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-text hover:border-brand hover:text-brand disabled:opacity-60"
+        onclick={openCreate}
+      >
+        <CalendarClock size={14} />
+        {preparing ? t("common.saving") : t("tasks.schedule.action")}
+      </button>
     {/if}
-  </section>
+  </div>
+
+  {#if blocks.length === 0}
+    <p class="text-sm text-text-muted">{t("tasks.schedule.panel_empty")}</p>
+  {:else}
+    <ul class="space-y-2">
+      {#each blocks as block (block.id)}
+        <li
+          class="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+        >
+          <div class="min-w-0">
+            <p class="text-sm text-text">{fmtDayMonth(block.start)} · {timeRange(block)}</p>
+            <p class="flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
+              {#if block.user_id && block.user_id !== currentUserId}
+                <span>{block.user_name}</span>
+              {/if}
+              <span>{formatMinutes(durationMinutes(block.starts_at, block.ends_at))}</span>
+              {#if block.time_entry_id}
+                <span class="text-emerald-600 dark:text-emerald-400"
+                  >· {t("tasks.schedule.logged")}</span
+                >
+              {/if}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-1">
+            {#if isLoggable(block)}
+              <button
+                type="button"
+                class="rounded-lg border border-border px-2 py-1 text-xs text-text hover:border-brand hover:text-brand"
+                onclick={() => openLog(block)}
+              >
+                {t("tasks.schedule.log_time")}
+              </button>
+            {/if}
+            {#if canEditBlock(block)}
+              <ActionsMenu
+                compact
+                items={[
+                  { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(block) },
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => openDelete(block),
+                  },
+                ]}
+              />
+            {/if}
+          </div>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
+
+{#if blocks.length > 0 || canWrite}
+  {#if bare}
+    {@render body()}
+  {:else}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      {@render body()}
+    </section>
+  {/if}
 
   <!-- Create / edit block (the task is fixed here — no picker). -->
   <ScheduleTaskModal
@@ -213,16 +248,7 @@
         <label for="log-minutes" class="mb-1 block text-sm font-medium text-text">
           {t("tasks.schedule.worked_minutes")}
         </label>
-        <input
-          id="log-minutes"
-          name="minutes"
-          type="number"
-          min="1"
-          max="1440"
-          step="15"
-          bind:value={logMinutes}
-          class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-        />
+        <DurationInput id="log-minutes" name="minutes" required bind:minutes={logMinutes} />
       </div>
       <div>
         <label for="log-desc" class="mb-1 block text-sm font-medium text-text">

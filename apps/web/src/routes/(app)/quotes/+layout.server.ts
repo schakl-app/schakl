@@ -13,6 +13,10 @@ export const load: LayoutServerLoad = async (event) => {
     params: { query: { limit: 200, count: false, sort: "name" } },
   });
   return {
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+    })),
   };
 };

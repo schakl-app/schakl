@@ -2,7 +2,9 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { marketingConnectActions } from "$lib/modules/marketing/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -38,10 +40,18 @@ export const load: PageServerLoad = async (event) => {
     metrics: metricsP ? metricsP.then((r) => r.data ?? null) : Promise.resolve(null),
     range,
     website,
+    // Whether to draw the ＋ (#338). The client list behind its picker is fetched by the dialog
+    // on first open, so this page still loads exactly what it loaded before.
+    canLink: can(event.locals.user, "marketing.link.manage"),
+    locale: event.locals.locale,
   };
 };
 
 export const actions: Actions = {
+  // Connecting a source from here rather than sending the user to `/companies` to find the
+  // client and then the gesture (#338). Same write as the client page's panel.
+  ...marketingConnectActions,
+  createCompany: createCompanyAction,
   // Save the client's curated layout (#192) — the same action the client tab's dashboard posts,
   // so editing works identically on both surfaces. The API enforces marketing.link.manage.
   saveLayout: async (event) => {

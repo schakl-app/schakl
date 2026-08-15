@@ -9,6 +9,7 @@
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import type { FilterDef } from "$lib/core/filters/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -41,6 +42,12 @@
   // working on this client's domains" — and two would let the list and the dialog disagree.
   let showCreate = $state(page.url.searchParams.has("new"));
   const initialCompanyId = $derived(data.filters.company ?? "");
+  // One split of the client lookup, used by the filter bar, the bulk dialog and the create
+  // form alike: an archived client is never suggested and always findable, and the one the
+  // list is filtered by stays on offer whatever became of it.
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: initialCompanyId }),
+  );
   let deleteId = $state("");
   let confirmDelete = $state(false);
   const busy = new InFlight();
@@ -122,7 +129,7 @@
       key: "company",
       label: t("impex.column.domain.company"),
       type: "fk",
-      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+      options: companyPicker.live,
     },
     {
       key: "registrar_provider",
@@ -190,7 +197,11 @@
       kind: "select",
       key: "company",
       placeholder: t("domains.company"),
-      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+      // Archived clients behind the search rather than among the live ones; the client this
+      // list is currently filtered by is always offered (`companies/picker.ts`).
+      options: companyPicker.live,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
     },
     {
       kind: "pills",
@@ -385,10 +396,7 @@
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("domains", t("domains.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("domains.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("domains", t("domains.title"))}</h1>
   {#if canWrite}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
@@ -432,7 +440,7 @@
   {/snippet}
 </FilterBar>
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -447,7 +455,7 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

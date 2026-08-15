@@ -5,8 +5,14 @@ module that names a person outside the agency. Today the only subject is a *cont
 owned by the contacts module. Two different callers need that fact and neither may import
 contacts' internals (CLAUDE.md §6), so both cross here:
 
-* :func:`portal_user_ids` — "which of these users are portal logins?", asked by notification
-  fan-out and by pickers to keep staff events out of client inboxes.
+* :func:`portal_user_ids` — "which of these users are portal logins?", i.e. contact-linked.
+  The narrow question, and the right one only where the *link* is the subject (the member list
+  hides a contact-managed login and keeps a directly-invited client).
+* :func:`external_user_ids` — "which of these users are **not colleagues**?" That is the
+  question almost every caller actually has, and #274 already answered it: an external login is
+  a contact link **or** the seeded ``client`` role, because a client invited straight from
+  Instellingen → Gebruikers carries no contact link at all. Asking the narrow question there
+  silently counts a client as staff.
 * :class:`PortalSubjectProvider` — the read/write handle the **portal module** works through.
   Inviting a client, disabling the login and signing in as them are all the portal module's
   business, but the row that says *who the client is* belongs to whoever owns the subject.
@@ -54,6 +60,50 @@ async def portal_user_ids(
     if _resolver is None or not candidates:
         return set()
     return await _resolver(session, org_id, candidates)
+
+
+async def external_user_ids(
+    session: AsyncSession, org_id: uuid.UUID, candidates: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of ``candidates`` are logins from **outside** the agency (#274).
+
+    The same fact ``ctx.is_portal`` resolves per request, asked of a *set* of users: a contact
+    link (:func:`portal_user_ids`) **or** the seeded ``client`` role. Both halves are needed
+    and neither implies the other — a contact invited through their own portal section holds
+    the link, a client invited from Instellingen → Gebruikers holds only the role, and CLAUDE.md
+    §15 says so in as many words: "gating one on the contact link alone silently exempts a
+    directly-invited client".
+
+    Two callers answer this question inside a statement they were already running — the
+    notification fan-out (flat cost in the recipient count) and the cloud domain-health
+    recipients — and keep their inline copy on purpose. Every other caller should be here: the
+    gmail feed asked the narrow question and read a client's whole correspondence as
+    colleague-to-colleague chatter, which drops it (#324's gate) with no trace at all.
+    """
+    if not candidates:
+        return set()
+    from sqlalchemy import select
+
+    from app.core.models import Membership
+    from app.core.permissions.catalog import ROLE_CLIENT
+    from app.core.permissions.models import MembershipRole, Role
+
+    external = await portal_user_ids(session, org_id, candidates)
+    remaining = candidates - external
+    if not remaining:
+        return external
+    rows = await session.execute(
+        select(Membership.user_id)
+        .join(MembershipRole, MembershipRole.membership_id == Membership.id)
+        .join(Role, Role.id == MembershipRole.role_id)
+        .where(
+            Membership.org_id == org_id,
+            Membership.user_id.in_(remaining),
+            MembershipRole.org_id == org_id,
+            Role.key == ROLE_CLIENT,
+        )
+    )
+    return external | set(rows.scalars())
 
 
 # --------------------------------------------------------------------------- #

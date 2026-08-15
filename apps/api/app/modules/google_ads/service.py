@@ -34,6 +34,7 @@ from sqlalchemy import select
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.crypto import decrypt, encrypt
+from app.core.events import emit
 from app.core.googleads import (
     AdsAccountRef,
     AdsCallParams,
@@ -241,6 +242,15 @@ class GoogleAdsService:
         ``source=gads`` attaches here too, and an insert that could raise a unique violation
         would turn a working, shipped endpoint into a 500 the first time two clients share an
         Ads account — which is an ordinary arrangement, not an edge case.
+
+        It also **emits** ``google_ads.account.attached`` (#338), which is the mirror of that
+        same sentence in the other direction. Before it, an account linked here recorded half
+        the fact: the client's page listed the Ads account in one panel while the marketing
+        panel directly above it — and ``/marketing`` — went on saying nothing was connected,
+        because ``marketing_links`` had no row. The event is the seam (CLAUDE.md §6): this
+        module names ``marketing`` nowhere, and an instance running without it simply has no
+        subscriber. Only an account with a **client** emits — a marketing link requires a
+        company, and an account attached to none is the agency's own.
         """
         cid = normalise_customer_id(customer_id)
         if not cid:
@@ -277,6 +287,7 @@ class GoogleAdsService:
             await self.activity.record_update(
                 _ENTITY, existing.id, before, snapshot(existing, _TRACKED)
             )
+            await self._emit_attached(existing)
             return existing
 
         repo._guard_company_write({"company_id": company_id})
@@ -295,7 +306,31 @@ class GoogleAdsService:
         await self.activity.record_created(
             _ENTITY, row.id, {"customer_id": cid, "company_id": str(company_id or "")}
         )
+        await self._emit_attached(row)
         return row
+
+    async def _emit_attached(self, row: GoogleAdsAccount) -> None:
+        """Announce that this client's Ads account is on file (#338).
+
+        Handlers run inline in this write's transaction, so the account and whatever reacts to
+        it commit together or not at all — which is the whole point: two rows describing one
+        fact must never be able to half-exist.
+        """
+        if row.company_id is None:
+            return
+        await emit(
+            "google_ads.account.attached",
+            self.ctx,
+            {
+                "account_id": row.id,
+                "company_id": row.company_id,
+                "customer_id": row.customer_id,
+                "descriptive_name": row.descriptive_name,
+                "currency_code": row.currency_code,
+                "login_customer_id": row.login_customer_id,
+                "connection_id": row.connection_id,
+            },
+        )
 
     async def update_account(
         self,

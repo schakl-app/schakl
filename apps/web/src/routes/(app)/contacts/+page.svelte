@@ -32,6 +32,7 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
   import { contactTypeLabel } from "$lib/modules/contacts/types";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   function typeHref(typeId: string): string {
     const params = new URLSearchParams(page.url.searchParams);
@@ -63,7 +64,12 @@
   const canWriteCompany = $derived(can(page.data.user, "companies.company.write"));
 
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
-  const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
+  );
+  const companyFilterItems = $derived(companyPicker.live);
   function setFilter(key: string, value: string) {
     const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
@@ -307,10 +313,7 @@
 <!-- Wraps: "Nieuwe contactpersoon" is a 192px button, and a phone has ~312px of content width
      once the title has had its share. The Dutch label is the long one, so English never shows it. -->
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
   {#if canWrite}
     <!-- Opening the inline create form is a contacts.contact.write act; hidden from a read-only
          portal client (#244), like the row edit/delete actions and the Import button below. -->
@@ -331,6 +334,8 @@
   <div class="w-44">
     <Combobox
       items={companyFilterItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.companyFilter}
       placeholder={t("contacts.filter.company")}
@@ -529,7 +534,7 @@
   <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -548,7 +553,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

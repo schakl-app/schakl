@@ -277,7 +277,7 @@ class ProjectService:
         limit: int,
         offset: int,
         company_id: uuid.UUID | None = None,
-        status: ProjectStatus | None = None,
+        status: str | None = None,
         q: str | None = None,
         mine: bool = False,
         sort: str | None = None,
@@ -287,8 +287,17 @@ class ProjectService:
         conditions = []
         if company_id is not None:
             conditions.append(Project.company_id == company_id)
-        if status is not None:
-            conditions.append(Project.status == status.value)
+        if status:
+            # One status, or several comma-separated — the shape the client list already
+            # speaks (#329). "Everything except the archive" is what a project list is normally
+            # *for*, and a single-valued filter could not say it: ``status=active`` hides the
+            # paused work and the just-delivered work, both of which are still the agency's. A
+            # blank between two commas is dropped rather than matched (this arrives from a query
+            # string anyone can edit), and a value that names nothing leaves the list unfiltered
+            # rather than empty.
+            wanted = [s.strip() for s in status.split(",") if s.strip()]
+            if wanted:
+                conditions.append(Project.status.in_(wanted))
         if q:
             conditions.append(Project.name.ilike(f"%{q.strip()}%"))
         if mine:

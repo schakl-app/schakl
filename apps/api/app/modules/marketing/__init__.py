@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.events import subscribe
+from app.modules.marketing.events import on_google_ads_account_attached
 from app.modules.marketing.jobs import (
     marketing_backfill_link,
     marketing_sync_all,
@@ -59,3 +61,10 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# The return leg of the mirror `MarketingService._attach_ads_account` already had (#338): an Ads
+# account linked through the `google_ads` module gets its `gads` link here too, so the client's
+# marketing panel and `/marketing` cannot go on saying nothing is connected. Subscribed rather
+# than imported the other way round — this module names `google_ads` nowhere, and on an instance
+# that never enabled marketing there is simply no subscriber (CLAUDE.md §6).
+subscribe("google_ads.account.attached", on_google_ads_account_attached)

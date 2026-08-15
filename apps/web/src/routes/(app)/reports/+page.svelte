@@ -22,6 +22,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import ReportStatusPill from "$lib/modules/reporting/ReportStatusPill.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import {
     audienceLabel,
     fmtDate,
@@ -54,9 +55,14 @@
     goto(url, { keepFocus: true, noScroll: true });
   }
 
+  // Archived clients behind the search rather than among the live ones; the client this list is
+  // filtered by is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.filters.company_id ?? "" }),
+  );
   const companyOptions = $derived([
     { value: "", label: t("reporting.list.all_clients") },
-    ...data.companies.map((c) => ({ value: c.id, label: c.name })),
+    ...companyPicker.live,
   ]);
   const audienceOptions = $derived([
     { value: "", label: t("reporting.list.all_audiences") },
@@ -126,6 +132,8 @@
         name="company"
         value={data.filters.company_id}
         items={companyOptions}
+        archived={companyPicker.retired}
+        archivedLabel={companyArchivedLabel()}
         ariaLabel={t("reporting.list.all_clients")}
         placeholder={t("reporting.list.all_clients")}
         onselect={(value: string) => setFilter("company", value)}

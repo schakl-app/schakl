@@ -8,6 +8,7 @@
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
   import { burnPct } from "$lib/core/burn";
+  import { formatDurationInput, parseDurationText } from "$lib/core/duration";
   import { fmtDateTime, fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -16,14 +17,10 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
-  import {
-    endFromDuration,
-    formatDurationInput,
-    minutesBetween,
-    parseDurationText,
-  } from "$lib/modules/time/duration";
+  import { endFromDuration, minutesBetween } from "$lib/modules/time/duration";
   import {
     entryTypeLabel,
     entryTypes,
@@ -31,6 +28,8 @@
     type TimeEntryTypeDef,
   } from "$lib/modules/time/format";
   import { splitTaskOptions } from "$lib/modules/time/task-picker";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
   interface Option {
     id: string;
@@ -149,7 +148,7 @@
   let fDate = $state(entry ? entry.started_at.slice(0, 10) : (restored?.date ?? date));
   let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
   let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : (restored?.end ?? ""));
-  let fBreak = $state(entry?.break_minutes ?? restored?.break_minutes ?? 0);
+  let fBreak = $state<number | null>(entry?.break_minutes ?? restored?.break_minutes ?? 0);
   /** What a new entry on this project bills by default (#284) — false where a subscription
    *  covers it, because the retainer already pays for that work. Mirrors what the API
    *  resolves when a client sends no `billable` at all; no project means the old plain true. */
@@ -212,11 +211,28 @@
     }
   });
 
-  const projectOptions = $derived(
-    (fCompany ? projects.filter((p) => p.company_id === fCompany || !p.company_id) : projects).map(
-      (p) => ({ value: p.id, label: p.name ?? "" }),
+  // The client narrows the list; the lifecycle then decides what is *suggested* within it. The
+  // three pickers on this form now follow one rule: hours are logged on work that is running, so
+  // an archived client, a finished project and a closed task each sit behind the search wearing
+  // the status they are in — and the one this entry is already booked on is always offered.
+  const companyPicker = $derived(
+    splitCompanyOptions(
+      companies.map((c) => ({ id: c.id, name: c.name ?? "", status: c.status })),
+      { selectedId: fCompany },
     ),
   );
+  const projectPicker = $derived(
+    splitProjectOptions(
+      projects.map((p) => ({
+        id: p.id,
+        name: p.name ?? "",
+        status: p.status,
+        company_id: p.company_id,
+      })),
+      { companyId: fCompany, selectedId: fProject },
+    ),
+  );
+  const projectOptions = $derived(projectPicker.live);
   // Open tasks in the dropdown, finished ones behind a search (`task-picker.ts` holds the rule
   // and the reasons). Both buckets get the same hint, deadline included.
   const taskBuckets = $derived(
@@ -501,15 +517,12 @@
       <label for="break-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.break")}</label
       >
-      <input
+      <DurationInput
         id="break-{action}"
         name="break_minutes"
-        type="number"
-        min="0"
-        step="5"
-        bind:value={fBreak}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        bind:minutes={fBreak}
+        onchange={syncDurationFromTimes}
+        placeholder="0:30"
       />
     </div>
   </div>
@@ -523,7 +536,7 @@
         id="duration-{action}"
         bind:value={durationText}
         onchange={syncEndFromDuration}
-        placeholder={t("time.duration_hint")}
+        placeholder={t("common.duration_hint")}
         class={inputClass}
       />
     </div>
@@ -569,7 +582,9 @@
       >{t("time.field.company")}</label
     >
     <Combobox
-      items={companies.map((c) => ({ value: c.id, label: c.name ?? "" }))}
+      items={companyPicker.live}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="company_id"
       bind:value={fCompany}
       id="company-{action}"
@@ -583,6 +598,8 @@
     >
     <Combobox
       items={projectOptions}
+      archived={projectPicker.retired}
+      archivedLabel={projectArchivedLabel()}
       name="project_id"
       bind:value={fProject}
       id="project-{action}"

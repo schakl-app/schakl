@@ -108,7 +108,7 @@ Rules the client does not bend, all four inherited from `cloudflare/client.py`:
 
 ### What a live 2.5.0 actually did
 
-Run against `louislam/uptime-kuma:2.5.0`. Nine findings, of which **four contradict something
+Run against `louislam/uptime-kuma:2.5.0`. Fourteen findings, of which **four contradict something
 written from the source alone**, and one is a state neither wrapper models at all.
 
 **0. A fresh 2.x is not reachable over socket.io until its database wizard is answered.** This
@@ -226,6 +226,17 @@ version down, an unknown column against the tenant's own database. The gate is t
 version-aware and **omits it when the version is unknown**: omitting on 2.x fails cleanly,
 loudly and reversibly, naming the column in the error, while the opposite mistake writes to a
 schema. The fake refuses both ways round, which is what makes the gate testable.
+
+**13. `conditions` was not the only thing `add` demands, and the second one is worse.** 2.5.0's
+`add` handler dereferences `monitor.accepted_statuscodes.every(...)` **before** it branches on
+type (`server.js`, two sites). Omit the key and there is no default and no validation message —
+the call answers the raw JavaScript `Cannot read properties of undefined (reading 'every')`,
+naming neither the field nor the module. It applies to **every** type, a `group` included, which
+is the one payload nobody thinks to give status codes to. `_kuma_fields` has always sent its own,
+so nothing shipped broken; `REQUIRED_ON_CREATE` now carries it as the floor under any caller that
+does not, which is what the constant is for. Found by seeding a live 2.5.0 through this repo's own
+client — the general lesson being that a create payload built from the fields *we* model is tested
+only where a caller happens to supply the rest.
 
 Still unrun, and each needs an instance we do not have yet: **2FA** (`{tokenRequired: true}` and
 what a wrong TOTP looks like), **a subpath reverse proxy**, **Cloudflare Access end to end**,
@@ -609,9 +620,66 @@ here went back to Uptime Kuma, and the next sync had opinions about that. Four p
   reconcile that did not work). A row we have **never pushed** is skipped entirely: its snapshot is
   empty, and reading a parent out of it set every pending monitor's group to nothing.
 
-Still not here: a **picker on the monitor itself**. The API takes `parent_id` on create and on
-`PATCH`, but the web has no monitor list or monitor form yet — the website panel is a read — so
-there is nowhere to put the control. It belongs with that screen, not bolted onto a settings page.
+Still not here: a **group picker on the monitor itself**. The API takes `parent_id` on create and
+on `PATCH`, but the web has no monitor list or monitor form yet, so there is nowhere to put the
+control. It belongs with that screen, not bolted onto a settings page.
+
+### A link you can write is a link something has to read back
+
+The same sentence pointed at the *link* columns rather than at `parent_id`, and there it was not a
+missing convenience — it was a feature with one half built. `website_id`, `domain_id` and
+`hosting_id` had a matcher, a horizon, a confirm button and an activity line, and between them
+exactly one way to be seen afterwards: a panel filtered on `website_id`. Four consequences, and
+the first is the one an agency actually hit.
+
+- **Confirming *"koppel aan domein acme.nl"* stored the row correctly and showed it nowhere.**
+  `GET /uptime/monitors` had no `domain_id` filter, and no domain panel existed to have used one,
+  so the proposal left the list and nothing took its place. That is indistinguishable from a
+  button that does nothing, and it is the ordinary case rather than the exotic one: `matching`'s
+  own ladder falls back to the domain for every host inside a zone we hold that will never be a
+  website — a client's mail server, VPN endpoint or NAS. Both anchors now filter, and a domain
+  gets the same panel a website does.
+- **A monitor the matcher found nothing for could never be attached at all.** The proposals
+  section was the only link surface in the product, and it lists what a sync proposed; an
+  `unmatched` row appeared on no screen anywhere. So a bare IP, a host in a zone the tenant does
+  not hold, or a client's Kuma naming things its own way was permanently unattachable — precisely
+  the instance this module exists to adopt. The panel now carries a picker over
+  `link_status=unlinked`, a *filter* value covering all three unlinked states, because "what may I
+  still attach" is a different question from any one matcher outcome.
+- **Nothing could be un-attached.** `POST /link` has taken an explicit `null` pair since #321 and
+  no screen ever sent one, so a wrong link was permanent from the UI and the row had already left
+  the only list that would have offered it again. Detach is a button on the row now. It writes
+  nothing to Kuma and deletes nothing — the monitor keeps running and keeps being mirrored, it
+  just stops claiming to be this record's — which is why it is an ordinary button rather than a
+  confirm dialog.
+- **`company_name` and `instance_name` were always `null`.** Both are declared on
+  `UptimeMonitorRead`, both document themselves as resolved under `meta=true`, and nothing
+  resolved either — the settings screen kept its own client-side map of instance names to work
+  around the half it needed. Resolved now, one batched query each, under the same flag.
+
+The control lives on the website and the domain rather than on a settings screen for this
+section's own reason: a monitor's link is a fact about the thing being watched, so it belongs on
+that thing's page. It reaches the API through the host page's form actions
+(`uptime-actions.server.ts`, spread into both routes), the contract `wordpress` and `cloudflare`
+already use — a panel cannot own SvelteKit actions. The picker's options are **streamed rather
+than awaited**, because attaching by hand happens once per record and blocking every website and
+domain page on a list most visits never open would be paying for the rare case on every read.
+
+One rule the picker inherits from the matcher: **a group is never offered.** A group is a monitor
+here (§7) and watches nothing, so attaching one would put a folder in the panel; the matcher never
+proposes one because it has no target to match on, and the picker draws the same line rather than
+letting the only other way in disagree.
+
+### The company panel had no renderer, so it printed its own JSON
+
+`panels.py` has contributed `uptime.company` since gate 1 and the web module registered no
+component for that key, so `companies/[id]` fell through to its `<pre>{JSON.stringify(...)}</pre>`
+escape hatch and printed `{"total": 2, "by_status": {"active": 2}, "visible": true}` on every
+client's page. Worth stating as a rule rather than a fix: **an API `PanelSpec` and a web
+`companyPanels` entry are two halves of one panel**, and the fallback that makes the first
+survivable on a developer's branch is what stops the omission being noticed on anyone else's.
+`visible: false` renders nothing at all rather than "0 monitors" — a reader who may not look must
+not be handed a number, and "none" is a different fact from "not for you".
 
 ## 8. Defaults are profiles, and the resolution is one clause
 

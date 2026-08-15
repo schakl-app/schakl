@@ -3,107 +3,38 @@
  * layout — no page opts in or out, so no page can forget them again. Crumbs derive from the
  * pathname; an `[id]` segment names itself from the record the page's own load already put
  * in `page.data` (company.name, invoice.number, …), never from an extra fetch.
+ *
+ * What a segment is *called* lives in `breadcrumb-labels.ts`, so a test can sweep the route tree
+ * against it. This file is the rendering: it resolves those keys, prefers the tenant's own nav
+ * label over the declared one, and splices in the way the visitor actually came.
+ *
+ * **A trail may follow the way in, but only over a link the record itself confirms.** See
+ * `breadcrumb-trail.svelte.ts`: the visitor's route through the app *suggests* the ancestors, and
+ * the record's own foreign keys are what decide whether they are drawn. A breadcrumb built from
+ * history alone is a back button claiming to be a hierarchy, and it lies the first time somebody
+ * opens a second record in a new tab.
  */
+import {
+  literalLabelKey,
+  pageRecord,
+  routeParamNames,
+  UUID_RE,
+  type CrumbLink,
+} from "$lib/core/breadcrumb-labels";
 import { t } from "$lib/core/i18n";
-import { settingsTitleKeys } from "$lib/core/settings-nav";
+import type { NavItem } from "$lib/core/registry";
+
+export type { CrumbLink, PageRecord } from "$lib/core/breadcrumb-labels";
+export {
+  isParentOf,
+  MAX_ANCESTORS,
+  pageRecord,
+  routeParamNames,
+} from "$lib/core/breadcrumb-labels";
 
 export interface Crumb {
   label: string;
   href?: string;
-}
-
-/** First path segment → label key. Static, so the resolver needs no registry at runtime. */
-const ROOTS: Record<string, string> = {
-  calendar: "nav.calendar",
-  companies: "nav.companies",
-  contacts: "nav.contacts",
-  tasks: "nav.tasks",
-  time: "nav.time",
-  projects: "nav.projects",
-  domains: "nav.domains",
-  websites: "nav.websites",
-  subscriptions: "nav.subscriptions",
-  invoices: "invoicing.invoices",
-  quotes: "invoicing.quotes",
-  marketing: "nav.marketing",
-  interactions: "nav.interactions",
-  leave: "nav.leave",
-  overview: "nav.overview",
-  notifications: "notifications.title",
-  me: "hr.me.title",
-  settings: "settings.title",
-  instance: "nav.instance",
-  ai: "ai.assistant.title",
-};
-
-/**
- * Settings slug → its screen title key. Taken from the screen registry rather than re-typed, so a
- * renamed card renames its crumb too — this map had already drifted into a third copy of the
- * Instellingen surface. `subscriptions` is the one extra: it is a 301 to `/subscriptions/templates`
- * (#229), so the registry points outside `/settings` and the slug still needs a label.
- */
-const SETTINGS: Record<string, string> = {
-  ...settingsTitleKeys(),
-  subscriptions: "settings.subscriptions.title",
-};
-
-/** Known non-id tail segments. */
-const TAILS: Record<string, string> = {
-  new: "common.new",
-  print: "common.print",
-  templates: "tasks.nav.templates",
-  team: "leave.team.title",
-  runs: "automation.runs",
-  marketing: "marketing.tab.title",
-  revenue: "overview.tab.revenue",
-  productivity: "overview.tab.productivity",
-};
-
-/** Root-specific tail labels — the same segment reads differently per section (#229). */
-const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
-  invoices: {
-    uninvoiced: "invoicing.uninvoiced.title",
-  },
-  subscriptions: {
-    templates: "settings.subscriptions.templates_heading",
-    types: "settings.subscriptions.types_heading",
-  },
-  domains: {
-    "tld-prices": "domains.tld_prices.title",
-  },
-  marketing: {
-    "google-ads": "nav.google_ads",
-  },
-};
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The loaded record's display name, tried against every detail-page data key in use. */
-function entityLabel(data: Record<string, unknown>): string | null {
-  const d = data as Record<string, Record<string, unknown> | undefined>;
-  const named = d.company ?? d.project ?? d.domain ?? d.org ?? d.rule;
-  if (named && typeof named.name === "string" && named.name) return named.name;
-  if (d.contact) {
-    const full = [d.contact.first_name, d.contact.last_name].filter(Boolean).join(" ");
-    if (full) return full;
-  }
-  if (d.task && typeof d.task.title === "string" && d.task.title) return d.task.title;
-  // A website has no name of its own — the host it answers on is the name, resolved exactly as
-  // its page title and its list row do (`root` decides whether the `www.` prefix is part of it).
-  if (d.website && typeof d.website.domain_name === "string" && d.website.domain_name) {
-    return d.website.root ? d.website.domain_name : `www.${d.website.domain_name}`;
-  }
-  if (d.invoice) {
-    return (d.invoice.number as string) || t("invoicing.status.draft");
-  }
-  if (d.quote) {
-    return (d.quote.number as string) || t("invoicing.status.draft");
-  }
-  if (d.role) {
-    const names = (d.role.name_i18n ?? {}) as Record<string, string>;
-    return names.nl || names.en || (d.role.key as string) || null;
-  }
-  return null;
 }
 
 function prettify(segment: string): string {
@@ -111,28 +42,89 @@ function prettify(segment: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
-export function breadcrumbsFor(pathname: string, data: Record<string, unknown>): Crumb[] {
+/** The tenant's own word for a section, when the sidebar contributes an item for exactly this href. */
+function navLabel(href: string, nav: readonly NavItem[]): string | null {
+  const item = nav.find((entry) => entry.href === href);
+  const label = item?.label();
+  return typeof label === "string" && label.trim() ? label : null;
+}
+
+/** One literal segment: the sidebar's word for it, else its declared key, else the bare slug. */
+function labelFor(
+  segments: string[],
+  index: number,
+  href: string,
+  nav: readonly NavItem[],
+): string {
+  const key = literalLabelKey(segments, index);
+  return navLabel(href, nav) ?? (key ? t(key) : prettify(segments[index]));
+}
+
+export interface CrumbInput {
+  pathname: string;
+  /** `page.route.id` — what says which segments are parameters. */
+  routeId?: string | null;
+  data: Record<string, unknown>;
+  /** The viewer's nav items, so a section crumb reads whatever the sidebar was renamed to (#169). */
+  nav?: readonly NavItem[];
+  /** Ancestors the visitor came through, already confirmed against this page's own record. */
+  trail?: readonly CrumbLink[];
+}
+
+export function breadcrumbsFor(input: CrumbInput): Crumb[] {
+  const { pathname, routeId, data, nav = [], trail = [] } = input;
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return [{ label: t("nav.dashboard") }];
+
+  const params = routeParamNames(routeId);
+  const record = pageRecord(data, t);
+  const dynamic = segments.map((segment, i) =>
+    typeof params[i] === "string" ? true : params[i] === undefined && UUID_RE.test(segment),
+  );
 
   const crumbs: Crumb[] = [];
   let href = "";
   segments.forEach((segment, i) => {
     href += `/${segment}`;
-    let label: string;
-    if (i === 0) {
-      label = ROOTS[segment] ? t(ROOTS[segment]) : prettify(segment);
-    } else if (segments[0] === "settings" && i === 1) {
-      label = SETTINGS[segment] ? t(SETTINGS[segment]) : prettify(segment);
-    } else if (UUID_RE.test(segment)) {
-      label = entityLabel(data) ?? "…";
-    } else {
-      const key = TAILS_BY_ROOT[segments[0]]?.[segment] ?? TAILS[segment];
-      label = key ? t(key) : prettify(segment);
-    }
-    crumbs.push({ label, href });
+    crumbs.push({
+      label: dynamic[i] ? (record?.label ?? "…") : labelFor(segments, i, href, nav),
+      href,
+    });
   });
+
+  const withTrail = spliceTrail(crumbs, dynamic, trail, nav);
   // The last crumb is the current page — it links nowhere.
-  delete crumbs[crumbs.length - 1].href;
-  return crumbs;
+  delete withTrail[withTrail.length - 1].href;
+  return withTrail;
+}
+
+/**
+ * Replace the section prefix with the route the visitor actually took.
+ *
+ * `Projecten › Site herbouw` becomes `Bedrijven › Acme › Site herbouw` when the project was opened
+ * from that client's page: the section root is dropped because it is not how they got here, and
+ * anything *below* the record (`…/print`) is kept because the trail says nothing about it. With no
+ * confirmed ancestors, or on a page about no record at all, the path-derived row stands — which is
+ * what every server-rendered first load and every shared link gets.
+ */
+function spliceTrail(
+  crumbs: Crumb[],
+  dynamic: boolean[],
+  trail: readonly CrumbLink[],
+  nav: readonly NavItem[],
+): Crumb[] {
+  if (trail.length === 0) return crumbs;
+  const recordIndex = dynamic.lastIndexOf(true);
+  if (recordIndex < 0) return crumbs;
+  const rootSegment = trail[0].href.split("/").filter(Boolean)[0];
+  if (!rootSegment) return crumbs;
+  const root: Crumb = {
+    label: labelFor([rootSegment], 0, `/${rootSegment}`, nav),
+    href: `/${rootSegment}`,
+  };
+  return [
+    root,
+    ...trail.map((link) => ({ label: link.label, href: link.href })),
+    ...crumbs.slice(recordIndex),
+  ];
 }

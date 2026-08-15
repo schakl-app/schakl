@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.projects.models import ProjectStatus
 from app.modules.projects.schemas import (
     DashboardBudgetProject,
     ProjectCreate,
@@ -48,7 +47,15 @@ async def list_projects(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
-    status: ProjectStatus | None = Query(None),
+    status: str | None = Query(
+        None,
+        max_length=200,
+        description=(
+            "Lifecycle status; comma-separate for several ('active,on_hold'). Absent means "
+            "every status, the archived ones included — the screen picks its own default, "
+            "this endpoint does not."
+        ),
+    ),
     q: str | None = Query(None, max_length=200),
     mine: bool = Query(False, description="Only projects I'm assigned to (primary or not)"),
     sort: str | None = Query(

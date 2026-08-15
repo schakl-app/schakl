@@ -125,6 +125,52 @@ they were working on.
 - Rides the existing `time_assist` feature key. Adding a fifth `AI_FEATURES` entry would touch
   eight places including two hand-maintained web copies.
 
+## Email into task (#327)
+
+`email_assist` reads an approved email into the task it was filed onto: notes, a checklist, a
+deadline, a comment, the links it names, and whether closing it needs an answer to the sender.
+Opt-in per approval (`InteractionApprove.enrich_task`), off by default. It lives in
+`app/modules/interactions/enrich.py` — the module owns its prompt and its grounding, exactly as
+`reporting` does — and writes through `tasks/system.py`, never `TaskService`.
+
+Three things make it different from every other feature here, and all three follow from one
+fact: **its input is written by someone outside the organisation.**
+
+**Nobody waits.** The body does not exist when the task is created — a pending row is metadata
+only, and the gmail fetch happens after the approving transaction, deliberately. So the approve
+flips `tasks.ai_status` to `queued` and a deferred ARQ job does the reading, re-deferring on a
+widening ladder while the body has not landed and ending as `skipped` when it never does. The
+card polls `GET /tasks/{id}/ai-status` — one column, its own endpoint precisely so the poll does
+not drag the whole card — and calls `invalidateAll()` exactly once, when there is something new
+to draw. A quarter-hourly reaper ends runs whose worker is gone: the #300 rule, because the row
+cannot tell a busy worker from a dead one.
+
+**The prompt is not the defence.** `_INJECTION_STANCE` is stated in this feature's own terms,
+and it is a request rather than a control. What actually bounds the damage:
+
+1. **One forced tool and nothing else on the request** — no find tools, no write tools. The
+   model's whole output channel is `submit_task_plan`'s fixed schema.
+2. **A narrow vocabulary** (`TaskEnrichment`). Assignee, client, project, status and above all
+   `visible_to_client` are *not on it*, so a fully compliant model obeying a hostile email still
+   cannot move work to another client or hand an internal task to a client portal.
+3. **Links are grounded in the message.** A URL the model proposes must appear in the body. Be
+   precise about what that buys: it does **not** make a link safe — whoever wrote the email chose
+   its links, and carrying them over is the feature. It guarantees nothing is added that was *not
+   in the message*, which is what stops an invented address landing on a colleague's board.
+4. **Our own markup is stripped** before storage (`tasks/system._untrusted_markdown`, using
+   `MENTION_RE` itself so the strip cannot drift from the extractor that finds them). An email
+   must not be able to make the platform notify anyone.
+5. **The writes are conservative wherever they are irreversible**: the description is appended,
+   never replaced; a due date only fills a blank, and only inside a bounded window;
+   `requires_interaction` is one-way (adding a guard is safe to be wrong about, removing one a
+   person asked for is not); and the comment fans out to nobody.
+
+**Its own toggle, against this file's own advice.** Riding an existing key is usually right, and
+here it is not: this is the only feature that sends a *client's own words* to a model, and an
+agency happy for AI to polish a colleague's paragraph may well not be happy for it to read the
+mailbox. Folding it into `writing_assist` would have switched the second on for everyone who had
+already agreed to the first.
+
 ## Model choice
 
 `DEFAULT_MODELS` seeds the settings form; a per-feature override lives in the `features` JSONB.

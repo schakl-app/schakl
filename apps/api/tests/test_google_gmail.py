@@ -622,6 +622,71 @@ async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
         assert row.company_id == uuid.UUID(company["id"])
 
 
+async def test_a_directly_invited_client_is_not_a_colleague(client_for, monkeypatch) -> None:
+    """The other half of "external login" (#274): the seeded ``client`` role, no contact link.
+
+    ``portal_user_ids`` answers "is this user contact-linked?", so a client invited from
+    Instellingen → Gebruikers rather than from their contact's portal section came back as
+    staff: their address landed in ``member_emails``, every mail they wrote to a colleague read
+    as colleague-to-colleague chatter, and the poll dropped it. Silently — no pending row, no
+    notification, nothing in the log.
+
+    The second-order damage is the one that made it a whole client going dark rather than one
+    person: ``company_ids`` is derived from ``member_emails``, so *their own company* read as
+    the agency's own, and since #324's gate every other contact there was dropped with them.
+    """
+    t = await make_tenant("gmail-client-role")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        for first_name, email in (("Klant", "klant@client.nl"), ("Collega", "co@client.nl")):
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": first_name,
+                    "email": email,
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        # Invited straight into the client role — no ``contacts.user_id`` link is created.
+        assert (
+            await c.post(
+                "/api/v1/members/invite",
+                json={"email": "klant@client.nl", "full_name": "Klant", "role": "client"},
+                headers=headers,
+            )
+        ).status_code == 201
+
+    stub = _StubGmail(
+        history=["msg-client", "msg-colleague"],
+        messages={
+            "msg-client": _message(
+                "msg-client", sender="Klant <klant@client.nl>", to=t.user.email
+            ),
+            # Nobody on this one holds a login at all: it is the company that must not have
+            # been reclassified, not just the one address.
+            "msg-colleague": _message(
+                "msg-colleague",
+                sender="Collega <co@client.nl>",
+                to=t.user.email,
+                thread="thr-2",
+            ),
+        },
+        history_id="9300",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 2
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(Interaction))).scalars().all()
+        assert [row.status for row in rows] == ["pending", "pending"]
+        assert {row.company_id for row in rows} == {uuid.UUID(company["id"])}
+
+
 async def test_internal_mail_dropped_by_default(client_for, monkeypatch) -> None:
     """Colleague-to-colleague mail stays out unless the org opts in."""
     from tests.test_notification_channels import _member

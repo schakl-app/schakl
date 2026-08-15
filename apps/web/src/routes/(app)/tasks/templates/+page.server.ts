@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -44,7 +45,6 @@ function parseItems(raw: string): {
     .map((draft, index) => {
       const title = String(draft.title ?? "").trim();
       const days = Number(draft.relative_due_days);
-      const allocated = Number(draft.allocated_minutes);
       return {
         title,
         description: String(draft.description ?? "").trim() || null,
@@ -52,8 +52,9 @@ function parseItems(raw: string): {
           ? String(draft.priority)
           : "normal") as "low" | "normal" | "high",
         relative_due_days: Number.isFinite(days) && days >= 0 ? Math.floor(days) : null,
-        allocated_minutes:
-          Number.isFinite(allocated) && allocated > 0 ? Math.round(allocated) : null,
+        // The row editor posts integer minutes, but a duration may also arrive as the text a
+        // person typed (#326); one parser reads both.
+        allocated_minutes: parsePostedMinutes(draft.allocated_minutes),
         assignee_user_id: String(draft.assignee_user_id ?? "").trim() || null,
         assign_responsible: draft.assign_responsible === true,
         requires_interaction: draft.requires_interaction === true,

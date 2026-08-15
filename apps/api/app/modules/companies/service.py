@@ -195,7 +195,15 @@ class CompanyService:
                 )
             )
         if status:
-            conditions.append(Company.status == status)
+            # One status, or several comma-separated (#329). "Everything except the archive" is
+            # what a client list is normally *for*, and a single-valued filter could not say it:
+            # `status=active` hides the leads being chased and the clients being onboarded, which
+            # are live relationships. A blank between two commas is dropped rather than matched —
+            # this arrives from a query string anyone can edit (§10, #316's fallback rule) — and a
+            # value that names nothing at all leaves the list unfiltered rather than empty.
+            wanted = [s.strip() for s in status.split(",") if s.strip()]
+            if wanted:
+                conditions.append(Company.status.in_(wanted))
         if mine:
             # "My clients" matches *any* assignee, not just the primary.
             conditions.append(
@@ -206,8 +214,13 @@ class CompanyService:
             self.repo.scoped_select().where(*conditions),
             sort,
             SORTABLE,
-            # Unsorted, a search ranks by name and the plain list stays newest-first.
-            default=Company.name.asc() if q else Company.created_at.desc(),
+            # Alphabetical, searched or not (#329). It used to rank a search by name and leave
+            # the plain list newest-first, so the same list answered the same question two
+            # different ways depending on whether the search box had anything in it — and
+            # "newest client first" is nobody's mental model of a client register. Every caller
+            # that cared already passed `sort=name`; the ones that did not were pickers, which
+            # wanted this.
+            default=Company.name.asc(),
         ).limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         # ``count=False`` skips the discarded COUNT(*) for name-only lookups (pickers,

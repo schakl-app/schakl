@@ -6,7 +6,13 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
-const FEATURES = ["assistant", "writing_assist", "time_assist", "reporting"] as const;
+const FEATURES = [
+  "assistant",
+  "writing_assist",
+  "time_assist",
+  "reporting",
+  "email_assist",
+] as const;
 
 // Instellingen → AI (#126): provider, write-only key, model, per-feature toggles, house
 // style, budget and this month's meter. Admin-only (the API enforces `ai.settings.manage`).

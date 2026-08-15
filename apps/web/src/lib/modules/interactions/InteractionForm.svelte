@@ -37,6 +37,8 @@
 
   import { minutesBetween } from "$lib/modules/time/duration";
   import { formatMinutes } from "$lib/modules/time/format";
+  import { companyArchivedLabel } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
   import {
     type InteractionItem,
@@ -48,7 +50,13 @@
     PROTECTED_KIND,
   } from "./format";
   import ContactChips from "./ContactChips.svelte";
-  import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
+  import {
+    loadLinkLookups,
+    splitLinkOptions,
+    type LinkOption,
+    type ProjectOption,
+    type TaskOption,
+  } from "./lookups";
   import { ContactRoster, initialContacts } from "./roster.svelte";
 
   let {
@@ -245,18 +253,28 @@
   const companyDerived = $derived(Boolean(fProject || fTask));
   const companyLabel = $derived(linkCompanies.find((c) => c.value === fCompany)?.label ?? "");
 
-  const projectOptions = $derived(
-    effCompany
-      ? linkProjects.filter((p) => !p.company_id || p.company_id === effCompany)
-      : linkProjects,
+  // The cascade narrows *which* rows each picker may offer; the split then decides which of
+  // them are suggested. A moment filed against a client the agency stopped working for, a
+  // finished project or a closed task is an ordinary thing to record — so none of them is
+  // dropped, they move behind the search wearing their status (`lookups.splitLinkOptions`).
+  const linkSplit = $derived(
+    splitLinkOptions(
+      {
+        companies: linkCompanies,
+        projects: effCompany
+          ? linkProjects.filter((p) => !p.company_id || p.company_id === effCompany)
+          : linkProjects,
+        tasks: effProject
+          ? linkTasks.filter((task) => task.project_id === effProject)
+          : effCompany
+            ? linkTasks.filter((task) => !task.company_id || task.company_id === effCompany)
+            : linkTasks,
+      },
+      { companyId: fCompany, projectId: fProject, taskId: fTask },
+    ),
   );
-  const taskOptions = $derived(
-    effProject
-      ? linkTasks.filter((task) => task.project_id === effProject)
-      : effCompany
-        ? linkTasks.filter((task) => !task.company_id || task.company_id === effCompany)
-        : linkTasks,
-  );
+  const projectOptions = $derived(linkSplit.projects.live);
+  const taskOptions = $derived(linkSplit.tasks.live);
   function onProjectPicked(id: string) {
     fProject = id;
     const project = linkProjects.find((p) => p.value === id);
@@ -628,7 +646,9 @@
           <label class="block text-sm">
             <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
             <Combobox
-              items={linkCompanies}
+              items={linkSplit.companies.live}
+              archived={linkSplit.companies.retired}
+              archivedLabel={companyArchivedLabel()}
               name="company_id"
               value={fCompany}
               placeholder={t("common.none")}
@@ -648,6 +668,8 @@
           <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
           <Combobox
             items={projectOptions}
+            archived={linkSplit.projects.retired}
+            archivedLabel={projectArchivedLabel()}
             name="project_id"
             value={fProject}
             placeholder={t("common.none")}
@@ -666,6 +688,8 @@
           <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
           <Combobox
             items={taskOptions}
+            archived={linkSplit.tasks.retired}
+            archivedLabel={t("tasks.picker.archived")}
             name="task_id"
             value={fTask}
             placeholder={t("common.none")}

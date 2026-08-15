@@ -3106,7 +3106,10 @@ export interface paths {
         /**
          * Browse
          * @description Live folder contents **as the viewing user** — Drive's permissions are authoritative.
-         *     Redis-cached ~45 s per user+folder; ``refresh=1`` busts it.
+         *
+         *     ``q`` filters by name **inside this folder**, at Drive rather than in the browser (#336):
+         *     the listing is one page of 100, so a client-side filter would answer "nothing found" for
+         *     the 101st file. Redis-cached ~45 s per user+folder+term; ``refresh=1`` busts it.
          */
         get: operations["browse_api_v1_google_drive_browse_get"];
         put?: never;
@@ -9683,6 +9686,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/recurrence/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Recurrence
+         * @description What the rule being composed resolves to — "Volgende taak: za 13 sep 2026".
+         *
+         *     ``POST /leave/requests/preview``'s precedent (#48): show the number that will be stored, and
+         *     why, rather than letting the browser re-derive it. Clamping, leap years, the anchor rules and
+         *     the org's own "today" all live server-side; a preview that re-implemented them in TypeScript
+         *     would be a second opinion about a question the API already answers (#312).
+         *
+         *     A read — it stores nothing. It exists so a rule can be *checked* before it is saved.
+         */
+        post: operations["preview_recurrence_api_v1_tasks_recurrence_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/schedules": {
         parameters: {
             query?: never;
@@ -9847,6 +9877,32 @@ export interface paths {
         head?: never;
         /** Update Task */
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/ai-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Ai Status
+         * @description Just the "is schakl still filling this in?" flag (#327).
+         *
+         *     Its own endpoint because it is *polled*. The card shows a live pill while an email is being
+         *     read, and re-fetching ``GET /{task_id}`` every few seconds to learn one short string would
+         *     drag the whole detail — labels, checklists, every comment and the activity trail — across
+         *     the wire each time, for a screen that already has all of it. One indexed row, one column
+         *     (docs/PERFORMANCE.md: a row carries only what its screen draws).
+         */
+        get: operations["get_task_ai_status_api_v1_tasks__task_id__ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tasks/{task_id}/checklists": {
@@ -14357,9 +14413,13 @@ export interface components {
         };
         /**
          * DashboardTaskItem
-         * @description Only the four fields rendered by the personal dashboard task tile.
+         * @description Only the fields rendered by the personal dashboard task tile.
          */
         DashboardTaskItem: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Due Date */
             due_date: string | null;
             /**
@@ -14941,6 +15001,13 @@ export interface components {
             folder: components["schemas"]["DriveBrowseFolder"];
             /** Items */
             items: components["schemas"]["DriveBrowseItem"][];
+            /** Query */
+            query?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** DriveBulkProvisionResult */
         DriveBulkProvisionResult: {
@@ -17291,6 +17358,11 @@ export interface components {
              * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
              */
             contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @default false
+             */
+            enrich_task: boolean;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -21936,7 +22008,19 @@ export interface components {
             /** Read */
             read: boolean;
         };
-        /** Recurrence */
+        /**
+         * Recurrence
+         * @description A repeat rule, stored whole in ``tasks.recurrence`` (JSONB — no migration, #335).
+         *
+         *     The anchors are **optional and absent by default**, which is what keeps every rule stored
+         *     before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
+         *     date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
+         *     maand op dag 1" rather than "a month after whatever the deadline happens to be".
+         *
+         *     Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
+         *     422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
+         *     repeats every Tuesday is worse than one that refuses to save.
+         */
         Recurrence: {
             freq: components["schemas"]["RecurrenceFreq"];
             /**
@@ -21946,6 +22030,13 @@ export interface components {
             interval: number;
             /** @default after_completion */
             mode: components["schemas"]["RecurrenceMode"];
+            /** On Day */
+            on_day?: number | null;
+            /** On Month */
+            on_month?: number | null;
+            /** On Weekday */
+            on_weekday?: number | null;
+            plan?: components["schemas"]["RecurrencePlan"] | null;
         };
         /**
          * RecurrenceFreq
@@ -21957,6 +22048,56 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /**
+         * RecurrencePlan
+         * @description "Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+         *
+         *     The **day** comes from the occurrence — its due date, which the anchors below pin — so this
+         *     carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
+         *     *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
+         *     task whose assignee moves to a colleague must plan the colleague's calendar, not the person
+         *     who happened to write the rule.
+         */
+        RecurrencePlan: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * RecurrencePreview
+         * @description "Volgende taak: za 13 sep" — the number that will be stored, and why (#48's precedent).
+         *
+         *     The editor composes a rule and asks the API what it resolves to, rather than re-deriving the
+         *     dates in the browser: the arithmetic (clamping, leap years, the org's own "today") is
+         *     server-side and stays there (#312's "a second opinion" rule).
+         */
+        RecurrencePreview: {
+            /** Due Date */
+            due_date?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+        };
+        /** RecurrencePreviewRead */
+        RecurrencePreviewRead: {
+            /** Following */
+            following?: string[];
+            /**
+             * Next Date
+             * Format: date
+             */
+            next_date: string;
+            /** On Completion */
+            on_completion: boolean;
+            /** Planned End */
+            planned_end?: string | null;
+            /** Planned Start */
+            planned_start?: string | null;
+        };
         /** RecurringBacklogGroup */
         RecurringBacklogGroup: {
             /** Amount */
@@ -24439,6 +24580,17 @@ export interface components {
             update: components["schemas"]["UpdateInfo"];
             worker: components["schemas"]["WorkerInfo"];
         };
+        /**
+         * TaskAIStatusRead
+         * @description The polled shape behind the "schakl leest de e-mail" pill (#327) — one short string.
+         *
+         *     Deliberately not ``TaskRead``: this is fetched on a timer while a run is in flight, and the
+         *     whole point of giving it its own endpoint is that it does not drag the card with it.
+         */
+        TaskAIStatusRead: {
+            /** Ai Status */
+            ai_status?: string | null;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -24480,6 +24632,8 @@ export interface components {
         TaskDetail: {
             /** Activities */
             activities?: components["schemas"]["ActivityRead"][];
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -24528,6 +24682,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -24563,6 +24719,8 @@ export interface components {
          * @description List-row shape: enough to render a card without loading the detail.
          */
         TaskListItem: {
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -24620,6 +24778,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -24683,6 +24843,8 @@ export interface components {
         TaskPriority: "low" | "normal" | "high";
         /** TaskRead */
         TaskRead: {
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -24723,6 +24885,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Recurrence Next Run */
+            recurrence_next_run?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -30609,11 +30773,11 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
-                /** @description Filter on one lifecycle status */
+                /** @description Lifecycle status; comma-separate for several ('lead,onboarding,active'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
                 status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
-                /** @description name | client_number | status | created_at | updated_at, '-' desc */
+                /** @description name | client_number | status | created_at | updated_at, '-' desc. Default: name */
                 sort?: string | null;
                 /** @description Include the budget roll-up; costs three grouped queries */
                 hours?: boolean;
@@ -34130,6 +34294,7 @@ export interface operations {
         parameters: {
             query?: {
                 folder_id?: string | null;
+                q?: string | null;
                 refresh?: boolean;
             };
             header?: never;
@@ -34836,6 +35001,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 /** @description Only rows assigned to me */
                 mine?: boolean;
@@ -35087,6 +35253,7 @@ export interface operations {
                 /** @description Search, as on the list */
                 q?: string | null;
                 company_id?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 registrar_provider_id?: string | null;
                 dns_provider_id?: string | null;
@@ -35467,6 +35634,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 /** @description Only rows assigned to me */
@@ -35592,6 +35760,7 @@ export interface operations {
     impex_export_subscription_api_v1_impex_subscription_export_get: {
         parameters: {
             query?: {
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 /** @description List sort key, '-' desc */
@@ -35935,6 +36104,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;
@@ -44564,7 +44734,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 company_id?: string | null;
-                status?: components["schemas"]["ProjectStatus"] | null;
+                /** @description Lifecycle status; comma-separate for several ('active,on_hold'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
+                status?: string | null;
                 q?: string | null;
                 /** @description Only projects I'm assigned to (primary or not) */
                 mine?: boolean;
@@ -47322,6 +47493,39 @@ export interface operations {
             };
         };
     };
+    preview_recurrence_api_v1_tasks_recurrence_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurrencePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurrencePreviewRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_schedules_api_v1_tasks_schedules_get: {
         parameters: {
             query?: {
@@ -47901,6 +48105,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_ai_status_api_v1_tasks__task_id__ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAIStatusRead"];
                 };
             };
             /** @description Validation Error */
@@ -49582,10 +49817,12 @@ export interface operations {
                 instance_id?: string | null;
                 company_id?: string | null;
                 website_id?: string | null;
+                domain_id?: string | null;
+                hosting_id?: string | null;
                 sync_status?: string | null;
                 /** @description Filter by type; 'group' lists the groups an instance has */
                 monitor_type?: string | null;
-                /** @description linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync found a candidate for and nobody has confirmed yet */
+                /** @description linked / matched / ambiguous / unmatched, 'proposed' for everything a sync found a candidate for and nobody has confirmed yet, or 'unlinked' for everything still attachable */
                 link_status?: string | null;
                 /** @description Compute total; set false for pickers */
                 count?: boolean;

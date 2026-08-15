@@ -33,7 +33,11 @@ export const load: LayoutServerLoad = async (event) => {
   return {
     summary: summary.data ?? null,
     companies: companies
-      ? lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name }))
+      ? lookupItems(companies, "companies").map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+        }))
       : [],
   };
 };

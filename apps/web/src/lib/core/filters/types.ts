@@ -66,6 +66,17 @@ export interface SelectFilter<K extends string = string> extends FilterBase<K> {
   /** Shown while nothing is picked; this is the control's name to the user. */
   placeholder: string;
   options: FilterOption[];
+  /**
+   * Options that exist but are not on offer — an archived client, a finished project — shown
+   * only once the user types, under `archivedLabel` (`Combobox`'s own `archived` bucket).
+   *
+   * A filter *may* legitimately point at a retired row, so these are never dropped; they are
+   * merely not suggested, and they arrive already split by the owning module
+   * (`$lib/modules/companies/picker`), because which status retires a row is its vocabulary.
+   */
+  archived?: FilterOption[];
+  /** Heading above the archived rows. Required in practice whenever `archived` is non-empty. */
+  archivedLabel?: string;
 }
 
 /**

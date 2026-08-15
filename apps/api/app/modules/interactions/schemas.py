@@ -214,6 +214,15 @@ class InteractionApprove(BaseModel):
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
+    #: "Laat schakl deze taak invullen" (#327): read this email into the task it is being filed
+    #: onto — notes, a checklist, a deadline, a comment, the links it names. Opt-in per approval
+    #: and off by default, because sending a client's own words to a model is a decision to be
+    #: made rather than inherited from whatever the first patch did.
+    #:
+    #: Best-effort by construction: it is an *extra* on an approval, so it never fails one. No
+    #: task named, or no AI configured for this org, and the approve lands exactly as it would
+    #: have — the alternative is losing a review to an optional convenience.
+    enrich_task: bool = False
 
 
 class InteractionReject(BaseModel):

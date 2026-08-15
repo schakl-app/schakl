@@ -9,8 +9,6 @@
    * Bewerken edits the *client's* fields, a different surface. Attaching, detaching and promoting
    * a contact are definition changes, so they only appear once this panel is in edit mode.
    */
-  import { Check, Pencil } from "@lucide/svelte";
-
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
 
@@ -19,8 +17,8 @@
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
@@ -88,7 +86,7 @@
     })),
   );
 
-  // Use mode is the default; the ⋯ menu opens edit mode (docs/UX.md §3).
+  // Use mode is the default; the ⋯ menu opens edit mode and a Klaar button leaves it (#337).
   let editing = $state(false);
 
   // Two keys, because the panel does two things: attaching or detaching someone who already
@@ -127,15 +125,11 @@
      only the write, with a message naming neither permission (#310). -->
 {#if canLink}
   <div class="mb-3 flex justify-end">
-    <ActionsMenu
+    <EditToggle
       compact
-      items={[
-        {
-          label: editing ? t("common.done") : t("common.edit"),
-          icon: editing ? Check : Pencil,
-          onclick: () => (editing = !editing),
-        },
-      ]}
+      {editing}
+      onedit={() => (editing = true)}
+      onexit={() => (editing = false)}
     />
   </div>
 {/if}

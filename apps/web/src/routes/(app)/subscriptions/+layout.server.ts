@@ -28,8 +28,16 @@ export const load: LayoutServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "company" } } }),
   ]);
   return {
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
-    projects: lookupItems(projects, "projects").map((p) => ({ id: p.id, name: p.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+    })),
+    projects: lookupItems(projects, "projects").map((p) => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+    })),
     definitions: definitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
   };

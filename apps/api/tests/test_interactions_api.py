@@ -665,7 +665,7 @@ async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
         member_headers = await auth_cookie(member)
         row_id = await _seed_gmail_row(t, member.id, pending=True)
         # Pending: only the mailbox owner sees the row (metadata, never a body — the body is
-        # fetched after approval); edit/delete are closed even for them.
+        # fetched after approval), and editing is closed even for them.
         listed = (
             await c.get(
                 "/api/v1/interactions", params={"status": "pending"}, headers=member_headers
@@ -678,9 +678,17 @@ async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
                 f"/api/v1/interactions/{row_id}", json={"subject": "X"}, headers=member_headers
             )
         ).status_code == 409
+        # Deleting is **not** closed, and a second throwaway row says so without spending the one
+        # this test goes on to approve. Refusing it was the same conflation as everywhere else —
+        # ``delete`` shared edit's source check — and a pending row folds to itself (it gets no
+        # ``conversation_id`` until it is logged), so this removes exactly the one e-mail.
+        spare = await _seed_gmail_row(t, member.id, message_id="spare", thread_id="spare")
         assert (
-            await c.delete(f"/api/v1/interactions/{row_id}", headers=member_headers)
-        ).status_code == 409
+            await c.delete(f"/api/v1/interactions/{spare}", headers=member_headers)
+        ).status_code == 204
+        assert (
+            await c.get(f"/api/v1/interactions/{spare}", headers=member_headers)
+        ).status_code == 404
 
         # Even a wildcard-holding owner cannot decide about someone else's mailbox.
         assert (
@@ -1511,3 +1519,65 @@ async def test_every_person_on_the_roster_gets_the_activity_mirror(client_for) -
         assert "interaction.unlinked" in await actions(bram["id"])
         # Anna never left, so nothing announces that she did.
         assert "interaction.unlinked" not in await actions(anna["id"])
+
+
+async def test_deleting_a_gmail_row_takes_its_conversation_and_a_pending_one_stands_alone(
+    client_for,
+) -> None:
+    """What a delete is *about* is a row on the list, and a row on the list is a conversation.
+
+    Two rules meet here and each was a bug on its own.
+
+    **Source is not a reason to refuse a delete.** ``delete`` used to share ``_reviewless_only``
+    with edit, which reads ``source == gmail`` and nothing else, so every gmail row was
+    undeletable — a logged one with nowhere else to go, since ``reject`` refuses anything already
+    reviewed. Editing stays refused (a gmail row's fields mirror a real message); deleting
+    removes our copy and rewrites nothing.
+
+    **And a folded row stands for its whole thread** (#272). Deleting only the representative
+    left the siblings behind, redrew the same conversation one message shorter, and reported
+    complete success — the original complaint in a new costume. A *pending* row needs no special
+    case to stay out of that: ``record_email`` only sets ``conversation_id`` on a logged row, so
+    one still awaiting review folds to itself and deletes alone.
+    """
+    t = await make_tenant("inter-del-gmail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        thread = [
+            await _seed_gmail_row(
+                t, t.user.id, message_id=f"m{i}", thread_id="one-thread", pending=False
+            )
+            for i in range(3)
+        ]
+        pending = await _seed_gmail_row(t, t.user.id, message_id="p1", thread_id="p-thread")
+
+        # The three fold to one row, and the badge counts the thread rather than the page.
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()
+        folded = [row for row in listed["items"] if row["id"] in thread]
+        assert len(folded) == 1, [row["subject"] for row in listed["items"]]
+        assert folded[0]["conversation_count"] == 3
+
+        # Editing stays refused for every gmail row — that rule was never the problem.
+        for row_id in (thread[0], pending):
+            edit = await c.patch(
+                f"/api/v1/interactions/{row_id}",
+                json={"subject": "Handmatig herschreven"},
+                headers=headers,
+            )
+            assert edit.status_code == 409, edit.text
+            assert edit.json()["error"]["message"] == "errors.interactions_gmail_readonly"
+
+        # Deleting the one row the screen showed takes the conversation it stood for.
+        gone = await c.delete(f"/api/v1/interactions/{folded[0]['id']}", headers=headers)
+        assert gone.status_code in (200, 204), gone.text
+        for row_id in thread:
+            assert (
+                await c.get(f"/api/v1/interactions/{row_id}", headers=headers)
+            ).status_code == 404
+
+        # The pending row is its own conversation, so it deletes alone and is untouched by the
+        # thread above it.
+        assert (await c.get(f"/api/v1/interactions/{pending}", headers=headers)).status_code == 200
+        alone = await c.delete(f"/api/v1/interactions/{pending}", headers=headers)
+        assert alone.status_code in (200, 204), alone.text
+        assert (await c.get(f"/api/v1/interactions/{pending}", headers=headers)).status_code == 404

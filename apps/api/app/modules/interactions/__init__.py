@@ -7,7 +7,13 @@ package self-registers the module (router, company panel, permissions, i18n name
 
 from __future__ import annotations
 
+from arq import cron
+
 from app.modules.interactions.bulk import INTERACTION_BULK
+from app.modules.interactions.jobs import (
+    interactions_enrich_task,
+    interactions_reap_stale_enrichment,
+)
 from app.modules.interactions.panels import interactions_company_panel
 from app.modules.interactions.permissions import INTERACTION_PERMISSIONS
 from app.modules.interactions.router import router
@@ -23,6 +29,11 @@ module = ModuleDescriptor(
     panels=[interactions_company_panel],
     permissions=INTERACTION_PERMISSIONS,
     bulk=[INTERACTION_BULK],
+    # "Laat schakl deze taak invullen" (#327) runs in the worker: an email's body lands *after*
+    # the approving request has committed, so nothing about this can happen inside it.
+    worker_functions=[interactions_enrich_task],
+    # A run claimed by a worker that is no longer there has no other way back (#300).
+    cron_jobs=[cron(interactions_reap_stale_enrichment, minute={0, 15, 30, 45})],
 )
 
 registry.register(module)

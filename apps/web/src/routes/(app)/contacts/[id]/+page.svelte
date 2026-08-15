@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -10,9 +10,9 @@
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
@@ -96,29 +96,26 @@
   <div>
     <h1 class="mt-2 text-xl font-semibold text-text">{fullName}</h1>
   </div>
+  <!-- Entering edit mode is a menu item, leaving it is a button (#337): a long record scrolls
+       the form's own Opslaan/Annuleren out of view, so the header keeps an exit — but the *same*
+       exit, never a third one folded into the ⋯. -->
   {#if canWrite || canDelete}
-    <ActionsMenu
-      items={[
-        ...(canWrite
-          ? [
-              {
-                label: editing ? t("common.cancel") : t("common.edit"),
-                icon: Pencil,
-                onclick: () => (editing = !editing),
-              },
-            ]
-          : []),
-        ...(canDelete
-          ? [
-              {
-                label: t("common.delete"),
-                icon: Trash2,
-                danger: true,
-                onclick: () => (confirmDelete = true),
-              },
-            ]
-          : []),
-      ]}
+    <EditToggle
+      {editing}
+      canEdit={canWrite}
+      exit="cancel"
+      onedit={() => (editing = true)}
+      onexit={() => (editing = false)}
+      items={canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => (confirmDelete = true),
+            },
+          ]
+        : []}
     />
   {/if}
 </div>

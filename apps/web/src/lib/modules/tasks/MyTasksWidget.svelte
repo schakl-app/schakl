@@ -10,6 +10,7 @@
     title: string;
     priority: string;
     due_date: string | null;
+    company_name?: string | null;
   }
   const tasks = $derived((data ?? []) as MyTask[]);
   const today = new Date().toISOString().slice(0, 10);
@@ -23,11 +24,13 @@
   <ul class="divide-y divide-border">
     {#each rows as task (task.id)}
       <li class="flex items-center justify-between gap-2 py-1.5">
-        <a
-          href={`/tasks/${task.id}`}
-          class="min-w-0 flex-1 truncate text-sm text-text hover:text-brand"
-        >
-          {task.title}
+        <a href={`/tasks/${task.id}`} class="group min-w-0 flex-1">
+          <span class="block truncate text-sm text-text group-hover:text-brand">{task.title}</span>
+          {#if task.company_name}
+            <!-- Which client's work this is. "Nieuwsbrief plannen" is four indistinguishable
+                 rows on a list spanning four clients, and only opening one tells them apart. -->
+            <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+          {/if}
         </a>
         <span
           class="shrink-0 text-xs tabular-nums {red

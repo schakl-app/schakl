@@ -381,3 +381,121 @@ async def test_a_vanished_monitor_keeps_the_group_it_was_put_in(client_for, kuma
         after = (await c.get(f"/api/v1/uptime/monitors/{monitor['id']}", headers=headers)).json()
         assert after["sync_status"] == "missing"
         assert after["parent_id"] == group["id"]
+
+
+# ------------------------------------------------- the read half of a link (this fix)
+
+
+async def test_a_domain_link_is_readable_by_the_domain_it_was_made_on(client_for, kuma) -> None:
+    """A link you can write is a link something has to read back.
+
+    `domain_id` had a matcher, a horizon, a confirm button and an activity line, and no way to
+    ask "what watches this domain" — so confirming *"koppel aan domein klant.nl"* stored the row
+    correctly and showed it on no screen in the product, which reads exactly like a button that
+    does nothing. The panel filter is the whole fix, so it is what this pins.
+    """
+    t = await make_tenant("uptime-domain-read")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers, "Klant")
+        domain = await _domain(c, headers, "klant.nl", company)
+        instance_id = await _connected(c, headers)
+        # A host inside a zone we hold that will never be a website — `matching`'s own reason
+        # for the domain rung, and the case with no website to fall back on.
+        kuma.add(name="Mailserver", type="ping", hostname="mail.klant.nl")
+        await c.post(f"/api/v1/uptime/instances/{instance_id}/sync", headers=headers)
+        monitor = (await c.get("/api/v1/uptime/monitors", headers=headers)).json()["items"][0]
+
+        await c.post(
+            f"/api/v1/uptime/monitors/{monitor['id']}/link",
+            json={"entity_type": "domain", "entity_id": domain},
+            headers=headers,
+        )
+        panel = (
+            await c.get(f"/api/v1/uptime/monitors?domain_id={domain}", headers=headers)
+        ).json()
+        assert [m["name"] for m in panel["items"]] == ["Mailserver"]
+
+        # And the filter is a filter, not a decoration: another domain answers nothing.
+        other = await _domain(c, headers, "anders.nl", company)
+        assert (
+            await c.get(f"/api/v1/uptime/monitors?domain_id={other}", headers=headers)
+        ).json()["total"] == 0
+
+
+async def test_unlinked_offers_what_no_proposal_ever_would(client_for, kuma) -> None:
+    """The picker's question is "what may I still attach", not "what did the matcher find".
+
+    Asking for `unmatched` would offer a monitor whose proposal nobody confirmed and hide the ones
+    with no proposal at all — and the second set is exactly why the picker exists, because before
+    it a monitor the matcher found nothing for appeared on no screen and could never be attached.
+    """
+    t = await make_tenant("uptime-unlinked")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers, "Klant")
+        domain = await _domain(c, headers, "klant.nl", company)
+        website = await _website(c, headers, domain)
+        instance_id = await _connected(c, headers)
+        kuma.add(name="Website", url="https://klant.nl/")  # matches → a proposal
+        kuma.add(name="Iets van niemand", url="https://192.0.2.7/")  # matches nothing at all
+        await c.post(f"/api/v1/uptime/instances/{instance_id}/sync", headers=headers)
+
+        both = (
+            await c.get("/api/v1/uptime/monitors?link_status=unlinked", headers=headers)
+        ).json()
+        assert sorted(m["name"] for m in both["items"]) == ["Iets van niemand", "Website"]
+        assert sorted(m["link_status"] for m in both["items"]) == ["matched", "unmatched"]
+
+        # Attach the one nothing proposed — the act that had no route through the UI.
+        stray = next(m for m in both["items"] if m["name"] == "Iets van niemand")
+        linked = await c.post(
+            f"/api/v1/uptime/monitors/{stray['id']}/link",
+            json={"entity_type": "website", "entity_id": website},
+            headers=headers,
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()["company_id"] == company
+
+        # It leaves the attachable set, and the one still unconfirmed stays in it.
+        after = (
+            await c.get("/api/v1/uptime/monitors?link_status=unlinked", headers=headers)
+        ).json()
+        assert [m["name"] for m in after["items"]] == ["Website"]
+
+
+async def test_meta_resolves_the_names_it_promises(client_for, kuma, count_queries) -> None:
+    """`company_name` and `instance_name` were declared, documented, and filled by nobody.
+
+    Pinned with the query count because the shape that would break it is invisible in the JSON:
+    resolved per row, a list of one and a list of fifty look identical (docs/PERFORMANCE.md).
+    """
+    t = await make_tenant("uptime-meta")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers, "Klant BV")
+        domain = await _domain(c, headers, "klant.nl", company)
+        website = await _website(c, headers, domain)
+        instance_id = await _connected(c, headers)
+        for n in range(4):
+            kuma.add(name=f"Monitor {n}", url="https://klant.nl/")
+        await c.post(f"/api/v1/uptime/instances/{instance_id}/sync", headers=headers)
+        for m in (await c.get("/api/v1/uptime/monitors", headers=headers)).json()["items"]:
+            await c.post(
+                f"/api/v1/uptime/monitors/{m['id']}/link",
+                json={"entity_type": "website", "entity_id": website},
+                headers=headers,
+            )
+
+        with count_queries() as counter:
+            page = (
+                await c.get("/api/v1/uptime/monitors?meta=true&count=false", headers=headers)
+            ).json()
+        assert {m["company_name"] for m in page["items"]} == {"Klant BV"}
+        assert {m["instance_name"] for m in page["items"]} == {"Kuma"}
+        companies = [s for s in counter.statements if "FROM companies" in s]
+        assert len(companies) == 1, f"one read for the page, not one per row: {companies}"
+
+        # Off by default: a picker renders names it never reads.
+        bare = (await c.get("/api/v1/uptime/monitors", headers=headers)).json()
+        assert bare["items"][0]["company_name"] is None

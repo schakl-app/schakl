@@ -1,5 +1,6 @@
 import { fail } from "@sveltejs/kit";
 
+import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -132,7 +133,7 @@ export const actions: Actions = {
       body: {
         started_at: `${date}T${start}:00Z`,
         ended_at: `${date}T${end}:00Z`,
-        break_minutes: Number(form.get("break_minutes") ?? 0) || 0,
+        break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,

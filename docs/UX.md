@@ -19,6 +19,12 @@
    changing status, logging time) is the default surface. Changing a record's *definition*
    (title, relations, budgets, recurrence) lives behind an explicit edit mode, reached via
    the ⋯ (dots) menu. Destructive actions live in the same menu and always confirm.
+   **Entering a mode is a menu item; leaving it is a button** (#337). The toggle changes *shape*
+   with the mode, not only its label: use mode is ⋯ → Bewerken, edit mode is a visible **Klaar**
+   (or **Annuleren**, where the surface posts) standing where the ⋯ stood. A ⋯ whose only item is
+   "Klaar" is the tell — a button wearing a menu's coat, and two clicks plus a menu for the one
+   act the user still wants. Both shapes live in `EditToggle` (`$lib/core/ui/`), which keeps
+   drawing the menu for whatever *else* the screen put in it.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -56,6 +62,20 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
+- **A duration is typed, not counted** (#326). Every field whose subject is a span of time —
+  a task's budget, a scheduled block, worked hours, a break — takes free text through the shared
+  `core/ui/DurationInput` and the one parser behind it (`core/duration.ts`): `1:40`, `100`,
+  `100m`, `1h40` and `1,5` all land on the same minutes, and the field canonicalises to `1:40`
+  afterwards. **Never a stepped `<input type="number">` in minutes.** That control asked an agency
+  to do the arithmetic (an hour and a half is `90`) while the read directly above it said
+  `1h 30m`, and its `step="15"` was a rule nobody ever decided: Chrome blocked the submit with
+  *"the two nearest valid values are 90 and 105"* on a number the API accepts without complaint.
+  A client-side rule stricter than the server's is a control refusing valid input, so this one
+  states **no** range of its own — the API is the authority, and a second copy of that rule here
+  is one that drifts. What travels is the text, not a hidden number, and the server action runs
+  the same parser (`parsePostedMinutes`), so a post with JS off lands on the same value. Text it
+  cannot read is refused visibly, through the browser's own validity machinery; it never guesses
+  a number nobody typed.
 - **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects, and
   **every entity-reference picker offers inline-create — this is per-picker definition of done,
   not an optional flourish.** Typing an unknown name offers "＋ … toevoegen", which opens the
@@ -118,6 +138,25 @@
   single page load for a modal most visits never open.
   **And the ＋ is a write control, so it self-gates on the API's own permission** (CLAUDE.md §15) —
   the timeline is client-reachable, and `!isPortal` is not the gate.
+  **A picker's opening list is a suggestion, so a record whose life is over is not on it —
+  and is still findable, and still says what it is.** Every client picker in the app was
+  `companies.map(c => ({value: c.id, label: c.name}))`, twenty-odd copies of a mapping that
+  could not tell a client the agency stopped working for from one it works for today; the
+  project pickers were the same one line. Hiding those rows outright is the other mistake, and
+  the worse half on its own: people do book a forgotten hour on a project they closed last week,
+  and a picker that cannot name it sends them to another screen. So `Combobox`'s `archived`
+  bucket takes them — out of the opening list, found by typing, never ranked above a live row —
+  and one helper per module decides which rows those are (`$lib/modules/companies/picker`,
+  `$lib/modules/projects/picker`, over `$lib/core/picker`). Three rules travel with it. **A
+  status is said out loud rather than implied by its bucket**, so a paused project reads "On
+  hold" while it is still on offer and an archived client reads "Gearchiveerd" under the
+  search. **Whatever is already picked is always offered**, or the field cannot say what is in
+  it and an archived value renders as an empty box. And **core holds none of the vocabulary**:
+  a shared picker (`PartyPicker`, `FilterBar`'s select) *takes* the module's lifecycle, exactly
+  as `Combobox` takes `archivedLabel` instead of holding a word. The retired sets differ on
+  purpose — a client is only retired by the archive, because a lead is being chased and an
+  offboarding client is still being invoiced, while a project is retired by `completed` as well,
+  because delivered work is not something to suggest booking against.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
@@ -326,9 +365,18 @@
     one sets `nowrap` and nothing else, and spills instead of ellipsizing.
   - **Every list ends in a pager, and the pager is the address bar** (`core/ui/Pagination.svelte`,
     docs/PERFORMANCE.md). A list is where the whole set lives, so it never shows a prefix of
-    itself: the bar states the honest range ("51–100 van 812"), offers **25 / 50 / 100 / 200** per
-    page, and appears only once there is more than one page — a pager over nine rows is
-    decoration. Three things it must keep being:
+    itself: the bar states the honest range ("51–100 van 812") and offers
+    **25 / 50 / 100 / 200** per page. Four things it must keep being:
+    - **Always there** (#334). The bar used to hide itself whole below one page, on the grounds
+      that a pager over nine rows is decoration — true of the arrows, false of everything beside
+      them. "12 van 12" is the answer to "heeft mijn filter iets gedaan", and a short list is
+      the only place the reader cannot count for themselves; the size selector was unreachable
+      on exactly the lists a 50-row default is worst for. So the frame, the count and
+      **Per pagina** render at twelve rows and at zero (where the range becomes "Geen
+      resultaten" rather than "0–0 van 0"), and only the arrows and numbered chips stand down
+      when there is nowhere to step. Seven screens printed their own "Totaal: 12" under the
+      heading to work around this, in two different wordings, saying it twice on a long list —
+      they are gone, and a heading count is not the answer to wanting one back.
     - **Links, not buttons.** `<a href="?page=3">` is what gives the back button, middle-click,
       preload-on-hover and a page you can send someone. Opening a client from page 4 and coming
       back to page 1 was the bug; the URL carrying the view is the fix, and SvelteKit restores
@@ -384,6 +432,44 @@
     the table down mid-gesture, walking the rows away from the cursor on a list you tick
     top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
     feature.
+  - **A tick lives exactly as long as its row is on screen** (#330). `DataTable` used to empty the
+    whole selection whenever `rows` changed *identity*, which is every load of the same route and
+    not every change of the row set — so the ticks were thrown away by things that are not a
+    different set at all. Switching the page size from 25 to 100 lost twelve of them while all
+    twelve rows stayed on screen; so did a `reloadOn` column toggle and any `invalidateAll()`
+    raised by something else on the page, and since the reset wrote through a `$bindable` the
+    page's own selection was emptied without the page ever hearing about it. Worse, the one
+    gesture that would let a bulk action reach past a screenful — raising the page size — was
+    exactly the gesture that threw the selection away. **Intersecting** with the rows on screen
+    says the same thing honestly and needs no bookkeeping about *why* they changed: a filter drops
+    what vanished, page 2 drops page 1's, 25 → 100 drops nothing, and a bulk delete that landed
+    drops precisely the rows it removed. The scope sentence beside the count ("De selectie geldt
+    alleen voor deze pagina") is then true rather than approximately true — and it stays per page
+    deliberately, because the API's `MAX_BULK_IDS` is 200 *because* that is the largest page the
+    pager offers: a selection spanning pages would buy nothing `?size=200` does not, and 422 past
+    it. The ✕ beside the count is the way to drop a selection without leaving the mode.
+  - **A control that describes a selection stays on screen while the selection is being made**
+    (#331). On a 100- or 200-row page you scroll down to pick rows, and everything that tells you
+    what you are doing — the count, the scope, each action's `eligible` suffix — was above the
+    fold at the moment it was being decided; you ticked, scrolled back up, and found out there
+    whether you had ticked eleven or twelve. The strip is `sticky` while the mode is on, and three
+    details are the whole of it: what sticks is an **opaque wrapper**, because the bar's own
+    `bg-brand/5` would smear the rows scrolling through it; it sits at `z-20`, over the table and
+    under `ActionsMenu`'s `fixed` panel; and below `sm` the actions **scroll sideways rather than
+    wrap**, because a wrapping strip stuck to the top of a phone eats a third of the screen. A
+    list nobody is editing is unaffected — no bar, and the first row is exactly where it was.
+  - **Two controls that look alike must not have different scopes** (#332). With twelve rows
+    ticked, the strip's Verwijderen meant twelve and every row's ⋯ Verwijderen still meant one,
+    with nothing on screen to tell them apart and the confirm naming a single record only *after*
+    the click. Both mistakes were available, including the expensive one: ticking twelve, opening
+    the ⋯ on one of them, and deleting a single client while believing you deleted twelve. So the
+    record menu is **withdrawn while the rows are being picked** — there is one control at a time,
+    and it is the one that describes what you picked. "Being picked" is the mode where a list has
+    one and a live tick where it does not, so the permanently selectable lists (the uren report,
+    the two leave rosters) keep their menus right up to the moment they would become ambiguous.
+    The trailing cell is held open rather than dropped, so no column reflows; and because the
+    phone row is the *page's* own snippet, `DataTable` hides its ⋯ with one rule against
+    `ActionsMenu`'s `data-actions-menu` marker rather than nine `{#if}`s that would drift apart.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
     someone else's mailbox with your own — so each button acts on **its own eligible
@@ -695,7 +781,11 @@
 - **One save button per editing surface — never per field.** An edit mode collects all its
   fields into a single form (use the HTML `form="…"` attribute / the `formId` prop on
   `Combobox`/`DateInput` when fields live in different layout columns) with one save at the
-  end. Per-field save buttons are a known corrected mistake.
+  end. Per-field save buttons are a known corrected mistake. **And one exit, in one place**
+  (#337): a detail page keeps its Opslaan/Annuleren at the foot of the form *and* an
+  `EditToggle` exit at the heading — a long record scrolls its own buttons out of view — but
+  never a third one folded back into the ⋯. A panel that saves each act as it happens exits
+  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses.
 - **Native controls inherit the huisstijl** via `accent-color: var(--brand-primary)` on
   `:root` (checkboxes, radios). But `<html lang>` does **not** control how they format:
   browsers render `<input type="date">` and `<input type="time">` after the *browser/OS*
@@ -940,6 +1030,38 @@
   section **and** an Instellingen screen, and both ways in stay true.
   `tests/unit/settings-rail.test.ts` fails if a registry entry outside `/settings/` has no shell —
   nothing else in the build would notice, because the screen renders perfectly well without it.
+- **The breadcrumb row follows the way in, and only as far as the record confirms it**
+  (`core/breadcrumbs.ts`, `core/breadcrumb-labels.ts`, `core/breadcrumb-trail.svelte.ts`). The app
+  is a graph, not a tree: a project hangs off a client, a task off a project, and each is also
+  reachable from its own list in the sidebar. A purely path-derived row is therefore right about
+  *where you are* and silent about *how you got here* — opening a project from Acme's page read
+  "Projecten › Site herbouw", with no way back to the client whose page you were reading a click
+  ago. So the previous page's record is offered to the next one as a candidate ancestor and is
+  drawn **only if the new record names it** (`project.company_id === Acme.id`): history suggests,
+  the record decides. That is the whole safety property. A trail assembled from visit order alone
+  starts lying the first time somebody opens a record in a new tab, follows a notification link, or
+  walks two unrelated screens in a row — it would be a back button claiming to be a hierarchy. It
+  walks *back* rather than resetting when the immediately previous record is not a parent, so
+  leaving a task for one of its client's invoices keeps `Klanten › Acme`. And it is browser-only:
+  `afterNavigate` never runs server-side, so a first load, a reload and a shared link all render the
+  plain path-derived row, which is the honest answer — nobody came from anywhere.
+  Three rules keep the row readable and true. **A dynamic segment is one the route says is
+  dynamic**, not one that *looks* like a UUID — a Google Ads account id is a number, so
+  `/marketing/google-ads/4155551234` printed the raw customer id as a crumb until `page.route.id`
+  became the authority. **A section crumb is whatever the sidebar calls that section**: a tenant
+  renaming Klanten to Relaties (#169) renamed the nav item and nothing else, so the crumb went on
+  contradicting the menu directly above it; the nav registry is read first and the static map is the
+  fallback for the sections that contribute no nav item. And **length is capped, not thrown away** —
+  past four crumbs the middle folds into a "…" that opens, because a trail which silently dropped
+  its ancestors is worse than a long one: those crumbs are the only link to the records they name.
+  A label is clipped by width with its full text in `title`, never shortened in JavaScript, which
+  would mean deciding where a name may break.
+  `tests/unit/breadcrumbs.test.ts` sweeps the real route tree and fails on any segment nothing
+  names. That is the enforcement this row needs: it is rendered by the layout for every page, so a
+  new screen gets one whether or not anyone thought about it, and "nobody thought about it" looked
+  like `prettify()` — the slug with a capital letter, in English, on a Dutch-default app. `/reports`
+  read "Reports" and `/companies/<id>/reporting` read "Reporting" for exactly that reason, and
+  nothing in the build noticed, because a prettified slug renders perfectly well.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
@@ -1028,6 +1150,18 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A list that opens on everything it has, rather than on what anyone is working on.** Klanten
+  listed the archive among the live clients and sorted newest-first, so the first screen of an
+  agency's oldest relationship was whoever they signed up last, mixed with people they stopped
+  working for years ago (#329). It now opens on every status but archived, A–Z. Two rules came
+  out of it, and both are about *saying so*. **A narrowing default is a selected pill, not the
+  absence of one**: a list quietly missing its archive looks identical to a list that has none,
+  and the only thing that can tell them apart is a control showing itself on. So "Niet
+  gearchiveerd" sits in the pill row, next to "Alles" for the other half — a state you can reach
+  needs a token in the URL (`?status=all`) or it cannot be linked, bookmarked or reached back to.
+  And **the export is handed what the screen resolved, never what the URL says**: `ImpexBar`'s
+  `filters` exist so the spreadsheet is the list on screen, and passing the token instead of the
+  resolved filter is how the archived rows quietly come back in the file.
 - **A bare `use:enhance` on a form that survives its own save.** The default reset rewound the
   roles matrix and the users-page role ticks to their server-rendered marks on every save — the
   UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
@@ -1166,6 +1300,15 @@
   now (`core/ui/Pagination.svelte`), and the reason it is shared is that the interesting parts —
   the URL carrying the page so the back button works, every filter resetting it, the size saved
   per user — are exactly the parts a hand-rolled copy leaves out.
+- **A shared component that hides more than it should, so its callers reimplement the rest.**
+  That same pager then dropped its whole `<nav>` below one page, reasoning correctly that arrows
+  over nine rows are decoration and taking the count and the size selector with them. Seven of
+  nineteen lists answered by printing their own total under the heading — two wordings, stated
+  twice on a long list — and the twelve that did not simply never told a user how many rows they
+  were looking at. The tell is the workaround: when several call sites grow the same little
+  patch, the shared component is refusing something they all need, and the fix belongs inside it
+  (#334). The narrower lesson is worth keeping too: **"this control can do nothing here" is a
+  reason to stand the control down, never the surrounding information.**
 - **A filter applied in the browser.** The clients list narrowed `data.companies` by status in
   the page. That was survivable only while the page *was* the list: against a paged list it
   filters the fifty rows you happen to hold and reports a total counted over all of them. The
@@ -1276,3 +1419,67 @@
   standing rule for all of them — an untrusted path goes through `safeInternalPath` at the point
   of *use*, since `//evil.example` and `/\evil.example` both read as another origin to a browser
   and a login screen is exactly where a look-alike host is worth the most.
+
+- **Two front doors to one fact, and the discoverable one was the wrong one.** A client's page
+  drew Marketing and Google Ads as two panels, one under the other, both about Google Ads and
+  each offering to connect it. They wrote to different tables: the marketing panel's picker
+  recorded the marketing link *and* the Ads account row, while the Google Ads panel's "Account
+  koppelen" sent you to Instellingen → Google Ads, which recorded only the account. So the
+  obvious path left the client half-connected — the Google Ads panel listed the account, the
+  marketing panel directly above it still said nothing was connected, and `/marketing` agreed
+  with the panel that was wrong. Nothing on any of the three screens could explain it, and the
+  cure was to do it a second time somewhere else. Three rules (#338).
+  **The write is the thing to unify, not the button.** Deduplicating the controls without the
+  API mirror (`google_ads.account.attached` → `marketing`) would have left the same split state
+  reachable through the MCP surface and the hand-typed form; deduplicating the write without the
+  controls would have left two screens teaching two different gestures. Do both, and do the write
+  first — it is what makes any of the buttons safe to point at the same place.
+  **A panel that is about X must be able to do X, without leaving the client.** Every other panel
+  on a company page keeps the client in the link it offers (`＋ Nieuwe website` →
+  `?company=<id>&new=1`); the Ads panel dropped it and landed you on an org-wide credentials
+  screen. If the reason a control lives elsewhere is "that is where the table is managed", the
+  control is in the wrong place.
+  **A field a picker can answer must never be typed.** Instellingen asked for the customer id, the
+  account name *and* the `Beheerdersaccount (MCC)` by hand — the last of which is the one value
+  that 403s every later call on that account if it is wrong. `GET /google-ads/accounts/available`
+  had resolved all three since the module shipped, walking the manager hierarchy and tagging each
+  child with the manager it must be reached through, and **no screen called it**: `grep` found it
+  only in `schema.d.ts`. A finished endpoint with no caller is not a spare part; it is a screen
+  somebody still has to write.
+- **One subject, three widgets, three places.** The task card treated "when is this happening" as
+  three unrelated controls: Vervaldatum in the details card, Planning in the main column, and
+  Herhaling as a three-control box at the very bottom of the sidebar, below Labels, edit-mode only.
+  The seams between them were where the UX failed, and every failure was a *seam* failure — a
+  recurrence you could not read back, a repeat that dropped fields nobody had decided about, a
+  completed task keeping its planned block while its successor started unplanned. Four rules came
+  out of fixing it (#335).
+
+  **A rule you can write is a rule you can read.** `{freq, interval, mode}` was writable in three
+  boxes and readable nowhere: use mode showed a chip saying `↻ Maandelijks` and no interval, no
+  mode and no next date — and it *could not have* shown one, because `recurrence_next_run` was
+  stored and exposed to no caller. A control whose stored value has no read state is half a
+  feature; the read state is what makes a wrong setting findable. So the rule is one sentence
+  ("Elke maand · op dag 1 · op schema") assembled by one function, and the chip, the Planning card
+  and the editor's own preview all print it.
+
+  **The number that will be stored is shown while it is being typed, and the API is the one who
+  says it** (`POST /leave/requests/preview`'s precedent, #48). Clamping, leap years and "never in
+  the past" are arithmetic; a browser that re-derived them would be a second opinion about a
+  question the API already answers (#312). The preview goes through a `+server.ts` beside the
+  page, never `fetch("/api/v1/…")` from the browser — only traefik routes that prefix, so the same
+  call 404s on every dev server and the preview would silently never appear.
+
+  **A control that acts on the *stored* record, offered inside an edit form, saves first.** #230's
+  create-then-edit is right — the record exists, so Inplannen is reachable without a save — but
+  the schedule modal prefills from what is stored, so typing a title and a budget and pressing
+  Inplannen booked a block called "Naamloze taak" for a default hour, Google event included. One
+  round trip ahead of the one the user asked for, through the same single save, and edit mode
+  stays open because the user asked to plan and not to stop editing. Disabling the button was the
+  rejected alternative: a padlock on the thing the user is most likely to want next (#253).
+
+  **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
+  successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an
+  ordinary task. Both ends now carry a dated, linked activity line, and the finish prompt is where
+  the two remaining consequences are stated: a future planned block that would otherwise stay
+  standing in the Agenda and in Google (removable in the same confirm, named with its date), and
+  the good news that the rule has already scheduled the next one.

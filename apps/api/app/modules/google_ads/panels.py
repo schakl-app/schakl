@@ -42,6 +42,11 @@ async def _provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
             for row in accounts
         ],
         "can_manage": ctx.can("google_ads.settings.manage"),
+        # The connect control on this panel posts a **marketing link** (#338), so it mirrors
+        # that key and not this module's — #310's rule: a control gated on the permission the
+        # screen is *about* rather than the one its call makes renders for someone the API
+        # then refuses, with a bare "no access" no label on the screen explains.
+        "can_link": ctx.can("marketing.link.manage"),
     }
 
 

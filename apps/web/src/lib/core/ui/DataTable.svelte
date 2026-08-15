@@ -18,7 +18,7 @@
    * merely highlights — the same compromise the time-overview table already made.
    */
   import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "@lucide/svelte";
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
 
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
@@ -40,6 +40,7 @@
     mobileRow,
     empty,
     selectable = false,
+    selecting = false,
     selected = $bindable([]),
     selection,
     groups,
@@ -74,8 +75,18 @@
     /** Rendered instead of the grid below `sm`. */
     mobileRow?: Snippet<[T]>;
     empty?: Snippet;
-    /** Adds a leading checkbox column and select-all. Costs nothing when false. */
+    /**
+     * This list can be selected **at all**: adds the leading checkbox column and select-all, and
+     * costs nothing when false. Three lists say so permanently (the uren report, the two leave
+     * rosters); the nine with a ✎ say `selecting` instead, which implies it.
+     */
     selectable?: boolean;
+    /**
+     * The ✎ mode is deliberately on, so the rows are *being picked* (#332). A separate question
+     * from `selectable`, because a list that is always selectable has no mode to be in and must
+     * keep its row menus until a tick makes their scope ambiguous.
+     */
+    selecting?: boolean;
     /** Ids of the selected rows. Bindable, so the caller can post them. */
     selected?: string[];
     /** The bulk bar, shown above the table while anything is selected. */
@@ -103,21 +114,52 @@
   } = $props();
 
   // --- selection -------------------------------------------------------------
+  /** Entering the mode is asking for the gutter, so a list with a ✎ need only say `selecting`. */
+  const pickable = $derived(selectable || selecting);
+
   // Selection is **per page**: "select all" can only mean the rows that were fetched. Anything
   // else would let a bulk approve reach records the user never saw.
+  //
+  // Counted against the rows on screen rather than against `selected.length`: the effect below
+  // keeps the two equal, but it runs *after* a row set arrives, and for that one frame a count
+  // taken from the selection alone would tick the header box over a page it does not describe.
   const selectedSet = $derived(new Set(selected));
-  const allSelected = $derived(rows.length > 0 && selected.length === rows.length);
-  const someSelected = $derived(selected.length > 0 && !allSelected);
+  const selectedHere = $derived(rows.filter((row) => selectedSet.has(row.id)).length);
+  const allSelected = $derived(rows.length > 0 && selectedHere === rows.length);
+  const someSelected = $derived(selectedHere > 0 && !allSelected);
 
   /** The last row ticked on its own — where a shift-click measures its range from. */
   let anchor = $state<string | null>(null);
 
-  // A new page, filter or sort is a different set of rows; a selection made against the old one
-  // is meaningless and must not survive into a bulk action.
+  /**
+   * **A tick lives exactly as long as its row is on screen** (#330).
+   *
+   * This used to empty the whole selection whenever `rows` changed *identity* — which is every
+   * load of the same route, not every change of the row set. The comment stated the right rule
+   * and keyed it on the wrong thing, so the ticks were thrown away by things that are not a
+   * different set at all: switching the page size from 25 to 100 (all 25 rows still on screen,
+   * every tick gone), a `reloadOn` column toggle, any `invalidateAll()` raised by something else
+   * on the page — and it wrote through a `$bindable`, so the page's own selection was emptied
+   * without the page ever hearing about it.
+   *
+   * An intersection says the same thing honestly and needs no bookkeeping about *why* the rows
+   * changed: a filter drops what vanished, page 2 drops page 1's, 25 → 100 drops nothing, and a
+   * bulk delete that landed drops exactly the rows it removed. `table.selection_page_only` — what
+   * the bar promises — is then true rather than approximately true.
+   *
+   * The selection stays **per page** deliberately, and the API agrees in writing: `MAX_BULK_IDS`
+   * is 200 because that is the largest page the pager offers, so a selection spanning pages
+   * would buy nothing that `?size=200` does not (and 422 past it). Letting it span is a change to
+   * that bound, to every `eligible` count derived from the rows a page loaded, and to the
+   * sentence beside the count — not to this effect.
+   */
   $effect(() => {
-    void rows;
-    selected = [];
-    anchor = null;
+    const ids = new Set(rows.map((row) => row.id));
+    untrack(() => {
+      const kept = selected.filter((id) => ids.has(id));
+      if (kept.length !== selected.length) selected = kept;
+      if (anchor !== null && !ids.has(anchor)) anchor = null;
+    });
   });
 
   function toggleAll() {
@@ -219,7 +261,22 @@
   }
 
   /** Columns + the checkbox and ⋯ gutters, so a group header can span the whole row. */
-  const columnCount = $derived(columns.length + (selectable ? 1 : 0) + (actions ? 1 : 0));
+  const columnCount = $derived(columns.length + (pickable ? 1 : 0) + (actions ? 1 : 0));
+
+  /**
+   * The row's ⋯ is **withdrawn while the rows are being picked** (#332).
+   *
+   * Two controls that look alike must not have different scopes. With twelve rows ticked, the
+   * strip above the table says Verwijderen and means twelve, and every row still carried its own
+   * Verwijderen meaning one — with nothing on screen to tell them apart, and the confirm naming a
+   * single record only *after* the click. Both mistakes were available: deleting one client while
+   * believing you deleted twelve, and the reverse.
+   *
+   * "Being picked" is the mode where a list has one, and a live tick where it does not, so the
+   * three permanently selectable lists keep their menus right up to the moment they would become
+   * ambiguous. The cell is held open rather than dropped, so no column reflows.
+   */
+  const picking = $derived(pickable && (selecting || selected.length > 0));
 
   // --- totals ----------------------------------------------------------------
   const hasTotals = $derived(columns.some((column) => column.total));
@@ -307,7 +364,7 @@
       (sum, column) => sum + (headerWidth(column) ?? (column.key === flexKey ? FLEX_MIN : 0)),
       0,
     ) +
-      (selectable ? SELECT_COL : 0) +
+      (pickable ? SELECT_COL : 0) +
       (actions ? actionsWidth : 0),
   );
 
@@ -319,7 +376,7 @@
 {#if rows.length === 0}
   {@render empty?.()}
 {:else}
-  {#if selectable && selection && selected.length > 0}
+  {#if pickable && selection && selected.length > 0}
     {@render selection(selected)}
   {/if}
 
@@ -373,7 +430,7 @@
     <table class="w-full table-fixed text-sm" style="min-width:{tableMinWidth}px">
       <thead>
         <tr class="border-b border-border text-left text-xs text-text-muted">
-          {#if selectable}
+          {#if pickable}
             <th scope="col" class="w-10 p-0">
               <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
               <label
@@ -474,7 +531,7 @@
              API's; this never sums `rows`, which are only the page. -->
         <tfoot class="border-t-2 border-border text-sm font-medium">
           <tr>
-            {#if selectable}<td class="w-10 py-2.5"></td>{/if}
+            {#if pickable}<td class="w-10 py-2.5"></td>{/if}
             {#each columns as column, index (column.key)}
               <td
                 class="px-4 py-2.5 {column.align === 'right'
@@ -508,7 +565,7 @@
     onclick={onRowClick
       ? (e) => {
           if ((e.target as HTMLElement).closest("a,button,input,label,select")) return;
-          if (selectable && e.shiftKey && anchor !== null) {
+          if (pickable && e.shiftKey && anchor !== null) {
             // A shift-click drags a text selection across the rows on the way; clear it, or the
             // range the user asked for arrives under a blue smear of highlighted cells.
             window.getSelection()?.removeAllRanges();
@@ -519,7 +576,7 @@
         }
       : undefined}
   >
-    {#if selectable}
+    {#if pickable}
       <!-- The whole gutter cell is the box's label, not just the 16 px box itself: a click that
            landed a few pixels off used to miss the checkbox, fall through to the row, and open
            the record the user was trying to tick. A stretched `<label>` is also what keeps the
@@ -534,6 +591,7 @@
             type="checkbox"
             class={checkboxClass}
             checked={selectedSet.has(row.id)}
+            data-testid="row-select"
             aria-label={t("table.select_row")}
           />
         </label>
@@ -567,7 +625,9 @@
       </td>
     {/each}
     {#if actions}
-      <td class="px-2 py-2.5 text-right">{@render actions(row)}</td>
+      <td class="px-2 py-2.5 text-right" data-testid="row-actions"
+        >{#if !picking}{@render actions(row)}{/if}</td
+      >
     {/if}
   </tr>
 {/snippet}
@@ -595,7 +655,7 @@
            keep their own tap. -->
       <a {href} class="absolute inset-0" aria-label={t("table.open_row")}></a>
     {/if}
-    {#if selectable}
+    {#if pickable}
       <!-- A phone gets the same bulk actions; it has rows, it just has no header row. The label's
            negative margin cancels its own padding, so the tap target grows past the box in every
            direction while the row is laid out exactly as before — and it paints above the
@@ -613,7 +673,11 @@
         />
       </label>
     {/if}
-    <div class="min-w-0 flex-1">{@render mobileRow?.(row)}</div>
+    <!-- The phone row is the *page's* snippet, ⋯ and all, so the menu above cannot be dropped by
+         an `{#if}` here — the only thing this component can reach is the DOM the snippet
+         produced. `ActionsMenu` marks its own root for exactly this, so one rule covers every
+         list rather than nine copies of the same condition drifting apart. -->
+    <div class="min-w-0 flex-1 {picking ? 'picking' : ''}">{@render mobileRow?.(row)}</div>
   </li>
 {/snippet}
 
@@ -638,3 +702,11 @@
     </span>
   {/if}
 {/snippet}
+
+<style>
+  /* The one thing a component can do to markup it did not write: the phone row is the page's own
+     snippet, so the ⋯ it carries is hidden here rather than left out there (`picking`, #332). */
+  .picking :global([data-actions-menu]) {
+    display: none;
+  }
+</style>

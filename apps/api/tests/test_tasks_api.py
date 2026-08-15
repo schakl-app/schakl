@@ -54,8 +54,64 @@ async def test_my_open_tasks(client_for) -> None:
         assert titles == ["Mine"]
         compact = await c.get("/api/v1/tasks/dashboard-mine", headers=headers)
         assert compact.status_code == 200
-        assert list(compact.json()[0]) == ["id", "title", "priority", "due_date"]
+        assert list(compact.json()[0]) == [
+            "id",
+            "title",
+            "priority",
+            "due_date",
+            "company_id",
+            "company_name",
+        ]
         assert compact.json()[0]["title"] == "Mine"
+        # The agency's own to-do items belong to no client and are labelled as none.
+        assert compact.json()[0]["company_name"] is None
+
+
+async def test_dashboard_mine_names_the_client(client_for, count_queries) -> None:
+    """A tile row says whose work it is — through the project when it only names one."""
+    t = await make_tenant("task-mine-client")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        direct = (
+            await c.post("/api/v1/companies", json={"name": "Bakkerij Jansen"}, headers=headers)
+        ).json()
+        via = (
+            await c.post("/api/v1/companies", json={"name": "Garage Peters"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Website", "company_id": via["id"]},
+                headers=headers,
+            )
+        ).json()
+        await c.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Op de klant",
+                "assignee_user_id": str(t.user.id),
+                "company_id": direct["id"],
+            },
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Op het project",
+                "assignee_user_id": str(t.user.id),
+                "project_id": project["id"],
+            },
+            headers=headers,
+        )
+
+        # One query for the rows however many clients they span (docs/PERFORMANCE.md).
+        with count_queries() as counted:
+            res = await c.get("/api/v1/tasks/dashboard-mine", headers=headers)
+        assert res.status_code == 200
+        named = {row["title"]: (row["company_id"], row["company_name"]) for row in res.json()}
+        assert named["Op de klant"] == (direct["id"], "Bakkerij Jansen")
+        assert named["Op het project"] == (via["id"], "Garage Peters")
+        assert len(counted.matching("from tasks")) == 1
 
 
 async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_for) -> None:

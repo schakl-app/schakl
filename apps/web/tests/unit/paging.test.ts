@@ -13,6 +13,7 @@ import { describe, test } from "node:test";
 import {
   coercePageSize,
   DEFAULT_PAGE_SIZE,
+  hasPageSteps,
   MAX_PAGE_SIZE,
   pageCount,
   pageHref,
@@ -67,6 +68,26 @@ describe("pageCount", () => {
   test("a partial last page counts", () => {
     assert.equal(pageCount(101, 50), 3);
     assert.equal(pageCount(100, 50), 2);
+  });
+});
+
+describe("hasPageSteps", () => {
+  test("a list that fits on one page has nowhere to step", () => {
+    // The bar itself still renders — this decides the arrows and the numbered chips only, and
+    // it is the whole of what the old whole-`<nav>` guard is allowed to keep hiding (#334).
+    assert.equal(hasPageSteps(1, pageCount(12, 50)), false);
+    assert.equal(hasPageSteps(1, pageCount(0, 50)), false);
+    assert.equal(hasPageSteps(1, pageCount(50, 50)), false);
+  });
+
+  test("a second page turns them on", () => {
+    assert.equal(hasPageSteps(1, pageCount(51, 50)), true);
+  });
+
+  test("a page number past the end keeps its way back", () => {
+    // `?page=5` typed by hand, or a bookmark taken before rows were deleted: `pages` is 1 and
+    // the user is on none of it. Dropping the arrows there would strand them.
+    assert.equal(hasPageSteps(5, pageCount(9, 50)), true);
   });
 });
 

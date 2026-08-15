@@ -41,6 +41,8 @@
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
   let { data, form } = $props();
 
@@ -114,8 +116,17 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-  const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
+  // The two lookup filters and the ✎ dialog read one split each: an archived client and a
+  // finished project stay reachable by typing rather than being suggested, and whichever is
+  // currently filtering is always on offer (`core/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.filters.company_id }),
+  );
+  const projectPicker = $derived(
+    splitProjectOptions(data.projects, { selectedId: data.filters.project_id }),
+  );
+  const companyItems = $derived(companyPicker.live);
+  const projectItems = $derived(projectPicker.live);
   const memberItems = $derived(
     data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
@@ -216,14 +227,13 @@
 <div class="mb-6 flex items-center justify-between">
   <div>
     <h1 class="text-xl font-semibold text-text">{navLabel("tasks", t("tasks.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">
-      {t("tasks.count", { count: data.total })}
-      {#if overdueCount > 0}
-        · <span class="font-medium text-red-600 dark:text-red-400"
-          >{t("tasks.overdue_count", { count: overdueCount })}</span
-        >
-      {/if}
-    </p>
+    <!-- The total is the pager's (#334); overdue is not a count of the list, it is a warning
+         about part of it, so it keeps its place under the heading. -->
+    {#if overdueCount > 0}
+      <p class="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
+        {t("tasks.overdue_count", { count: overdueCount })}
+      </p>
+    {/if}
   </div>
   <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
        page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->
@@ -262,6 +272,8 @@
   <div class="w-full sm:w-44">
     <Combobox
       items={companyItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.filters.company_id ?? ""}
       placeholder={t("tasks.field.company")}
@@ -272,6 +284,8 @@
   <div class="w-full sm:w-44">
     <Combobox
       items={projectItems}
+      archived={projectPicker.retired}
+      archivedLabel={projectArchivedLabel()}
       name="_filter_project"
       value={data.filters.project_id ?? ""}
       placeholder={t("tasks.field.project")}
@@ -559,7 +573,7 @@
   <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -574,7 +588,7 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   oncollapse={table.onCollapse}
   onsort={table.onSort}

@@ -417,6 +417,123 @@ async def test_a_marketing_gads_link_attaches_one_account(client_for) -> None:
         assert link.external_id == "customers/1242643293"
 
 
+async def test_linking_an_account_here_records_the_marketing_link_too(client_for) -> None:
+    """The return leg of the mirror (#338).
+
+    Before it, this endpoint recorded half the fact: the client's Google Ads panel listed the
+    account while the marketing panel above it — and `/marketing` — went on saying nothing was
+    connected, because `marketing_links` had no row for it.
+    """
+    from app.modules.marketing.models import MarketingLink
+
+    t = await make_tenant("gads-mirror")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id)
+    async with client_for(t.host) as c:
+        res = await c.post(
+            "/api/v1/google-ads/accounts",
+            json={
+                "customer_id": "124-264-3293",
+                "company_id": str(company_id),
+                "login_customer_id": "840-880-4299",
+                "descriptive_name": "AAZET",
+                "currency_code": "EUR",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201
+        # The client now has a marketing source, which is the whole visible consequence.
+        links = await c.get(
+            "/api/v1/marketing/links", params={"company_id": str(company_id)}, headers=headers
+        )
+    assert [row["source"] for row in links.json()] == ["gads"]
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = await session.scalar(select(MarketingLink).where(MarketingLink.org_id == t.org.id))
+        assert link is not None
+        assert link.external_id == "1242643293"
+        assert link.display_name == "AAZET"
+        assert str(link.google_ads_account_id) == res.json()["id"]
+        # The manager is the load-bearing half: without it every later call on a child account
+        # is made by a login with no direct grant on it, and 403s.
+        assert link.config == {"currency": "EUR", "manager_id": "8408804299"}
+
+
+async def test_the_mirror_is_one_link_however_the_account_was_reached(client_for) -> None:
+    """Two write paths, one link.
+
+    `POST /marketing/links` already attaches the account here, which now emits back — so the
+    handler meets a link it half-created itself. It must find that row rather than mint a second
+    one, and the ids it compares are spelled differently on the two tables: marketing keeps the
+    caller's raw text, the account column is normalised.
+    """
+    from app.modules.marketing.models import MarketingLink
+
+    t = await make_tenant("gads-mirror-once")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": str(company_id),
+                "source": "gads",
+                "external_id": "customers/1242643293",
+                "display_name": "AAZET",
+                "config": {"currency": "EUR", "manager_id": "840-880-4299"},
+            },
+            headers=headers,
+        )
+        # …and again through the other door, for the same customer.
+        await c.post(
+            "/api/v1/google-ads/accounts",
+            json={"customer_id": "124-264-3293", "company_id": str(company_id)},
+            headers=headers,
+        )
+        links = await c.get(
+            "/api/v1/marketing/links", params={"company_id": str(company_id)}, headers=headers
+        )
+    assert len(links.json()) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            await session.scalars(
+                select(MarketingLink).where(MarketingLink.org_id == t.org.id)
+            )
+        ).all()
+        assert len(rows) == 1
+        # Marketing's own spelling survives: the mirror updates the row, it does not rewrite it
+        # into the other module's normalisation.
+        assert rows[0].external_id == "customers/1242643293"
+
+
+async def test_an_account_with_no_client_writes_no_marketing_link(client_for) -> None:
+    """The agency's own Ads account is a real state, and a marketing link requires a company —
+    so there is nothing to mirror and nothing is written."""
+    from app.modules.marketing.models import MarketingLink
+
+    t = await make_tenant("gads-mirror-none")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        res = await c.post(
+            "/api/v1/google-ads/accounts",
+            json={"customer_id": "1242643293", "descriptive_name": "Ons eigen account"},
+            headers=headers,
+        )
+    assert res.status_code == 201
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            await session.scalars(
+                select(MarketingLink).where(MarketingLink.org_id == t.org.id)
+            )
+        ).all()
+        assert rows == []
+
+
 async def test_the_accounts_table_is_rls_forced() -> None:
     """Golden Rule 1 at the database layer: the app role reads nothing without the GUC bound."""
     a = await make_tenant("gads-rls-a")

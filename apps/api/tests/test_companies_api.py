@@ -231,3 +231,97 @@ async def test_house_number_is_its_own_field(client_for) -> None:
             )
         ).json()
         assert feed[0]["payload"]["changes"]["house_number"] == {"from": "1A", "to": "1B"}
+
+
+async def _named(client, headers, name: str, status: str) -> None:
+    r = await client.post(
+        "/api/v1/companies", json={"name": name, "status": status}, headers=headers
+    )
+    assert r.status_code == 201, r.text
+
+
+async def test_status_filter_takes_a_set_and_the_list_is_alphabetical(client_for) -> None:
+    """The list orders A–Z and ``status`` takes several values (#329).
+
+    Both halves of what "open Klanten on the working book of business" needs, and the third
+    thing it needs is the one asserted last: **no** ``status`` still means every status. The
+    screen picks the narrowing default; this endpoint only makes it expressible, because the
+    pickers, the impex export and the generated MCP surface all read it and would otherwise be
+    told a different set of clients exists.
+    """
+    t = await make_tenant("status-set")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Created A–Z on purpose, so the old `created_at DESC` default is exactly the reverse of
+        # what is asserted below and no assertion here can pass by accident.
+        await _named(c, headers, "Bakkerij", "archived")
+        await _named(c, headers, "Molenaar", "active")
+        await _named(c, headers, "Zonnehuis", "lead")
+
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        assert [i["name"] for i in listing["items"]] == ["Bakkerij", "Molenaar", "Zonnehuis"]
+        assert listing["total"] == 3
+
+        # Searching sorted A–Z already; browsing now agrees with it rather than answering the
+        # same question newest-first.
+        searched = (
+            await c.get("/api/v1/companies", params={"q": "a"}, headers=headers)
+        ).json()
+        assert [i["name"] for i in searched["items"]] == ["Bakkerij", "Molenaar"]
+
+        one = (
+            await c.get("/api/v1/companies", params={"status": "active"}, headers=headers)
+        ).json()
+        assert [i["name"] for i in one["items"]] == ["Molenaar"]
+        assert one["total"] == 1
+
+        # The working set the screen defaults to: every status except the archive.
+        working = (
+            await c.get(
+                "/api/v1/companies",
+                params={"status": "lead,onboarding,active,offboarding"},
+                headers=headers,
+            )
+        ).json()
+        assert [i["name"] for i in working["items"]] == ["Molenaar", "Zonnehuis"]
+        assert working["total"] == 2  # the count is the filter's too, not the page's
+
+        # A saved or shared sort still wins over the alphabetical default — someone who
+        # deliberately sorted this list keeps their sort; only the unset case changed.
+        by_age = (
+            await c.get("/api/v1/companies", params={"sort": "-created_at"}, headers=headers)
+        ).json()
+        assert [i["name"] for i in by_age["items"]] == ["Zonnehuis", "Molenaar", "Bakkerij"]
+
+
+async def test_a_status_token_that_names_nothing_falls_back_to_the_whole_list(
+    client_for,
+) -> None:
+    """``status`` arrives from a query string anyone can edit, so it never 422s (#316's rule).
+
+    Separated from the assertion above because it is the *failure* direction: a filter that
+    resolves to no statuses at all leaves the list alone rather than emptying it, and an
+    unknown status still matches nothing — that half is unchanged, and worth pinning while a
+    comma is being read as a separator.
+    """
+    t = await make_tenant("status-junk")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _named(c, headers, "Bakkerij", "archived")
+        await _named(c, headers, "Molenaar", "active")
+
+        for token in (",", " , ", ",,"):
+            r = await c.get("/api/v1/companies", params={"status": token}, headers=headers)
+            assert r.status_code == 200, r.text
+            assert r.json()["total"] == 2, token
+
+        empty = await c.get("/api/v1/companies", params={"status": "klant"}, headers=headers)
+        assert empty.json()["items"] == []
+
+        # An unknown name among known ones narrows to the known ones; it does not poison them.
+        mixed = (
+            await c.get(
+                "/api/v1/companies", params={"status": "klant,active"}, headers=headers
+            )
+        ).json()
+        assert [i["name"] for i in mixed["items"]] == ["Molenaar"]

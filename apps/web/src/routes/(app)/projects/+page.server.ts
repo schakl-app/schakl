@@ -11,6 +11,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { HOURS_COLUMN, PROJECT_COLUMNS, PROJECTS_TABLE_ID } from "$lib/modules/projects/columns";
+import { PROJECT_STATUS_ALL, PROJECT_WORKING_SET } from "$lib/modules/projects/status";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -21,6 +22,16 @@ export const load: PageServerLoad = async (event) => {
   const mine = event.url.searchParams.get("mine") === "1";
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
   const company_id = event.url.searchParams.get("company") || undefined;
+  // Projecten opens on the work that is still open — every status except archived — so the URL
+  // token and the wire value are not the same string. Absent means the working set; `all` is how
+  // "everything, archive included" says so in a URL you can link to; anything else is that one
+  // status. Only the resolution lives here: the *set* is in `status.ts`, beside the pills, so the
+  // screen and its export cannot end up with two ideas of what is archived. Applied by the API,
+  // never in the browser — filtering the fifty rows this page happens to hold would report a
+  // total counted over all of them (§9).
+  const statusFilter = event.url.searchParams.get("status") || "";
+  const status =
+    statusFilter === PROJECT_STATUS_ALL ? undefined : statusFilter || PROJECT_WORKING_SET;
 
   // The saved layout decides two things before a row is fetched: how the *server* sorts, and
   // whether the budget burn-down is worth computing at all (#24 — a hidden aggregate costs
@@ -40,7 +51,16 @@ export const load: PageServerLoad = async (event) => {
   // names come from the section layout, which does not rerun on filter/sort navigation (#290).
   const projects = await api.GET("/api/v1/projects", {
     params: {
-      query: { limit: paging.limit, offset: paging.offset, q, mine, sort, hours, company_id },
+      query: {
+        limit: paging.limit,
+        offset: paging.offset,
+        q,
+        mine,
+        sort,
+        hours,
+        company_id,
+        status,
+      },
     },
   });
   return {
@@ -50,6 +70,12 @@ export const load: PageServerLoad = async (event) => {
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     mine,
     companyFilter: company_id ?? "",
+    // Two values, on purpose: the pills highlight on the *token* the URL carries, and the export
+    // sends the *resolved* filter — the whole point of `ImpexBar`'s `filters` is that the file
+    // holds what the screen holds, and with a default that narrows, passing the token would let
+    // the archived projects quietly back into the spreadsheet.
+    statusFilter,
+    statusQuery: status ?? "",
     locale: event.locals.locale,
   };
 };

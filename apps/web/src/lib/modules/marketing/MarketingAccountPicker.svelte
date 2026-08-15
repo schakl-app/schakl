@@ -25,6 +25,8 @@
     linkedIds,
     websiteId = "",
     hasWebsites = true,
+    action = "?/marketingLink",
+    companyId = "",
   }: {
     source: MarketingSource;
     /** external_ids already linked to this company for this source — filtered out of options. */
@@ -33,6 +35,23 @@
     websiteId?: string;
     /** Whether this client has any website at all — the two "no site" states differ (see below). */
     hasWebsites?: boolean;
+    /**
+     * Which form action the pick posts to. Defaults to the company page's, which is where this
+     * picker was born and still spends most of its life.
+     *
+     * It is a prop because the same picker now opens away from a client's page (#338) — from
+     * `/marketing` and `/marketing/google-ads`, where the client is chosen in the dialog rather
+     * than implied by the URL. One picker either way: every teaching state it renders (not
+     * connected, missing scope, no developer token) is the same question wherever it is asked,
+     * and a second copy is a second place to remember them.
+     */
+    action?: string;
+    /**
+     * The client the link attaches to, when the host action cannot read it off the route.
+     * Empty on the company page — there `event.params.id` is the answer and a posted value
+     * would be a second one to disagree with it.
+     */
+    companyId?: string;
   } = $props();
 
   // A site-key source (Rank Math) reads one client website's WordPress, so the site is not a
@@ -218,7 +237,7 @@
   <form
     bind:this={form}
     method="POST"
-    action="?/marketingLink"
+    {action}
     use:enhance={() =>
       ({ update }) => {
         value = "";
@@ -228,6 +247,7 @@
     class="hidden"
   >
     <input type="hidden" name="source" value={source} />
+    <input type="hidden" name="company_id" value={companyId} />
     <input type="hidden" name="website_id" value={websiteId} />
     <input type="hidden" name="external_id" value={picked?.external_id ?? ""} />
     <input type="hidden" name="display_name" value={picked?.display_name ?? ""} />

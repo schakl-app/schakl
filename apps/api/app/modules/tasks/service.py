@@ -75,8 +75,11 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    RecurrencePreview,
+    RecurrencePreviewRead,
     StatusCreate,
     StatusUpdate,
+    TaskAIStatusRead,
     TaskCreate,
     TaskDetail,
     TaskListItem,
@@ -550,8 +553,54 @@ class TaskService:
         return await self._list_items(await self._my_open_rows(limit))
 
     async def dashboard_mine(self, *, limit: int = 20) -> list[DashboardTaskItem]:
-        """Personal tile rows without full-card label/checklist/comment enrichment."""
-        return [DashboardTaskItem.model_validate(task) for task in await self._my_open_rows(limit)]
+        """Personal tile rows — the client joined in, no full-card enrichment, one query."""
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
+        # Same starting point as ``dashboard_groups``: the repository-scoped relation, so the
+        # portal rule and a manager's company horizon hold on the tile as well as on the list.
+        visible = self.repo.scoped_select().subquery()
+        # A task's client is its own company, or — when it only names a project — that project's.
+        company_id = func.coalesce(visible.c.company_id, _dashboard_projects.c.company_id)
+        company_name = func.coalesce(
+            _dashboard_companies.c.name, _dashboard_project_companies.c.name
+        )
+        stmt = (
+            select(
+                visible.c.id,
+                visible.c.title,
+                visible.c.priority,
+                visible.c.due_date,
+                company_id.label("company_id"),
+                company_name.label("company_name"),
+            )
+            .select_from(visible)
+            .outerjoin(
+                _dashboard_companies,
+                and_(
+                    _dashboard_companies.c.org_id == visible.c.org_id,
+                    _dashboard_companies.c.id == visible.c.company_id,
+                ),
+            )
+            .outerjoin(
+                _dashboard_projects,
+                and_(
+                    _dashboard_projects.c.org_id == visible.c.org_id,
+                    _dashboard_projects.c.id == visible.c.project_id,
+                ),
+            )
+            .outerjoin(
+                _dashboard_project_companies,
+                and_(
+                    _dashboard_project_companies.c.org_id == _dashboard_projects.c.org_id,
+                    _dashboard_project_companies.c.id == _dashboard_projects.c.company_id,
+                ),
+            )
+            .where(visible.c.assignee_user_id == self.ctx.user.id)
+            .where(visible.c.status.in_(non_terminal_keys(statuses)))
+            .order_by(visible.c.due_date.asc().nulls_last(), visible.c.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return [DashboardTaskItem.model_validate(row) for row in rows]
 
     async def dashboard_groups(self) -> list[DashboardTaskGroup]:
         """Open task counts by project/company without shipping all source rows to the web."""
@@ -634,6 +683,16 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Detail
     # ------------------------------------------------------------------ #
+    async def ai_status(self, task_id: uuid.UUID) -> TaskAIStatusRead:
+        """Just the "is schakl still filling this in?" flag (#327), for the card's live pill.
+
+        Loaded through ``self.repo`` like every other read, so the portal narrowing and the
+        company horizon apply exactly as they do to the detail — a one-column endpoint is still
+        an endpoint, and answering ``404`` here has to mean what it means everywhere else.
+        """
+        task = await self.repo.get_or_404(task_id)
+        return TaskAIStatusRead(ai_status=task.ai_status)
+
     async def detail(self, task_id: uuid.UUID) -> TaskDetail:
         task = await self.repo.get_or_404(task_id)
         detail = TaskDetail.model_validate(task)
@@ -828,6 +887,7 @@ class TaskService:
         values["status"] = self._resolve_status(statuses, data.status, allow_default=True)
         values["priority"] = data.priority.value
         values["recurrence"] = data.recurrence.model_dump(mode="json") if data.recurrence else None
+        await self._validate_recurrence_plan(values["recurrence"])
         values["recurrence_next_run"] = rec_mod.compute_next_run(
             values["recurrence"],
             data.due_date,
@@ -917,6 +977,69 @@ class TaskService:
             status_code=422,
             fields={"assignee_contact_id": "errors.tasks_assignee_contact_company"},
         )
+
+    async def preview_recurrence(self, data: RecurrencePreview) -> RecurrencePreviewRead:
+        """Resolve a *composed* (not yet stored) rule to the dates it will produce (#335).
+
+        After-completion mode gets ``on_completion=True`` rather than a promise: the next
+        occurrence appears when this one is finished, and the date shown is the one it *would*
+        be given today — no fake certainty, which is the same honesty ``/leave/preview`` shows
+        about a manager's override.
+        """
+        rec = data.recurrence.model_dump(mode="json")
+        today = await org_today(self.ctx.session, self.ctx.org.id)
+        dates = rec_mod.upcoming(data.due_date, rec, today=today, count=3)
+        planned_start = planned_end = None
+        if data.recurrence.plan is not None:
+            planned_start = data.recurrence.plan.start_time
+            planned_end = (
+                datetime.combine(dates[0], planned_start)
+                + timedelta(minutes=data.recurrence.plan.duration_minutes)
+            ).time()
+        return RecurrencePreviewRead(
+            next_date=dates[0],
+            following=dates[1:],
+            on_completion=data.recurrence.mode is RecurrenceMode.AFTER_COMPLETION,
+            planned_start=planned_start,
+            planned_end=planned_end,
+        )
+
+    async def _validate_recurrence_plan(self, rec: dict | None) -> None:
+        """Gate "herhaal ook de planning" on the keys the *scheduling* module declares (#335).
+
+        The route says ``tasks.task.write`` and the licence gate says ``tasks``; neither is an
+        answer to "may this person put a block on a colleague's calendar". So the stored decision
+        asks exactly what pressing Inplannen would ask — ``tasks.schedule.write``, at ``:any`` to
+        name someone else — because the generator will later *execute* it as the system, and a
+        permission checked only at execution time is no permission at all (§18, one layer down).
+
+        The person must also be a member of this org: unlike a hand-planned block, this id is
+        stored for months and spent by a cron, so a stale or foreign one would surface as a
+        silently skipped occurrence rather than a 403 somebody could read.
+        """
+        plan = (rec or {}).get("plan")
+        if not plan:
+            return
+        target = plan.get("user_id")
+        target_id = uuid.UUID(str(target)) if target else None
+        if target_id is not None and target_id != self.ctx.user.id:
+            if not self.ctx.can("tasks.schedule.write", scope="any"):
+                raise AppError("forbidden", "errors.forbidden", status_code=403)
+            known = await self.ctx.session.scalar(
+                sql_text(
+                    "SELECT 1 FROM memberships WHERE org_id = :oid AND user_id = :uid"
+                ),
+                {"oid": self.ctx.org.id, "uid": target_id},
+            )
+            if not known:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"recurrence": "errors.invalid_assignee"},
+                )
+        elif not self.ctx.can("tasks.schedule.write"):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
 
     async def _next_position(self) -> float:
         result = await self.ctx.session.scalar(
@@ -1015,6 +1138,7 @@ class TaskService:
             values["recurrence"] = (
                 data.recurrence.model_dump(mode="json") if data.recurrence else None
             )
+            await self._validate_recurrence_plan(values["recurrence"])
 
         terminal = terminal_keys(statuses)
         old_status = task.status
@@ -1139,6 +1263,9 @@ class TaskService:
                 task,
                 actor_user_id=self.ctx.user.id,
                 actor_name=_display_name(self.ctx.user),
+                # So a rule carrying a plan books the occurrence's block through the schedule
+                # service's one emit site (#335 phase 5) rather than not at all.
+                ctx=self.ctx,
             )
             # spawn_next mutates the source (recurrence handed off); reload server-side
             # defaults so serialization never lazy-loads.

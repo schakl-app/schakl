@@ -34,6 +34,8 @@
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
   import {
     hasNoteVariables,
     noteVariableItems,
@@ -116,7 +118,14 @@
     }
   });
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // One split for all three client controls on this screen — the list filter, the agreement
+  // form and the inline project quick-create — so they can never disagree about which clients
+  // are still live. An archived client sits behind the search; whatever is already picked in
+  // any of them stays on offer (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: [data.companyFilter, pv.companyId] }),
+  );
+  const companyItems = $derived(companyPicker.live);
   const STATUSES = ["draft", "active", "paused", "cancelled"] as const;
   const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
 
@@ -260,11 +269,15 @@
 
   // Projects linked to the agreement being edited: time on these counts toward the bundle.
   let linkedProjects = $state<{ id: string; name: string }[]>([]);
-  const projectItems = $derived(
-    data.projects
-      .filter((p) => !linkedProjects.some((l) => l.id === p.id))
-      .map((p) => ({ value: p.id, label: p.name })),
+  // A finished project is not something to *add* to a running agreement, so it drops behind the
+  // search and says which status it is in; already-linked ones drop out entirely, as before.
+  const projectPicker = $derived(
+    splitProjectOptions(
+      data.projects.filter((p) => !linkedProjects.some((l) => l.id === p.id)),
+      { selectedId: linkedProjects.map((l) => l.id) },
+    ),
   );
+  const projectItems = $derived(projectPicker.live);
   const linksJson = $derived(
     JSON.stringify(linkedProjects.map((p) => ({ entity_type: "project", entity_id: p.id }))),
   );
@@ -395,6 +408,8 @@
   <div class="w-44">
     <Combobox
       items={companyItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.companyFilter}
       placeholder={t("subscriptions.filter.company")}
@@ -598,7 +613,7 @@
   <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
 {/snippet}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -611,7 +626,7 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
@@ -688,6 +703,8 @@
         >
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           bind:value={pv.companyId}
           id="sub-company"
@@ -825,6 +842,8 @@
         {/if}
         <Combobox
           items={projectItems}
+          archived={projectPicker.retired}
+          archivedLabel={projectArchivedLabel()}
           name="link_project_picker"
           id="sub-projects"
           placeholder={t("subscriptions.field.projects")}
@@ -928,6 +947,8 @@
         <!-- Required: a project belongs to a client. The agreement's client is the default. -->
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           value={pv.companyId}
           id="qc-sub-project-company"

@@ -75,6 +75,11 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 #: Listings are live-as-the-viewer with a short Redis cache — snappy, Drive authoritative.
 BROWSE_CACHE_TTL = 45
 _BROWSE_FIELDS = "nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,size)"
+#: One page, and the response says so when there is a second (``truncated``). A list that is
+#: silently a prefix of a folder is the failure §17 names for imports — it looks like it worked.
+BROWSE_PAGE_SIZE = 100
+#: A search term long enough for any filename, short enough that the Drive query stays a query.
+MAX_BROWSE_QUERY = 100
 
 _ENTITY_TABLES = {"company": "companies", "project": "projects", "task": "tasks"}
 _ENTITY_NAME_COLUMNS = {"company": "name", "project": "name", "task": "title"}
@@ -82,6 +87,16 @@ _ENTITY_NAME_COLUMNS = {"company": "name", "project": "name", "task": "title"}
 
 def _drive_query_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _browse_cache_key(org_id: uuid.UUID, user_id: uuid.UUID, folder: str, term: str = "") -> str:
+    """The listing cache is per user, per folder **and per search term**.
+
+    Without the term the two are the same entry: one person's search would be served to the
+    next person opening that folder as its contents, for the length of the TTL — a filtered
+    list presenting as the whole folder, which is the very lie the search exists to avoid.
+    """
+    return f"schakl:gdrive:browse:{org_id}:{user_id}:{folder}:{term}"
 
 
 class DriveService:
@@ -164,7 +179,16 @@ class DriveService:
         )
 
     # --- browse (as the viewing user) ------------------------------------------- #
-    async def browse(self, folder_id: str | None, *, refresh: bool = False) -> dict[str, Any]:
+    async def browse(
+        self, folder_id: str | None, *, q: str | None = None, refresh: bool = False
+    ) -> dict[str, Any]:
+        """One folder's children, optionally filtered by name **at Drive** (#336).
+
+        Server-side because the listing is one capped page: a filter applied in the browser
+        over the first 100 rows would answer "geen resultaten" for a file that is merely 101st
+        alphabetically. And the search covers this folder only — the breadcrumb is the promise
+        the screen makes about where you are, and a hit three folders down carries no path.
+        """
         settings_row = await self._settings()
         target = folder_id or drive_root(settings_row)
         if not target:
@@ -173,7 +197,8 @@ class DriveService:
             )
         connection = await self._connection()
 
-        cache_key = f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{target}"
+        term = (q or "").strip()[:MAX_BROWSE_QUERY]
+        cache_key = _browse_cache_key(self._org_id, self.ctx.user.id, target, term)
         if not refresh:
             try:
                 cached = await get_redis().get(cache_key)
@@ -182,11 +207,16 @@ class DriveService:
             if cached:
                 return json.loads(cached)
 
+        # Every interpolated value is escaped, the search term included: an apostrophe typed
+        # into a search box must not be able to rewrite the query it lands in.
+        clauses = [f"'{_drive_query_escape(target)}' in parents", "trashed=false"]
+        if term:
+            clauses.insert(0, f"name contains '{_drive_query_escape(term)}'")
         params = {
-            "q": f"'{_drive_query_escape(target)}' in parents and trashed=false",
+            "q": " and ".join(clauses),
             "fields": _BROWSE_FIELDS,
             "orderBy": "folder,name",
-            "pageSize": "100",
+            "pageSize": str(BROWSE_PAGE_SIZE),
             "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true",
         }
@@ -224,6 +254,11 @@ class DriveService:
                 }
                 for item in body.get("files", [])
             ],
+            #: What produced this list, so the screen can say so in words rather than
+            #: presenting a filtered set as the folder.
+            "query": term or None,
+            #: There is a page two we do not follow. Stated, never swallowed.
+            "truncated": bool(body.get("nextPageToken")),
         }
         try:
             await get_redis().set(cache_key, json.dumps(listing), ex=BROWSE_CACHE_TTL)
@@ -529,10 +564,12 @@ class DriveService:
                 folder = await _find_or_create_folder(
                     client, parent_id, cleaned, template_id=None
                 )
-        # Bust this viewer's cached listing of the parent so the new folder appears at once.
+        # Bust this viewer's cached *listing* of the parent so the new folder appears at once.
+        # Only the unfiltered entry: the browser hides "nieuwe map" while a search is active,
+        # so no search result set can be showing this folder to this viewer right now.
         try:
             await get_redis().delete(
-                f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{parent_id}"
+                _browse_cache_key(self._org_id, self.ctx.user.id, parent_id)
             )
         except Exception:  # noqa: BLE001 — Redis down just means the ~45 s TTL applies
             pass
@@ -571,22 +608,52 @@ class DriveService:
         name = await self._entity_name(entity_type, entity_id)
         if name is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
-        # A project folder nests under its client's (#150) — the auto-provision path always
-        # carried the parent; the button path used to drop it and land in the org root.
-        parent_entity_id = None
-        if entity_type == "project":
-            parent_entity_id = await self.ctx.session.scalar(
-                text("SELECT company_id FROM projects WHERE id = :pid AND org_id = :oid"),
-                {"pid": entity_id, "oid": self._org_id},
-            )
+        parent_type, parent_id = await self._provision_parent(entity_type, entity_id)
         await queue_folder_job(
             self.ctx.session,
             self._org_id,
             entity_type,
             entity_id,
             name,
-            parent_entity_id=parent_entity_id,
+            parent_entity_id=parent_id,
+            parent_entity_type=parent_type,
         )
+
+    async def _provision_parent(
+        self, entity_type: str, entity_id: uuid.UUID
+    ) -> tuple[str | None, uuid.UUID | None]:
+        """Which record the new folder nests under — resolved here, found at execution time.
+
+        A project folder nests under its client's (#150); a task's under its project's (#328).
+        Both are bare-table lookups, never an import of another module's internals (§6). The
+        *folder* is deliberately not resolved here: the outbox row may sit while the parent
+        gets a folder of its own, and the worker walks the chain then.
+        """
+        if entity_type == "project":
+            company_id = await self.ctx.session.scalar(
+                text("SELECT company_id FROM projects WHERE id = :pid AND org_id = :oid"),
+                {"pid": entity_id, "oid": self._org_id},
+            )
+            return ("company", company_id) if company_id else (None, None)
+        if entity_type == "task":
+            row = (
+                await self.ctx.session.execute(
+                    text(
+                        "SELECT project_id, company_id FROM tasks "
+                        "WHERE id = :tid AND org_id = :oid"
+                    ),
+                    {"tid": entity_id, "oid": self._org_id},
+                )
+            ).first()
+            if row is None:
+                return (None, None)
+            project_id, company_id = row
+            # A task on no project still belongs to a client often enough to say so; the
+            # agency's own to-do list has neither, and lands in the org root like a client does.
+            if project_id:
+                return ("project", project_id)
+            return ("company", company_id) if company_id else (None, None)
+        return (None, None)
 
     async def bulk_provision(self) -> int:
         """Backfill: queue a folder for every company without one. Returns the queue size."""
@@ -661,6 +728,7 @@ async def queue_folder_job(
     entity_id: uuid.UUID,
     name: str,
     parent_entity_id: uuid.UUID | None = None,
+    parent_entity_type: str | None = None,
 ) -> DriveFolderJob:
     """Idempotent outbox insert + a best-effort worker offer (the sweep cron backstops)."""
     job = await session.scalar(
@@ -677,12 +745,17 @@ async def queue_folder_job(
             entity_id=entity_id,
             name=name[:500],
             parent_entity_id=parent_entity_id,
+            parent_entity_type=parent_entity_type,
         )
         session.add(job)
     else:
         job.status = FolderJobStatus.PENDING.value
         job.attempts = 0
         job.last_error = None
+        # A re-queued job re-resolves its parent: the record may have been moved to another
+        # project since the row was written, and a retry must not nest under the old one.
+        job.parent_entity_id = parent_entity_id
+        job.parent_entity_type = parent_entity_type
     await session.flush()
 
     from datetime import timedelta
@@ -748,19 +821,10 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
         await session.flush()
         return
 
-    # A project folder nests under its company's folder when that exists.
-    parent = drive_root(settings_row)
-    if job.parent_entity_id is not None:
-        company_folder = await session.scalar(
-            select(DriveLink).where(
-                DriveLink.org_id == org.id,
-                DriveLink.entity_type == "company",
-                DriveLink.entity_id == job.parent_entity_id,
-                DriveLink.is_root,
-            )
-        )
-        if company_folder is not None:
-            parent = company_folder.drive_file_id
+    # A project folder nests under its client's; a task's under its project's, else its
+    # client's (#328). Resolved *now*, not at emit time: the parent may have acquired a folder
+    # while this job sat in the outbox.
+    parent = await _parent_folder_id(session, org, job) or drive_root(settings_row)
 
     try:
         async with acting_as(session, org, connection) as client:
@@ -838,6 +902,45 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
     job.status = FolderJobStatus.DONE.value
     job.last_error = None
     await session.flush()
+
+
+async def _parent_folder_id(
+    session: AsyncSession, org: Org, job: DriveFolderJob
+) -> str | None:
+    """The Drive folder the job's new folder nests inside, or ``None`` for the org root.
+
+    Walks the record chain rather than reading one link: a task nests under its project's
+    folder, and a project whose own folder was never provisioned is not a dead end — the
+    client's folder is the next honest answer, and it is where the panel already sends the
+    browser. ``parent_entity_type`` is ``NULL`` on every row written before tasks could nest
+    (and on anything an older replica writes mid-rollout), which means ``company``.
+    """
+    parent_id = job.parent_entity_id
+    if parent_id is None:
+        return None
+    parent_type = job.parent_entity_type or "company"
+    # At most two steps — project, then its client — and the second can only end the loop.
+    while parent_id is not None:
+        link = await session.scalar(
+            select(DriveLink).where(
+                DriveLink.org_id == org.id,
+                DriveLink.entity_type == parent_type,
+                DriveLink.entity_id == parent_id,
+                DriveLink.is_root,
+            )
+        )
+        if link is not None:
+            return link.drive_file_id
+        if parent_type != "project":
+            return None
+        # Bare-table lookup, never a projects-module import (§6) — the same crossing
+        # ``links_for``'s roll-up makes.
+        parent_id = await session.scalar(
+            text("SELECT company_id FROM projects WHERE id = :pid AND org_id = :oid"),
+            {"pid": parent_id, "oid": org.id},
+        )
+        parent_type = "company"
+    return None
 
 
 async def _find_or_create_folder(

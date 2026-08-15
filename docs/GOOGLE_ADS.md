@@ -123,6 +123,45 @@ share one Ads account (a holding and its trading name), and `marketing_links` ha
 constrained it either. That is also what makes `attach()` an idempotent upsert another module's
 write path can call without ever risking a unique violation it would surface as a 500.
 
+### The mirror runs both ways, or one screen lies (#338)
+
+`MarketingService._attach_ads_account` has always recorded the account here when a marketing
+link was created. The other direction had no mirror, and half a fact is worse than none: an
+account linked through `POST /google-ads/accounts` — which is what Instellingen → Google Ads
+posts, and what the client page's Google Ads panel used to send everybody to — wrote *only* the
+account row. So a client's Google Ads panel listed the account while the marketing panel
+directly above it went on saying *"koppel een Google-account om Analytics, Search Console en Ads
+van deze klant te tonen"*, and `/marketing` listed the client as having no source at all. The
+Ads was connected; two screens said it was not, and the cure (do it again, in the other panel)
+was discoverable from nothing on any of them.
+
+`attach()` now emits **`google_ads.account.attached`** on the in-process event bus and
+`marketing` subscribes it (`modules/marketing/events.py`). Four things about it are load-bearing:
+
+- **The seam is the bus, not an import.** This module names `marketing` nowhere, and an instance
+  that never enabled marketing simply has no subscriber (CLAUDE.md §6).
+- **Only an account with a `company_id` emits.** A marketing link requires a company, and an
+  account attached to none is the agency's own — which is exactly why the hand-typed form in
+  Instellingen still exists and still has an "Ons eigen account" option.
+- **The handler writes the link row directly** rather than calling `create_link`, which would
+  re-enter `_attach_ads_account` → `attach` → the handler. It would terminate, but a write that
+  recurses through two modules to settle is not a thing to have to re-derive.
+- **It matches on the normalised id.** `marketing_links.external_id` holds whatever the caller
+  stored (`1242643293`, `124-264-3293`, `customers/1242643293`) while `customer_id` is normalised
+  on the way in, so comparing the raw text would miss the link that already exists and mint a
+  second one for the same account.
+
+The handler is a side effect of a write the caller was already allowed to make, so it asks for
+no permission of its own (§16's rule for the activity trail) — but it **does** check
+`sku_writable("marketing")`, because a mirror is still a write into a licensed module and an
+expired one goes read-only rather than half-writable.
+
+The web half follows from the same sentence: there is now **one** connect control
+(`MarketingConnectDialog`), it posts to `POST /marketing/links`, and it is reachable from the
+client's Google Ads panel, from `/marketing/google-ads` and from `/marketing`. It is gated on
+`marketing.link.manage` — the key the call actually makes, not `google_ads.settings.manage`,
+which is what the screen is *about* (#310).
+
 ## 8. The credential moved house (expand/contract)
 
 `google_ads_settings.developer_token_encrypted` is the new home. The migration **copied** the

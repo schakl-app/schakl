@@ -5,6 +5,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { apiBaseUrl } from "$lib/core/api/client";
 import { dedupeGets } from "$lib/core/api/dedupe";
 import { parseAssignees } from "$lib/core/assignees";
+import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
@@ -254,7 +255,7 @@ export const actions: Actions = {
       body: {
         started_at: `${date}T${start}:00Z`,
         ended_at: `${date}T${end}:00Z`,
-        break_minutes: Number(form.get("break_minutes") ?? 0) || 0,
+        break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,

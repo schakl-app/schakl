@@ -24,7 +24,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import bindparam, func, or_, text
 
 from app.core.activity import ActivityService
 from app.core.crypto import decrypt, encrypt
@@ -603,6 +603,8 @@ class UptimeService:
         instance_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
         website_id: uuid.UUID | None = None,
+        domain_id: uuid.UUID | None = None,
+        hosting_id: uuid.UUID | None = None,
         sync_status: str | None = None,
         monitor_type: str | None = None,
         link_status: str | None = None,
@@ -615,6 +617,8 @@ class UptimeService:
             instance_id=instance_id,
             company_id=company_id,
             website_id=website_id,
+            domain_id=domain_id,
+            hosting_id=hosting_id,
             sync_status=sync_status,
             monitor_type=monitor_type,
             link_status=link_status,
@@ -670,6 +674,44 @@ class UptimeService:
             .with_only_columns(UptimeMonitor.parent_id, func.count(UptimeMonitor.id))
             .where(UptimeMonitor.parent_id.in_(group_ids))
             .group_by(UptimeMonitor.parent_id)
+        )
+        return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
+
+    async def company_names(self, monitors: list[UptimeMonitor]) -> dict[uuid.UUID, str]:
+        """``company_id -> name`` for one page of monitors, in **one** query or none.
+
+        `companies` is another module's table, read as a bare name the way `matching` already
+        reads `domains` (§6) — a lookup is not a data path into another module. No horizon clause
+        is needed and none would be honest: the ids come off monitors this caller has *already*
+        been handed, so naming their client reveals nothing the row did not.
+
+        Filled only under ``meta=true``. It was declared on `UptimeMonitorRead` from the start,
+        documented as resolved when asked for, and resolved by nobody — so every list that tried
+        to say whose a monitor was printed nothing, and the one screen that needed it kept its
+        own map of instance names client-side to work around the same gap.
+        """
+        ids = {m.company_id for m in monitors if m.company_id is not None}
+        if not ids:
+            return {}
+        stmt = text("SELECT id, name FROM companies WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        rows = (await self.ctx.session.execute(stmt, {"ids": list(ids)})).all()
+        return {row[0]: row[1] for row in rows}
+
+    async def instance_names(self, monitors: list[UptimeMonitor]) -> dict[uuid.UUID, str]:
+        """``instance_id -> name`` for one page of monitors, in **one** query or none.
+
+        Through the instance repository, so an instance outside the caller's reach is simply
+        absent rather than named.
+        """
+        ids = {m.instance_id for m in monitors}
+        if not ids:
+            return {}
+        stmt = (
+            self.instances.scoped_select()
+            .with_only_columns(UptimeInstance.id, UptimeInstance.name)
+            .where(UptimeInstance.id.in_(ids))
         )
         return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
 
@@ -741,6 +783,8 @@ def _monitor_filters(
     instance_id: uuid.UUID | None = None,
     company_id: uuid.UUID | None = None,
     website_id: uuid.UUID | None = None,
+    domain_id: uuid.UUID | None = None,
+    hosting_id: uuid.UUID | None = None,
     sync_status: str | None = None,
     monitor_type: str | None = None,
     link_status: str | None = None,
@@ -753,6 +797,11 @@ def _monitor_filters(
     screen asks for — everything with at least one candidate — because "there is exactly one
     obvious answer" and "there are two and you must choose" belong in the same list, told apart
     by the row rather than by a second request.
+
+    **Every anchor is filterable, not just ``website_id``.** A link you can write is a link
+    something has to be able to read back: the domain and hosting columns had a write path, a
+    matcher and a horizon, and no way to ask "what watches this one" — so a monitor attached to a
+    client's domain was stored correctly and appeared on no screen in the product.
     """
     conditions: list[Any] = []
     if instance_id is not None:
@@ -761,6 +810,10 @@ def _monitor_filters(
         conditions.append(UptimeMonitor.company_id == company_id)
     if website_id is not None:
         conditions.append(UptimeMonitor.website_id == website_id)
+    if domain_id is not None:
+        conditions.append(UptimeMonitor.domain_id == domain_id)
+    if hosting_id is not None:
+        conditions.append(UptimeMonitor.hosting_id == hosting_id)
     if sync_status is not None:
         conditions.append(UptimeMonitor.sync_status == sync_status)
     if monitor_type is not None:
@@ -771,6 +824,11 @@ def _monitor_filters(
             conditions.append(_linked_condition())
         else:
             conditions.append(~_linked_condition())
+            # `unlinked` is every one of the three unlinked states at once, and it exists because
+            # the picker's question is not "what did the matcher find" but "what may I still
+            # attach". Asking for `unmatched` there would have offered a monitor whose proposal
+            # nobody confirmed and hidden the ones with no proposal at all — which is exactly the
+            # set a person opens a picker to reach.
             if link_status == matching.MATCHED:
                 conditions.append(found == 1)
             elif link_status == matching.AMBIGUOUS:

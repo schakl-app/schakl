@@ -47,4 +47,5 @@ async def handle_project_created(ctx: EmitContext, payload: dict[str, Any]) -> N
         project_id,
         str(name),
         parent_entity_id=payload.get("company_id"),
+        parent_entity_type="company",
     )

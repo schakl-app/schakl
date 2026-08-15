@@ -11,7 +11,13 @@
 
   const ai = $derived(data.ai);
   const usage = $derived(data.usage);
-  const FEATURES = ["assistant", "writing_assist", "time_assist", "reporting"] as const;
+  const FEATURES = [
+    "assistant",
+    "writing_assist",
+    "time_assist",
+    "reporting",
+    "email_assist",
+  ] as const;
 
   const DEFAULT_MODELS: Record<string, string> = {
     anthropic: "claude-opus-4-8",

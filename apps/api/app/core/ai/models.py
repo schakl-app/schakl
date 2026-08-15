@@ -28,7 +28,19 @@ AI_PROVIDERS: tuple[str, ...] = ("anthropic", "openai", "openai_compatible")
 
 #: The per-feature toggles a tenant can flip independently (#126): a tenant can enable
 #: writing assist and leave the assistant off. Keys of ``AISettings.features``.
-AI_FEATURES: tuple[str, ...] = ("assistant", "writing_assist", "time_assist", "reporting")
+#:
+#: ``email_assist`` (#327) earns its own key rather than riding ``writing_assist``, which
+#: docs/AI.md otherwise recommends: it is the only feature that sends *a client's own words* to
+#: a model, and an agency happy for AI to polish a colleague's paragraph may well not be happy
+#: for it to read the mailbox. Folding the two together would have switched the second on for
+#: everyone who had already agreed to the first.
+AI_FEATURES: tuple[str, ...] = (
+    "assistant",
+    "writing_assist",
+    "time_assist",
+    "reporting",
+    "email_assist",
+)
 
 
 class AISettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

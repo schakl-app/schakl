@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.google.drive.service import DriveService
+from app.modules.google.drive.service import MAX_BROWSE_QUERY, DriveService
 
 router = APIRouter(prefix="/drive", tags=["google"])
 
@@ -33,6 +33,11 @@ class DriveBrowseItem(BaseModel):
 class DriveBrowseResult(BaseModel):
     folder: DriveBrowseFolder
     items: list[DriveBrowseItem]
+    #: The search term this list answers, echoed so the screen can name it (`null` = the
+    #: folder's own contents).
+    query: str | None = None
+    #: Drive had another page we did not follow — the list is a prefix, and says so (#336).
+    truncated: bool = False
 
 
 class DriveLinkRead(BaseModel):
@@ -88,7 +93,10 @@ class DriveFolder(BaseModel):
 
 
 class DriveProvisionRequest(BaseModel):
-    entity_type: str = Field(..., pattern="^(company|project)$")
+    #: Every entity a Drive folder can hang off (#328). Auto-provisioning still covers only
+    #: companies and projects — tasks are numerous and short-lived, so a task's folder is
+    #: always somebody pressing the button on the panel.
+    entity_type: str = Field(..., pattern="^(company|project|task)$")
     entity_id: uuid.UUID
 
 
@@ -103,12 +111,17 @@ class DriveBulkProvisionResult(BaseModel):
 )
 async def browse(
     folder_id: str | None = Query(None, max_length=128),
+    q: str | None = Query(None, max_length=MAX_BROWSE_QUERY),
     refresh: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> DriveBrowseResult:
     """Live folder contents **as the viewing user** — Drive's permissions are authoritative.
-    Redis-cached ~45 s per user+folder; ``refresh=1`` busts it."""
-    listing = await DriveService(ctx).browse(folder_id, refresh=refresh)
+
+    ``q`` filters by name **inside this folder**, at Drive rather than in the browser (#336):
+    the listing is one page of 100, so a client-side filter would answer "nothing found" for
+    the 101st file. Redis-cached ~45 s per user+folder+term; ``refresh=1`` busts it.
+    """
+    listing = await DriveService(ctx).browse(folder_id, q=q, refresh=refresh)
     return DriveBrowseResult(**listing)
 
 

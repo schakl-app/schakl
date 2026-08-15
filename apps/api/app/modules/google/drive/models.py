@@ -99,10 +99,16 @@ class DriveFolderJob(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     #: The folder name, snapshotted at emit time (the worker never re-reads the entity).
     name: Mapped[str] = mapped_column(String(500), nullable=False)
-    #: For a project folder: the company whose folder it nests under (resolved at emit time).
+    #: The record whose folder this one nests under, resolved at emit time: a project's client
+    #: (#150), a task's project (#328). The *folder* is resolved at execution time — the parent
+    #: may still have been folderless when this row was written.
     parent_entity_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
+    #: What kind of record ``parent_entity_id`` names. ``NULL`` reads as ``company``: every row
+    #: written before tasks could nest (and every row an older replica writes mid-rollout) meant
+    #: a project's client, and a nesting job must not lose its parent to a deploy ordering.
+    parent_entity_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
