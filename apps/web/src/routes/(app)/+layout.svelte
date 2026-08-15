@@ -26,6 +26,7 @@
   import { getLocale } from "$lib/paraglide/runtime";
   import { AI_CONTEXT_KEY, aiEnabled, type AIFeature, type AssistantEntity } from "$lib/core/ai";
   import AssistantPanel from "$lib/core/ai/AssistantPanel.svelte";
+  import { crumbTrail, trackCrumbTrail } from "$lib/core/breadcrumb-trail.svelte";
   import { breadcrumbsFor } from "$lib/core/breadcrumbs";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -50,6 +51,11 @@
     navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
   );
   const path = $derived(page.url.pathname);
+  // Remember which record the visitor came through, so a crumb row can say "Bedrijven › Acme ›
+  // Site herbouw" rather than "Projecten › Site herbouw". Registered here because
+  // `afterNavigate` may only be called during component init; the trail itself is drawn only
+  // over links the landing record confirms (core/breadcrumb-trail).
+  trackCrumbTrail();
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
   const showSettings = $derived(!isPortal && canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
@@ -526,8 +532,18 @@
       <div class="mx-auto w-full max-w-content">
         {#if !isPortal}
           <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
-               path and the page's own loaded data — no screen can ship without them. -->
-          <Breadcrumbs crumbs={breadcrumbsFor(path, page.data)} />
+               path, the route's own parameter names, the page's own loaded data and the nav this
+               visitor is looking at — no screen can ship without them. `trail` is the way in,
+               kept only as far as the landing record confirms it (core/breadcrumb-trail). -->
+          <Breadcrumbs
+            crumbs={breadcrumbsFor({
+              pathname: path,
+              routeId: page.route.id,
+              data: page.data,
+              nav,
+              trail: crumbTrail(),
+            })}
+          />
         {/if}
         {@render children()}
       </div>

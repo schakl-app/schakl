@@ -45,6 +45,10 @@ export const load: PageServerLoad = async (event) => {
   return {
     companyId: company_id,
     companyName: company.data?.name ?? "",
+    // The record this screen is about, under the key every other company page uses: the crumb row
+    // names its `[id]` segment from it, and the trail hangs the next page off it. Already fetched
+    // above for the display-name placeholder, so this costs nothing.
+    company: company.data ?? null,
     profile: profile.data ?? null,
     tones: tones.data ?? [],
     templates: templates.data ?? [],

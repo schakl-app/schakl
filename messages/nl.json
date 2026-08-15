@@ -5403,5 +5403,7 @@
   "errors.oauth_too_many_clients": "Er zijn te veel applicaties geregistreerd op deze werkruimte.",
   "module.reporting.label": "Rapportage",
   "module.uptime.label": "Uptime",
-  "module.wordpress.label": "WordPress"
+  "module.wordpress.label": "WordPress",
+  "breadcrumbs.label": "Kruimelpad",
+  "breadcrumbs.expand": "Volledige route tonen"
 }

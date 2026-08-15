@@ -1001,6 +1001,38 @@
   section **and** an Instellingen screen, and both ways in stay true.
   `tests/unit/settings-rail.test.ts` fails if a registry entry outside `/settings/` has no shell —
   nothing else in the build would notice, because the screen renders perfectly well without it.
+- **The breadcrumb row follows the way in, and only as far as the record confirms it**
+  (`core/breadcrumbs.ts`, `core/breadcrumb-labels.ts`, `core/breadcrumb-trail.svelte.ts`). The app
+  is a graph, not a tree: a project hangs off a client, a task off a project, and each is also
+  reachable from its own list in the sidebar. A purely path-derived row is therefore right about
+  *where you are* and silent about *how you got here* — opening a project from Acme's page read
+  "Projecten › Site herbouw", with no way back to the client whose page you were reading a click
+  ago. So the previous page's record is offered to the next one as a candidate ancestor and is
+  drawn **only if the new record names it** (`project.company_id === Acme.id`): history suggests,
+  the record decides. That is the whole safety property. A trail assembled from visit order alone
+  starts lying the first time somebody opens a record in a new tab, follows a notification link, or
+  walks two unrelated screens in a row — it would be a back button claiming to be a hierarchy. It
+  walks *back* rather than resetting when the immediately previous record is not a parent, so
+  leaving a task for one of its client's invoices keeps `Klanten › Acme`. And it is browser-only:
+  `afterNavigate` never runs server-side, so a first load, a reload and a shared link all render the
+  plain path-derived row, which is the honest answer — nobody came from anywhere.
+  Three rules keep the row readable and true. **A dynamic segment is one the route says is
+  dynamic**, not one that *looks* like a UUID — a Google Ads account id is a number, so
+  `/marketing/google-ads/4155551234` printed the raw customer id as a crumb until `page.route.id`
+  became the authority. **A section crumb is whatever the sidebar calls that section**: a tenant
+  renaming Klanten to Relaties (#169) renamed the nav item and nothing else, so the crumb went on
+  contradicting the menu directly above it; the nav registry is read first and the static map is the
+  fallback for the sections that contribute no nav item. And **length is capped, not thrown away** —
+  past four crumbs the middle folds into a "…" that opens, because a trail which silently dropped
+  its ancestors is worse than a long one: those crumbs are the only link to the records they name.
+  A label is clipped by width with its full text in `title`, never shortened in JavaScript, which
+  would mean deciding where a name may break.
+  `tests/unit/breadcrumbs.test.ts` sweeps the real route tree and fails on any segment nothing
+  names. That is the enforcement this row needs: it is rendered by the layout for every page, so a
+  new screen gets one whether or not anyone thought about it, and "nobody thought about it" looked
+  like `prettify()` — the slug with a capital letter, in English, on a Dutch-default app. `/reports`
+  read "Reports" and `/companies/<id>/reporting` read "Reporting" for exactly that reason, and
+  nothing in the build noticed, because a prettified slug renders perfectly well.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
