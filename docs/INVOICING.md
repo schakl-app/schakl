@@ -911,7 +911,7 @@ shipped design renders from.
 - **A new tax seed set** is a `taxseeds.py` entry — data, not logic.
 - **A live accounting provider** is a new module registering an `AccountingProvider`;
   credentials encrypted per tenant (the email-settings pattern), sync state in
-  `external_refs`. See #31 for the SnelStart scope.
+  `external_refs`. **Shipped**: `snelstart` (#377) is the first live provider — see `docs/SNELSTART.md`. #31 holds the original scope.
 - **A payment provider** is a new module implementing `app.core.payments.PaymentProvider` and
   registering an account resolver — nothing in `invoicing` changes, and nothing in it may name
   the provider. The seam, the five callback gates, the idempotency pair (a row lock plus the

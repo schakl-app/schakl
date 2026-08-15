@@ -42,6 +42,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Web app       | SvelteKit (SSR) + `@vite-pwa/sveltekit` · TailwindCSS · Bits UI / shadcn-svelte |
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
+| Accounting    | Provider-agnostic seam in `app/modules/invoicing/accounting.py` (#31): an `AccountingProvider` protocol plus `invoicing_external_refs` as the idempotency. `snelstart` is the first live implementation (#377, `docs/SNELSTART.md`); UBL 2.1 export stays the provider-less bridge every package imports. **The CRM is not the ledger** — what has been paid comes back as an ordinary `InvoicePayment`, never as a second copy |
 | Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
 | Payments      | Provider-agnostic seam in `app/core/payments/` (epic #269): a `PaymentProvider` protocol, a per-provider account resolver, and the `{org}.{account}.{secret}` callback token a provider's unauthenticated POST names its tenant by (the Google channel-token pattern). `mollie` is the first implementation and Stripe/Adyen are a package, not a refactor. **A webhook body is a hint, never a fact**: only the id it names is read, and status, amount and mode come from an authenticated re-fetch with the tenant's own credential. A confirmed payment writes an ordinary `InvoicePayment` row, so invoicing stays the single answer to "what has been paid" — `docs/PAYMENTS.md`, `docs/MOLLIE.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
@@ -772,6 +773,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
 
+- **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
+  SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
+  outlive it. **A query parameter the server ignores is worse than one it rejects**: `$filter` is
+  honoured by `/relaties`, `/grootboeken` and `/artikelen` — which reject an unknown property — and
+  **silently ignored** by `/landen` and `/dagboeken`, which answer `200` with all 250 countries for
+  a filter naming a field that does not exist. A client that trusts it and takes `[0]` resolves
+  Nederland for Estonia, so every predicate that decides an answer is re-applied locally and the
+  filter is a bandwidth optimisation, never a guarantee. **Two credentials that belong to two
+  different people need two error paths**: the subscription key is the *install's* (and expires
+  after 90 days on the free developer product), the koppelsleutel is the *tenant's*, both are
+  refused with a 401, and reporting one as the other sends an agency to re-issue the thing that was
+  already right. **A duplicate refusal is an answer, not a failure** — `BOE-0021` is SnelStart
+  saying the boeking is already there, so the correct response is to go and adopt it, and a write
+  that got *no* answer is looked up before any retry (#31's "a timeout is unknown"); a boeking under
+  our number that we did not write is adopted and **left alone**, because somebody wrote it. And
+  **derive what can be derived**: the btw-soort comes from the administration's own date-ranged rate
+  table, because the Dutch low rate was 6% until 2019 and 9% after and a constant is wrong about one
+  of them — while a rate the table cannot confirm is reported as guessed rather than quietly taxed.
+  Its cloud half is the reason the broker exists at all: SnelStart posts every partner's couplings
+  to **one** URL, so on cloud that URL is the instance apex where no org resolves and the tenancy
+  rides in the `referenceKey` (`{org}.{account}.{secret}`, Mollie's token shape reused because the
+  problem is identical) — while a self-hosted box, whose hostname SnelStart has never heard of,
+  renders no activation button at all rather than one that always refuses (#253). Two things the
+  tests found that review would not have: `json.loads(str(Decimal))` parses straight back into a
+  float, so money now travels as decimal text that .NET parses exactly; and **§18's per-row
+  savepoint and §11's `release_db` cannot both hold** in a batch that calls out per row, because
+  `release_db` commits and a commit closes the savepoint — `release_db` wins, and its commit gives
+  the per-row durability the savepoint was for.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
