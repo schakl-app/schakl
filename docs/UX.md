@@ -62,6 +62,23 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
+- **A date and an instant travel down the same `string`, so the value decides, not the caller.**
+  The API sends a wall-clock date (`2026-07-07` — a due date, an expiry, a contract start) and an
+  instant (`2026-07-07T09:12:33Z` — when something was checked, uploaded, decided), and the two are
+  read in different zones: a date in UTC or it slips a day, an instant in the *tenant's* zone
+  (CLAUDE.md §8) or two colleagues read different days for the same event. Every formatter in
+  `core/format.ts` used to assume the first shape and pin `timeZone: "UTC"`, parsing by
+  concatenating a midnight onto the string — so an instant became `…T09:12:33ZT00:00:00Z`, an
+  Invalid Date, and printed as **`NaN-NaN-0NaN`** (the year is `String(NaN).padStart(4, "0")`).
+  It shipped on five screens at once — the three Google Ads panels' *"gecontroleerd"*, the cloud
+  console's trial and lifecycle dates, the domain health card's certificate expiry, the HR document
+  list — because there is nothing for the build to catch: both shapes are `string`, so the types
+  agree and `svelte-check` passes, and the garbage only appears on a row that actually carries a
+  timestamp. The discrimination now lives in one dependency-free place (`core/wire-date.ts`, pinned
+  by `tests/unit/wire-date.test.ts`) and reads the shape off the value — an instant carries a `T` —
+  so any date formatter may be handed either. Choosing to *show* the time is still a separate
+  decision: an "as of" line that a button refreshes (a verification, a health probe, a sync) uses
+  `fmtDateTime`, because a bare date on something you just pressed already said today.
 - **A duration is typed, not counted** (#326). Every field whose subject is a span of time —
   a task's budget, a scheduled block, worked hours, a break — takes free text through the shared
   `core/ui/DurationInput` and the one parser behind it (`core/duration.ts`): `1:40`, `100`,

@@ -5,7 +5,7 @@
    */
   import { AlertTriangle, Megaphone, Plus } from "@lucide/svelte";
 
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
   import MarketingConnectDialog from "$lib/modules/marketing/MarketingConnectDialog.svelte";
@@ -107,7 +107,7 @@
           {:else if account.last_verified_at}
             <span class="mt-3 block text-xs text-text-muted">
               {t("google_ads.panel.verified")}
-              {fmtNumericDate(account.last_verified_at)}
+              {fmtDateTime(account.last_verified_at)}
             </span>
           {/if}
         </a>

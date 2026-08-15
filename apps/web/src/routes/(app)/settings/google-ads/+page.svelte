@@ -9,7 +9,7 @@
    */
   import { enhance } from "$app/forms";
 
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -154,7 +154,7 @@
             {:else if account.last_verified_at}
               <span class="mt-1 block text-xs text-text-muted">
                 {t("google_ads.panel.verified")}
-                {fmtNumericDate(account.last_verified_at)}
+                {fmtDateTime(account.last_verified_at)}
               </span>
             {/if}
           </div>

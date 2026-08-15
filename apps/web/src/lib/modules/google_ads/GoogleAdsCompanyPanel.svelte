@@ -9,7 +9,7 @@
    */
   import { AlertTriangle, Megaphone, Plus } from "@lucide/svelte";
 
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   // Cross-module by design (#338): connecting a client's Ads account writes a *marketing link*,
   // which is what makes the panel above this one, `/marketing` and this panel agree afterwards.
@@ -75,7 +75,7 @@
             {#if account.currency}· {account.currency}{/if}
             {#if account.last_verified_at}
               · {t("google_ads.panel.verified")}
-              {fmtNumericDate(account.last_verified_at)}
+              {fmtDateTime(account.last_verified_at)}
             {/if}
           </span>
           {#if account.status === "error"}
