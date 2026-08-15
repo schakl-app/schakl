@@ -46,6 +46,8 @@
   import { formatMinutes } from "$lib/modules/time/format";
 
   import { entityPanelComponent } from "$lib/core/registry";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
   let { data, form } = $props();
 
@@ -340,8 +342,6 @@
 
   const priorities = ["low", "normal", "high"] as const;
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-
   // Live company/project picks for the edit form (#227): the client narrows the project list
   // and a picked project backfills its client, like every create-side pairing of these two
   // pickers (time's EntryForm, the interaction forms). Re-armed from the stored task on the
@@ -373,12 +373,15 @@
       liveAllocated = task.allocated_minutes ?? null;
     }
   });
-  const projectItems = $derived(
-    (fCompany
-      ? data.projects.filter((p) => p.company_id === fCompany || !p.company_id)
-      : data.projects
-    ).map((p) => ({ value: p.id, label: p.name })),
+  // The client narrows the project list (above); the lifecycle then decides what is *suggested*
+  // within it — a finished project sits behind the search wearing its status rather than beside
+  // this week's work, and the one this task is already on is always offered, however it ended.
+  const companyPicker = $derived(splitCompanyOptions(data.companies, { selectedId: fCompany }));
+  const companyItems = $derived(companyPicker.live);
+  const projectPicker = $derived(
+    splitProjectOptions(data.projects, { companyId: fCompany, selectedId: fProject }),
   );
+  const projectItems = $derived(projectPicker.live);
   function onCompanyPicked(id: string) {
     fCompany = id;
     // A selected project of another client drops out of the narrowed list yet would still be
@@ -1010,6 +1013,8 @@
         {#if editMode}
           <Combobox
             items={companyItems}
+            archived={companyPicker.retired}
+            archivedLabel={companyArchivedLabel()}
             name="company_id"
             value={fCompany}
             id="company"
@@ -1064,6 +1069,8 @@
         {#if editMode}
           <Combobox
             items={projectItems}
+            archived={projectPicker.retired}
+            archivedLabel={projectArchivedLabel()}
             name="project_id"
             value={fProject}
             id="project"
@@ -2546,6 +2553,8 @@
              and a task that has none makes this the one field to fill in. -->
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           value={fCompany}
           id="qc-task-project-company"

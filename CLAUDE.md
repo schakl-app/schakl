@@ -257,7 +257,10 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
   descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
-  full dialog → auto-select**, and **every list screen ends in the shared pager**, `docs/UX.md`),
+  full dialog → auto-select** and **splits its options by lifecycle** — a finished project or an
+  archived client is behind the search wearing its status, never beside this week's work and
+  never absent (`$lib/core/picker`, `docs/UX.md`) — and **every list screen ends in the shared
+  pager**, `docs/UX.md`),
   `nl.json` + `en.json` keys, test for tenant
   isolation, **a mutable entity records its changes to the activity log and its detail view
   renders the trail** (§16), docs/OpenAPI updated. **Performance is part of done, not a
@@ -265,6 +268,20 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   row carries only what its screen draws, aggregates are computed in SQL with the company horizon
   carried, every unbounded read is capped, section-shared lookups live in the section's layout
   load, and the whole thing lands with a `count_queries` budget test (`docs/PERFORMANCE.md`).
+- **A list of things that have a lifecycle opens on the ones that are still going on** (#329,
+  and now projects too). "Every status" and "the working set" are different questions, and a
+  single-valued `?status=` could not ask the second: `status=active` hides the leads being
+  chased and the projects merely paused, which are live work. So the endpoint takes a
+  **comma-separated set** and its own default stays *everything* — the pickers, the impex export
+  and the generated MCP surface all read the same endpoint, and narrowing it would change what
+  they are told exists. The **screen** picks the narrowing default, and says so with a pill of
+  its own: a list that silently leaves the archive out looks identical to one that has no
+  archive, and only a control showing itself selected can tell them apart. "Alles" sits beside
+  it, because a view the user can reach and cannot link to is not a view (§9, the URL is the
+  view) — so absent means the working set, `all` means everything, and the export is sent the
+  *resolved* filter rather than the URL token, or the spreadsheet quietly disagrees with the
+  screen.
+
 - **A list screen pages; it never shows a prefix of itself.** The old shape — `limit: 200,
   offset: 0` and a sentence apologising for it — made a tenant who outgrew the cap read a sample
   as the whole answer, with row 201 reachable only by guessing a search term. One contract now

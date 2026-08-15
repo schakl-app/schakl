@@ -27,9 +27,17 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
+  import { companyArchivedLabel } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
   import { contactsForScope, forgetContacts } from "./contacts";
-  import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
+  import {
+    loadLinkLookups,
+    splitLinkOptions,
+    type LinkOption,
+    type ProjectOption,
+    type TaskOption,
+  } from "./lookups";
 
   let {
     ids,
@@ -64,16 +72,27 @@
 
   // The same cascade the move dialog uses: a client narrows the projects, a project the tasks,
   // and picking deeper backfills the levels above.
-  const projectOptions = $derived(
-    companyId ? projects.filter((p) => !p.company_id || p.company_id === companyId) : projects,
+  // The cascade decides *which* rows may be offered; the split decides which of them are
+  // suggested. An archived client, a finished project and a closed task each drop behind the
+  // search wearing their status rather than out of the picker (`lookups.splitLinkOptions`).
+  const linkSplit = $derived(
+    splitLinkOptions(
+      {
+        companies,
+        projects: companyId
+          ? projects.filter((p) => !p.company_id || p.company_id === companyId)
+          : projects,
+        tasks: projectId
+          ? tasks.filter((task) => task.project_id === projectId)
+          : companyId
+            ? tasks.filter((task) => !task.company_id || task.company_id === companyId)
+            : tasks,
+      },
+      { companyId: companyId, projectId: projectId, taskId: taskId },
+    ),
   );
-  const taskOptions = $derived(
-    projectId
-      ? tasks.filter((task) => task.project_id === projectId)
-      : companyId
-        ? tasks.filter((task) => !task.company_id || task.company_id === companyId)
-        : tasks,
-  );
+  const projectOptions = $derived(linkSplit.projects.live);
+  const taskOptions = $derived(linkSplit.tasks.live);
 
   function onProjectPicked(id: string) {
     projectId = id;
@@ -267,7 +286,9 @@
       <label class="block text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
         <Combobox
-          items={companies}
+          items={linkSplit.companies.live}
+          archived={linkSplit.companies.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           value={companyId}
           placeholder={t("interactions.bulk.unchanged")}
@@ -285,6 +306,8 @@
         <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
         <Combobox
           items={projectOptions}
+          archived={linkSplit.projects.retired}
+          archivedLabel={projectArchivedLabel()}
           name="project_id"
           value={projectId}
           placeholder={t("interactions.bulk.unchanged")}
@@ -302,6 +325,8 @@
         <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
         <Combobox
           items={taskOptions}
+          archived={linkSplit.tasks.retired}
+          archivedLabel={t("tasks.picker.archived")}
           name="task_id"
           value={taskId}
           placeholder={t("interactions.bulk.unchanged")}

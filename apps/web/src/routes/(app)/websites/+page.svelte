@@ -27,6 +27,11 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import {
+    companyArchivedLabel,
+    companyLifecycle,
+    splitCompanyOptions,
+  } from "$lib/modules/companies/picker";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
@@ -50,6 +55,12 @@
   // both, because they are the same intent.
   let showModal = $state(page.url.searchParams.has("new"));
   const initialCompanyId = $derived(data.filters.company ?? "");
+  // One split of the client lookup, used by the filter bar, the bulk dialog and the create
+  // form alike: an archived client is never suggested and always findable, and the one the
+  // list is filtered by stays on offer whatever became of it.
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: initialCompanyId }),
+  );
   let editing = $state<Website | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
@@ -204,7 +215,10 @@
       kind: "select",
       key: "company",
       placeholder: t("websites.company"),
-      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+      // Archived clients behind the search rather than among the live ones (`companies/picker.ts`).
+      options: companyPicker.live,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
     },
     {
       kind: "select",
@@ -466,6 +480,7 @@
               value={editing?.technical_owner ?? { type: "agency", id: null }}
               agencyLabel={data.agencyLabel}
               companies={data.companies}
+              companyLifecycle={companyLifecycle()}
               employees={data.employees}
               contacts={data.contacts}
               types={["agency", "company"]}

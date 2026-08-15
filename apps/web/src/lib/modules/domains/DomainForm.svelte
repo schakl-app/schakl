@@ -12,6 +12,12 @@
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import type { components } from "$lib/core/api/schema";
   import InvoiceableField from "$lib/modules/domains/InvoiceableField.svelte";
+  import {
+    companyArchivedLabel,
+    companyLifecycle,
+    splitCompanyOptions,
+    type PickerCompany,
+  } from "$lib/modules/companies/picker";
   import { normalizeDomainName, tldOf } from "$lib/modules/domains/normalize";
 
   type Domain = components["schemas"]["DomainRead"];
@@ -41,7 +47,7 @@
     created = null,
   }: {
     domain?: Domain | null;
-    companies: { id: string; name: string }[];
+    companies: PickerCompany[];
     providers: Provider[];
     employees: Member[];
     contacts: { id: string; name: string }[];
@@ -89,7 +95,13 @@
   let emailEnabled = $state(domain?.email_enabled ?? false);
   // Derived, not a const: a quick-create refreshes `companies` mid-life and the new
   // entity must resolve to its label in the picker.
-  const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
+  const companySelected = $derived(
+    createdBySlot.company ?? domain?.company_id ?? initialCompanyId ?? "",
+  );
+  // Archived clients keep out of the opening list and stay findable by typing; the one this
+  // domain is already on is always offered, however its relationship ended.
+  const companyPicker = $derived(splitCompanyOptions(companies, { selectedId: companySelected }));
+  const companyItems = $derived(companyPicker.live);
 
   // What the two invoicing rows currently answer. Held here so the collapsed section can state
   // it: a disclosure that hides a decision without naming it is worse than no disclosure.
@@ -254,8 +266,10 @@
     >
     <Combobox
       items={companyItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="company_id"
-      value={createdBySlot.company ?? domain?.company_id ?? initialCompanyId}
+      value={companySelected}
       allowEmpty={false}
       id="{idPrefix}-company"
       placeholder={t("domains.company")}
@@ -326,6 +340,7 @@
       value={domain?.registry_contact}
       {agencyLabel}
       {companies}
+      companyLifecycle={companyLifecycle()}
       {employees}
       {contacts}
       id="{idPrefix}-registry"
@@ -362,6 +377,7 @@
             value={domain?.email_contact ?? { type: "agency", id: null }}
             {agencyLabel}
             {companies}
+            companyLifecycle={companyLifecycle()}
             {employees}
             {contacts}
             id="{idPrefix}-email-contact"

@@ -107,6 +107,8 @@
         <div class="w-full sm:w-44">
           <Combobox
             items={def.options}
+            archived={def.archived ?? []}
+            archivedLabel={def.archivedLabel}
             name="_filter_{def.key}"
             value={current(def)}
             placeholder={def.placeholder}

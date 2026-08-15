@@ -16,10 +16,13 @@
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
   import type { PartyType } from "$lib/core/party";
+  import { splitLifecycle, type LifecycleVocabulary } from "$lib/core/picker";
 
   interface Company {
     id: string;
     name: string;
+    /** Read only when `companyLifecycle` is given — see the prop. */
+    status?: string | null;
   }
   interface Employee {
     user_id: string;
@@ -43,6 +46,7 @@
     types,
     typeLabels,
     companyPickable = true,
+    companyLifecycle,
     oncreatecompany,
     oncreatecontact,
     created = null,
@@ -64,6 +68,15 @@
     /** false: "company" means the record's own client — a fixed choice (id null), no
      * entity combobox, labelled with the client's name via `typeLabels`. */
     companyPickable?: boolean;
+    /**
+     * Which client statuses retire a row, and what each is called.
+     *
+     * Passed in rather than imported: this is a core component and the lifecycle is the
+     * companies module's vocabulary (`$lib/modules/companies/picker` exports it ready-made).
+     * Omitted, every client is offered flat — which is what this picker did before, and stays
+     * the honest answer for a caller whose lookup does not carry statuses.
+     */
+    companyLifecycle?: LifecycleVocabulary;
     /** Inline-create (#115): typing an unknown company offers "＋ … toevoegen". */
     oncreatecompany?: (query: string, slot: string) => void;
     /** Inline-create (#115): typing an unknown contact offers "＋ … toevoegen". */
@@ -108,9 +121,19 @@
   // A fixed company is like the agency: the button is the whole choice, id posts null.
   const fixedChoice = $derived(type === "agency" || (type === "company" && !companyPickable));
 
+  // Archived clients keep out of the opening list and stay reachable by typing (#329's rule,
+  // applied to the picker): the one already picked is always offered, whatever it became.
+  const companySplit = $derived(
+    companyLifecycle
+      ? splitLifecycle(
+          companies.map((c) => ({ value: c.id, label: c.name, status: c.status })),
+          { ...companyLifecycle, selectedId: entityId },
+        )
+      : { live: companies.map((c) => ({ value: c.id, label: c.name })), retired: [] },
+  );
   const items = $derived(
     type === "company"
-      ? companies.map((c) => ({ value: c.id, label: c.name }))
+      ? companySplit.live
       : type === "employee"
         ? employees.map((e) => ({ value: e.user_id, label: memberLabel(e) }))
         : type === "contact"
@@ -159,6 +182,8 @@
   {:else}
     <Combobox
       {items}
+      archived={type === "company" ? companySplit.retired : []}
+      archivedLabel={companyLifecycle?.archivedLabel}
       name="{id}__entity"
       bind:value={entityId}
       {allowEmpty}

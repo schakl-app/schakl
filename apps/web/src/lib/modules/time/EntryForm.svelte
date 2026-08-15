@@ -28,6 +28,8 @@
     type TimeEntryTypeDef,
   } from "$lib/modules/time/format";
   import { splitTaskOptions } from "$lib/modules/time/task-picker";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
   interface Option {
     id: string;
@@ -209,11 +211,28 @@
     }
   });
 
-  const projectOptions = $derived(
-    (fCompany ? projects.filter((p) => p.company_id === fCompany || !p.company_id) : projects).map(
-      (p) => ({ value: p.id, label: p.name ?? "" }),
+  // The client narrows the list; the lifecycle then decides what is *suggested* within it. The
+  // three pickers on this form now follow one rule: hours are logged on work that is running, so
+  // an archived client, a finished project and a closed task each sit behind the search wearing
+  // the status they are in — and the one this entry is already booked on is always offered.
+  const companyPicker = $derived(
+    splitCompanyOptions(
+      companies.map((c) => ({ id: c.id, name: c.name ?? "", status: c.status })),
+      { selectedId: fCompany },
     ),
   );
+  const projectPicker = $derived(
+    splitProjectOptions(
+      projects.map((p) => ({
+        id: p.id,
+        name: p.name ?? "",
+        status: p.status,
+        company_id: p.company_id,
+      })),
+      { companyId: fCompany, selectedId: fProject },
+    ),
+  );
+  const projectOptions = $derived(projectPicker.live);
   // Open tasks in the dropdown, finished ones behind a search (`task-picker.ts` holds the rule
   // and the reasons). Both buckets get the same hint, deadline included.
   const taskBuckets = $derived(
@@ -563,7 +582,9 @@
       >{t("time.field.company")}</label
     >
     <Combobox
-      items={companies.map((c) => ({ value: c.id, label: c.name ?? "" }))}
+      items={companyPicker.live}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="company_id"
       bind:value={fCompany}
       id="company-{action}"
@@ -577,6 +598,8 @@
     >
     <Combobox
       items={projectOptions}
+      archived={projectPicker.retired}
+      archivedLabel={projectArchivedLabel()}
       name="project_id"
       bind:value={fProject}
       id="project-{action}"

@@ -31,6 +31,7 @@
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
 
@@ -129,7 +130,6 @@
   const companyName = $derived(
     project.company_id ? (data.companies.find((c) => c.id === project.company_id)?.name ?? "") : "",
   );
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
 
   // The client the edit form posts. A project created from the list arrives with none — the
   // "Nieuw project" button creates a minimal record and drops you here in edit mode (UX §3), so
@@ -140,6 +140,10 @@
   // invalidation (a to-do added, a client quick-created) must not clobber a live pick.
   // svelte-ignore state_referenced_locally
   let fCompany = $state(project.company_id ?? "");
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(splitCompanyOptions(data.companies, { selectedId: fCompany }));
+  const companyItems = $derived(companyPicker.live);
   // svelte-ignore state_referenced_locally
   let armedFor = project.id;
   // svelte-ignore state_referenced_locally
@@ -337,6 +341,8 @@
                fixed. -->
           <Combobox
             items={companyItems}
+            archived={companyPicker.retired}
+            archivedLabel={companyArchivedLabel()}
             name="company_id"
             bind:value={fCompany}
             id="edit-project-company"

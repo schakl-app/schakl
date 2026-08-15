@@ -66,7 +66,11 @@ export const load: LayoutServerLoad = async (event) => {
     // subtract anything client-side any more.
     availableDomains: availableDomains.data ?? [],
     hosting: (hosting.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })),
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+    })),
     providers: providers.data ?? [],
     employees: members.data ?? [],
     contacts: lookupItems(contacts, "contacts").map((c) => ({

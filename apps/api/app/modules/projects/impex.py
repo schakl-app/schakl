@@ -37,12 +37,14 @@ _FIELDS = (
 async def _fetch_page(
     ctx: RequestContext, *, limit: int, offset: int, filters: dict[str, Any]
 ) -> Sequence[Any]:
-    status = filters.get("status")
     items, _ = await ProjectService(ctx).list(
         limit=limit,
         offset=offset,
         q=filters.get("q"),
-        status=ProjectStatus(status) if status else None,
+        # Passed through as the list endpoint's own string, comma-separated set and all, so the
+        # file holds exactly the filtered list on screen — including the default view, which is
+        # a *set* of statuses and not one (#329's rule, now the projects list's too).
+        status=filters.get("status"),
         company_id=filters.get("company_id"),
         mine=bool(filters.get("mine")),
         sort=filters.get("sort"),

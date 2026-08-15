@@ -15,6 +15,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import { companyLifecycle } from "$lib/modules/companies/picker";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import { pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
@@ -444,6 +445,7 @@
             value={website?.technical_owner ?? { type: "agency", id: null }}
             agencyLabel={data.agencyLabel}
             companies={data.companies}
+            companyLifecycle={companyLifecycle()}
             employees={data.employees}
             contacts={data.contacts}
             id="website-owner"

@@ -15,16 +15,22 @@
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
 
   const busy = new InFlight();
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   // Empty is the agency's own account — a real state, and the one thing on this screen that
   // cannot be a marketing link, which is why this form still exists (#338).
   let linkCompanyId = $state("");
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: linkCompanyId }),
+  );
+  const companyItems = $derived(companyPicker.live);
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -210,6 +216,8 @@
              not a gesture anybody standing here is making. -->
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           id="gads-company"
           bind:value={linkCompanyId}

@@ -32,6 +32,7 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
   import { contactTypeLabel } from "$lib/modules/contacts/types";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   function typeHref(typeId: string): string {
     const params = new URLSearchParams(page.url.searchParams);
@@ -63,7 +64,12 @@
   const canWriteCompany = $derived(can(page.data.user, "companies.company.write"));
 
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
-  const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
+  );
+  const companyFilterItems = $derived(companyPicker.live);
   function setFilter(key: string, value: string) {
     const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
@@ -328,6 +334,8 @@
   <div class="w-44">
     <Combobox
       items={companyFilterItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.companyFilter}
       placeholder={t("contacts.filter.company")}

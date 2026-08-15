@@ -23,6 +23,8 @@
   import ProjectBudgetsPanel from "$lib/modules/time/ProjectBudgetsPanel.svelte";
   import { nextStartFrom, shouldKeepPrefill } from "$lib/modules/time/quickadd";
   import TimesheetGrid from "$lib/modules/time/TimesheetGrid.svelte";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
   import { onMount } from "svelte";
 
   import { page } from "$app/state";
@@ -430,11 +432,16 @@
   // --- timer start form --------------------------------------------------------
   let timerCompany = $state("");
   let timerProject = $state("");
-  const timerProjects = $derived(
-    (timerCompany
-      ? data.projects.filter((p) => p.company_id === timerCompany || !p.company_id)
-      : data.projects
-    ).map((p) => ({ value: p.id, label: p.name })),
+  // Hours are started on work that is running, so a finished project is not suggested — it is
+  // still findable by typing, wearing the status it ended in (`projects/picker.ts`).
+  const timerProjectPicker = $derived(
+    splitProjectOptions(data.projects, { companyId: timerCompany, selectedId: timerProject }),
+  );
+  const timerProjects = $derived(timerProjectPicker.live);
+  // One split for both client controls on this screen: the timer's and the project
+  // quick-create's. An archived client is behind the search in each.
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: [timerCompany, qcProjectCompany] }),
   );
 
   // A quick-create answers with `inlineCreated` (server create → auto-select): only the
@@ -554,7 +561,9 @@
         />
         <div class="w-40">
           <Combobox
-            items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
+            items={companyPicker.live}
+            archived={companyPicker.retired}
+            archivedLabel={companyArchivedLabel()}
             name="company_id"
             bind:value={timerCompany}
             id="timer-company"
@@ -565,6 +574,8 @@
         <div class="w-40">
           <Combobox
             items={timerProjects}
+            archived={timerProjectPicker.retired}
+            archivedLabel={projectArchivedLabel()}
             name="project_id"
             bind:value={timerProject}
             id="timer-project"
@@ -948,7 +959,9 @@
             >{t("projects.field.company")}</label
           >
           <Combobox
-            items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
+            items={companyPicker.live}
+            archived={companyPicker.retired}
+            archivedLabel={companyArchivedLabel()}
             name="company_id"
             bind:value={qcProjectCompany}
             id="qc-project-company"

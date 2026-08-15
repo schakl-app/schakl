@@ -14,6 +14,11 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import {
+    companyArchivedLabel,
+    splitCompanyOptions,
+    type PickerCompany,
+  } from "$lib/modules/companies/picker";
 
   import LinesEditor from "./LinesEditor.svelte";
   import { lineKey, type EditableLine } from "./calc";
@@ -49,7 +54,7 @@
     kind: "invoice" | "quote";
     doc?: Invoice | Quote | null;
     action: string;
-    companies?: { id: string; name: string }[];
+    companies?: PickerCompany[];
     companyDefinitions?: FieldDefinition[];
     contacts?: { id: string; name: string; company_ids: string[] }[];
     taxRates: TaxRate[];
@@ -162,7 +167,13 @@
   let includeTax = $state(
     (doc?.prices_include_tax ?? settings?.prices_include_tax ?? false) as boolean,
   );
-  const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
+  // A client you archived is not one you are invoicing next, so it drops behind the search —
+  // and stays there rather than vanishing, because a credit note against an ended relationship
+  // is exactly the document somebody still has to write (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(companies, { selectedId: [createdCompanyId, companyId] }),
+  );
+  const companyItems = $derived(companyPicker.live);
   const contactItems = $derived(
     contacts
       .filter(
@@ -221,6 +232,8 @@
         >
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           value={createdCompanyId || companyId}
           id="doc-company"

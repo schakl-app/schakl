@@ -23,6 +23,11 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import {
+    companyArchivedLabel,
+    splitCompanyOptions,
+    type PickerCompany,
+  } from "$lib/modules/companies/picker";
 
   import MarketingAccountPicker from "./MarketingAccountPicker.svelte";
   import { connectHref, type MarketingSource } from "./types";
@@ -53,7 +58,7 @@
      * fill a picker most visits never open (docs/PERFORMANCE.md). A host that loads the names
      * anyway (`/marketing/google-ads` prints them under each card) passes them and pays nothing.
      */
-    companies?: { id: string; name: string }[] | null;
+    companies?: PickerCompany[] | null;
     /** The host's already-loaded company custom-field definitions, or null to let it fetch. */
     companyDefinitions?: CustomFieldDefinition[] | null;
     /** Only reached through the client picker's ＋, so a host that fixes the client needs none. */
@@ -90,7 +95,7 @@
 
   // Fetched on first open, never on page load. `requested` is a plain variable, not `$state`:
   // it guards the effect and reading it as state would make the write below re-run the effect.
-  let fetched = $state<{ id: string; name: string }[] | null>(null);
+  let fetched = $state<PickerCompany[] | null>(null);
   let capped = $state(false);
   let requested = false;
   $effect(() => {
@@ -101,13 +106,16 @@
         headers: { accept: "application/json" },
       });
       const body = response.ok ? await response.json() : null;
-      fetched = (body?.items ?? []) as { id: string; name: string }[];
+      fetched = (body?.items ?? []) as PickerCompany[];
       capped = Boolean(body?.capped);
     })();
   });
 
   const options = $derived(companies ?? fetched ?? []);
-  const companyItems = $derived(options.map((c) => ({ value: c.id, label: c.name })));
+  // An archived client is not somebody you are wiring up an ad account for, so it drops behind
+  // the search — and stays findable there, because "not suggested" is not "does not exist".
+  const companyPicker = $derived(splitCompanyOptions(options, { selectedId: chosen }));
+  const companyItems = $derived(companyPicker.live);
 
   // Consent comes back to the page the user was on, which is where they will look for the
   // dialog again. `data-sveltekit-preload-data="off"` on the link: this is an API redirect out
@@ -133,6 +141,8 @@
         </label>
         <Combobox
           items={companyItems}
+          archived={companyPicker.retired}
+          archivedLabel={companyArchivedLabel()}
           name="_marketing_connect_company"
           id="marketing-connect-company"
           bind:value={chosen}

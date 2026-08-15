@@ -138,6 +138,25 @@
   single page load for a modal most visits never open.
   **And the ＋ is a write control, so it self-gates on the API's own permission** (CLAUDE.md §15) —
   the timeline is client-reachable, and `!isPortal` is not the gate.
+  **A picker's opening list is a suggestion, so a record whose life is over is not on it —
+  and is still findable, and still says what it is.** Every client picker in the app was
+  `companies.map(c => ({value: c.id, label: c.name}))`, twenty-odd copies of a mapping that
+  could not tell a client the agency stopped working for from one it works for today; the
+  project pickers were the same one line. Hiding those rows outright is the other mistake, and
+  the worse half on its own: people do book a forgotten hour on a project they closed last week,
+  and a picker that cannot name it sends them to another screen. So `Combobox`'s `archived`
+  bucket takes them — out of the opening list, found by typing, never ranked above a live row —
+  and one helper per module decides which rows those are (`$lib/modules/companies/picker`,
+  `$lib/modules/projects/picker`, over `$lib/core/picker`). Three rules travel with it. **A
+  status is said out loud rather than implied by its bucket**, so a paused project reads "On
+  hold" while it is still on offer and an archived client reads "Gearchiveerd" under the
+  search. **Whatever is already picked is always offered**, or the field cannot say what is in
+  it and an archived value renders as an empty box. And **core holds none of the vocabulary**:
+  a shared picker (`PartyPicker`, `FilterBar`'s select) *takes* the module's lifecycle, exactly
+  as `Combobox` takes `archivedLabel` instead of holding a word. The retired sets differ on
+  purpose — a client is only retired by the archive, because a lead is being chased and an
+  offboarding client is still being invoiced, while a project is retired by `completed` as well,
+  because delivered work is not something to suggest booking against.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.

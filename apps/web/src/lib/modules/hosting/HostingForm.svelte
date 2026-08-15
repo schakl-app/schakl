@@ -5,6 +5,12 @@
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { components } from "$lib/core/api/schema";
+  import {
+    companyArchivedLabel,
+    companyLifecycle,
+    splitCompanyOptions,
+    type PickerCompany,
+  } from "$lib/modules/companies/picker";
 
   type Hosting = components["schemas"]["HostingRead"];
   type Provider = components["schemas"]["ProviderRead"];
@@ -29,7 +35,7 @@
     created = null,
   }: {
     hosting?: Hosting | null;
-    companies: { id: string; name: string }[];
+    companies: PickerCompany[];
     providers: Provider[];
     employees: Member[];
     contacts: { id: string; name: string }[];
@@ -55,13 +61,20 @@
   const providerItems = $derived(
     providers.filter((p) => p.kind === "hosting").map((p) => ({ value: p.id, label: p.name })),
   );
-  const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
 
   // Per-slot memory so a manual re-pick after a quick-create is never overridden (see DomainForm).
   let createdBySlot = $state<Record<string, string>>({});
   $effect(() => {
     if (created) createdBySlot[created.slot] = created.id;
   });
+
+  const companySelected = $derived(
+    createdBySlot.company ?? hosting?.company_id ?? initialCompanyId ?? "",
+  );
+  // Hosting with no client is shared infrastructure, so the empty option stays; an *archived*
+  // client is a different thing and moves behind the search (`companies/picker.ts`).
+  const companyPicker = $derived(splitCompanyOptions(companies, { selectedId: companySelected }));
+  const companyItems = $derived(companyPicker.live);
 </script>
 
 <div class="space-y-4">
@@ -82,8 +95,10 @@
       >
       <Combobox
         items={companyItems}
+        archived={companyPicker.retired}
+        archivedLabel={companyArchivedLabel()}
         name="company_id"
-        value={createdBySlot.company ?? hosting?.company_id ?? initialCompanyId}
+        value={companySelected}
         id="{idPrefix}-company"
         placeholder={t("common.none")}
         oncreate={oncreatecompany}
@@ -121,6 +136,7 @@
       value={hosting?.contact ?? { type: "agency", id: null }}
       {agencyLabel}
       {companies}
+      companyLifecycle={companyLifecycle()}
       {employees}
       {contacts}
       id="{idPrefix}-contact"

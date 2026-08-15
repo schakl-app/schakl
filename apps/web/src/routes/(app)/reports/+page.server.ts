@@ -54,7 +54,8 @@ export const load: PageServerLoad = async (event) => {
     total: reports.data?.total ?? 0,
     paging,
     filters: { company_id: company_id ?? "", audience: audience ?? "" },
-    companies: companies?.data?.items?.map((c) => ({ id: c.id, name: c.name })) ?? [],
+    companies:
+      companies?.data?.items?.map((c) => ({ id: c.id, name: c.name, status: c.status })) ?? [],
     canWrite,
     canSend: can(event.locals.user, "reporting.report.send"),
     canSeeInternal: can(event.locals.user, "reporting.internal.read"),

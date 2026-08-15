@@ -29,8 +29,11 @@
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
+  import { companyArchivedLabel } from "$lib/modules/companies/picker";
+  import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
   import ContactChips from "./ContactChips.svelte";
+  import { splitLinkOptions } from "./lookups";
   import type { InteractionItem } from "./format";
   import { ContactRoster, initialContacts } from "./roster.svelte";
 
@@ -79,16 +82,27 @@
 
   // Picks cascade the way the tasks page's filters do: a client narrows the projects, a
   // project narrows the tasks — and picking deeper backfills the levels above.
-  const projectOptions = $derived(
-    companyId ? projects.filter((p) => !p.company_id || p.company_id === companyId) : projects,
+  // The cascade decides *which* rows may be offered; the split decides which of them are
+  // suggested. An archived client, a finished project and a closed task each drop behind the
+  // search wearing their status rather than out of the picker (`lookups.splitLinkOptions`).
+  const linkSplit = $derived(
+    splitLinkOptions(
+      {
+        companies,
+        projects: companyId
+          ? projects.filter((p) => !p.company_id || p.company_id === companyId)
+          : projects,
+        tasks: projectId
+          ? tasks.filter((task) => task.project_id === projectId)
+          : companyId
+            ? tasks.filter((task) => !task.company_id || task.company_id === companyId)
+            : tasks,
+      },
+      { companyId: companyId, projectId: projectId, taskId: taskId },
+    ),
   );
-  const taskOptions = $derived(
-    projectId
-      ? tasks.filter((task) => task.project_id === projectId)
-      : companyId
-        ? tasks.filter((task) => !task.company_id || task.company_id === companyId)
-        : tasks,
-  );
+  const projectOptions = $derived(linkSplit.projects.live);
+  const taskOptions = $derived(linkSplit.tasks.live);
 
   function onProjectPicked(id: string) {
     projectId = id;
@@ -307,15 +321,19 @@
         get("/api/v1/projects?limit=200&count=false"),
         get("/api/v1/tasks?limit=200&count=false&meta=false&sort=title"),
       ]);
-      companies = (companiesPage.items ?? []).map((c: { id: string; name: string }) => ({
-        value: c.id,
-        label: c.name,
-      }));
+      companies = (companiesPage.items ?? []).map(
+        (c: { id: string; name: string; status?: string | null }) => ({
+          value: c.id,
+          label: c.name,
+          status: c.status ?? null,
+        }),
+      );
       projects = (projectsPage.items ?? []).map(
-        (p: { id: string; name: string; company_id?: string | null }) => ({
+        (p: { id: string; name: string; company_id?: string | null; status?: string | null }) => ({
           value: p.id,
           label: p.name,
           company_id: p.company_id ?? null,
+          status: p.status ?? null,
         }),
       );
       tasks = (tasksPage.items ?? []).map(
@@ -325,12 +343,14 @@
           project_id?: string | null;
           company_id?: string | null;
           assignee_user_id?: string | null;
+          completed_at?: string | null;
         }) => ({
           value: task.id,
           label: task.title,
           project_id: task.project_id ?? null,
           company_id: task.company_id ?? null,
           assignee_user_id: task.assignee_user_id ?? null,
+          completed_at: task.completed_at ?? null,
         }),
       );
     } catch {
@@ -352,7 +372,9 @@
       <label class="block text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
         <Combobox
-          items={companies}
+          items={linkSplit.companies.live}
+          archived={linkSplit.companies.retired}
+          archivedLabel={companyArchivedLabel()}
           name="company_id"
           value={companyId}
           placeholder={t("common.none")}
@@ -370,6 +392,8 @@
         <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
         <Combobox
           items={projectOptions}
+          archived={linkSplit.projects.retired}
+          archivedLabel={projectArchivedLabel()}
           name="project_id"
           value={projectId}
           placeholder={t("common.none")}
@@ -387,6 +411,8 @@
         <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
         <Combobox
           items={taskOptions}
+          archived={linkSplit.tasks.retired}
+          archivedLabel={t("tasks.picker.archived")}
           name="task_id"
           value={taskId}
           placeholder={t("common.none")}

@@ -42,7 +42,11 @@ export const load: LayoutServerLoad = async (event) => {
   ]);
   const defs = definitions.data ?? {};
   return {
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+    })),
     providers: providers.data ?? [],
     employees: members.data ?? [],
     contacts: lookupItems(contacts, "contacts").map((c) => ({

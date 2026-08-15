@@ -21,6 +21,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import { companyLifecycle } from "$lib/modules/companies/picker";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import EditToggle from "$lib/core/ui/EditToggle.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
@@ -212,6 +213,7 @@
             value={website.technical_owner ?? { type: "agency", id: null }}
             agencyLabel={data.agencyLabel}
             companies={data.companies}
+            companyLifecycle={companyLifecycle()}
             employees={data.employees}
             contacts={data.contacts}
             id="website-owner"

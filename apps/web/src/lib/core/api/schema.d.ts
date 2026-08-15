@@ -44734,7 +44734,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 company_id?: string | null;
-                status?: components["schemas"]["ProjectStatus"] | null;
+                /** @description Lifecycle status; comma-separate for several ('active,on_hold'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
+                status?: string | null;
                 q?: string | null;
                 /** @description Only projects I'm assigned to (primary or not) */
                 mine?: boolean;

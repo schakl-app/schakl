@@ -19,6 +19,7 @@
   import { QUOTE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
+  import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
 
@@ -34,7 +35,12 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Archived clients sit behind the search instead of among the live ones, and the one
+  // already picked is always offered (`companies/picker.ts`).
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
+  );
+  const companyItems = $derived(companyPicker.live);
 
   const table = createTableLayout<Quote>({
     all: () => QUOTE_COLUMNS,
@@ -77,6 +83,8 @@
   <div class="w-44">
     <Combobox
       items={companyItems}
+      archived={companyPicker.retired}
+      archivedLabel={companyArchivedLabel()}
       name="_filter_company"
       value={data.companyFilter}
       placeholder={t("invoicing.filter.company")}

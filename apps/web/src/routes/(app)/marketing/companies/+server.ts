@@ -27,7 +27,9 @@ export const GET: RequestHandler = async (event) => {
   });
   const rows = data?.items ?? [];
   return json({
-    items: rows.map((c) => ({ id: c.id, name: c.name })),
+    // `status` rides along so the picker can keep an archived client out of its opening list
+    // without a second read (`$lib/modules/companies/picker`).
+    items: rows.map((c) => ({ id: c.id, name: c.name, status: c.status })),
     // A picker showing a prefix of the clients must say so, or the one that is missing reads as
     // one that cannot be connected (CLAUDE.md §9 — no silent caps).
     capped: (data?.total ?? rows.length) > rows.length,
