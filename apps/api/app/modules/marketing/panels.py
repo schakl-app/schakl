@@ -14,7 +14,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.marketing.service import MarketingService
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_PRIMARY, PanelSpec
 
 #: The panel's default window; the tab lets the user widen it.
 _PANEL_RANGE_DAYS = 30
@@ -33,4 +33,11 @@ marketing_company_panel = PanelSpec(
     title_key="marketing.panel.title",
     provider=_marketing_provider,
     position=50,
+    # No declaration on purpose (#365): the provider already refuses the metrics themselves,
+    # and what is left — "no Google connection yet", "ask someone who may link accounts" — is a
+    # refusal the reader can *act on*. docs/UX.md's own exemption: omit the declaration where
+    # the panel deliberately draws a state worth telling apart from an empty one.
+    explicit_public="draws its own refusal; the metrics self-check marketing.metrics.read",
+    prominence=PROMINENCE_PRIMARY,
+    empty_when=lambda data: not data.get("sources") and not data.get("forbidden"),
 )

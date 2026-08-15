@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from app.core.tenancy import RequestContext
 from app.modules.time.models import TimeEntry
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
 # How many recent entries the panel shows. The panel used to load the client's *entire*
 # timesheet to display this handful and one total — the total is an aggregate now, and the list
@@ -65,4 +65,10 @@ time_company_panel = PanelSpec(
     title_key="time.panel.title",
     provider=_time_provider,
     position=40,
+    # What somebody worked on, for how long, and whether we bill for it (#365) — the sharpest
+    # of the seven panels the hub used to hand anyone holding `companies.company.read`.
+    requires_permission="time.entry.read",
+    prominence=PROMINENCE_PRIMARY,
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("recent"),
 )

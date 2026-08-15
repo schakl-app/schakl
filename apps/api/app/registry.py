@@ -111,6 +111,29 @@ class ReportSectionSpec:
     position: int = 100
 
 
+#: A panel's weight on the page it composes into (#364).
+#:
+#: Only the module knows whether its card is a *working surface* — something the reader acts on
+#: today (open tasks, this week's hours, the contactmomenten stream) — or a **register**: correct,
+#: occasionally consulted, never news (the domain list, the website list, the invoice ledger). The
+#: page cannot tell them apart from a ``position`` integer, so it laid every card out at the same
+#: width and the same weight and had no foreground at all.
+PROMINENCE_PRIMARY = "primary"
+PROMINENCE_REGISTER = "register"
+
+#: How wide a panel wants to be in the hub's two-column desktop grid (#364). A two-word row laid
+#: out across 1150 px is not a layout; ``half`` is where such a row belongs.
+SIZE_FULL = "full"
+SIZE_HALF = "half"
+
+#: Does this panel's payload amount to "nothing has happened yet"? (#364)
+#:
+#: A module with nothing to show does not earn a heading, a border and 100 px — it earns a chip in
+#: one "nog niets vastgelegd" strip. Only the module can read its own payload, so only the module
+#: can answer; a panel that declares no predicate is never absorbed.
+PanelEmptyCheck = Callable[[dict[str, Any]], bool]
+
+
 @dataclass(frozen=True)
 class PanelSpec:
     """A panel a module contributes to a host entity's detail view (e.g. a company)."""
@@ -119,6 +142,89 @@ class PanelSpec:
     entity_type: str              # host entity it attaches to, e.g. "company"
     title_key: str                # i18n key for the panel title
     provider: PanelProvider       # async (ctx, target_id) -> data dict
+    position: int = 100
+    #: The permission the viewer must hold before this panel's provider is **called** (#365).
+    #:
+    #: Mirrors ``EntityPanelSpec.requiresPermission`` on the web registry, which closed exactly
+    #: this hole for the contact/project/task pages while the company hub — the page the rule was
+    #: written about — kept composing thirteen providers behind one ``companies.company.read``.
+    #: A check that still runs the query saves no round trip and leaks the answer anyway, so the
+    #: filter lives in :meth:`Registry.panels_for` rather than inside each provider.
+    #:
+    #: ``None`` is a *declaration*, not an omission: it means "any member who may open this
+    #: record may read this panel", and ``explicit_public`` says why. A panel declaring neither
+    #: is a build break (``tests/test_company_panels_permissions.py``), exactly as a route
+    #: declaring neither ``require_permission`` nor ``no_permission_required`` is.
+    requires_permission: str | None = None
+    #: The scope that permission is required at — ``None`` means the floor ("holds it at some
+    #: scope"), which is right for almost every panel.
+    requires_scope: str | None = None
+    #: Why this panel needs no permission. Required whenever ``requires_permission`` is ``None``.
+    explicit_public: str | None = None
+    #: Working surface vs register (#364) — see :data:`PROMINENCE_PRIMARY`.
+    prominence: str = PROMINENCE_REGISTER
+    #: Preferred width in the hub's desktop grid (#364) — see :data:`SIZE_FULL`.
+    size: str = SIZE_FULL
+    #: ``(data) -> bool``: this payload is "nothing yet" (#364). See :data:`PanelEmptyCheck`.
+    empty_when: PanelEmptyCheck | None = None
+
+
+#: A vital sign a module contributes to a host entity's header (#364).
+#:
+#: The panels answer "what is on file"; these answer *"are we all right with this client"* —
+#: openstaand bedrag, uren deze maand, open taken waarvan n over tijd, laatste contactmoment,
+#: eerstvolgende verlenging. Every one of those was already derivable from a panel the reader had
+#: to scroll to and add up by eye, which is the same seam applied one level up: the module owns
+#: the number, core owns the strip, and the company page gains no per-module code.
+#:
+#: A provider returns a list because one module may own more than one sign (tasks: open *and*
+#: overdue), and an empty list because "this client has no invoices" is not a tile — a vital sign
+#: that is always on screen saying zero is chrome, and #364's whole complaint is chrome.
+SummaryProvider = Callable[
+    ["RequestContext", "uuid.UUID"], Awaitable[list["SummaryTile"]]
+]
+
+
+@dataclass(frozen=True)
+class SummaryTile:
+    """One number in a host entity's vital-signs strip (#364)."""
+
+    key: str                      # module-namespaced, e.g. "invoicing.outstanding"
+    label_key: str                # i18n key for the tile's caption
+    #: The raw value: a decimal string, an integer, an ISO date, or free text. Raw on purpose —
+    #: money, dates and hours are formatted in the **reader's** locale (§8), and a number
+    #: rendered server-side is a currency symbol and a decimal comma decided for someone else.
+    value: str
+    #: How to read ``value``: ``money`` | ``number`` | ``hours`` | ``date`` | ``text``. The
+    #: module owns the *units*; the browser owns the punctuation.
+    format: str = "number"
+    #: ISO currency for ``format="money"``; ignored otherwise.
+    currency: str | None = None
+    #: How it reads: neutral / good / warn / bad. A *tone*, not a colour — dark mode and the
+    #: tenant's brand both decide colours, and brand gold cannot carry state.
+    tone: str = "neutral"
+    #: One short line under the number ("3 over tijd", "op 12 sep") — an i18n key + params, so
+    #: the sentence is built in the reader's locale, never assembled server-side.
+    hint_key: str | None = None
+    hint_params: dict[str, Any] = field(default_factory=dict)
+    #: Where the number opens (docs/UX.md principle 7, "every number opens") — an in-app path
+    #: the module owns, the same shape ``interactions`` already emits as ``deep_link``. ``None``
+    #: for a sign with nothing behind it.
+    href: str | None = None
+    position: int = 100
+
+
+@dataclass(frozen=True)
+class SummarySpec:
+    """A module's contribution to a host entity's vital-signs strip (#364)."""
+
+    key: str                      # unique, module-namespaced: "invoicing.company"
+    entity_type: str              # host entity it attaches to, e.g. "company"
+    provider: SummaryProvider
+    #: Same contract as :class:`PanelSpec` — the provider is never *called* without it (#365).
+    requires_permission: str | None = None
+    requires_scope: str | None = None
+    explicit_public: str | None = None
     position: int = 100
 
 
@@ -132,6 +238,9 @@ class ModuleDescriptor:
     # documents — never as module names hardcoded in gating logic.
     sku: str | None = None
     panels: list[PanelSpec] = field(default_factory=list)
+    # The vital signs this module contributes to a host entity's header (#364) — the panels
+    # seam one level up, so the client page's foreground needs no per-module code either.
+    summaries: list[SummarySpec] = field(default_factory=list)
     # The capabilities this module introduces (issue #19). Aggregated into the permission
     # catalog by ``app.core.permissions.catalog.all_permissions``.
     permissions: list[PermissionSpec] = field(default_factory=list)
@@ -197,12 +306,52 @@ class ModuleRegistry:
         allowed = set(names)
         return [m for m in self._modules.values() if m.name in allowed]
 
-    def panels_for(self, entity_type: str, names: list[str]) -> list[PanelSpec]:
-        """All panels attached to ``entity_type``, ordered — core's plus the enabled modules'."""
+    def panels_for(
+        self,
+        entity_type: str,
+        names: list[str],
+        can: Callable[[str, str | None], bool] | None = None,
+    ) -> list[PanelSpec]:
+        """The panels attached to ``entity_type`` **this viewer may read**, ordered (#365).
+
+        ``can`` is ``ctx.can`` — required in spirit, optional in signature only because the AI
+        digest gathers facts for a caller it has already narrowed itself. Pass it and a panel the
+        viewer may not read is never *called*: a permission check that still runs the query saves
+        no round trip and answers the question anyway.
+        """
         panels: list[PanelSpec] = [p for p in self._core_panels if p.entity_type == entity_type]
         for module in self.enabled(names):
             panels.extend(p for p in module.panels if p.entity_type == entity_type)
+        if can is not None:
+            panels = [
+                p
+                for p in panels
+                if p.requires_permission is None
+                or can(p.requires_permission, p.requires_scope)
+            ]
         return sorted(panels, key=lambda p: (p.position, p.key))
+
+    def summaries_for(
+        self,
+        entity_type: str,
+        names: list[str],
+        can: Callable[[str, str | None], bool] | None = None,
+    ) -> list[SummarySpec]:
+        """The vital signs attached to ``entity_type`` this viewer may read, ordered (#364)."""
+        specs: list[SummarySpec] = [
+            spec
+            for module in self.enabled(names)
+            for spec in module.summaries
+            if spec.entity_type == entity_type
+        ]
+        if can is not None:
+            specs = [
+                s
+                for s in specs
+                if s.requires_permission is None
+                or can(s.requires_permission, s.requires_scope)
+            ]
+        return sorted(specs, key=lambda s: (s.position, s.key))
 
     def report_sections_for(
         self, audience: str, names: list[str]

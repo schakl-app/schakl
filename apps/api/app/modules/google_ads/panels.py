@@ -14,7 +14,7 @@ import uuid
 from app.core.googleads import format_customer_id
 from app.core.tenancy import RequestContext
 from app.modules.google_ads.service import GoogleAdsService
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 async def _provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
@@ -56,4 +56,7 @@ google_ads_company_panel = PanelSpec(
     title_key="google_ads.panel.title",
     provider=_provider,
     position=51,
+    requires_permission="google_ads.account.read",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("accounts"),
 )

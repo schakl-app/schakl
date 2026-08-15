@@ -11,16 +11,14 @@ import uuid
 from app.core.tenancy import RequestContext
 from app.modules.invoicing.calc import outstanding_of
 from app.modules.invoicing.service import InvoiceService, QuoteService, org_today
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    # Money: the panel stays empty for someone without the read grant rather than erroring
-    # the whole company page (the subscriptions-panel stance). The base key, so an ``:own``
-    # holder — a client on their own company page (#266) — gets the panel; ``for_company``
-    # then leaves the agency's drafts out of it.
-    if not ctx.can("invoicing.invoice.read"):
-        return {"invoices": [], "quotes": [], "forbidden": True}
+    # The panel *declares* ``invoicing.invoice.read`` (#365), so the composer never calls this
+    # for a caller who lacks it and the old in-provider check is gone: two gates that must agree
+    # is how they drift. The base key, so an ``:own`` holder — a client on their own company
+    # page (#266) — still gets the panel; ``for_company`` then leaves the agency's drafts out.
     invoices = await InvoiceService(ctx).for_company(company_id)
     quotes = (
         await QuoteService(ctx).for_company(company_id)
@@ -70,4 +68,7 @@ invoicing_company_panel = PanelSpec(
     title_key="invoicing.panel.title",
     provider=_invoicing_provider,
     position=65,
+    requires_permission="invoicing.invoice.read",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("invoices") and not data.get("quotes"),
 )

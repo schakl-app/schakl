@@ -16,7 +16,7 @@ from app.core.customfields import CustomFieldsService
 from app.core.customfields.schemas import CustomFieldDefinitionRead
 from app.core.tenancy import RequestContext
 from app.modules.contacts.service import ContactService
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
 
 async def _contacts_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
@@ -61,4 +61,10 @@ contacts_company_panel = PanelSpec(
     title_key="contacts.panel.title",
     provider=_contacts_provider,
     position=20,
+    requires_permission="contacts.contact.read",
+    # Who to ring is a working surface, not a register — but it is a list of names, so it
+    # belongs in the narrow lane rather than across the page (#364).
+    prominence=PROMINENCE_PRIMARY,
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("contacts"),
 )

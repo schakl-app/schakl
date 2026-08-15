@@ -12,7 +12,7 @@ import uuid
 from typing import Any
 
 from app.core.tenancy import RequestContext
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 async def company_uptime(ctx: RequestContext, company_id: uuid.UUID) -> dict[str, Any]:
@@ -23,10 +23,8 @@ async def company_uptime(ctx: RequestContext, company_id: uuid.UUID) -> dict[str
     """
     from app.modules.uptime.service import UptimeService
 
-    if not ctx.can("uptime.monitor.read"):
-        # The panel composer renders what it is given; a caller without the permission gets no
-        # data rather than a 403 that would take the whole company page down with it.
-        return {"total": 0, "by_status": {}, "visible": False}
+    # The permission is declared on the spec (#365), so the composer drops the panel before it
+    # calls this — no second copy of the rule to drift from the first.
     summary = await UptimeService(ctx).company_summary(company_id)
     return {**summary, "visible": True}
 
@@ -38,5 +36,8 @@ UPTIME_PANELS: list[PanelSpec] = [
         title_key="uptime.panel.title",
         provider=company_uptime,
         position=460,
+        requires_permission="uptime.monitor.read",
+        size=SIZE_HALF,
+        empty_when=lambda data: not data.get("total"),
     ),
 ]

@@ -479,7 +479,10 @@ async def gather_company_facts(
     ctx = service.ctx
     ctx.require("companies.company.read")
     facts: dict[str, Any] = {}
-    for spec in registry.panels_for("company", settings.enabled_modules):
+    # Narrowed to what *this* caller may read (#365): the digest is assembled from the same
+    # providers the hub composes, so an unfiltered gather would be the leak with a model in
+    # front of it.
+    for spec in registry.panels_for("company", settings.enabled_modules, ctx.can):
         try:
             facts[spec.key] = await spec.provider(ctx, company_id)
         except AppError:

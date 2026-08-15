@@ -16,7 +16,7 @@ import uuid
 
 from app.core.activity.service import ActivityService
 from app.core.tenancy import RequestContext
-from app.registry import PanelSpec, registry
+from app.registry import SIZE_HALF, PanelSpec, registry
 
 #: A panel is a summary, not a paginated log — it says so when it truncates (docs/UX.md).
 PANEL_LIMIT = 10
@@ -54,6 +54,12 @@ def register_core_activity_panels() -> None:
             title_key="activity.title",
             provider=_provider("company"),
             position=90,
+            # Gated on `activity.read` at its own endpoint and on nothing here (#365): the full
+            # change history, actor names included, rode the hub for anyone who could open the
+            # client.
+            requires_permission="activity.read",
+            size=SIZE_HALF,
+            empty_when=lambda data: not data.get("items"),
         )
     )
 

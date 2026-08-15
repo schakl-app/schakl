@@ -13,7 +13,7 @@ from app.core.tenancy import RequestContext
 from app.modules.google.drive.models import DriveLink
 from app.modules.google.drive.service import DriveService
 from app.modules.google.oauth import google_settings_row
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 def _present(link: DriveLink) -> dict:
@@ -65,4 +65,10 @@ drive_company_panel = PanelSpec(
     title_key="google.drive.panel.title",
     provider=_drive_provider,
     position=55,
+    # No declaration on purpose (#365): every control on this panel already states its own gate
+    # (`can_pick`, `can_manage`, `viewer_connected`), and "connect your Google account" is a
+    # refusal the reader can act on rather than one to hide from them.
+    explicit_public="draws its own connect/permission states; every control self-gates",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("folder") and not data.get("links"),
 )

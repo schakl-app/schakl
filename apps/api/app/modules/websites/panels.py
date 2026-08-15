@@ -11,7 +11,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.websites.service import WebsiteService
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 #: How many websites the client card shows before handing over to the list — the domains
 #: panel's number and rule (``domains/panels.py``): the panel is the first page of the list it
@@ -47,6 +47,9 @@ websites_company_panel = PanelSpec(
     entity_type="company",
     title_key="websites.panel.title",
     provider=_websites_provider,
+    requires_permission="websites.website.read",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("websites"),
     # Rarely-consulted asset panel: near the bottom with domains, before only the trail.
     position=70,
 )
