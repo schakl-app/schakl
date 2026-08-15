@@ -47,15 +47,37 @@
     // reflex keystroke destroy the surface instead of the popup (#361).
     if (e.key === "Escape" && !e.defaultPrevented) close();
   }
+
+  /**
+   * Lock the document behind the dialog while it is open (#364).
+   *
+   * Without this the page under a modal scrolls, and on the tallest dialog in the app — the
+   * client edit form, 1445 px on a 900 px laptop — that was the difference between reaching
+   * Opslaan and not: the wheel over the dim area scrolled the *page* by 600 px while the dialog
+   * stood still, so the button below the fold stayed below the fold. `position: fixed` would
+   * jump the page to the top; `overflow: hidden` on the element that actually scrolls does not.
+   */
+  $effect(() => {
+    if (!open || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const previous = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = previous;
+    };
+  });
 </script>
 
 <svelte:window {onkeydown} />
 
 {#if open}
   <div class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+    <!-- `absolute`, not `fixed`: a fixed backdrop is positioned against the viewport rather than
+         against this wrapper, so it is not part of the wrapper's scroll chain and the wheel over
+         it fell through to the document. It covers the same rectangle either way. -->
     <button
       type="button"
-      class="fixed inset-0 bg-neutral-900/40"
+      class="absolute inset-0 min-h-full bg-neutral-900/40"
       aria-label="Close"
       onclick={close}
     ></button>

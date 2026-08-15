@@ -1,8 +1,10 @@
 <script lang="ts">
   /**
    * Generic many-to-many "chips + type-ahead" field (CLAUDE.md §6, docs/UX.md). Renders linked
-   * entities as chips sitting next to each other — the primary one marked by the brand colour and
-   * nothing else, never a glyph.
+   * entities as chips sitting next to each other — the primary one marked by a ★ **and** the
+   * brand colour. Colour alone was the original design and it was wrong twice over: on a tenant
+   * whose brand is gold the chip is indistinguishable from an amber warning, so the person you
+   * should ring first read as a problem; and nothing at all reaches a screen reader (WCAG 1.4.1).
    *
    * **Use mode vs edit mode** (docs/UX.md §3). Working *with* the links is the default: chips are
    * quiet navigation to the linked record, and nothing can be changed by a stray click. Changing
@@ -16,7 +18,7 @@
    * id field name (`idField`) and the actions come from the parent.
    */
   import { enhance } from "$app/forms";
-  import { X } from "@lucide/svelte";
+  import { Star, X } from "@lucide/svelte";
 
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
@@ -133,12 +135,16 @@
             </form>
           {/if}
 
-          <span class="pointer-events-none font-medium">
-            {chip.label}
+          <span class="pointer-events-none flex items-center gap-1 font-medium">
             {#if chip.is_primary}
-              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <!-- A glyph, not only a colour. The brand is gold on some tenants, which renders
+                   identically to an amber warning chip — so the primary contact read as a
+                   problem rather than as the person to ring first. Colour alone also carries
+                   nothing for a screen reader (WCAG 1.4.1), hence the label beside it. -->
+              <Star size={12} class="shrink-0 fill-current" aria-hidden="true" />
               <span class="sr-only">({labels.primary})</span>
             {/if}
+            {chip.label}
           </span>
           {#if chip.hint}
             <span class="pointer-events-none text-xs opacity-70">{chip.hint}</span>

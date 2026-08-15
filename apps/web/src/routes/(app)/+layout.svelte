@@ -35,6 +35,7 @@
   import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
   import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
+  import ToastHost from "$lib/core/ui/ToastHost.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
@@ -566,3 +567,7 @@
      claims to be signed in, and the root also wraps /login, /setup and the public invoice page,
      where "sign back in" would be an answer to a question nobody asked. -->
 <SessionGuard />
+
+<!-- The app's one toast queue (#364). Mounted beside SessionGuard for the same reason: it belongs
+     to the surface that is signed in and doing work, not to /login. -->
+<ToastHost />
