@@ -1264,6 +1264,20 @@
   declaration only where the endpoint needs no permission, or where the panel deliberately draws
   its own refusal state because that state is worth telling apart from an empty one (`oxxa`
   distinguishes "you may not look" from "there is no register account yet").
+
+  **And it closed the hole for exactly the pages the rule was not written about** (#365). The
+  contact/project/task pages compose the *web* registry's `EntityPanelSpec`; the **company hub**
+  composes the **API**'s `PanelSpec`, which was never given the field — so `GET
+  /companies/{id}/panels` declared `companies.company.read` once and then called thirteen
+  providers, and a member holding exactly that key received the client's contacts, projects,
+  tasks, hours (what somebody worked on, for how long, and whether we bill for it), websites,
+  domains with their resolved prices, and the full change history with actor names. Seven of
+  thirteen providers self-checked; six did not, and "each provider remembers" is not a rule, it is
+  a hope. `PanelSpec.requires_permission` now filters in `registry.panels_for(entity_type, names,
+  ctx.can)`, so the provider is never *called* — a check that still runs the query saves no round
+  trip and produces the answer anyway. `explicit_public` is the `no_permission_required` of this
+  seam: a declaration, with a reason, and a panel carrying neither is a build break
+  (`tests/test_company_panels_permissions.py`).
 - **A write control that leaks to the client portal because it's a *shared* component or a
   "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
   renders the **same** components as staff, and detail pages compose them without a portal filter —
@@ -1541,3 +1555,87 @@
   the two remaining consequences are stated: a future planned block that would otherwise stay
   standing in the Agenda and in Google (removable in the same confirm, named with its date), and
   the good news that the rule has already scheduled the next one.
+
+- **A page that only *composes* has no foreground, and every card on it is equally unimportant**
+  (#364, the client hub). The registry handed the company page a list of panels, the page drew
+  each as a full-width card in `position` order, and that was the whole layout. A card holding
+  eight invoices and a card saying *"Deze klant heeft nog geen Drive-map."* were the same width,
+  the same weight and cost the same to scroll past — 4.6 screens on a well-filled client, 2.9 on a
+  young one, ten of whose fourteen cards were a heading over a negative sentence. Four rules came
+  out of redesigning it, and none of them costs the composition (§6 is intact: the page still
+  draws whatever the registry hands it, and names no module).
+
+  **A card is for content; an absence is a sentence, and ten absences are one sentence with ten
+  links.** A module with nothing to show does not earn a heading, a border and 100 px. `PanelSpec`
+  declares `empty_when(data)` — only the module can read its own payload — the API sends
+  `empty: true`, and the page folds every such panel into one *"Nog niets vastgelegd"* strip of ＋
+  chips. Ten ＋ actions in one row are easier to find than ten cards to scroll past, so this
+  *improves* discoverability. The one thing it must not cost is the control the empty panel
+  existed to offer: a chip links to the module's own create screen (`emptyHref` on the web spec,
+  because routing is a web question), and where the module has no such screen — Drive's "koppel
+  een map", Google Ads' connect flow live *in the panel* — the chip unfolds that card in place.
+
+  **A panel declares its own weight, because only the module knows.** `prominence` is a working
+  surface (something the reader acts on today) or a **register** (correct, occasionally consulted,
+  never news); `size` is full or half. The page lays out a two-column grid with `items-start`, so
+  a two-row list is no longer stretched to match the tall card beside it — the "every panel is
+  equally important" mistake in CSS form.
+
+  **Vital signs are the panels seam one level up.** `SummarySpec` / `SummaryTile` let a module
+  contribute one number, a label, a tone and a link; core lays them out under the header. Not one
+  of *openstaand bedrag, uren deze maand, open taken waarvan n over tijd, laatste contactmoment,
+  eerstvolgende verlenging* was on the page before, though every one was derivable from a panel
+  the reader had to scroll to and add up by eye. Each tile **opens what it counted** (principle 7,
+  applied at the top rather than inside a card), the value travels **raw** with its units so the
+  reader's locale formats it (§8), and a module returns **no tile** rather than a zero — a strip
+  permanently reading "€ 0,00 openstaand" is the chrome the redesign exists to remove.
+
+  **A panel with a control beside its title draws its own heading row.** The host owns the `<h2>`,
+  so such a panel had nowhere to put its ✎ and pushed a button row *underneath* — a band of empty
+  card with one control floating in it. `ownsHeader` + `PanelHeader` puts them on one line; the
+  title still comes from the API's `title_key`, so a panel does not get to rename itself by
+  drawing its own header.
+
+- **One edit surface for every size of edit.** Everything about a client — thirty fields, its
+  contact people and its logo — was changed in one 512 px `Modal` that rendered **1445 px tall**
+  on a 900 px laptop, so Opslaan started below the fold and changing a billing address put the
+  logo uploader on screen. The size of the edit surface should match the size of the edit (#364):
+
+  - **Tier 1, one field, in place.** The status pill was already the right control in the right
+    place; it just did nothing. It opens a `Combobox`, PATCHes on pick, and the trail records it.
+    Submit **one frame after** `onselect` (`requestAnimationFrame`, the shape `LinkField` uses):
+    the handler fires before the binding reaches the hidden input, so submitting straight from it
+    posts the value that was there when the dropdown opened — the pill flicks back to what it
+    already said and the write is a silent no-op.
+  - **Tier 2, a section.** Gegevens and Factuurgegevens each carry their own ✎ that flips *that
+    group* into edit mode, the pattern the contactpersonen panel already used. What makes it safe
+    is on the server: the update action patches **only the fields the form actually carried**
+    (`form.has(...)`, never `?? ""`), so a section save cannot null what it left out — absent
+    means leave alone and an explicit `null` clears, exactly as bulk edit reads it (§18).
+  - **Tier 3, the whole record**, in a `SlideOver` rather than a `Modal`: docked right and full
+    height it fits a long form without going below the fold, and the record you are editing
+    against stays visible beside it.
+
+  And **a save must say so.** The app had no toast primitive at all: the dialog closed, one value
+  changed somewhere in a 4116 px page, and if you had scrolled you would not see it.
+  `$lib/core/ui/toast.svelte` + `ToastHost` is that gap closed once, in core — a report, never a
+  question; not an error channel (a form's own error stays beside the control that produced it);
+  and never the only copy of anything, which is what makes auto-dismissal safe.
+
+- **`replaceState` during hydration takes the rest of the page with it.** Clearing a consumed
+  `?edit=1` from an `$effect` (or from `afterNavigate` on the first load) throws *"Cannot call
+  replaceState before router is initialized"*, and a throw in the hydration pass aborts every
+  effect after it — which left the edit surface's `Combobox`es showing their placeholder over
+  perfectly good values, a symptom that looks nothing like its cause. Consume a URL intent on a
+  **user gesture** instead (`clearEditIntent()` when the surface closes), which also covers the
+  ways out a handler never sees: the ✕, Escape and the backdrop.
+
+- **A dialog whose backdrop is `fixed` inside a scrolling wrapper hands the wheel to the page.**
+  `Modal`'s backdrop was `fixed inset-0` *inside* the `fixed inset-0 overflow-y-auto` wrapper, so
+  it was positioned against the viewport rather than against the wrapper and was not part of its
+  scroll chain: with the pointer over the dim area the wheel scrolled the document behind by
+  600 px while the dialog stood still. Body scroll was never locked either. On the tallest dialog
+  in the app that was the difference between reaching Opslaan and not. `absolute` within the
+  wrapper, plus `overflow: hidden` on the documentElement while open (`position: fixed` would jump
+  the page to the top).
+

@@ -151,7 +151,16 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
 - `permissions.py` — the `PermissionSpec`s this module introduces, declared on its
   `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
-  data provider) so the company detail view can compose it. This is the modular hub.
+  data provider) so the company detail view can compose it. This is the modular hub. A panel
+  declares **four things beyond its data** (#364, #365): the permission the viewer must hold
+  before its provider is *called* (`requires_permission`, or an `explicit_public` reason — a
+  panel with neither is a build break, exactly as an undeclared route is); its `prominence`
+  (a working surface, or a register: correct, occasionally consulted, never news); its `size`
+  (full or half, for the host's two-column grid); and `empty_when(data)`, which lets the host
+  fold "this client has nothing here yet" into one strip of ＋ chips instead of ten cards that
+  are each a heading over a negative sentence. Optionally `summaries` too — the same seam one
+  level up: one number, a label, a tone and a link, laid out as the record's vital signs under
+  its header, so the hub's *foreground* is contributed rather than hardcoded.
 - `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
   module contributes to *another* module's entity (see §17).
 - `email_templates` — optional: the outgoing mails this module lets the tenant reword
@@ -1263,6 +1272,13 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
+  **A route is not the only surface that composes data** (#365): the company hub called thirteen
+  panel providers behind one `companies.company.read`, and seven of them checked nothing — so a
+  member holding that single key received the client's tasks, hours, domains-with-prices and full
+  change history. Anything that *fans out* to module-contributed providers carries the same rule
+  as a route: `PanelSpec` / `SummarySpec` declare `requires_permission` or an `explicit_public`
+  reason, `registry.panels_for(..., ctx.can)` filters **before** calling, and a contribution
+  declaring neither is a build break. "Each provider remembers" is not a rule, it is a hope.
 - **System roles.** `owner` / `admin` / `member` / `client` are seeded per org. `owner` holds
   exactly `["*"]`, immutable and undeletable — that is what keeps a mistake made anywhere else
   fixable. The other three are undeletable and key-immutable but freely permission-editable and
