@@ -1730,3 +1730,327 @@ async def test_manual_refresh_spends_its_budget_even_when_gmail_fails(
         connection = await session.get(GoogleConnection, connection_id)
         assert connection.gmail_manual_poll_at is not None
         assert connection.gmail_last_polled_at is None  # the poll itself never landed
+
+
+# --------------------------------------------------------------------------- #
+# Pulling a message in by hand (#342)
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_reference_accepts_the_three_things_that_actually_resolve() -> None:
+    """Hex ids, ``msg-f:`` decimals and Message-IDs — and a named refusal for the rest.
+
+    The last case is the one worth pinning: what a person copies out of Gmail's address bar
+    today is an opaque ``FMfcgz…`` web id the API cannot read *or* convert, so answering it
+    with the generic "unreadable" error would send them off to re-copy a link that will never
+    work. It gets its own key, which is what lets the screen name the two things that do.
+    """
+    from app.errors import AppError
+    from app.modules.google.gmail import manual
+
+    assert manual.parse_reference("18c2d3e4f5a6b7c8") == manual.Reference(
+        kind="id", value="18c2d3e4f5a6b7c8"
+    )
+    assert manual.parse_reference("  18C2D3E4F5A6B7C8 ").value == "18c2d3e4f5a6b7c8"
+    # Same id, other base — Gmail's own links mix the two.
+    assert manual.parse_reference("msg-f:1785443000000000000").kind == "id"
+    assert manual.parse_reference("msg-f:1785443000000000000").value == format(
+        1785443000000000000, "x"
+    )
+    assert manual.parse_reference("<CAF=abc123@mail.gmail.com>") == manual.Reference(
+        kind="rfc822", value="CAF=abc123@mail.gmail.com"
+    )
+    assert manual.parse_reference("CAF=abc123@mail.gmail.com").kind == "rfc822"
+    # A URL carrying a usable id, in the fragment and in the older `th=` query.
+    assert (
+        manual.parse_reference(
+            "https://mail.google.com/mail/u/0/#all/18c2d3e4f5a6b7c8"
+        ).value
+        == "18c2d3e4f5a6b7c8"
+    )
+    assert (
+        manual.parse_reference(
+            "https://mail.google.com/mail/u/0/#inbox/18c2d3e4f5a6b7c8/18c2d3e4f5a6b7ff"
+        ).value
+        == "18c2d3e4f5a6b7ff"  # the *last* segment: an opened message inside its thread
+    )
+    assert (
+        manual.parse_reference("https://mail.google.com/mail/u/0/?th=18c2d3e4f5a6b7c8").value
+        == "18c2d3e4f5a6b7c8"
+    )
+
+    for opaque in (
+        "https://mail.google.com/mail/u/0/#inbox/FMfcgzGtxSrbLZwqPjRmVXbKlnTwWQqd",
+        "https://mail.google.com/mail/u/0/#inbox",
+    ):
+        try:
+            manual.parse_reference(opaque)
+        except AppError as exc:
+            assert exc.message_key == "errors.gmail_reference_web_id", opaque
+        else:  # pragma: no cover
+            raise AssertionError(f"{opaque} should not resolve")
+
+    for junk in ("", "   ", "not a reference"):
+        try:
+            manual.parse_reference(junk)
+        except AppError as exc:
+            assert exc.message_key in {
+                "errors.gmail_reference_unreadable",
+            }, junk
+        else:  # pragma: no cover
+            raise AssertionError(f"{junk!r} should not resolve")
+
+
+class _StubManualGmail:
+    """Gmail for the manual paths: message/thread reads plus the one rfc822msgid lookup."""
+
+    def __init__(self, *, messages: dict[str, dict], threads: dict[str, list[str]]) -> None:
+        self.messages = messages
+        self.threads = threads
+        self.calls: list[str] = []
+
+    async def get(self, url: str, **kwargs) -> _StubResponse:
+        params = kwargs.get("params") or {}
+        self.calls.append(url)
+        if url.endswith("/messages") and "q" in params:
+            wanted = str(params["q"]).removeprefix("rfc822msgid:")
+            hits = [
+                {"id": mid}
+                for mid, message in self.messages.items()
+                if any(
+                    h["name"] == "Message-ID" and h["value"].strip("<>") == wanted
+                    for h in message["payload"]["headers"]
+                )
+            ]
+            return _StubResponse(200, {"messages": hits})
+        if "/threads/" in url:
+            thread_id = url.rsplit("/", 1)[-1]
+            ids = self.threads.get(thread_id)
+            if ids is None:
+                return _StubResponse(404)
+            return _StubResponse(
+                200, {"id": thread_id, "messages": [self.messages[i] for i in ids]}
+            )
+        message_id = url.rsplit("/", 1)[-1]
+        message = self.messages.get(message_id)
+        if message is None:
+            return _StubResponse(404)
+        return _StubResponse(200, message)
+
+
+def _manual_stub() -> _StubManualGmail:
+    first = _message(
+        "msg-a",
+        sender="Nieuwe Klant <nieuw@prospect.nl>",
+        subject="Offerteaanvraag",
+        thread="thr-9",
+        rfc822="<aanvraag-1@prospect.nl>",
+        body_text="Graag een offerte voor een nieuwe website.",
+    )
+    reply = _message(
+        "msg-b",
+        sender="me@agency.nl",
+        to="nieuw@prospect.nl",
+        subject="Re: Offerteaanvraag",
+        thread="thr-9",
+        labels=["SENT"],
+        rfc822="<antwoord-1@agency.nl>",
+    )
+    return _StubManualGmail(
+        messages={"msg-a": first, "msg-b": reply},
+        threads={"thr-9": ["msg-a", "msg-b"]},
+    )
+
+
+async def test_manual_lookup_and_import_logs_a_message_the_poller_skipped(
+    client_for, monkeypatch
+) -> None:
+    """The headline case: a prospect who is nobody's contact yet, logged by id.
+
+    ``has_external_match`` drops exactly this message on every poll — correctly, since there is
+    no contact to match — so the auto path can never produce this row. The import writes it
+    from the real headers, files it where the caller said, and pulls the body in the same
+    request (a person is waiting, and they already decided it belongs on the timeline).
+    """
+    t = await make_tenant("gmail-manual")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Prospect BV"}, headers=headers)
+        ).json()
+
+        found = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "<aanvraag-1@prospect.nl>"},
+            headers=headers,
+        )
+        assert found.status_code == 200, found.text
+        body = found.json()
+        assert [m["message_id"] for m in body["messages"]] == ["msg-a"]
+        candidate = body["messages"][0]
+        assert candidate["subject"] == "Offerteaanvraag"
+        assert candidate["from_email"] == "nieuw@prospect.nl"
+        assert candidate["logged"] is False and candidate["interaction_id"] is None
+
+        created = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "company_id": company["id"]},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        result = created.json()
+        assert result["subject"] == "Offerteaanvraag"
+
+        detail = (
+            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+        ).json()
+        assert detail["kind"] == "email"
+        assert detail["status"] == "logged"  # never pending: somebody went and fetched it
+        assert detail["source"] == "gmail"
+        assert detail["company_id"] == company["id"]
+        assert detail["deep_link"] and "msg-a" in detail["deep_link"]
+
+        # And now the lookup says so, with the row to open instead of a button that would 409.
+        again = (
+            await c.get(
+                "/api/v1/google/gmail/lookup",
+                params={"reference": "<aanvraag-1@prospect.nl>"},
+                headers=headers,
+            )
+        ).json()
+        assert again["messages"][0]["logged"] is True
+        assert again["messages"][0]["interaction_id"] == result["interaction_id"]
+
+        # The same message twice in one mailbox is never what anybody meant.
+        repeat = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "company_id": company["id"]},
+            headers=headers,
+        )
+        assert repeat.status_code == 409
+        assert repeat.json()["error"]["message"] == "errors.interactions_gmail_already_logged"
+
+
+async def test_thread_gap_fill_marks_what_is_already_on_the_timeline(
+    client_for, monkeypatch
+) -> None:
+    """Tier 2: the conversation we already hold the id for, with the gaps named.
+
+    No search and no new reach — the thread id came off a row the poller wrote. What the screen
+    needs is which of its messages are missing, so that is what the read answers.
+    """
+    t = await make_tenant("gmail-thread-gap")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        listed = await c.get("/api/v1/google/gmail/threads/thr-9", headers=headers)
+        assert listed.status_code == 200, listed.text
+        body = listed.json()
+        assert body["thread_id"] == "thr-9"
+        assert [m["message_id"] for m in body["messages"]] == ["msg-a", "msg-b"]
+        assert [m["logged"] for m in body["messages"]] == [False, False]
+        # Our own reply reads as outbound off its SENT label, the way the feed reads it.
+        assert body["messages"][1]["direction"] == "outbound"
+
+        await c.post(
+            "/api/v1/google/gmail/import", json={"message_id": "msg-a"}, headers=headers
+        )
+        after = (
+            await c.get("/api/v1/google/gmail/threads/thr-9", headers=headers)
+        ).json()
+        assert [m["logged"] for m in after["messages"]] == [True, False]
+
+        missing = await c.get("/api/v1/google/gmail/threads/thr-nope", headers=headers)
+        assert missing.status_code == 404
+
+
+async def test_manual_gmail_refuses_a_mailbox_that_is_not_ours_to_read(client_for) -> None:
+    """Every gate answers before Gmail is called at all — and none of them is a 500."""
+    t = await make_tenant("gmail-manual-gate")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        blocked = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "18c2d3e4f5a6b7c8"},
+            headers=headers,
+        )
+        assert blocked.status_code == 409
+        assert blocked.json()["error"]["message"] == "errors.gmail_disabled"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(GoogleSettings(org_id=t.org.id, gmail_enabled=True))
+        session.add(
+            GoogleConnection(
+                org_id=t.org.id,
+                user_id=t.user.id,
+                google_sub="sub",
+                email="me@agency.nl",
+                scopes=["openid", "email"],  # connected, but never granted Gmail
+                refresh_token_encrypted=encrypt("rt"),
+            )
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        refused = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "18c2d3e4f5a6b7c8"},
+            headers=headers,
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["message"] == "errors.gmail_sync_off"
+
+
+async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch) -> None:
+    """#342's point: the enrichment offer hangs off filing onto a task, not off review."""
+    t = await make_tenant("gmail-manual-enrich")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    offered: list[tuple[str, str]] = []
+
+    async def _capture(ctx, interaction_id, task_id):  # noqa: ANN001, ARG001
+        offered.append((str(interaction_id), str(task_id)))
+        return object()
+
+    monkeypatch.setattr("app.modules.interactions.jobs.schedule_enrichment", _capture)
+    monkeypatch.setattr(
+        "app.modules.interactions.enrich.available",
+        lambda ctx: _true(),  # noqa: ARG005
+    )
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Prospect BV"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Offerte maken", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        created = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert offered == [(created.json()["interaction_id"], task["id"])]
+
+
+async def _true() -> bool:
+    return True

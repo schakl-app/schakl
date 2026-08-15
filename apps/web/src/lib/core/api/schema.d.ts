@@ -3259,6 +3259,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/gmail/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Gmail Message
+         * @description Log one message the poller skipped, filed where the caller says.
+         *
+         *     The declared permission is the one for the row this **writes** — a contactmoment — while
+         *     reaching into the mailbox is asked for in the service (``google.connection.manage``). Two
+         *     keys, because it is two acts, and gating on the one the screen happens to be about is how a
+         *     403 becomes unexplainable (#310).
+         */
+        post: operations["import_gmail_message_api_v1_google_gmail_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Gmail Message
+         * @description Resolve a pasted reference to the message(s) it names, in the caller's own mailbox.
+         *
+         *     A **GET**, deliberately: it reads, and a read must survive an expired licence (#307) — the
+         *     module's write gate reads the method, so a POST here would 402 somebody out of looking at
+         *     their own mailbox. It is also why the reference is a query parameter rather than a body.
+         */
+        get: operations["lookup_gmail_message_api_v1_google_gmail_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/gmail/refresh": {
         parameters: {
             query?: never;
@@ -3291,6 +3340,29 @@ export interface paths {
          * @description When this mailbox was last polled, and whether asking for another one is worth it.
          */
         get: operations["read_gmail_status_api_v1_google_gmail_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/threads/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gmail Thread
+         * @description Every message of one conversation, marked with what is already on the timeline.
+         *
+         *     The thread id comes off a row we logged, so this asks about a conversation we were already
+         *     told about — no search, no browsing, and nothing the poller could not already read.
+         */
+        get: operations["read_gmail_thread_api_v1_google_gmail_threads__thread_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5208,7 +5280,10 @@ export interface paths {
          *     The narrow, audited path that may write the protected ``email`` kind: the ordinary
          *     ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
          *     may claim to be one. Links may be assigned in the same step, exactly like approving a
-         *     gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+         *     gmail row (#183) — and, since #342, that includes ``enrich_task``: the AI fill-in was
+         *     reachable only from the review transition, so the one source that deliberately skips review
+         *     was the one source that could not ask for it. Declared before ``/{interaction_id}`` so the
+         *     literal path always wins.
          */
         post: operations["upload_interaction_eml_api_v1_interactions_upload_eml_post"];
         delete?: never;
@@ -12978,6 +13053,12 @@ export interface components {
              */
             contact_ids?: string[] | null;
             /**
+             * Enrich Task
+             * @description Let schakl read this email into the task it is filed on (#327)
+             * @default false
+             */
+            enrich_task: boolean;
+            /**
              * File
              * @description An exported .eml message
              */
@@ -15713,6 +15794,98 @@ export interface components {
          * @enum {string}
          */
         GmailApprovalMode: "approval_required" | "auto_approve";
+        /**
+         * GmailCandidate
+         * @description One message the caller could log, and everything the row needs to describe itself.
+         */
+        GmailCandidate: {
+            /**
+             * Direction
+             * @default none
+             */
+            direction: string;
+            /** From Email */
+            from_email?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Interaction Id */
+            interaction_id?: string | null;
+            /**
+             * Logged
+             * @default false
+             */
+            logged: boolean;
+            /** Message Id */
+            message_id: string;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Recipients */
+            recipients?: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /**
+             * Suppressed
+             * @default false
+             */
+            suppressed: boolean;
+            /** Thread Id */
+            thread_id?: string | null;
+        };
+        /**
+         * GmailImportRequest
+         * @description One named message, and where it is filed — the ``.eml`` upload's body, minus the file.
+         */
+        GmailImportRequest: {
+            /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Ids */
+            contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @default false
+             */
+            enrich_task: boolean;
+            /** Message Id */
+            message_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** GmailImportResult */
+        GmailImportResult: {
+            /**
+             * Body Fetched
+             * @default false
+             */
+            body_fetched: boolean;
+            /**
+             * Interaction Id
+             * Format: uuid
+             */
+            interaction_id: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** GmailLookupResult */
+        GmailLookupResult: {
+            /** Messages */
+            messages?: components["schemas"]["GmailCandidate"][];
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
         /** GmailRefreshResult */
         GmailRefreshResult: {
             /**
@@ -34667,6 +34840,71 @@ export interface operations {
             };
         };
     };
+    import_gmail_message_api_v1_google_gmail_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GmailImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_gmail_message_api_v1_google_gmail_lookup_get: {
+        parameters: {
+            query: {
+                /** @description A Gmail link, a message/thread id, or an RFC-822 Message-ID */
+                reference: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_gmail_api_v1_google_gmail_refresh_post: {
         parameters: {
             query?: never;
@@ -34703,6 +34941,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GmailSyncStatus"];
+                };
+            };
+        };
+    };
+    read_gmail_thread_api_v1_google_gmail_threads__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

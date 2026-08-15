@@ -198,6 +198,12 @@ class Settings(BaseSettings):
     # Password-reset requests are cheaper to abuse (e-mail bombing a victim's inbox), so the
     # forgot/reset routes get a tighter, separate budget.
     password_reset_rate_limit_per_minute: int = 5
+    # Signed-in ceilings on somebody else's quota, keyed per user rather than per IP
+    # (``limit_by_principal``). Pulling an email out of Gmail by hand (#342) is a few calls a
+    # person makes a few times a day; the ceiling is what keeps a script from turning the
+    # feature into a bulk mailbox import. 0 disables, as above.
+    gmail_manual_lookup_rate_limit_per_minute: int = 20
+    gmail_manual_import_rate_limit_per_minute: int = 10
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None

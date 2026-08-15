@@ -333,6 +333,48 @@ agency tool — so, direct.
   `status="cooldown"` and the seconds left, never an error envelope: it is the honest answer
   *this feed is already fresh*, and it has to arrive with `last_polled_at` beside it or the
   screen loses the one thing it was drawn to say.
+- **Nine silent skips need one loud override** (#342, `gmail/manual.py`). `_ingest_message` has
+  nine ways to decide against a message, and two are ordinary enough to hit every agency: a
+  sender who is not a contact yet (`has_external_match`), and anything older than the day the
+  mailbox was connected (the first poll baselines and imports nothing, on purpose). Add an
+  expired `historyId`, a deferral to a mailbox that later opted out, an excluded label, an
+  earlier rejection — and "why is this e-mail not on the timeline?" has no answer anybody can
+  act on. The thing worth noticing is that **almost none of them are blindness; they are
+  decisions**, and the message is sitting in a mailbox we already hold a grant for. So the
+  owner may name one and override it. Four rules.
+  **The id space is Google's, so the guard is Google's.** Every read goes through `acting_as`
+  — the caller's *own* grant — and a Gmail message id means something only inside one mailbox,
+  so a guessed, copied or brute-forced id answers 404. That is what makes "accept an id from
+  the client" safe here and unsafe almost everywhere else: it is not an id into *our* tables,
+  where the check would be ours to get right. It is also the argument against the obvious
+  feature: a **picker** means `messages.list` over arbitrary personal mail rendered inside the
+  CRM, which is the trust landmine this section opens with, and it would make "schakl only ever
+  sees matched mail" untrue. Refused, not deferred.
+  **A thread we already logged is not new reach.** The commonest complaint is not "this
+  e-mail" but "the *rest* of this conversation", and we hold that `gmail_thread_id` already —
+  so `GET /gmail/threads/{id}` lists one thread and marks which of its messages are on the
+  timeline. No search, no consent, and it is the mitigation for the next rule.
+  **Gmail's web ids are not Gmail's API ids, and pretending otherwise fails silently.** What a
+  person copies out of the address bar today is an opaque `FMfcgz…` id the API neither accepts
+  nor converts. Three references *do* resolve and the parser takes exactly those — a hex id, a
+  `msg-f:`/`thread-f:` decimal, and the RFC-822 `Message-ID` via `q=rfc822msgid:` (a lookup
+  wearing a search's clothes, and the one reference anybody can always obtain). Anything else
+  gets its **own** error key naming the two that work, because a link that can never resolve
+  answered with a generic failure is how somebody concludes the feature is broken.
+  **And it refuses to guess.** No contact matching, no company ranking: the caller says where
+  the message is filed, exactly as an uploaded `.eml` does. Every matching rule that could have
+  run here is a rule that already declined this message once.
+- **A second way to log an e-mail must not be a second-class e-mail** (#342). "Laat schakl deze
+  taak invullen" (#327) was reachable only from `approve()` — gated `_owned_gmail_or_404` +
+  `_pending_only` — so an uploaded `.eml`, which lands `logged` on purpose and never passes
+  through review, **could not offer it at all**. Nobody decided that: the offer was attached to
+  the *review transition* rather than to the act it actually belongs to, and the second source
+  inherited the omission. It now hangs off **filing an e-mail onto a task**, which is something
+  all three sources do, and one worker job serves all three (it re-defers while the body has
+  not landed, which is exactly what makes an upload's already-present body and a gmail row's
+  not-yet-fetched one the same case). The generalisation is worth more than the fix: when a
+  capability is reached through one path's transition, adding a second path silently drops it,
+  and no test fails — so hang it off the *act*, and let every path call it.
 - A dedicated `email_logs` module (or generic `relations` rows, §6) attaching to
   company/contact/project, with its own company panel.
 - **Privacy:** mailbox connection is per-user and opt-in; let users scope it to a label/query.

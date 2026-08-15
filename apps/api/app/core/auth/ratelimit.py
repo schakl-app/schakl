@@ -80,6 +80,23 @@ async def limit_by_ip(request: Request, *, bucket: str, limit: int) -> None:
     await _enforce(f"{bucket}:{host}:{_client_ip(request)}", limit)
 
 
+async def limit_by_principal(*, bucket: str, principal: str, limit: int) -> None:
+    """The same fixed window, keyed on **who is signed in** rather than on where they came from.
+
+    Everything above this line is pre-auth, where an IP is the only thing there is to count. Past
+    the door there is something better: a session names an org and a user, so a ceiling on *them*
+    survives a changed network, and — the reason this exists — it does not punish a whole office
+    behind one NAT for one person's script. ``principal`` is the caller's identity as the calling
+    module wants it counted (``"<org>:<user>"`` for a per-user budget on a third-party quota).
+
+    Everything else is deliberately shared with the pre-auth limiter, including the two
+    properties that matter: the window lives in the shared Redis, so the ceiling holds across
+    both API replicas rather than per process, and it **fails open** — a rate limit is a
+    safeguard, and a Redis outage must not become an outage of the feature it guards.
+    """
+    await _enforce(f"{bucket}:{principal}", limit)
+
+
 def rate_limit(name: str, limit: Callable[[], int]) -> Callable[[Request], Awaitable[None]]:
     """Build a FastAPI dependency limiting requests per IP, per minute, per tenant.
 
