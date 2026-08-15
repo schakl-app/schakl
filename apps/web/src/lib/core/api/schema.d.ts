@@ -3357,6 +3357,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/gmail/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Gmail
+         * @description Find a message in the caller's **own** mailbox, by who it was with and when (#372).
+         *
+         *     Named parameters rather than one free-text box, and that is a boundary rather than a
+         *     convenience: the service builds the Gmail query from them, so a colon in an address cannot
+         *     become an operator and "what was searched for" stays a sentence we can state.
+         *
+         *     ``google.connection.manage`` is the key — the same one every other read of the caller's own
+         *     mailbox declares. This reaches no schakl row at all, so ``interactions.interaction.write``
+         *     is asked for at the point something is actually logged, not here. A **GET** for
+         *     :func:`lookup_gmail_message`'s reason: it reads, and a read must survive an expired
+         *     licence (#307).
+         */
+        get: operations["search_gmail_api_v1_google_gmail_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/gmail/status": {
         parameters: {
             query?: never;
@@ -15864,6 +15894,11 @@ export interface components {
          */
         GmailCandidate: {
             /**
+             * Before Connection
+             * @default false
+             */
+            before_connection: boolean;
+            /**
              * Direction
              * @default none
              */
@@ -15881,10 +15916,21 @@ export interface components {
             logged: boolean;
             /** Message Id */
             message_id: string;
+            /**
+             * Never Offered
+             * @default false
+             */
+            never_offered: boolean;
             /** Occurred At */
             occurred_at?: string | null;
             /** Recipients */
             recipients?: string | null;
+            /** Skip Detail */
+            skip_detail?: {
+                [key: string]: string;
+            };
+            /** Skip Reason */
+            skip_reason?: string | null;
             /** Snippet */
             snippet?: string | null;
             /** Subject */
@@ -15949,6 +15995,11 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
         };
         /** GmailRefreshResult */
         GmailRefreshResult: {
@@ -15963,6 +16014,31 @@ export interface components {
              */
             status: "polled" | "cooldown" | "error";
             sync: components["schemas"]["GmailSyncStatus"];
+        };
+        /**
+         * GmailSearchResult
+         * @description A search over the caller's own mailbox — the same rows, plus what was asked.
+         */
+        GmailSearchResult: {
+            /** Messages */
+            messages?: components["schemas"]["GmailCandidate"][];
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
         };
         /**
          * GmailSyncStatus
@@ -35127,6 +35203,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GmailRefreshResult"];
+                };
+            };
+        };
+    };
+    search_gmail_api_v1_google_gmail_search_get: {
+        parameters: {
+            query?: {
+                participant?: string | null;
+                subject?: string | null;
+                after?: string | null;
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

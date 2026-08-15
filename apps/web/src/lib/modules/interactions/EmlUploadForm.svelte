@@ -98,6 +98,13 @@
   // A thread to fill in is a Gmail question by construction; anything else opens on the file.
   let source = $state<"file" | "gmail">(threadId ? "gmail" : "file");
   let reference = $state("");
+  // The search fields (#372), bound so a refinement keeps what was typed — `reset: false` on
+  // its own would only preserve them across a *failure*, and narrowing a result set means
+  // submitting the same form again with one field changed.
+  let searchParticipant = $state("");
+  let searchSubject = $state("");
+  let searchAfter = $state("");
+  let searchBefore = $state("");
   let lookup = $state<LookupResult | null>(null);
   let picked = $state<Candidate | null>(null);
   let gmailError = $state("");
@@ -404,11 +411,102 @@
     </Button>
   </form>
 
+  {#if !threadId}
+    <!-- The other way in (#372). A separate form for the same reason the lookup is one: two
+         submissions, two sets of inputs, one result list. Kept collapsed because a reference is
+         the faster route when you have one — but reachable in one click, because most of the
+         time nobody has one, and "go and copy an id out of Gmail" was the whole problem. -->
+    <details class="mb-4 rounded-lg border border-border">
+      <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-text">
+        {t("interactions.gmail.search_toggle")}
+      </summary>
+      <form
+        method="POST"
+        action="?/searchGmailMessages"
+        class="space-y-2 border-t border-border p-3"
+        use:enhance={busy.wrap("gmail-search", () => async ({ result, update }) => {
+          if (result.type === "failure") {
+            gmailError = String(result.data?.error ?? "errors.validation");
+            lookup = null;
+            picked = null;
+            return;
+          }
+          gmailError = "";
+          lookup =
+            result.type === "success"
+              ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+              : null;
+          picked = null;
+          // `reset: false`: the fields describe a search somebody is refining, and blanking
+          // them after each attempt makes narrowing a result set impossible.
+          await update({ reset: false });
+        })}
+      >
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">
+            {t("interactions.gmail.search_participant")}
+          </span>
+          <input
+            type="email"
+            name="participant"
+            bind:value={searchParticipant}
+            placeholder={t("interactions.gmail.search_participant_placeholder")}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">
+            {t("interactions.gmail.search_subject")}
+          </span>
+          <input
+            type="text"
+            name="subject"
+            bind:value={searchSubject}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </label>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_after")}
+            </span>
+            <input
+              type="date"
+              name="after"
+              bind:value={searchAfter}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_before")}
+            </span>
+            <input
+              type="date"
+              name="before"
+              bind:value={searchBefore}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+        </div>
+        <p class="text-xs text-text-muted">{t("interactions.gmail.search_hint")}</p>
+        <Button type="submit" variant="secondary" loading={busy.is("gmail-search")}>
+          <Search size={15} aria-hidden="true" />
+          {t("interactions.gmail.search_submit")}
+        </Button>
+      </form>
+    </details>
+  {/if}
+
   {#if gmailError}
     <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(gmailError)}</p>
   {/if}
   {#if lookup}
     <div class="mb-4">
+      {#if lookup.widened_to_thread}
+        <!-- "I pasted one link and got eight messages" is surprising unless it is said. -->
+        <p class="mb-2 text-xs text-text-muted">{t("interactions.gmail.widened")}</p>
+      {/if}
       <GmailMessagePicker
         messages={lookup.messages ?? []}
         truncated={lookup.truncated ?? false}

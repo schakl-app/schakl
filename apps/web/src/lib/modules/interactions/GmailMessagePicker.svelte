@@ -16,11 +16,23 @@
    * importing anyway is allowed
    * (it is the reader's own earlier decision, and this is them changing it), but a screen that
    * quietly overrides a standing instruction makes the instruction untrustworthy.
+   *
+   * **And every row that is not here says why** (#372). The reason comes from the API, which
+   * takes it from the ingest's own decision function rather than from a second opinion, so the
+   * chip and the behaviour cannot drift apart. It is drawn as information, not as a fault:
+   * none of the ten reasons is the reader's mistake, most are the integration working exactly
+   * as configured, and an amber warning over "this sender is not a contact yet" is the shape
+   * CLAUDE.md §10 already names — a state you exist to serve, rendered as a problem. So: one
+   * muted line with an ⓘ, beside the button that resolves it.
+   *
+   * The reasons are deliberately **not** colour-coded by severity, for the reason docs/UX.md
+   * gives about brand colour — the tenant's hue may be anything, so a state told apart only by
+   * colour is a state told apart by nothing.
    */
-  import { Check, Mail } from "@lucide/svelte";
+  import { Check, Info, Mail } from "@lucide/svelte";
 
   import { fmtDateTime } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { hasMessage, t } from "$lib/core/i18n";
   import type { components } from "$lib/core/api/schema";
 
   type Candidate = components["schemas"]["GmailCandidate"];
@@ -39,6 +51,25 @@
   } = $props();
 
   const sender = (m: Candidate) => m.from_name || m.from_email || "—";
+
+  /**
+   * The one line under a message that says why it is not on the timeline.
+   *
+   * The order mirrors the API's and matters: `before_connection` and `never_offered` beat any
+   * gate verdict, because for those messages the chain never ran. Printing "the sender is not a
+   * contact" about a mail from before this mailbox was connected would be true of the rules and
+   * false about what happened — the confident-and-wrong answer the whole design exists to
+   * avoid. An unknown reason (an API newer than this bundle) degrades to nothing rather than
+   * printing a raw message key at somebody.
+   */
+  function reasonFor(m: Candidate): string | null {
+    if (m.logged) return null;
+    if (m.before_connection) return t("interactions.gmail.skip.before_connection");
+    if (m.never_offered) return t("interactions.gmail.skip.never_offered");
+    if (!m.skip_reason) return null;
+    const key = `interactions.gmail.skip.${m.skip_reason}`;
+    return hasMessage(key) ? t(key, m.skip_detail ?? {}) : null;
+  }
 </script>
 
 {#if messages.length === 0}
@@ -95,6 +126,12 @@
         {#if message.suppressed}
           <p class="mt-2 text-xs text-amber-700 dark:text-amber-400">
             {t("interactions.gmail.suppressed")}
+          </p>
+        {/if}
+        {#if reasonFor(message)}
+          <p class="mt-2 flex items-start gap-1.5 text-xs text-text-muted">
+            <Info size={13} class="mt-px shrink-0" aria-hidden="true" />
+            <span>{reasonFor(message)}</span>
           </p>
         {/if}
       </li>

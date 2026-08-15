@@ -11,6 +11,7 @@ guard — live in those two modules rather than here.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ from app.modules.google.gmail import manual
 from app.modules.google.gmail.manual import (
     GmailImportResult,
     GmailLookupResult,
+    GmailSearchResult,
 )
 from app.modules.google.gmail.refresh import (
     GmailRefreshResult,
@@ -90,6 +92,38 @@ async def lookup_gmail_message(
     their own mailbox. It is also why the reference is a query parameter rather than a body.
     """
     return await manual.lookup(ctx, reference)
+
+
+@router.get(
+    "/search",
+    response_model=GmailSearchResult,
+    dependencies=[require_permission("google.connection.manage")],
+)
+async def search_gmail(
+    participant: str | None = Query(None, max_length=320),
+    subject: str | None = Query(None, max_length=200),
+    after: date | None = Query(None),
+    before: date | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> GmailSearchResult:
+    """Find a message in the caller's **own** mailbox, by who it was with and when (#372).
+
+    Named parameters rather than one free-text box, and that is a boundary rather than a
+    convenience: the service builds the Gmail query from them, so a colon in an address cannot
+    become an operator and "what was searched for" stays a sentence we can state.
+
+    ``google.connection.manage`` is the key — the same one every other read of the caller's own
+    mailbox declares. This reaches no schakl row at all, so ``interactions.interaction.write``
+    is asked for at the point something is actually logged, not here. A **GET** for
+    :func:`lookup_gmail_message`'s reason: it reads, and a read must survive an expired
+    licence (#307).
+    """
+    return await manual.search(
+        ctx,
+        manual.GmailSearchQuery(
+            participant=participant, subject=subject, after=after, before=before
+        ),
+    )
 
 
 @router.get(

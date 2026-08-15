@@ -10,7 +10,7 @@ from app.core.entitlements.service import sku_cron_enabled
 from app.core.events import SystemContext
 from app.core.jobs import enqueue, run_per_org
 from app.db import async_session_maker, set_current_org
-from app.modules.google.gmail.service import fetch_body, poll_connection
+from app.modules.google.gmail.service import fetch_body, poll_connection, reap_skips
 from app.modules.google.models import ConnectionStatus, GoogleConnection
 from app.modules.google.oauth import SCOPE_GMAIL, google_settings_row
 
@@ -66,6 +66,21 @@ async def google_gmail_sweep_bodies(ctx: dict) -> None:  # noqa: ARG001
             await enqueue("google_gmail_fetch_body", str(org.id), str(interaction_id))
 
     await run_per_org(_sweep)
+
+
+async def google_gmail_reap_skips(ctx: dict) -> None:  # noqa: ARG001
+    """Daily: drop ``gmail_skips`` rows past their retention window.
+
+    A permanent record of a transient failure is a log by another name, which is the thing
+    :mod:`~app.modules.google.gmail.gates` argues against. The window (``SKIP_RETENTION_DAYS``)
+    is long enough that "an email from last month never arrived" is still answerable, and short
+    enough that the table cannot quietly become a history of the mailbox.
+
+    Deliberately **not** gated on the licence. Reaping is deletion, and an expired licence must
+    not turn a retention promise into an indefinite one — the payments rule (§10) read the other
+    way round: gate what the agency *does*, never the tidying up after it.
+    """
+    await run_per_org(reap_skips)
 
 
 async def google_gmail_poll_connection(ctx: dict, org_id: str, connection_id: str) -> str:  # noqa: ARG001

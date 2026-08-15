@@ -36,6 +36,7 @@ from app.modules.google.gmail.jobs import (
     google_gmail_fetch_body,
     google_gmail_poll,
     google_gmail_poll_connection,
+    google_gmail_reap_skips,
     google_gmail_sweep_bodies,
 )
 from app.modules.google.gmail.router import router as gmail_router
@@ -64,6 +65,9 @@ module = ModuleDescriptor(
         cron(google_drive_sweep_folder_jobs, minute=set(range(0, 60, 5)), second=20),
         cron(google_gmail_poll, minute=set(range(0, 60, 5)), second=50),
         cron(google_gmail_sweep_bodies, minute=set(range(0, 60, 5)), second=30),
+        # Retention for the two persisted ingest skips. Daily is plenty for a 60-day window,
+        # and 03:40 keeps clear of the platform's own 04:00/05:00/05:30 jobs.
+        cron(google_gmail_reap_skips, hour=3, minute=40),
     ],
     worker_functions=[
         google_calendar_sync_connection,

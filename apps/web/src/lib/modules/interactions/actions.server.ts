@@ -236,6 +236,34 @@ export const interactionActions = {
     return { gmailLookup: data, gmailReference: reference };
   },
 
+  /**
+   * Search the caller's **own** mailbox for a message to file (#372).
+   *
+   * Its own action rather than a mode on `lookupGmailMessage`: a different question, different
+   * inputs, and its own refusal ("no fields at all" is "list my mailbox", which is the one
+   * thing this is not). Both end in the same candidate list, which is what the shared picker
+   * is for — two ways in must never come to offer different things.
+   *
+   * Named fields all the way down. The API takes `participant` / `subject` / `after` /
+   * `before` and builds the Gmail query itself, so nothing here forwards operator syntax.
+   */
+  searchGmailMessages: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const query = {
+      participant: String(form.get("participant") ?? "").trim() || undefined,
+      subject: String(form.get("subject") ?? "").trim() || undefined,
+      after: String(form.get("after") ?? "").trim() || undefined,
+      before: String(form.get("before") ?? "").trim() || undefined,
+    };
+    const { data, error } = await apiFor(event).GET("/api/v1/google/gmail/search", {
+      params: { query },
+    });
+    // The lookup's rule: a refusal keeps what was typed. It is the thing the user has to
+    // correct, and re-typing an address is the least helpful thing to ask of them.
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { gmailLookup: data };
+  },
+
   /** Log one message the poller skipped, filed where the dialog says (#342). */
   importGmailMessage: async (event: RequestEvent) => {
     const form = await event.request.formData();

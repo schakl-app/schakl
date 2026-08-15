@@ -6,11 +6,15 @@ participants match a known contact — pending by default, so the mailbox owner 
 any content is shared. Bodies are fetched separately, only after approval (or immediately when
 the org runs ``auto_approve``).
 
-Skips, in order: already imported (this mailbox), already logged by a colleague's mailbox
-(the RFC-822 ``Message-ID`` dedup), suppressed (rejected earlier), the owner's excluded label,
-a copy of somebody else's mail whose own mailbox will log it (``_defer_to_owner_mailbox``),
-colleague-only mail, and no contact match. First poll stores the current ``historyId`` and
-imports nothing — connecting a mailbox is opt-in *going forward*, never a retroactive import.
+**The skip chain is :func:`classify`, and it is a function rather than a shape.** It used to be
+nine bare ``return 0``s interleaved with the fetch and the write, which made the decision
+impossible to *ask for* without performing it — so "why did this email never appear?" had no
+answer, for the mailbox owner or for us. Now this module fetches and acts, and every reason it
+declines has a name (:mod:`~app.modules.google.gmail.gates`). The manual importer's explainer
+calls the same function, which is what stops the explanation drifting from the behaviour.
+
+First poll stores the current ``historyId`` and imports nothing — connecting a mailbox is
+opt-in *going forward*, never a retroactive import.
 """
 
 from __future__ import annotations
@@ -19,9 +23,10 @@ import base64
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
@@ -30,7 +35,14 @@ from app.core.models import Org
 from app.core.portal import external_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
 from app.modules.google.gmail import matching
-from app.modules.google.gmail.models import GmailSuppression
+from app.modules.google.gmail.gates import (
+    PERSISTED_REASONS,
+    Decision,
+    GateCache,
+    SkipReason,
+    skip_row_values,
+)
+from app.modules.google.gmail.models import GmailSkip, GmailSuppression
 from app.modules.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
 from app.modules.google.oauth import SCOPE_GMAIL, google_settings_row
 from app.modules.interactions import system as interactions_system
@@ -104,6 +116,19 @@ async def poll_connection(
                         connection.id,
                         org.id,
                     )
+                    # Loud in the log is not the same as findable. This is one of the two
+                    # skips a person would never know to go looking for — the message simply
+                    # is not there — so it leaves a row (id + reason + when, no content).
+                    # Outside the rolled-back savepoint, or the record of the failure would be
+                    # undone by the failure.
+                    await _record_skip(
+                        session,
+                        org,
+                        connection,
+                        {"id": message_id},
+                        SkipReason.INGEST_ERROR,
+                        {"error": type(ingest_exc).__name__},
+                    )
             if latest_history_id:
                 connection.gmail_history_id = latest_history_id[:32]
     except Exception as exc:
@@ -169,63 +194,126 @@ async def _excluded_label_id(client, connection: GoogleConnection) -> str | None
     return None
 
 
-async def _ingest_message(
+async def message_already_here(
+    session: AsyncSession,
+    org: Org,
+    connection: GoogleConnection,
+    message_id: str,
+    cache: GateCache | None = None,
+) -> SkipReason | None:
+    """The two answers that need no message — asked before the fetch, and again inside
+    :func:`classify`.
+
+    Split out rather than inlined so the poller can decline without paying a Gmail round trip
+    *and* the chain stays one function. Duplicating them here would be exactly the drift
+    :mod:`~app.modules.google.gmail.gates` exists to prevent, one gate earlier.
+    """
+    ctx = SystemContext(org=org, session=session)
+    if cache is not None and cache.logged_message_ids is not None:
+        if message_id in cache.logged_message_ids:
+            return SkipReason.ALREADY_LOGGED
+    elif await interactions_system.gmail_message_seen(ctx, connection.user_id, message_id):
+        return SkipReason.ALREADY_LOGGED
+    if cache is not None and cache.suppressed_message_ids is not None:
+        if message_id in cache.suppressed_message_ids:
+            return SkipReason.SUPPRESSED_MESSAGE
+    elif await _suppressed(session, org.id, connection.id, message_id=message_id):
+        return SkipReason.SUPPRESSED_MESSAGE
+    return None
+
+
+async def classify(
     session: AsyncSession,
     org: Org,
     connection: GoogleConnection,
     settings_row: GoogleSettings,
-    client,
-    message_id: str,
+    message: dict,
     excluded_label_id: str | None,
     internals: Internals,
-) -> int:
-    ctx = SystemContext(org=org, session=session)
-    if await interactions_system.gmail_message_seen(ctx, connection.user_id, message_id):
-        return 0
-    if await _suppressed(session, org.id, connection.id, message_id=message_id):
-        return 0
+    cache: GateCache | None = None,
+) -> Decision:
+    """Would this message be logged, and if not, which gate stopped it?
 
-    response = await client.get(
-        f"{GMAIL_API}/messages/{message_id}",
-        params={
-            "format": "metadata",
-            "metadataHeaders": list(_METADATA_HEADERS),
-        },
-    )
-    if response.status_code == 404:
-        return 0
-    response.raise_for_status()
-    message = response.json()
+    **Decides; never writes and never fetches.** That is the whole point: the poller called
+    this chain by running it, so the only way to find out what it thought was to let it act,
+    and "why did this email never appear?" had no answer anybody could give. Taking the fetched
+    message as an argument is what lets the manual importer ask the same question about one
+    message a person is looking at — the same function, so the explanation cannot drift from
+    the behaviour (#324's rule, applied to the chain).
+
+    The gates are **ordered and short-circuiting**, and the returned reason is the first one
+    that fired. Anything after it was not evaluated, which is why this returns one reason
+    rather than a list: "it also has no contact match" is not something we know about a message
+    we stopped reading at the excluded label.
+
+    ``cache`` is for a caller classifying a whole conversation in one request (:class:`GateCache`)
+    — it changes where four of these lookups get their data, never what any of them asks. The
+    poller passes none and every question goes to the database, one message at a time.
+    """
+    ctx = SystemContext(org=org, session=session)
+    message_id = str(message.get("id") or "")
+
+    already = await message_already_here(session, org, connection, message_id, cache)
+    if already is not None:
+        return Decision(reason=already)
+
     label_ids = message.get("labelIds") or []
+    labels = set(label_ids)
+    if labels & {"DRAFT", "SPAM", "TRASH"}:
+        return Decision(reason=SkipReason.NOT_A_MESSAGE)
     if not matching.is_relevant(label_ids, excluded_label_id):
-        return 0
+        # Split from the line above on purpose. ``is_relevant`` answers one question the poller
+        # only ever needed one answer to; a person asking *why* needs the two apart, because
+        # one of them is a label they chose and can un-choose, and the other is not a message.
+        return Decision(
+            reason=SkipReason.EXCLUDED_LABEL,
+            detail={"label": connection.gmail_excluded_label or ""},
+        )
+
     thread_id = message.get("threadId")
-    if thread_id and await _suppressed(session, org.id, connection.id, thread_id=thread_id):
-        return 0
+    if thread_id:
+        if cache is not None and cache.suppressed_thread_ids is not None:
+            suppressed_thread = thread_id in cache.suppressed_thread_ids
+        else:
+            suppressed_thread = await _suppressed(
+                session, org.id, connection.id, thread_id=thread_id
+            )
+        if suppressed_thread:
+            return Decision(reason=SkipReason.SUPPRESSED_THREAD)
 
     headers = matching.headers_map(message)
     rfc822_id = (headers.get("Message-ID") or "").strip()[:512] or None
-    if rfc822_id and await interactions_system.rfc822_seen(ctx, rfc822_id):
-        return 0  # a colleague's mailbox already logged this email — one timeline entry
+    if rfc822_id:
+        if cache is not None and cache.logged_rfc822_ids is not None:
+            logged_elsewhere = rfc822_id in cache.logged_rfc822_ids
+        else:
+            logged_elsewhere = await interactions_system.rfc822_seen(ctx, rfc822_id)
+        if logged_elsewhere:
+            # A colleague's mailbox already logged this email — one timeline entry.
+            return Decision(reason=SkipReason.LOGGED_ELSEWHERE)
 
     participants = matching.parse_participants(headers)
     if not participants:
-        return 0
+        return Decision(reason=SkipReason.NO_PARTICIPANTS)
     if _defer_to_owner_mailbox(connection, label_ids, participants, internals):
-        # Every other skip here is silent, which is why "why did this email never appear?"
-        # costs an afternoon and a database. This one is new, so it says so: a deferral that
-        # never gets picked up by the other mailbox is the one failure mode worth naming.
-        logger.debug(
-            "Gmail deferred message %s on %s (org %s): the owner's own mailbox logs it",
-            message_id,
-            connection.email,
-            org.id,
+        owner = matching.intended_owner(participants, internals.owner_by_email.keys())
+        return Decision(
+            reason=SkipReason.DEFERRED_TO_OWNER,
+            detail={"owner": owner or ""},
         )
-        return 0
+
     internal = matching.internal_only(participants, internals.ours)
     if internal and not settings_row.gmail_log_internal:
-        return 0
-    matches = await _match_contacts(session, org.id, participants, internals)
+        return Decision(reason=SkipReason.INTERNAL_ONLY)
+    # The two-query lookup, memoised on the address set: one conversation is the same handful
+    # of people over and over, so this collapses fifty pairs of queries into one or two.
+    addresses = tuple(sorted({p["email"] for p in participants}))
+    if cache is not None and addresses in cache.contacts_by_addresses:
+        matches = cache.contacts_by_addresses[addresses]
+    else:
+        matches = await _match_contacts(session, org.id, participants, internals)
+        if cache is not None:
+            cache.contacts_by_addresses[addresses] = matches
     if not internal and not matching.has_external_match(matches, internals.company_ids):
         # A mail with an outsider on it still needs that outsider to be a contact we know —
         # and "known" has to mean known *and outside* (#324). Our own staff hold contact rows
@@ -234,11 +322,16 @@ async def _ingest_message(
         # notification addressed to a colleague straight through: it matched the colleague,
         # and the row landed in their review queue filed on the agency's own company.
         # ``gmail_log_internal`` remains the only door for a message with nobody outside on it.
-        return 0
+        return Decision(reason=SkipReason.NO_EXTERNAL_MATCH)
 
-    inherited = (
-        await interactions_system.thread_mappings(ctx, thread_id) if thread_id else None
-    )
+    if not thread_id:
+        inherited = None
+    elif cache is not None and thread_id in cache.mappings_by_thread:
+        inherited = cache.mappings_by_thread[thread_id]
+    else:
+        inherited = await interactions_system.thread_mappings(ctx, thread_id)
+        if cache is not None:
+            cache.mappings_by_thread[thread_id] = inherited
     mappings = (
         dict(inherited)
         if inherited
@@ -256,6 +349,65 @@ async def _ingest_message(
         # auto-file it under: it always waits for its owner, whatever the approval mode.
         # Once approved onto a client/project, thread follow-ups inherit as usual.
         pending = True
+    return Decision(mappings=mappings, pending=pending)
+
+
+async def _ingest_message(
+    session: AsyncSession,
+    org: Org,
+    connection: GoogleConnection,
+    settings_row: GoogleSettings,
+    client,
+    message_id: str,
+    excluded_label_id: str | None,
+    internals: Internals,
+) -> int:
+    """Fetch one message, ask :func:`classify` what to do with it, and do that.
+
+    Three steps that used to be one, and the middle one is the whole change: what this
+    function knows about the rules is now *nothing*. It fetches, it acts, and it says out loud
+    which gate declined — eight of the nine skips were silent returns, so a mailbox owner's
+    "this email never appeared" had no counterpart anywhere in the logs.
+    """
+    ctx = SystemContext(org=org, session=session)
+    # Before the fetch: the two answers that need no message. A poll re-reads its whole history
+    # page, so paying a Gmail round trip per already-seen id would be the expensive way to
+    # learn nothing.
+    early = await message_already_here(session, org, connection, message_id)
+    if early is not None:
+        return 0
+
+    response = await client.get(
+        f"{GMAIL_API}/messages/{message_id}",
+        params={
+            "format": "metadata",
+            "metadataHeaders": list(_METADATA_HEADERS),
+        },
+    )
+    if response.status_code == 404:
+        return 0
+    response.raise_for_status()
+    message = response.json()
+    decision = await classify(
+        session, org, connection, settings_row, message, excluded_label_id, internals
+    )
+    if not decision.logs:
+        await _record_skip(session, org, connection, message, decision.reason, decision.detail)
+        logger.debug(
+            "Gmail skipped message %s on %s (org %s): %s",
+            message_id,
+            connection.email,
+            org.id,
+            decision.reason,
+        )
+        return 0
+
+    label_ids = message.get("labelIds") or []
+    thread_id = message.get("threadId")
+    headers = matching.headers_map(message)
+    rfc822_id = (headers.get("Message-ID") or "").strip()[:512] or None
+    participants = matching.parse_participants(headers)
+    mappings, pending = decision.mappings, decision.pending
 
     internal_date = message.get("internalDate")
     occurred_at = (
@@ -307,6 +459,63 @@ async def _notify_pending(ctx: SystemContext, row, subject: str | None) -> None:
             "_recipients": [row.owner_user_id],
             "_dedup_key": f"gmail-pending:{row.owner_user_id}:{row.gmail_message_id}",
         },
+    )
+
+
+#: How long a ``gmail_skips`` row is kept. Long enough that "an email from last month never
+#: arrived" is still answerable; short enough that the table cannot become a history of the
+#: mailbox, which is the thing :mod:`gates` refuses to build.
+SKIP_RETENTION_DAYS = 60
+
+
+async def reap_skips(org: Org, session: AsyncSession) -> None:
+    """Drop this org's expired skip rows — the retention half of storing any at all."""
+    cutoff = datetime.now(UTC) - timedelta(days=SKIP_RETENTION_DAYS)
+    await session.execute(
+        delete(GmailSkip).where(GmailSkip.org_id == org.id, GmailSkip.created_at < cutoff)
+    )
+
+
+async def _record_skip(
+    session: AsyncSession,
+    org: Org,
+    connection: GoogleConnection,
+    message: dict,
+    reason: SkipReason | None,
+    detail: dict[str, str],
+) -> None:
+    """Persist the two skips a person would never know to go looking for.
+
+    Deliberately **not** every skip. A row per decision is a record of every email the mailbox
+    receives, which is more than this module is allowed to know (:mod:`gates`); these two are
+    failures rather than policy, are rare enough to have no volume, and are invisible by
+    construction — a deferral to a mailbox that later stops polling loses the email outright,
+    and a poison message is skipped precisely so that it cannot wedge the feed.
+
+    Upserted on the natural key, so a message re-offered on every poll leaves one row and the
+    reaper's retention window means what it says.
+    """
+    if reason not in PERSISTED_REASONS:
+        return
+    values = skip_row_values(
+        reason,
+        message_id=str(message.get("id") or ""),
+        thread_id=message.get("threadId"),
+        detail=detail,
+    )
+    if not values["gmail_message_id"]:
+        return
+    await session.execute(
+        pg_insert(GmailSkip)
+        .values(org_id=org.id, connection_id=connection.id, **values)
+        .on_conflict_do_update(
+            index_elements=[
+                GmailSkip.org_id,
+                GmailSkip.connection_id,
+                GmailSkip.gmail_message_id,
+            ],
+            set_={"reason": values["reason"], "detail": values["detail"]},
+        )
     )
 
 
