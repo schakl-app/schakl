@@ -3,6 +3,7 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
+import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
@@ -161,9 +162,8 @@ export const actions: Actions = {
       "priority",
       "company_id",
       "project_id",
-      "assignee_user_id",
-      // The assignee picker (#273) always posts both fields (one empty), so switching between an
-      // employee and a client contact actively clears the other — the API rejects both at once.
+      // The assignee picker (#273) always posts both sides (one empty), so switching between
+      // employees and a client contact actively clears the other — the API rejects both at once.
       "assignee_contact_id",
       "due_date",
       "due_change_reason",
@@ -173,6 +173,11 @@ export const actions: Actions = {
         body[field] = raw || null;
       }
     }
+    // The roster (#375), one hidden JSON field for the whole thing — an edit surface has one save
+    // button. Absent (a form that does not render the picker, like the status quick-form) leaves
+    // the assignees alone; `[]` is the picker's way of saying "nobody", which is a real edit.
+    const assignees = parseAssignees(form.get("assignees"));
+    if (assignees !== undefined) body.assignees = assignees;
     // The budget travels as the text that was typed ("1:40"), so the browser is not the authority
     // on what it means (#326): the same parser runs here, and a bare number still reads as minutes.
     if (form.has("allocated_minutes")) {

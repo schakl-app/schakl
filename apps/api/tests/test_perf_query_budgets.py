@@ -311,10 +311,15 @@ _MEMBER_REQUEST_BUDGET = 8
 #: the honest total the "Alle N bekijken" link needs. One statement for a silent truncation, on
 #: the two panels beside it (domains, websites) that already made the same trade.
 #:
+#: 44 -> 45 (#375): a task carries a roster of assignees rather than one column, so the tasks
+#: panel reads ``task_assignees`` once for the whole page. One statement for any number of rows —
+#: which is the shape that had to be paid for, since the alternative (a chip row resolving per
+#: task) is the exact N+1 this file exists to catch.
+#:
 #: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
 #: composer skips every panel the caller may not read, so a restricted member's page costs
 #: strictly less than this. The budget stays measured as the owner, which is the worst case.
-_PANELS_BUDGET = 44
+_PANELS_BUDGET = 45
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.
@@ -970,6 +975,9 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
     reaches for one more round trip on the way in to serve a dialog most opens never see. #314
     is exactly that pressure and deliberately paid nothing: everything the finish prompt suggests
     from is already on this response. A rise here means the next feature did not.
+
+    14 -> 15 (#375): the assignee roster. One statement, and one is the floor — the card draws
+    every person on the task, and the column it replaces could only ever name one of them.
     """
     t = await make_tenant("perf-task-detail")
     async with client_for(t.host) as c:
@@ -979,7 +987,7 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
 
         with count_queries() as bare:
             assert (await c.get(f"/api/v1/tasks/{task}", headers=headers)).status_code == 200
-        assert len(bare) == 14, bare.statements
+        assert len(bare) == 15, bare.statements
 
         for i in range(5):
             assert (

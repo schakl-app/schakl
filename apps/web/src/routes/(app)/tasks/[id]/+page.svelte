@@ -20,6 +20,7 @@
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -436,10 +437,6 @@
   const contactName = (id?: string | null) =>
     id ? (assigneeContacts.find((c) => c.id === id)?.name ?? null) : null;
 
-  const memberName = (id?: string | null) => {
-    const m = data.members.find((mm) => mm.user_id === id);
-    return m ? m.full_name || m.email : null;
-  };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name;
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name;
 
@@ -1041,28 +1038,31 @@
       </div>
 
       <div>
-        <label for="assignee-entity" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.assignee")}</label
+        <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
+          >{t("tasks.field.assignees")}</label
         >
         {#if editMode}
-          <!-- Employee, or — when the task has a client (#273) — one of that client's contacts. -->
+          <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
+               contacts. -->
           <TaskAssigneePicker
             formId="task-edit"
             employees={data.members}
             contacts={assigneeContacts}
             contactsEnabled={!!fCompany}
-            userValue={task.assignee_user_id ?? ""}
+            assignees={task.assignees ?? []}
             contactValue={task.assignee_contact_id ?? ""}
           />
-        {:else}
-          <p id="assignee-entity" class="text-sm text-text">
-            {#if task.assignee_contact_id}
-              {contactName(task.assignee_contact_id) ?? t("party.contact")}
-              <span class="text-xs text-text-muted">({t("party.contact")})</span>
-            {:else}
-              {memberName(task.assignee_user_id) ?? "—"}
-            {/if}
+        {:else if task.assignee_contact_id}
+          <p class="text-sm text-text">
+            {contactName(task.assignee_contact_id) ?? t("party.contact")}
+            <span class="text-xs text-text-muted">({t("party.contact")})</span>
           </p>
+        {:else if (task.assignees ?? []).length > 0}
+          <!-- The whole roster, not the star alone: `max` is high because this is the record's own
+               page, where "who is on this" is the question, not a column with 180px to spend. -->
+          <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
+        {:else}
+          <p class="text-sm text-text">—</p>
         {/if}
       </div>
 

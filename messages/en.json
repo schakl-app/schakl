@@ -604,6 +604,8 @@
   "tasks.field.company": "Client",
   "tasks.field.project": "Project",
   "tasks.field.assignee": "Assignee",
+  "tasks.field.assignees": "Assigned to",
+  "tasks.assignees.add": "Add colleague",
   "tasks.field.description": "Description",
   "tasks.field.status": "Status",
   "tasks.field.labels": "Labels",

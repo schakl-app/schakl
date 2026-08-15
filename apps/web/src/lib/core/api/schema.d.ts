@@ -25071,6 +25071,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */
@@ -25114,6 +25116,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /** Checklists */
             checklists?: components["schemas"]["ChecklistRead"][];
             /** Closing Interaction Id */
@@ -25206,6 +25210,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Checklist Done
              * @default 0
@@ -25335,6 +25341,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /** Closing Interaction Id */
             closing_interaction_id?: string | null;
             /** Company Id */
@@ -25406,6 +25414,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Closing Interaction Id */
             closing_interaction_id?: string | null;
             /** Company Id */

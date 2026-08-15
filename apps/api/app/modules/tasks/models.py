@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.assignees import AssigneeLinkMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
 
@@ -158,6 +159,11 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # Mirror of the primary assignee (see ``TaskAssignee``), kept in step on every write (#375).
+    # The expand half of an expand/contract migration (docs/WORKFLOW.md), dropped once no released
+    # reader is left; write through the assignee links, not this column. It is not dead weight
+    # meanwhile: reminders, scheduling, recurrence, templates, impex, bulk and automation all read
+    # it, and "the one person this is on" stays a real question for every one of them.
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -283,6 +289,47 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         )
         anchored = cls.company_id.in_(companies) | (cls.company_id.is_(None) & via_project)
         return anchored & cls.visible_to_client.is_(True)
+
+
+class TaskAssignee(
+    UUIDPrimaryKeyMixin,
+    OrgScopedMixin,
+    TimestampMixin,
+    AssigneeLinkMixin,
+    Base,
+):
+    """The org members working this task — one primary, the rest assigned (#375).
+
+    Third caller of the core shape ``company_assignees`` and ``project_assignees`` already use
+    (``app/core/assignees.py``): same two columns, same partial unique index making "at most one
+    primary" a database guarantee rather than an application promise.
+
+    Two things are specific to tasks. The mirrored column here is ``tasks.assignee_user_id``
+    rather than ``responsible_user_id``, because a task's primary was always called its assignee.
+    And a task may be assigned to a **client contact** instead (#273): that is exclusive with the
+    whole roster, not merely with the primary, and the service enforces it — a contact assignee
+    and any employee at all is the pair that must not exist.
+    """
+
+    __tablename__ = "task_assignees"
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "task_id", "user_id", name="uq_task_assignees_link"),
+        Index(
+            "uq_task_assignees_primary",
+            "org_id",
+            "task_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+    )
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
 
 class TaskSchedule(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

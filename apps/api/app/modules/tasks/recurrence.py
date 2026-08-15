@@ -30,6 +30,7 @@ from app.modules.tasks.models import (
     RecurrenceMode,
     Task,
     TaskActivity,
+    TaskAssignee,
     TaskChecklist,
     TaskChecklistItem,
     TaskLabelLink,
@@ -275,6 +276,25 @@ async def spawn_next(
     for task_link in task_links:
         session.add(
             TaskLink(org_id=org_id, task_id=clone.id, url=task_link.url, title=task_link.title)
+        )
+
+    # The people who work it, all of them (#375). ``assignee_user_id`` rides in COPIED_FIELDS and
+    # would leave a shared recurring job repeating onto one person — the roster is definition in
+    # exactly the way the labels above are, not this occurrence's output.
+    for assignee in (
+        await session.execute(
+            select(TaskAssignee).where(
+                TaskAssignee.org_id == org_id, TaskAssignee.task_id == task.id
+            )
+        )
+    ).scalars().all():
+        session.add(
+            TaskAssignee(
+                org_id=org_id,
+                task_id=clone.id,
+                user_id=assignee.user_id,
+                is_primary=assignee.is_primary,
+            )
         )
 
     links = (

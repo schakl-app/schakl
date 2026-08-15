@@ -14,6 +14,7 @@ from app.modules.tasks.models import (
     TaskPriority,
     TemplateTrigger,
 )
+from app.schemas import AssigneeRead, AssigneeWrite
 
 
 class RecurrencePlan(BaseModel):
@@ -124,6 +125,11 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
+    #: The employees on this task, one starred as primary (#375). ``None`` means *the caller
+    #: didn't say* — and ``assignee_user_id`` alone decides, which is the pre-roster shape every
+    #: existing client (and the MCP surface generated from this spec) still posts. ``[]`` is a
+    #: different sentence: assign nobody. Never send a guess.
+    assignees: list[AssigneeWrite] | None = None
     recurrence: Recurrence | None = None
     #: Create-then-edit (#230): this row exists so the user can be landed on its detail page in
     #: edit mode, and the title it carries is a placeholder nobody typed. Marks the row so a
@@ -166,6 +172,12 @@ class TaskUpdate(BaseModel):
     # picker always posts both keys (one null) so switching kinds clears the other; a raw client
     # that sets this while leaving a live ``assignee_user_id`` gets the 422 exclusivity error.
     assignee_contact_id: uuid.UUID | None = None
+    #: The roster (#375). Sending it replaces the whole thing. Sending only ``assignee_user_id``
+    #: is a **hand-off** — it replaces the roster with that one person, which is what every
+    #: pre-roster caller means by it and the one place a task differs from a client, where the
+    #: same field merely moves the star. Adding somebody *beside* the assignee needs this field.
+    #: Absent means neither, and nothing about the roster changes.
+    assignees: list[AssigneeWrite] | None = None
     title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
     status: str | None = Field(default=None, max_length=50)
@@ -193,6 +205,10 @@ class TaskRead(TaskBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    #: The employees on this task, primary first (#375). ``assignee_user_id`` above is the same
+    #: person as the starred entry here — read this, and treat that as the compatibility mirror
+    #: it is. Empty on a task assigned to a client contact, and on one assigned to nobody.
+    assignees: list[AssigneeRead] = Field(default_factory=list)
     #: Nobody has typed a title for this task. The stored ``title`` is still a real string (a
     #: placeholder), so a surface that has not been taught about this reads exactly as before;
     #: one that has renders its own locale's word for *unnamed* (#350).

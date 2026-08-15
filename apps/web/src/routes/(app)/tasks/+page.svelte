@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
-  import PersonChip from "$lib/core/ui/PersonChip.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -109,10 +109,6 @@
     ),
   );
 
-  const memberName = (id?: string | null) => {
-    const member = data.members.find((m) => m.user_id === id);
-    return member ? memberLabel(member) : "";
-  };
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
@@ -418,16 +414,14 @@
 {/snippet}
 
 {#snippet assigneeCell(task: Task)}
-  {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
-  {#if member}
-    <!-- The chip is `inline-flex`, so on its own it takes its min-content width and spills past
-         the column; as a flex item it shrinks and its own `truncate` finally has room to work. -->
+  {@const roster = task.assignees ?? []}
+  {#if roster.length > 0}
+    <!-- `Assignees` is `inline-flex`, so on its own it takes its min-content width and spills past
+         the column; as a flex item it shrinks and its chips' own `truncate` has room to work.
+         `max=1` keeps the row one line high whatever the roster: the verantwoordelijke is named
+         and the rest are a `+N` that names them in its tooltip (#375). -->
     <span class="flex min-w-0 items-center">
-      <PersonChip
-        name={member.full_name}
-        email={member.email}
-        avatarUrl={member.avatar_url ?? null}
-      />
+      <Assignees assignees={roster} members={data.members} />
     </span>
   {:else}
     <span class="text-text-muted">—</span>
