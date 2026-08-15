@@ -61,9 +61,13 @@
     members: data.members,
     companies: data.companies,
     projects: data.projects,
-    // The current task, so a panel can walk task → project → client (e.g. the Drive panel
-    // roots the browser at the project/client folder rather than the shared-drive root, #150).
-    tasks: task.project_id ? [{ id: task.id, title: task.title, project_id: task.project_id }] : [],
+    // The current task — always, and carrying **both** parents. A panel reaching for this task's
+    // client (the Drive panel roots the browser at the project/client folder rather than the
+    // shared-drive root, #150) used to get it only by walking through a project, so a task
+    // attached straight to a client resolved nothing and opened at the root (#363).
+    tasks: [
+      { id: task.id, title: task.title, project_id: task.project_id, company_id: task.company_id },
+    ],
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and

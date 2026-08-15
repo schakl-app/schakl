@@ -151,6 +151,10 @@
     if (current.id) params.set("folder_id", current.id);
     if (search.trim()) params.set("q", search.trim());
     if (refresh) params.set("refresh", "true");
+    // Which crumb this response will describe, captured before the round trip: a descent that
+    // happens while it is in flight must not be named by the folder we were standing in.
+    const target = crumbs.length - 1;
+    const targetId = current.id;
     try {
       const response = await fetch(`/api/v1/google/drive/browse?${params}`, {
         headers: { accept: "application/json" },
@@ -162,6 +166,15 @@
         return;
       }
       listing = (await response.json()) as Listing;
+      // Name the crumb from the listing that *is* it. The root is the one crumb created without a
+      // name — it cannot have one before the first read — and the render used to resolve that
+      // `null` against whatever folder was on screen, so descending into the client folder drew
+      // "H2Booster / H2Booster" and the crumb that walks back up was labelled with the folder you
+      // were already in (#363). A name is written once and never re-read.
+      const name = listing.folder.name;
+      if (name && crumbs[target] && crumbs[target].id === targetId && !crumbs[target].name) {
+        crumbs = crumbs.map((crumb, index) => (index === target ? { ...crumb, name } : crumb));
+      }
     } catch {
       errorKey = "errors.google_drive_unavailable";
       listing = null;
@@ -195,6 +208,17 @@
     clearTimeout(searchTimer);
     search = "";
     if (reload) void load();
+  }
+
+  /**
+   * A crumb's label. Only the crumb we are *standing on* may borrow the listing's name — that is
+   * the one case where "we don't know it yet" and "it is the folder on screen" are the same
+   * sentence. An ancestor borrowing it renders somewhere else's name (#363).
+   */
+  function crumbLabel(crumb: { name: string | null }, index: number): string {
+    if (crumb.name) return crumb.name;
+    if (index === crumbs.length - 1 && listing?.folder?.name) return listing.folder.name;
+    return t("google.drive.root");
   }
 
   // Go back to the folder one level up in the trail we descended (the breadcrumb does the same
@@ -352,7 +376,7 @@
           onclick={() => jump(index)}
           disabled={index === crumbs.length - 1}
         >
-          {crumb.name ?? listing?.folder?.name ?? t("google.drive.root")}
+          {crumbLabel(crumb, index)}
         </button>
       {/each}
     </nav>

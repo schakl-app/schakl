@@ -96,6 +96,12 @@ export interface PanelMember {
  * 200-row company fetch to render a name the page is already holding. So the host passes what it
  * has, and a panel that needs none of it ignores the lot. `id`+name shapes only — a panel renders
  * labels and fills pickers, it does not need the records.
+ *
+ * **The record whose page this is must always be in here** (#363). These lists are the page's
+ * pickers, and a picker is a capped list — `limit: 200`, unsorted. A panel that answers a
+ * question *about the host record* by looking it up among them is asking a question the page
+ * already has the answer to, and getting `undefined` the moment the tenant outgrows the cap. The
+ * host merges its own record in; the cost is one array spread.
  */
 export interface EntityPanelLookups {
   members: PanelMember[];
@@ -105,6 +111,12 @@ export interface EntityPanelLookups {
     id: string;
     title: string;
     project_id?: string | null;
+    /**
+     * The task's *own* client. A task carries `company_id` independently of `project_id` — one
+     * attached straight to a client has no project to walk through — so a panel that needs the
+     * client reads it here rather than inferring it from a project it may not have (#363).
+     */
+    company_id?: string | null;
     allocated_minutes?: number | null;
     status?: string | null;
     due_date?: string | null;

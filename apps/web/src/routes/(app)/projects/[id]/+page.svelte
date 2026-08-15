@@ -42,7 +42,12 @@
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
-    projects: data.projects,
+    // This project itself, merged in. `data.projects` is the capped picker list (`limit: 200`,
+    // unsorted), and the one project a panel is certain to ask about is the one whose page this
+    // is — the Drive panel reads its client off it to root the browser (#363).
+    projects: data.projects.some((project) => project.id === data.project.id)
+      ? data.projects
+      : [...data.projects, data.project],
     tasks: data.tasks,
     // The page already loads the vocabulary for its own to-do list; the time panel's entry form
     // needs the same answer to keep finished tasks out of its picker.

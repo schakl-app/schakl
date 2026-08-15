@@ -54,19 +54,25 @@
     panel.links.find((link) => link.is_root && link.entity_id === context.entityId) ?? null,
   );
 
-  // A task walks up to its project (the host page hands the current task down in `lookups.tasks`);
-  // both a project and a task then reach their client through `lookups.projects` — no fetch (#150).
-  const projectId = $derived(
+  // Both parents of this record, off the lookups the host page already holds — no fetch (#150).
+  const currentTask = $derived(
     panel.entityType === "task"
-      ? (lookups.tasks.find((task) => task.id === context.entityId)?.project_id ?? null)
+      ? (lookups.tasks.find((task) => task.id === context.entityId) ?? null)
       : null,
   );
+  const projectId = $derived(currentTask?.project_id ?? null);
+  // A task's client is its **own** `company_id` first. Walking task → project → client was the
+  // only route there, and a task attached straight to a client has no project to walk: `companyId`
+  // came back null, `rootFolderId` with it, and the browser opened at the shared-drive root while
+  // the client's connected folder sat one lookup away (#363). The project walk stays as the
+  // fallback, for a host that hands a task down without its client.
   const companyId = $derived(
     panel.entityType === "project"
       ? (lookups.projects.find((project) => project.id === context.entityId)?.company_id ?? null)
-      : projectId
-        ? (lookups.projects.find((project) => project.id === projectId)?.company_id ?? null)
-        : null,
+      : (currentTask?.company_id ??
+          (projectId
+            ? (lookups.projects.find((project) => project.id === projectId)?.company_id ?? null)
+            : null)),
   );
 
   // Where the browser should start when this entity has no folder of its own: for a task, its
