@@ -69,10 +69,16 @@ export interface CrumbInput {
   nav?: readonly NavItem[];
   /** Ancestors the visitor came through, already confirmed against this page's own record. */
   trail?: readonly CrumbLink[];
+  /**
+   * `pathname → query string` for the screens this visitor has already been on
+   * (`core/screen-position`). A crumb whose path is in here links to the slice they left — page 3
+   * of the filtered list — rather than to the section's front page. See `withReturnQueries`.
+   */
+  returnQueries?: Readonly<Record<string, string>>;
 }
 
 export function breadcrumbsFor(input: CrumbInput): Crumb[] {
-  const { pathname, routeId, data, nav = [], trail = [] } = input;
+  const { pathname, routeId, data, nav = [], trail = [], returnQueries = {} } = input;
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return [{ label: t("nav.dashboard") }];
 
@@ -95,7 +101,29 @@ export function breadcrumbsFor(input: CrumbInput): Crumb[] {
   const withTrail = spliceTrail(crumbs, dynamic, trail, nav);
   // The last crumb is the current page — it links nowhere.
   delete withTrail[withTrail.length - 1].href;
-  return withTrail;
+  return withReturnQueries(withTrail, returnQueries);
+}
+
+/**
+ * Point each crumb at the visitor's own view of that screen.
+ *
+ * A crumb href is derived from the path, so it names the section and nothing else: click
+ * "Bedrijven" from the fiftieth client and you get page 1 of an unfiltered list, which is not the
+ * screen you were on a click ago and not the screen the crumb claims to go back to. Where
+ * `core/screen-position` has a query string for that exact pathname, it is the one they left, so
+ * it is the one the crumb restores.
+ *
+ * The last crumb is the current page and already has no href; a `?` is never appended twice
+ * because the derived hrefs are pure paths.
+ */
+function withReturnQueries(
+  crumbs: Crumb[],
+  returnQueries: Readonly<Record<string, string>>,
+): Crumb[] {
+  return crumbs.map((crumb) => {
+    const search = crumb.href ? returnQueries[crumb.href] : undefined;
+    return search ? { ...crumb, href: `${crumb.href}${search}` } : crumb;
+  });
 }
 
 /**

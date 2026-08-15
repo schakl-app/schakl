@@ -24,6 +24,7 @@
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";
   import { t } from "$lib/core/i18n";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { pollWhile } from "$lib/core/poll.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -67,7 +68,7 @@
 </svelte:head>
 
 <a
-  href="/reports"
+  href={returnHref("/reports")}
   class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
 >
   <ArrowLeft size={15} />

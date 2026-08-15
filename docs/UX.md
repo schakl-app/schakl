@@ -1106,6 +1106,30 @@
   like `prettify()` — the slug with a capital letter, in English, on a Dutch-default app. `/reports`
   read "Reports" and `/companies/<id>/reporting` read "Reporting" for exactly that reason, and
   nothing in the build noticed, because a prettified slug renders perfectly well.
+- **A link back to a screen names the screen you were on, not the section it belongs to**
+  (`core/screen-position.ts`, `core/screen-position.svelte.ts`). Open Klanten, page to 3, scroll to
+  the fiftieth row, click it, then click "Klanten" in the crumb row: you landed on page 1, at the
+  top, with the client you had just been reading about two pages and several hundred pixels away.
+  Both halves of that are the same mistake — the crumb href was rebuilt from the path, and
+  `/companies` is a different screen from `/companies?page=3&status=active&sort=-name`. So every
+  navigation records, per pathname, the query string the visitor had there and how far down the page
+  they were, and the crumb row links to *that*, with the scroll offset restored on arrival.
+  Four things hold it up. **The crumb row carries the slice; the sidebar does not.** Klanten in the
+  sidebar is how you go to the section, and a nav item that quietly reapplied last hour's filters
+  would be a control that does not do what it says — so the two now differ on purpose, and the
+  difference is legible in the href. **Restoration requires an exact URL match**, which is what
+  makes that distinction work without a second mechanism: the crumb asks for `?page=3` and gets its
+  offset back, the nav item asks for the bare path and gets the top of it, and a filter change, a
+  page step or a fresh search all land at the top by construction rather than by each list
+  remembering to say so. **The back button is left alone** — SvelteKit already restores scroll per
+  history entry, so `popstate` is skipped and the two can never fight over one number. And **it is
+  keyed by pathname, with every screen recording**, not by a list of list routes: a registry is a
+  list somebody has to remember to add to, which is exactly the failure the crumb row itself exists
+  to prevent. A record's tabbed detail page and a long form come back to where they were being read
+  without opting in. The handful of screens carrying their own "← Rapportages" link above the crumb
+  row call `returnHref(path)` for the same answer.
+  It lives in `sessionStorage` — the same lifetime as SvelteKit's own scroll restoration, this tab
+  and this visit — capped, evicting least-recently-left first.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 

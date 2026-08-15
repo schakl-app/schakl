@@ -16,6 +16,7 @@
   import { fmtDateTime } from "$lib/core/format";
   import { InFlight } from "$lib/core/submit.svelte";
   import { t } from "$lib/core/i18n";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { can } from "$lib/core/permissions";
   import Pagination from "$lib/core/ui/Pagination.svelte";
 
@@ -32,7 +33,10 @@
   );
 </script>
 
-<a href={base} class="mb-3 inline-flex items-center gap-1 text-sm text-text-muted hover:text-text">
+<a
+  href={returnHref(base)}
+  class="mb-3 inline-flex items-center gap-1 text-sm text-text-muted hover:text-text"
+>
   <ArrowLeft size={14} aria-hidden="true" />
   {t("google_ads.policy.back")}
 </a>

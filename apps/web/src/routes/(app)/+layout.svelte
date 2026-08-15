@@ -32,6 +32,7 @@
   import { t } from "$lib/core/i18n";
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import { returnQueries, trackScreenPositions } from "$lib/core/screen-position.svelte";
   import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
   import { measureStyle, providePageMeasure } from "$lib/core/ui/measure.svelte";
   import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
@@ -62,6 +63,11 @@
   // `afterNavigate` may only be called during component init; the trail itself is drawn only
   // over links the landing record confirms (core/breadcrumb-trail).
   trackCrumbTrail();
+  // Remember where on a screen the visitor was, so leaving it and coming back returns them there
+  // and not to the top of page 1 (core/screen-position). Registered here for the same reason the
+  // trail is: `beforeNavigate`/`afterNavigate` may only be called during component init, and this
+  // layout is the one component every app screen mounts inside.
+  trackScreenPositions();
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
   const showSettings = $derived(!isPortal && canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
@@ -560,6 +566,7 @@
               data: page.data,
               nav,
               trail: crumbTrail(),
+              returnQueries: returnQueries(),
             })}
           />
         {/if}

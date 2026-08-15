@@ -16,6 +16,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
@@ -84,7 +85,7 @@
 </svelte:head>
 
 <a
-  href={`/companies/${data.companyId}`}
+  href={returnHref(`/companies/${data.companyId}`)}
   class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
 >
   <ArrowLeft size={15} />
