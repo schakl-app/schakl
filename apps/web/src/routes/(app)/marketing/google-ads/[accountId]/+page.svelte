@@ -22,12 +22,12 @@
   import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import GoogleAdsMutationOutcome from "$lib/modules/google_ads/GoogleAdsMutationOutcome.svelte";
-  import GoogleAdsReportTable from "$lib/modules/google_ads/GoogleAdsReportTable.svelte";
-  import GoogleAdsTrend from "$lib/modules/google_ads/GoogleAdsTrend.svelte";
-  import { COLUMNS, type ReportView } from "$lib/modules/google_ads/columns";
-  import { reportFilters } from "$lib/modules/google_ads/filters";
-  import type { GoogleAdsReport, GoogleAdsTrendReport } from "$lib/modules/google_ads/types";
+  import GoogleAdsMutationOutcome from "$lib/integrations/google_ads/GoogleAdsMutationOutcome.svelte";
+  import GoogleAdsReportTable from "$lib/integrations/google_ads/GoogleAdsReportTable.svelte";
+  import GoogleAdsTrend from "$lib/integrations/google_ads/GoogleAdsTrend.svelte";
+  import { COLUMNS, type ReportView } from "$lib/integrations/google_ads/columns";
+  import { reportFilters } from "$lib/integrations/google_ads/filters";
+  import type { GoogleAdsReport, GoogleAdsTrendReport } from "$lib/integrations/google_ads/types";
 
   let { data, form } = $props();
 

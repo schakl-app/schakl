@@ -9,16 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.uptime import client as kuma_client
-from app.modules.uptime import errors
-from app.modules.uptime.client import (
+from app.integrations.uptime import client as kuma_client
+from app.integrations.uptime import errors
+from app.integrations.uptime.client import (
     UptimeKumaClient,
     merge_monitor,
     normalise_base_url,
     origin_of,
     socketio_path_for,
 )
-from app.modules.uptime.redaction import SECRET_FIELDS, redact_monitor, secret_drift
+from app.integrations.uptime.redaction import SECRET_FIELDS, redact_monitor, secret_drift
 from tests.uptime_fake import FakeKuma
 
 

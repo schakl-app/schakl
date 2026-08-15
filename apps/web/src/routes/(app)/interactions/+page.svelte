@@ -43,7 +43,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
-  import GmailRefreshButton from "$lib/modules/google/GmailRefreshButton.svelte";
+  import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {

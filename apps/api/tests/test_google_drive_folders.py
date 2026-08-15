@@ -34,7 +34,7 @@ async def test_create_folder_makes_new_and_returns_it(client_for, monkeypatch) -
     await _seed(t)
     headers = await auth_cookie(t.user)
     fake_redis = _FakeRedis()
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: fake_redis)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: fake_redis)
 
     # No name match under the parent → search then create.
     stub = _StubClient(
@@ -53,7 +53,7 @@ async def test_create_folder_makes_new_and_returns_it(client_for, monkeypatch) -
             ),
         ]
     )
-    monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.drive.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         created = await c.post(
@@ -81,7 +81,7 @@ async def test_create_folder_links_existing_name_instead_of_duplicating(
     t = await make_tenant("gdrive-mkdir-dup")
     await _seed(t)
     headers = await auth_cookie(t.user)
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
 
     # A name match means the create POST never happens (the script offers only the search).
     stub = _StubClient(
@@ -95,7 +95,7 @@ async def test_create_folder_links_existing_name_instead_of_duplicating(
             )
         ]
     )
-    monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.drive.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         created = await c.post(
@@ -112,7 +112,7 @@ async def test_create_folder_rejects_blank_name(client_for, monkeypatch) -> None
     t = await make_tenant("gdrive-mkdir-blank")
     await _seed(t)
     headers = await auth_cookie(t.user)
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
     async with client_for(t.host) as c:
         # A whitespace-only name is a 422 before any Google call (schema min_length is 1 char,
         # so a single space passes validation but the service rejects the empty trim).

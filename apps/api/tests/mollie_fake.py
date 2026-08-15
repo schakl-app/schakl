@@ -20,7 +20,7 @@ hazard this fake exists to keep honest.
   reintroduced one layer down.
 * **The key declares its own world.** Mollie keys are self-typed (``test_…`` / ``live_…``) and
   the two datasets are fully isolated, so a payment created here derives its ``mode`` from the
-  Bearer prefix exactly as :func:`app.modules.mollie.client.mode_of` derives it there. That is
+  Bearer prefix exactly as :func:`app.integrations.mollie.client.mode_of` derives it there. That is
   not decoration: ``mode`` is what decides whether a settled payment writes a ledger row at all
   (``invoicing/payments.py``), so a fake that always said ``live`` would make the test-mode
   dead end untestable and a fake that always said ``test`` would make every settle test pass

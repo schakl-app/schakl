@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
-from app.modules.google.oauth import SCOPE_SEARCH_CONSOLE
+from app.integrations.google.oauth import SCOPE_SEARCH_CONSOLE
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,

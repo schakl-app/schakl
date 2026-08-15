@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from app.config import settings
 from app.core.permissions.spec import WILDCARD, PermissionSpec
-from app.registry import registry
+from app.registry import module_package, registry
 
 # --------------------------------------------------------------------------- #
 # System roles
@@ -196,7 +196,9 @@ def _ensure_modules_registered() -> None:
     if all(registry.get(name) is not None for name in settings.enabled_modules):
         return
     for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+        package = module_package(name)
+        if package is not None:
+            importlib.import_module(package)
 
 
 def all_permissions() -> list[PermissionSpec]:

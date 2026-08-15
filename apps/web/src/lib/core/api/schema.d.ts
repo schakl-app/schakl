@@ -20160,6 +20160,14 @@ export interface components {
              * @default false
              */
             mcp_entitled: boolean;
+            /** Module Kinds */
+            module_kinds?: {
+                [key: string]: string;
+            };
+            /** Module Requires */
+            module_requires?: {
+                [key: string]: string[];
+            };
             /** Oidc Enabled */
             oidc_enabled: boolean;
             /** Oidc Name */
@@ -20292,7 +20300,7 @@ export interface components {
              * @default false
              */
             connected: boolean;
-            connection?: components["schemas"]["app__modules__google__schemas__ConnectionRead"] | null;
+            connection?: components["schemas"]["app__integrations__google__schemas__ConnectionRead"] | null;
             /**
              * Drive Enabled
              * @default false
@@ -28176,16 +28184,10 @@ export interface components {
             sessions: number;
         };
         /**
-         * DomainStatus
-         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
-         * @enum {string}
-         */
-        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
-        /**
          * ConnectionRead
          * @description The caller's own connection — or the admin list's per-user rows.
          */
-        app__modules__google__schemas__ConnectionRead: {
+        app__integrations__google__schemas__ConnectionRead: {
             /**
              * Connected At
              * Format: date-time
@@ -28212,6 +28214,12 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
         /** TemplateCreate */
         app__modules__invoicing__schemas__TemplateCreate: {
             /**
@@ -34873,7 +34881,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__google__schemas__ConnectionRead"][];
+                    "application/json": components["schemas"]["app__integrations__google__schemas__ConnectionRead"][];
                 };
             };
         };

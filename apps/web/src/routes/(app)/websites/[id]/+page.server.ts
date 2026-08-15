@@ -13,8 +13,8 @@ import { apiFor } from "$lib/core/session";
 // The WordPress and uptime panels edit through this page, because SvelteKit actions live on the
 // page. One import and one spread each: the route learns nothing about application passwords or
 // about monitors (CLAUDE.md §6).
-import { uptimeActions } from "$lib/modules/uptime/uptime-actions.server";
-import { wordpressActions } from "$lib/modules/wordpress/wordpress-actions.server";
+import { uptimeActions } from "$lib/integrations/uptime/uptime-actions.server";
+import { wordpressActions } from "$lib/integrations/wordpress/wordpress-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";

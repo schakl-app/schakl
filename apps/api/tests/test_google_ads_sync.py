@@ -17,14 +17,14 @@ from app.core.periods import ComparePeriod
 from app.core.permissions import PermissionSet
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
-from app.modules.google_ads.models import (
+from app.integrations.google_ads.models import (
     GoogleAdsAccount,
     GoogleAdsChange,
     GoogleAdsDimension,
     GoogleAdsMetricDaily,
 )
-from app.modules.google_ads.sync import SyncContext, sync_account
-from app.modules.google_ads.trends import read_trend
+from app.integrations.google_ads.sync import SyncContext, sync_account
+from app.integrations.google_ads.trends import read_trend
 from tests.conftest import make_tenant
 from tests.googleads_fake import failure, metrics
 from tests.test_google_ads_reads import CUSTOMER, _linked, fake  # noqa: F401 — transport fixture
@@ -157,7 +157,7 @@ async def test_one_broken_account_does_not_stop_the_others(fake) -> None:  # noq
     yesterday = date.today() - timedelta(days=1)
     _script_week(fake, yesterday)
 
-    from app.modules.google_ads.jobs import _sync_org
+    from app.integrations.google_ads.jobs import _sync_org
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
@@ -336,7 +336,7 @@ async def test_a_rotated_encryption_key_stops_one_account_not_the_run(fake) -> N
     and the service answers 409. Uncaught, that single org-wide condition would escape the loop
     and leave every *later* account unsynced with nothing on any row to say why.
     """
-    from app.modules.google_ads.models import GoogleAdsSettings
+    from app.integrations.google_ads.models import GoogleAdsSettings
 
     t, account_id = await _org_and_account("gads-sync-rotated")
     async with async_session_maker() as session:
@@ -391,7 +391,7 @@ async def test_the_trend_reads_two_bounded_windows_never_their_hull(fake) -> Non
 
 
 async def test_a_delta_against_a_zero_baseline_is_undefined(fake) -> None:  # noqa: F811
-    from app.modules.google_ads.trends import delta
+    from app.integrations.google_ads.trends import delta
 
     assert delta(5, 0)["relative"] is None
     assert delta(6, 4)["relative"] == 0.5
@@ -425,7 +425,7 @@ async def test_the_report_section_costs_one_read_per_account_not_per_campaign(
     """
     from sqlalchemy import text as sa_text
 
-    from app.modules.google_ads.report_sections import GOOGLE_ADS_REPORT_SECTIONS
+    from app.integrations.google_ads.report_sections import GOOGLE_ADS_REPORT_SECTIONS
     from app.registry import ReportWindow
 
     t_, account_id = await _org_and_account("gads-report-perf")

@@ -12,7 +12,7 @@ import uuid
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
-from app.modules.google.drive.models import DriveLink
+from app.integrations.google.drive.models import DriveLink
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 

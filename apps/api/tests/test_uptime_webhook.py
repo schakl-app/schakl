@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import select
 
 from app.core.payments.tokens import mint
-from app.modules.uptime import client as kuma_client
-from app.modules.uptime.models import UptimeHeartbeat, UptimeInstance
-from app.modules.uptime.webhook import MAX_BODY_BYTES
+from app.integrations.uptime import client as kuma_client
+from app.integrations.uptime.models import UptimeHeartbeat, UptimeInstance
+from app.integrations.uptime.webhook import MAX_BODY_BYTES
 from tests.conftest import auth_cookie, make_tenant
 from tests.uptime_fake import FakeKuma
 
@@ -239,7 +239,7 @@ async def test_a_future_timestamp_is_clamped_to_now(client_for, kuma) -> None:
 )
 def test_every_kuma_status_maps_to_something(raw: int, expected: str) -> None:
     """A new state in a future version must not make a client's outage invisible."""
-    from app.modules.uptime.webhook import _status_of
+    from app.integrations.uptime.webhook import _status_of
 
     assert _status_of({"heartbeat": {"status": raw}}) == expected
 
@@ -247,7 +247,7 @@ def test_every_kuma_status_maps_to_something(raw: int, expected: str) -> None:
 def test_the_textual_shape_is_read_too() -> None:
     """A tenant may template their own webhook body; guessing wrong records an outage as an
     all-clear."""
-    from app.modules.uptime.webhook import _status_of
+    from app.integrations.uptime.webhook import _status_of
 
     assert _status_of({"status": "down"}) == "down"
     assert _status_of({"status": "up"}) == "up"
@@ -256,7 +256,7 @@ def test_the_textual_shape_is_read_too() -> None:
 def test_the_portal_horizon_is_stricter_than_the_staff_one() -> None:
     """Staff see a monitor attached to no client; a client must not — that row is the agency's
     own infrastructure (#266's rule, and why the clause lives on the model)."""
-    from app.modules.uptime.models import UptimeMonitor
+    from app.integrations.uptime.models import UptimeMonitor
 
     assert hasattr(UptimeMonitor, "__portal_horizon_clause__")
     empty = UptimeMonitor.__portal_horizon_clause__(None)

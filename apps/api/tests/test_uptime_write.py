@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.uptime import client as kuma_client
-from app.modules.uptime import profiles as prof
+from app.integrations.uptime import client as kuma_client
+from app.integrations.uptime import profiles as prof
 from tests.conftest import auth_cookie, make_tenant
 from tests.uptime_fake import FakeKuma
 

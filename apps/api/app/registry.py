@@ -7,10 +7,19 @@ now, served later. Modules never import each other's internals; they meet here.
 
 A module also declares the **permissions** it introduces (issue #19), which is why core holds no
 module permission list: adding a module ships its ``<module>.<resource>.<action>`` keys with it.
+
+**Modules and integrations are the same machinery and different things** (CLAUDE.md §6a). A
+module is a domain capability schakl provides; an integration holds a credential for somebody
+else's service and mirrors state that lives there. They register the same descriptor, mount the
+same way and are enabled in the same list — :data:`ModuleDescriptor.kind` says which it is, and
+:data:`ModuleDescriptor.requires` names the modules an integration has nowhere to put its data
+without. The packages differ (``app.modules`` / ``app.integrations``) so the tree says it too;
+:func:`module_package` is the one place that knows both roots.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -25,6 +34,30 @@ if TYPE_CHECKING:
     from app.core.impex.spec import ImpexDescriptor, ImpexExtension
     from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
+
+#: The two package roots a self-registering descriptor may live in (CLAUDE.md §6a). Order is the
+#: lookup order, so a name present in both resolves the way it did before the split.
+MODULE_ROOTS = ("app.modules", "app.integrations")
+
+
+def module_package(name: str) -> str | None:
+    """The dotted package path of module/integration ``name``, or ``None`` if this build has none.
+
+    Every dynamic load goes through here — the app's mount, the worker's, the model importer's,
+    the permission catalog's — because the alternative is five copies of the two-root lookup and
+    a sixth that was never updated. It uses ``find_spec``, which locates a package without
+    executing it: a module whose own imports are broken must still raise from the *import*, not
+    be quietly reported as absent (an instance booting with a module missing from the registry
+    404s every route it owns, with nothing having said why).
+    """
+    for root in MODULE_ROOTS:
+        try:
+            if importlib.util.find_spec(f"{root}.{name}") is not None:
+                return f"{root}.{name}"
+        except ModuleNotFoundError:
+            continue
+    return None
+
 
 # A panel provider fetches this module's data for one target entity instance.
 PanelProvider = Callable[["RequestContext", "uuid.UUID"], Awaitable[dict[str, Any]]]
@@ -234,11 +267,34 @@ class SummarySpec:
     position: int = 100
 
 
+#: A domain capability schakl itself provides: it owns entities, screens and a data model, and it
+#: is worth having with every third-party account cancelled.
+KIND_MODULE = "module"
+#: A conversation with somebody else's service. It holds a **credential**, and what it stores is a
+#: mirror of — or a pointer into — state that lives outside. Cancel the vendor and a module is
+#: poorer; an integration is gone. That is the whole test (CLAUDE.md §6a).
+KIND_INTEGRATION = "integration"
+
+
 @dataclass
 class ModuleDescriptor:
     name: str
     router: APIRouter | None = None
     i18n_namespace: str | None = None
+    #: :data:`KIND_MODULE` or :data:`KIND_INTEGRATION`. The default is ``module`` because that is
+    #: what most of them are and because a wrong default should be the harmless one: an
+    #: integration mislabelled a module is a screen in the wrong group, while a module mislabelled
+    #: an integration would claim a credential it does not have.
+    kind: str = KIND_MODULE
+    #: Modules this one has **nowhere to put its data** without — a hard requirement, checked on
+    #: the enable path in both directions (``app.core.entitlements.service``).
+    #:
+    #: Deliberately not "modules this one is nicer with". Google Workspace enriches
+    #: ``interactions`` and ``tasks`` and requires neither: with both off it is still a Drive
+    #: browser and a calendar mirror. Cloudflare without ``domains`` has no row to hang a zone
+    #: on, so it declares it. The failure direction matters — an over-declared requirement makes
+    #: a tenant switch on a module they did not want in order to use one they did.
+    requires: tuple[str, ...] = ()
     # Licensed module (issue #137): the entitlement sku a license must cover before a tenant
     # may enable this module. None = free. "Which modules are paid" lives here and in license
     # documents — never as module names hardcoded in gating logic.
@@ -311,6 +367,47 @@ class ModuleRegistry:
         """Modules whose name is in ``names``, preserving registration order."""
         allowed = set(names)
         return [m for m in self._modules.values() if m.name in allowed]
+
+    def kinds(self) -> dict[str, str]:
+        """name → :data:`KIND_MODULE` / :data:`KIND_INTEGRATION` for everything registered.
+
+        One dict rather than two lists because every caller wants to *classify* a name it already
+        has (a settings screen, the modules payload, the first-run wizard), and two lists make
+        "which is this?" a pair of membership tests that can disagree.
+        """
+        return {m.name: m.kind for m in self._modules.values()}
+
+    def requirements(self) -> dict[str, list[str]]:
+        """name → the modules it cannot run without. Only entries that have any."""
+        return {m.name: list(m.requires) for m in self._modules.values() if m.requires}
+
+    def unmet_requirements(self, names: list[str]) -> dict[str, list[str]]:
+        """``{name: [missing modules]}`` for everything in ``names`` whose needs are not met.
+
+        A requirement naming a module this build does not ship at all is *not* reported: an
+        instance may mount a subset (``SCHAKL_ENABLED_MODULES``), and refusing to enable
+        Cloudflare on a box that has no ``domains`` package to enable would be a dead end rather
+        than a fixable one.
+        """
+        chosen = set(names)
+        out: dict[str, list[str]] = {}
+        for module in self.enabled(names):
+            missing = [
+                need
+                for need in module.requires
+                if need not in chosen and need in self._modules
+            ]
+            if missing:
+                out[module.name] = missing
+        return out
+
+    def dependants(self, name: str, names: list[str]) -> list[str]:
+        """Everything in ``names`` that requires ``name`` — the other direction of the same rule.
+
+        Without it, switching a module off is the way round the enable gate: turn ``domains``
+        off and Cloudflare stays enabled with nothing to attach a zone to.
+        """
+        return sorted(m.name for m in self.enabled(names) if name in m.requires)
 
     def panels_for(
         self,

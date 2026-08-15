@@ -20,6 +20,12 @@ export const load: PageServerLoad = async (event) => {
     // Licensing (issue #137): which modules need a license, and which are currently usable.
     licensed: instance.data?.licensed_modules ?? [],
     entitled: instance.data?.entitled_modules ?? [],
+    // Modules vs integrations, and what an integration cannot run without (CLAUDE.md §6a). From
+    // the API rather than the web registry so this screen and the enable gate that will judge its
+    // save answer from the same authority — a screen that offers a combination the API refuses is
+    // the "control that always refuses" #253 is about.
+    kinds: instance.data?.module_kinds ?? {},
+    requires: instance.data?.module_requires ?? {},
     // What "locked" means here, which differs per posture: a licence key the instance owner
     // installs, or a plan only the operator can change. Telling a cloud tenant to go and
     // install a key names a screen they cannot open and a fix that is not theirs (#253).

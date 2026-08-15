@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
-from app.modules.google_ads.models import GoogleAdsDecision, GoogleAdsSettings
+from app.integrations.google_ads.models import GoogleAdsDecision, GoogleAdsSettings
 from tests.conftest import auth_cookie, make_tenant
 from tests.googleads_fake import failure
 from tests.test_google_ads_reads import CUSTOMER, _linked, fake  # noqa: F401 — transport fixture

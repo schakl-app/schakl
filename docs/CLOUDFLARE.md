@@ -2,7 +2,7 @@
 
 > The `cloudflare` module (epic #278): per-client DNS, domain-wide redirects and Pages linking,
 > through the tenant's **own** Cloudflare accounts. Business-licensed (`sku="cloudflare"`).
-> Read this before changing anything under `apps/api/app/modules/cloudflare/`.
+> Read this before changing anything under `apps/api/app/integrations/cloudflare/`.
 
 Not to be confused with **`app/core/cloud/cloudflare.py`**, which talks to Cloudflare with the
 *operator's* instance token about the *operator's* zone (Cloudflare for SaaS custom hostnames,

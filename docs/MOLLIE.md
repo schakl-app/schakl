@@ -2,8 +2,8 @@
 
 > The `mollie` module (epic #269, issue #267): the tenant's own Mollie account, and the hosted
 > checkout a client pays an invoice on. Business-licensed (`sku="mollie"`). Read this before
-> changing anything under `apps/api/app/modules/mollie/`,
-> `apps/web/src/lib/modules/mollie/` or `apps/web/src/routes/(app)/settings/mollie/`.
+> changing anything under `apps/api/app/integrations/mollie/`,
+> `apps/web/src/lib/integrations/mollie/` or `apps/web/src/routes/(app)/settings/mollie/`.
 
 Sibling to `docs/PAYMENTS.md`, and the two halves meet at exactly one place: the
 `PaymentProvider` protocol in `app/core/payments/backend.py`. **This document is Mollie's half.**

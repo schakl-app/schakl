@@ -20,9 +20,9 @@ from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.core.crypto import decrypt, encrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.google.client import describe_api_error
-from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_ANALYTICS
+from app.integrations.google.client import describe_api_error
+from app.integrations.google.models import GoogleConnection, GoogleSettings
+from app.integrations.google.oauth import SCOPE_ANALYTICS
 from app.modules.marketing.layout import SourceLayout, resolve_event_label
 from app.modules.marketing.models import (
     MarketingLink,

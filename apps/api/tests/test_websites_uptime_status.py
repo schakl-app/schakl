@@ -17,8 +17,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.db import async_session_maker, set_current_org
-from app.modules.uptime import client as kuma_client
-from app.modules.uptime.models import UptimeHeartbeat
+from app.integrations.uptime import client as kuma_client
+from app.integrations.uptime.models import UptimeHeartbeat
 from tests.conftest import auth_cookie, make_tenant
 from tests.uptime_fake import FakeKuma
 

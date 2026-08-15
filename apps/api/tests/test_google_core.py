@@ -10,9 +10,9 @@ from sqlalchemy import func, select
 
 from app.core.crypto import decrypt, encrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.google.client import mark_connection_error
-from app.modules.google.models import GoogleConnection
-from app.modules.google.service import GoogleConnectionsService
+from app.integrations.google.client import mark_connection_error
+from app.integrations.google.models import GoogleConnection
+from app.integrations.google.service import GoogleConnectionsService
 from app.registry import registry
 from tests.conftest import auth_cookie, make_tenant
 
@@ -83,7 +83,7 @@ async def test_settings_secret_is_write_only(client_for) -> None:
     # Stored encrypted — never plaintext at rest.
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
-        from app.modules.google.models import GoogleSettings
+        from app.integrations.google.models import GoogleSettings
 
         row = await session.scalar(select(GoogleSettings))
         assert row is not None and row.client_secret_encrypted != "super-secret"
@@ -110,7 +110,7 @@ async def test_my_connection_patch_and_disconnect(client_for, monkeypatch) -> No
     async def _fake_revoke(connection) -> None:
         revoked.append(connection.email)
 
-    monkeypatch.setattr("app.modules.google.service.google_client.revoke", _fake_revoke)
+    monkeypatch.setattr("app.integrations.google.service.google_client.revoke", _fake_revoke)
 
     async with client_for(t.host) as c:
         me = (await c.get("/api/v1/google/connections/me", headers=headers)).json()
@@ -215,7 +215,7 @@ def test_marketing_consent_is_one_trip() -> None:
     valid grant every time, it just makes the user walk Google's consent screen three times to
     switch on one module.
     """
-    from app.modules.google.oauth import MARKETING_SCOPES, scopes_for
+    from app.integrations.google.oauth import MARKETING_SCOPES, scopes_for
 
     scopes = scopes_for(None, include_gmail=False, include_marketing=True)
     assert set(MARKETING_SCOPES) <= set(scopes)
@@ -231,7 +231,7 @@ def test_marketing_consent_is_one_trip() -> None:
 
 def test_return_path_only_honours_site_relative_paths() -> None:
     """``next`` comes off a URL, so an off-site value must never become a redirect."""
-    from app.modules.google.oauth import safe_return_path
+    from app.integrations.google.oauth import safe_return_path
 
     fallback = "/settings/account"
     assert safe_return_path("/companies/abc/marketing", fallback) == "/companies/abc/marketing"

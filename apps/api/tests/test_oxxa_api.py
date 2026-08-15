@@ -25,8 +25,8 @@ import uuid
 import pytest
 
 from app.db import async_session_maker, set_current_org
-from app.modules.oxxa import client as oxxa_client
-from app.modules.oxxa.client import nsgroup_alias, redact
+from app.integrations.oxxa import client as oxxa_client
+from app.integrations.oxxa.client import nsgroup_alias, redact
 from app.registry import registry
 from tests.conftest import add_membership, auth_cookie, make_tenant
 from tests.oxxa_fake import FakeOxxa

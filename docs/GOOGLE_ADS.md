@@ -13,7 +13,7 @@
 | The REST transport, paging, backoff, error model | `app/core/googleads/client.py`, `.../errors.py` |
 | The guard on the query passthrough | `app/core/googleads/gaql.py` |
 | "Which Ads account is this client's" | `app/core/googleads/accounts.py` — protocol; `google_ads` registers the provider |
-| Accounts, the credential, the depth, the writes | `app/modules/google_ads/` (`sku="google_ads"`) |
+| Accounts, the credential, the depth, the writes | `app/integrations/google_ads/` (`sku="google_ads"`) |
 | The spend tile on a client's marketing dashboard | `app/modules/marketing/sources/gads.py` |
 
 **The transport is in core because two modules need it and neither may import the other** (§6).

@@ -378,8 +378,22 @@ export interface CalendarSourceSpec {
   splitPeople?: (api: ApiClient, range: CalendarRange) => Promise<CalendarPerson[]>;
 }
 
+/**
+ * A capability schakl itself provides, versus a conversation with somebody else's service
+ * (CLAUDE.md §6a). The API is the authority — `module_kinds` on `/meta/modules` — and this
+ * mirrors it for the screens that classify a name while rendering, where a round trip would be
+ * asking the server a question the build already knows the answer to.
+ */
+export type ModuleKind = "module" | "integration";
+
 export interface WebModule {
   name: string;
+  /**
+   * Defaults to `"module"`, which is the harmless wrong answer: an integration mislabelled a
+   * module lands in the wrong group on one screen, while a module mislabelled an integration
+   * claims a credential it does not have and sends the reader looking for one.
+   */
+  kind?: ModuleKind;
   nav?: NavItem[];
   companyPanels?: CompanyPanelSpec[];
   /** Panels this module hangs off another module's detail page (e.g. Uren on a project). */
@@ -410,6 +424,17 @@ export function registerWebModule(mod: WebModule): void {
 
 export function enabledWebModules(enabled: string[]): WebModule[] {
   return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
+}
+
+/**
+ * Is `name` an integration? (CLAUDE.md §6a)
+ *
+ * Falls back to `"module"` for a name this build has no web module for — an instance may mount an
+ * API module whose web half this build does not ship, and answering "integration" for something
+ * unknown would put it under a heading promising a credential nobody can produce.
+ */
+export function moduleKind(name: string): ModuleKind {
+  return _modules.get(name)?.kind ?? "module";
 }
 
 /** A tenant's per-locale label for a nav entry / group (#169); `null`/absent = use the declared. */

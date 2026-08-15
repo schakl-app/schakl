@@ -2,60 +2,62 @@
 
 Copyright (c) schakl. All rights reserved.
 
-This license governs the **licensed module directories** of this repository listed below.
-Everything else in this repository is licensed under the GNU Affero General Public License
-v3.0 (see [LICENSE](LICENSE)).
+This license governs the **licensed module and integration directories** of this repository
+listed below. Everything else in this repository is licensed under the GNU Affero General
+Public License v3.0 (see [LICENSE](LICENSE)).
 
 ## Covered directories
 
-The directories of modules that declare a `sku` on their `ModuleDescriptor` (issue #137),
-and their web counterparts — currently:
+The directories of modules and integrations that declare a `sku` on their `ModuleDescriptor`
+(issue #137), and their web counterparts.
+
+The two are split below because they are different things (CLAUDE.md §6a) and because the
+distinction survives outside the code: a **module** is a capability of this software, while an
+**integration** is a conversation with a third party whose API, terms and continued existence are
+not ours. Licensing them identically is deliberate — what is licensed is the code in this
+repository either way — but a reader of this file should be able to tell which of the two they are
+looking at without opening the directory.
+
+`scripts/license-check.mjs` verifies both directions of this list (every covered directory is
+named, and every named directory exists) and does not care which heading a path appears under.
+
+### Core
 
 - `apps/api/app/core/cloud/`
 - `apps/api/app/core/mcp/`
-- `apps/api/app/modules/oxxa/`
-- `apps/api/app/modules/cloudflare/`
+- `apps/web/src/lib/cloud/`
+- `apps/web/src/routes/(cloud)/`
+- `apps/web/src/routes/(app)/settings/service-access/`
+
+### Modules
+
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/domains/`
-- `apps/api/app/modules/google/`
-- `apps/api/app/modules/google_ads/`
 - `apps/api/app/modules/hosting/`
 - `apps/api/app/modules/hr/`
 - `apps/api/app/modules/interactions/`
 - `apps/api/app/modules/invoicing/`
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/marketing/`
-- `apps/api/app/modules/mollie/`
 - `apps/api/app/modules/portal/`
 - `apps/api/app/modules/projects/`
 - `apps/api/app/modules/reporting/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
-- `apps/api/app/modules/uptime/`
 - `apps/api/app/modules/websites/`
-- `apps/api/app/modules/wordpress/`
-- `apps/web/src/lib/cloud/`
-- `apps/web/src/lib/modules/oxxa/`
-- `apps/web/src/lib/modules/cloudflare/`
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/domains/`
-- `apps/web/src/lib/modules/google/`
-- `apps/web/src/lib/modules/google_ads/`
 - `apps/web/src/lib/modules/hosting/`
 - `apps/web/src/lib/modules/interactions/`
 - `apps/web/src/lib/modules/invoicing/`
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/marketing/`
-- `apps/web/src/lib/modules/mollie/`
 - `apps/web/src/lib/modules/portal/`
 - `apps/web/src/lib/modules/projects/`
 - `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
-- `apps/web/src/lib/modules/uptime/`
 - `apps/web/src/lib/modules/websites/`
-- `apps/web/src/lib/modules/wordpress/`
-- `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`
 - `apps/web/src/routes/(app)/invoices/`
@@ -68,21 +70,37 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
 - `apps/web/src/routes/(app)/websites/`
-- `apps/web/src/routes/(app)/settings/oxxa/`
-- `apps/web/src/routes/(app)/settings/cloudflare/`
 - `apps/web/src/routes/(app)/settings/automation/`
-- `apps/web/src/routes/(app)/settings/google/`
-- `apps/web/src/routes/(app)/settings/google-ads/`
 - `apps/web/src/routes/(app)/settings/hosting/`
 - `apps/web/src/routes/(app)/settings/interaction-kinds/`
 - `apps/web/src/routes/(app)/settings/invoicing/`
 - `apps/web/src/routes/(app)/settings/leave/`
 - `apps/web/src/routes/(app)/settings/marketing/`
-- `apps/web/src/routes/(app)/settings/mollie/`
 - `apps/web/src/routes/(app)/settings/reporting/`
-- `apps/web/src/routes/(app)/settings/service-access/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
+
+### Integrations
+
+- `apps/api/app/integrations/cloudflare/`
+- `apps/api/app/integrations/google/`
+- `apps/api/app/integrations/google_ads/`
+- `apps/api/app/integrations/mollie/`
+- `apps/api/app/integrations/oxxa/`
+- `apps/api/app/integrations/uptime/`
+- `apps/api/app/integrations/wordpress/`
+- `apps/web/src/lib/integrations/cloudflare/`
+- `apps/web/src/lib/integrations/google/`
+- `apps/web/src/lib/integrations/google_ads/`
+- `apps/web/src/lib/integrations/mollie/`
+- `apps/web/src/lib/integrations/oxxa/`
+- `apps/web/src/lib/integrations/uptime/`
+- `apps/web/src/lib/integrations/wordpress/`
+- `apps/web/src/routes/(app)/settings/cloudflare/`
+- `apps/web/src/routes/(app)/settings/google-ads/`
+- `apps/web/src/routes/(app)/settings/google/`
+- `apps/web/src/routes/(app)/settings/mollie/`
+- `apps/web/src/routes/(app)/settings/oxxa/`
 - `apps/web/src/routes/(app)/settings/uptime/`
 
 Each covered directory carries a `LICENSE` file referring here. Code in these directories

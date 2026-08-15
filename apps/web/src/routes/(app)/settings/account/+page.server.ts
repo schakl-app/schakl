@@ -282,7 +282,7 @@ export const actions: Actions = {
     return { avatarSaved: true };
   },
 
-  // Google connection card contract (lib/modules/google/GoogleAccountCard.svelte).
+  // Google connection card contract (lib/integrations/google/GoogleAccountCard.svelte).
   googleDisconnect: async (event) => {
     const { error } = await apiFor(event).POST("/api/v1/google/connections/me/disconnect");
     if (error) return fail(400, { error: apiErrorKey(error).key });

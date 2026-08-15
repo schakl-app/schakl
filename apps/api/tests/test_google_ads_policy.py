@@ -2,8 +2,8 @@
 
 Everything here is a function over dictionaries, which is why it can be exhaustive: the
 protected-terms check has three match types and four shapes each, and asserting all twelve costs
-nothing. That is the whole reason :mod:`app.modules.google_ads.policy` and
-:mod:`~app.modules.google_ads.mutations` hold no session and no client.
+nothing. That is the whole reason :mod:`app.integrations.google_ads.policy` and
+:mod:`~app.integrations.google_ads.mutations` hold no session and no client.
 
 The shapes are checked against the **v25 REST discovery document** (revision ``20260721``), not
 against what a plausible request would look like. Three of them are not what a guess produces: a
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.google_ads import mutations as ops
-from app.modules.google_ads import policy as policy_rules
+from app.integrations.google_ads import mutations as ops
+from app.integrations.google_ads import policy as policy_rules
 
 # --- resolution ------------------------------------------------------------------------------- #
 

@@ -49,12 +49,26 @@ export interface SettingsGroup {
   labelKey: string | null;
 }
 
+/**
+ * The `modules` / `integrations` pair is the one that carries a rule rather than a preference
+ * (CLAUDE.md §6a). A screen owned by an **integration** — a module whose whole job is holding a
+ * credential for somebody else's service — belongs in `integrations`; a screen owned by a plain
+ * module belongs in `modules`. `settings-nav.test.ts` asserts exactly that against the web
+ * registry's `moduleKind`, because the old single "Communicatie & koppelingen" group had drifted
+ * into holding Marketing, Rapportage and Meldingen (three capabilities of ours) beside Google,
+ * Cloudflare and Mollie (three accounts somebody else owns) — and a reader looking for "what do
+ * we connect to" had to know the product to tell which was which.
+ *
+ * A screen with no `module` may sit in either: E-mail and AI are core seams that still talk to a
+ * third party, and SSO stays under Team & toegang because what it configures is who may sign in,
+ * not what we read from someone.
+ */
 export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   { key: "personal", section: "personal", labelKey: null },
   { key: "workspace", section: "org", labelKey: "settings.group.workspace" },
   { key: "team_access", section: "org", labelKey: "settings.group.team_access" },
   { key: "data", section: "org", labelKey: "settings.group.data" },
-  { key: "workflows", section: "org", labelKey: "settings.group.workflows" },
+  { key: "modules", section: "org", labelKey: "settings.group.modules" },
   { key: "integrations", section: "org", labelKey: "settings.group.integrations" },
   { key: "system", section: "system", labelKey: null },
 ];
@@ -87,9 +101,17 @@ export interface SettingsScreen {
  * The grouping is the audit's other half. "Modules & workflows" had become a fifteen-card junk
  * drawer holding the org's dashboard defaults, its outgoing mail transport, its AI provider and a
  * cloud support switch side by side, while Google Workspace sat two groups away under "Merk &
- * platform" from the two other third-party integrations. The five groups below each answer one
- * question: what does this workspace look like, who may use it, what shape is our data, how does
- * each module behave, and what does it talk to.
+ * platform" from the two other third-party integrations. The five groups that replaced it each
+ * answered one question: what does this workspace look like, who may use it, what shape is our
+ * data, how does each module behave, and what does it talk to.
+ *
+ * The last of those five was still answering two. "Communicatie & koppelingen" held Marketing,
+ * Rapportage and Meldingen — three things schakl does — beside Google, Cloudflare, Uptime Kuma,
+ * OXXA and Mollie, which are five accounts belonging to somebody else, each with a credential
+ * that can expire and a vendor that can change its mind. Those are not the same kind of setting
+ * and they do not fail the same way: a module is configured, an integration is *connected*. So
+ * they are two groups now (CLAUDE.md §6a), and which one a screen lands in is derived from the
+ * module that owns it rather than decided per screen.
  */
 export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
   // --- Mijn instellingen ------------------------------------------------- //
@@ -302,7 +324,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["impex.export"],
   },
 
-  // --- Modules & werkprocessen ------------------------------------------- //
+  // --- Modules ----------------------------------------------------------- //
   {
     // A catalog staff touch day-to-day lives on the working page (#229); this is the deep link.
     key: "task-templates",
@@ -310,7 +332,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.task_templates.title",
     subtitleKey: "settings.task_templates.subtitle",
     keywordsKey: "settings.search.task_templates",
-    group: "workflows",
+    group: "modules",
     permissions: ["tasks.template.write", "tasks.checklist_template.write"],
     module: "tasks",
   },
@@ -320,7 +342,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.leave.title",
     subtitleKey: "settings.leave.subtitle",
     keywordsKey: "settings.search.leave",
-    group: "workflows",
+    group: "modules",
     permissions: ["leave.type.write"],
     module: "leave",
   },
@@ -330,7 +352,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.invoicing.title",
     subtitleKey: "settings.invoicing.subtitle",
     keywordsKey: "settings.search.invoicing",
-    group: "workflows",
+    group: "modules",
     permissions: ["invoicing.settings.manage"],
     module: "invoicing",
   },
@@ -339,7 +361,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     href: "/subscriptions/templates",
     titleKey: "settings.subscriptions.title",
     subtitleKey: "settings.subscriptions.subtitle",
-    group: "workflows",
+    group: "modules",
     permissions: ["subscriptions.template.manage"],
     module: "subscriptions",
   },
@@ -349,7 +371,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.domains.title",
     subtitleKey: "settings.domains.subtitle",
     keywordsKey: "settings.search.domains",
-    group: "workflows",
+    group: "modules",
     permissions: ["domains.tld_price.read"],
     module: "domains",
   },
@@ -359,7 +381,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.providers.title",
     subtitleKey: "settings.providers.subtitle",
     keywordsKey: "settings.search.providers",
-    group: "workflows",
+    group: "modules",
     permissions: ["settings.providers.manage"],
   },
   {
@@ -369,7 +391,7 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     href: "/settings/hosting",
     titleKey: "nav.hosting",
     subtitleKey: "settings.hosting.subtitle",
-    group: "workflows",
+    group: "modules",
     permissions: ["hosting.hosting.read"],
     module: "hosting",
   },
@@ -379,12 +401,44 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     titleKey: "settings.automation.title",
     subtitleKey: "settings.automation.subtitle",
     keywordsKey: "settings.search.automation",
-    group: "workflows",
+    group: "modules",
     permissions: ["automation.rule.read"],
     module: "automation",
   },
 
-  // --- Communicatie & koppelingen ---------------------------------------- //
+  {
+    key: "notification-defaults",
+    href: "/settings/notification-defaults",
+    titleKey: "settings.notification_defaults.title",
+    subtitleKey: "settings.notification_defaults.subtitle",
+    keywordsKey: "settings.search.notification_defaults",
+    group: "modules",
+    permissions: ["notifications.defaults.manage"],
+    module: "notifications",
+  },
+  {
+    key: "marketing",
+    href: "/settings/marketing",
+    titleKey: "settings.marketing.title",
+    subtitleKey: "settings.marketing.subtitle",
+    keywordsKey: "settings.search.marketing",
+    group: "modules",
+    permissions: ["marketing.link.manage"],
+    module: "marketing",
+  },
+  {
+    // The house voice, the document templates and the org-wide schedule (#300). A client's own
+    // profile is *not* here — it belongs on the client, beside everything else about them.
+    key: "reporting",
+    href: "/settings/reporting",
+    titleKey: "settings.reporting.title",
+    subtitleKey: "settings.reporting.subtitle",
+    group: "modules",
+    permissions: ["reporting.settings.manage"],
+    module: "reporting",
+  },
+
+  // --- Integraties ------------------------------------------------------- //
   {
     key: "email",
     href: "/settings/email",
@@ -393,16 +447,6 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     keywordsKey: "settings.search.email",
     group: "integrations",
     permissions: ["settings.email.manage"],
-  },
-  {
-    key: "notification-defaults",
-    href: "/settings/notification-defaults",
-    titleKey: "settings.notification_defaults.title",
-    subtitleKey: "settings.notification_defaults.subtitle",
-    keywordsKey: "settings.search.notification_defaults",
-    group: "integrations",
-    permissions: ["notifications.defaults.manage"],
-    module: "notifications",
   },
   {
     key: "google",
@@ -424,15 +468,6 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["ai.settings.manage"],
   },
   {
-    key: "marketing",
-    href: "/settings/marketing",
-    titleKey: "settings.marketing.title",
-    subtitleKey: "settings.marketing.subtitle",
-    group: "integrations",
-    permissions: ["marketing.link.manage"],
-    module: "marketing",
-  },
-  {
     // Its own card rather than a section of Marketing: the developer token identifies the
     // *agency* to Google, the account links decide whose money is being spent, and the write
     // switch stops every mutating call at once. All three are decisions an owner makes, and
@@ -444,17 +479,6 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     group: "integrations",
     permissions: ["google_ads.settings.manage"],
     module: "google_ads",
-  },
-  {
-    // The house voice, the document templates and the org-wide schedule (#300). A client's own
-    // profile is *not* here — it belongs on the client, beside everything else about them.
-    key: "reporting",
-    href: "/settings/reporting",
-    titleKey: "settings.reporting.title",
-    subtitleKey: "settings.reporting.subtitle",
-    group: "integrations",
-    permissions: ["reporting.settings.manage"],
-    module: "reporting",
   },
   {
     // Uptime Kuma lives here rather than on a website, for principle 6's reason: it holds the
@@ -557,6 +581,64 @@ export function screenVisible(screen: SettingsScreen, viewer: SettingsViewer): b
 
 export function visibleSettingsScreens(viewer: SettingsViewer): SettingsScreen[] {
   return SETTINGS_SCREENS.filter((screen) => screenVisible(screen, viewer));
+}
+
+/** Resolves an i18n key. Passed in rather than imported so this module stays testable and stays
+ *  usable from a server load, which asks it for `canAccessSettings` and translates nothing. */
+export type Translate = (key: string) => string;
+
+/**
+ * Everything a search may match on one screen: its title, its subtitle, and the hidden keywords
+ * that carry what the card text cannot say ("btw" finds Facturatie, "wachtwoord" finds Mijn
+ * account, "ideal" finds Mollie).
+ */
+export function settingsHaystack(screen: SettingsScreen, translate: Translate): string {
+  const extra = screen.keywordsKey ? ` ${translate(screen.keywordsKey)}` : "";
+  return `${translate(screen.titleKey)} ${translate(screen.subtitleKey)}${extra}`.toLowerCase();
+}
+
+/**
+ * The screens matching every word of `query`. Every word, not any: with 38 screens an OR search
+ * for "google ads" returns most of the integrations group, which is not a search result.
+ */
+export function matchSettingsScreens(
+  screens: readonly SettingsScreen[],
+  query: string,
+  translate: Translate,
+): SettingsScreen[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [...screens];
+  return screens.filter((screen) => {
+    const hay = settingsHaystack(screen, translate);
+    return terms.every((word) => hay.includes(word));
+  });
+}
+
+export interface SettingsGroupView extends SettingsGroup {
+  items: SettingsScreen[];
+}
+
+export interface SettingsSectionView extends SettingsSection {
+  groups: SettingsGroupView[];
+}
+
+/**
+ * `screens` folded into the section → group → item tree both the index grid and the rail render,
+ * with empty groups and empty sections dropped.
+ *
+ * Shared rather than written twice because the two had already been written twice and were about
+ * to be written a third time when the rail grew its own search: the index filtered by query and
+ * the rail did not, so typing "mollie" on the index narrowed the page to one card while the rail
+ * beside it still listed all thirty-eight. One function, one answer, and the search box can be
+ * put anywhere.
+ */
+export function groupSettingsScreens(screens: readonly SettingsScreen[]): SettingsSectionView[] {
+  return SETTINGS_SECTIONS.map((section) => ({
+    ...section,
+    groups: SETTINGS_GROUPS.filter((group) => group.section === section.key)
+      .map((group) => ({ ...group, items: screens.filter((s) => s.group === group.key) }))
+      .filter((group) => group.items.length > 0),
+  })).filter((section) => section.groups.length > 0);
 }
 
 /**

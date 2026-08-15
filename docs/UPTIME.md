@@ -2,8 +2,8 @@
 
 > The `uptime` module: monitors, groups and default settings on the tenant's **own** Uptime Kuma
 > instances, plus the status those instances report back. Business-licensed (`sku="uptime"`).
-> Read this before changing anything under `apps/api/app/modules/uptime/`,
-> `apps/web/src/lib/modules/uptime/` or `apps/web/src/routes/(app)/settings/uptime/`.
+> Read this before changing anything under `apps/api/app/integrations/uptime/`,
+> `apps/web/src/lib/integrations/uptime/` or `apps/web/src/routes/(app)/settings/uptime/`.
 
 Sibling to `docs/CLOUDFLARE.md`, and deliberately built to the same three rules: the credential is
 a row, an integration that mirrors outside state stores *what it decided* and *what it last
@@ -83,8 +83,8 @@ coexist in one virtualenv — a dependency that can silently become the other on
 
 ### Therefore: `client.py` is ours
 
-`app/modules/uptime/client.py` is a Socket.IO client this repo owns, the same posture as
-`app/modules/cloudflare/client.py`. Both libraries are MIT (© 2023 Lucas Held) and Uptime Kuma
+`app/integrations/uptime/client.py` is a Socket.IO client this repo owns, the same posture as
+`app/integrations/cloudflare/client.py`. Both libraries are MIT (© 2023 Lucas Held) and Uptime Kuma
 itself is MIT, so the derivation is clean — keep the notice in a `LICENSE` beside the module, as
 `cloudflare/` already does.
 
@@ -774,7 +774,7 @@ one thing, the drift check expects another, and every monitor in the tenant read
 Resolving to *no* profile falls back to the oldest active profile of that monitor type, and the first
 profile of one **is** the default: nobody makes one profile and means "use none of it".
 
-Built as `app/modules/uptime/profiles.py`, and two details are worth knowing. `PROFILE_KEYS` is
+Built as `app/integrations/uptime/profiles.py`, and two details are worth knowing. `PROFILE_KEYS` is
 an **allow-list**, so a profile can never carry a `url` — a profile that can set a URL is a
 profile that can point forty monitors at the wrong host in one save. And the invariants clamp
 **last**, after both the profile and the monitor's own overrides, so nothing a tenant configures

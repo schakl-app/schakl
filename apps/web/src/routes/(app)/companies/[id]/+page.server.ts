@@ -7,7 +7,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
-import { driveActions } from "$lib/modules/google/drive-actions.server";
+import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -333,7 +333,7 @@ export const actions: Actions = {
 
   // Contactmomenten panel contract (lib/modules/interactions).
   ...interactionActions,
-  // Drive panel contract (lib/modules/google).
+  // Drive panel contract (lib/integrations/google).
   ...driveActions,
   // Marketing panel contract (lib/modules/marketing): link/unlink GA4/GSC/Ads accounts.
   ...marketingActions,

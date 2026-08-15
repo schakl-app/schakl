@@ -34,7 +34,7 @@ from app.core.googleads import (
     normalise_customer_id,
 )
 from app.core.googleads.client import API_HOST
-from app.modules.google.oauth import SCOPE_ADS
+from app.integrations.google.oauth import SCOPE_ADS
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,

@@ -29,7 +29,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import type { AccountRead, RegistrarDomain } from "$lib/modules/oxxa/types";
+  import type { AccountRead, RegistrarDomain } from "$lib/integrations/oxxa/types";
 
   let { data, form } = $props();
 

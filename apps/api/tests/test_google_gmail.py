@@ -13,17 +13,17 @@ from sqlalchemy import select
 
 from app.core.crypto import encrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.google.gmail import matching
-from app.modules.google.gmail.gates import SkipReason
-from app.modules.google.gmail.models import GmailSkip, GmailSuppression
-from app.modules.google.gmail.service import (
+from app.integrations.google.gmail import matching
+from app.integrations.google.gmail.gates import SkipReason
+from app.integrations.google.gmail.models import GmailSkip, GmailSuppression
+from app.integrations.google.gmail.service import (
     SKIP_RETENTION_DAYS,
     fetch_body,
     poll_connection,
     reap_skips,
 )
-from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_GMAIL
+from app.integrations.google.models import GoogleConnection, GoogleSettings
+from app.integrations.google.oauth import SCOPE_GMAIL
 from app.modules.interactions.models import Interaction
 from tests.conftest import auth_cookie, make_tenant
 
@@ -396,7 +396,7 @@ async def _seed(
 
 
 async def _poll(tenant, connection_id, stub, monkeypatch) -> int:
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         connection = await session.get(GoogleConnection, connection_id)
@@ -1631,7 +1631,7 @@ async def test_manual_refresh_polls_once_and_then_cools_down(client_for, monkeyp
             async with factory(session, org, connection) as inner:
                 yield inner
 
-        monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _counting)
+        monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _counting)
 
         first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
         assert first.status_code == 200, first.text
@@ -1723,7 +1723,7 @@ async def test_manual_refresh_spends_its_budget_even_when_gmail_fails(
         raise RuntimeError("gmail is having a day")
         yield  # pragma: no cover
 
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _broken)
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _broken)
 
     async with client_for(t.host) as c:
         first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
@@ -1754,7 +1754,7 @@ def test_parse_reference_accepts_the_three_things_that_actually_resolve() -> Non
     work. It gets its own key, which is what lets the screen name the two things that do.
     """
     from app.errors import AppError
-    from app.modules.google.gmail import manual
+    from app.integrations.google.gmail import manual
 
     assert manual.parse_reference("18c2d3e4f5a6b7c8") == manual.Reference(
         kind="id", value="18c2d3e4f5a6b7c8"
@@ -1912,8 +1912,8 @@ async def test_manual_lookup_and_import_logs_a_message_the_poller_skipped(
     await _seed(t)
     headers = await auth_cookie(t.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         company = (
@@ -1992,8 +1992,8 @@ async def test_thread_gap_fill_marks_what_is_already_on_the_timeline(
     await _seed(t)
     headers = await auth_cookie(t.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         listed = await c.get("/api/v1/google/gmail/threads/thr-9", headers=headers)
@@ -2061,8 +2061,8 @@ async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch
     await _seed(t)
     headers = await auth_cookie(t.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
 
     offered: list[tuple[str, str]] = []
 
@@ -2120,7 +2120,7 @@ async def test_the_explainer_and_the_ingest_are_the_same_function(
     await _seed(t)
     headers = await auth_cookie(t.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
 
@@ -2185,7 +2185,7 @@ async def test_a_reason_names_the_label_that_caused_it(client_for, monkeypatch) 
         threads={"thr-x": ["msg-x"]},
         labels=[{"id": "Label_7", "name": "geen-crm"}],
     )
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         body = (
@@ -2231,7 +2231,7 @@ async def test_a_message_older_than_the_mailbox_says_it_was_never_offered(
         int((datetime.now(UTC) - timedelta(days=200)).timestamp() * 1000)
     )
     stub = _StubManualGmail(messages={"msg-old": old}, threads={"thr-old": ["msg-old"]})
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         body = (
@@ -2260,7 +2260,7 @@ def test_a_search_field_can_never_become_a_gmail_operator() -> None:
     carrying a colon or a quote lands as a value, and what comes out is only ever the operators
     named here.
     """
-    from app.modules.google.gmail.manual import GmailSearchQuery, build_search_query
+    from app.integrations.google.gmail.manual import GmailSearchQuery, build_search_query
 
     wire = build_search_query(
         GmailSearchQuery(participant="devrim@oosgroup.com", subject="verhuur")
@@ -2295,7 +2295,7 @@ async def test_search_finds_a_message_by_who_it_was_with(client_for, monkeypatch
     await _seed(t)
     headers = await auth_cookie(t.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         found = await c.get(
@@ -2351,7 +2351,7 @@ async def test_explaining_a_long_thread_does_not_cost_a_query_per_message(
 
     async def _cost(n: int) -> int:
         monkeypatch.setattr(
-            "app.modules.google.gmail.manual.acting_as", _stub_acting_as(_thread(n))
+            "app.integrations.google.gmail.manual.acting_as", _stub_acting_as(_thread(n))
         )
         async with client_for(t.host) as c:
             with count_queries() as counter:
@@ -2377,7 +2377,7 @@ async def test_search_reads_only_the_caller_s_own_mailbox(client_for, monkeypatc
     other = await make_tenant("gmail-search-other")
     headers = await auth_cookie(other.user)
     stub = _manual_stub()
-    monkeypatch.setattr("app.modules.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
     async with client_for(other.host) as c:
         response = await c.get(
             "/api/v1/google/gmail/search",

@@ -160,7 +160,7 @@ class AdsClient:
     """Read and write one Google Ads account over REST.
 
     The OAuth half is *not* built here: it arrives as an authlib client from
-    ``app.modules.google.client.acting_as``, which owns the token vault, the refresh and the
+    ``app.integrations.google.client.acting_as``, which owns the token vault, the refresh and the
     rotation. This class owns everything Ads-specific — the developer token, the manager header,
     the paging, the backoff and the error model.
     """
@@ -382,7 +382,7 @@ async def ads_client(
     In a request path, enter this **first** and then ``ctx.release_db()`` — it reads settings
     from the session, and the pooled connection must still be checked out for that.
     """
-    from app.modules.google.client import acting_as
+    from app.integrations.google.client import acting_as
 
     async with acting_as(session, org, connection, transport=_transport) as http:
         yield AdsClient(http, credentials, tool=tool)

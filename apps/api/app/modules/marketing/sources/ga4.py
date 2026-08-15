@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from app.modules.google.oauth import SCOPE_ANALYTICS
+from app.integrations.google.oauth import SCOPE_ANALYTICS
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,

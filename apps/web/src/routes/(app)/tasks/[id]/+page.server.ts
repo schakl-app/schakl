@@ -11,7 +11,7 @@ import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
-import { driveActions } from "$lib/modules/google/drive-actions.server";
+import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import {
   createScheduleAction,

@@ -70,12 +70,22 @@ apps/
       time/
       leave/        # employee PTO / leave (see §14)
       ...
-    main.py        # discovers enabled modules and mounts their routers
+    integrations/  # same descriptor, same registry — a credential for someone else's service (§6a)
+      google/      # Workspace: Gmail, Calendar, Drive, Contacts
+      google_ads/
+      cloudflare/
+      oxxa/        # registrar
+      uptime/      # Uptime Kuma
+      wordpress/
+      mollie/      # payments
+    main.py        # discovers enabled modules/integrations and mounts their routers
   web/src/
     lib/core/      # api client, tenant/theme loader, i18n runtime, module + nav registry
     lib/modules/
       companies/   # components, CompanyPanel(s), nav items, message namespace
       ...
+    lib/integrations/   # mirrors apps/api/app/integrations/ (§6a)
+      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/
     routes/        # thin route files that delegate into modules
     paraglide/     # generated (do not edit by hand)
 messages/          # en.json (SOURCE), nl.json (required, default UI lang) — flat, namespaced keys
@@ -203,6 +213,78 @@ enabled module via the registry — so adding a new attachable type (e.g. `domai
 `ssl_certs`) is just adding a module, no edits to the company page. For cross-links that
 aren't a simple FK, use a generic `relations(org_id, from_type, from_id, to_type, to_id)`
 table.
+
+## 6a. Modules and integrations
+
+Same machinery, different things — and the difference had never been written down, so it was
+answered differently on every screen that asked. Instellingen → Modules listed Google Workspace,
+Cloudflare, Uptime Kuma, OXXA and Mollie in one alphabetical column of checkboxes beside Verlof
+and Facturatie; the settings index filed Marketing, Rapportage and Meldingen under
+"Communicatie & koppelingen" *with* those five; and the commercial licence called them all
+"licensed module directories". A reader who wanted to know what this workspace **connects to**
+had to already know the product to work it out.
+
+**A module is a capability schakl itself provides.** It owns entities, screens and a data model,
+and it is worth having with every third-party account in the world cancelled: `companies`,
+`contacts`, `tasks`, `projects`, `time`, `leave`, `hr`, `invoicing`, `subscriptions`, `domains`,
+`websites`, `hosting`, `interactions`, `notifications`, `automation`, `marketing`, `reporting`,
+`portal`.
+
+**An integration is a conversation with somebody else's service.** It holds a **credential** for
+an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
+over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
+`wordpress`, `mollie`.
+
+The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
+it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
+though every number on it arrives through GA4 and Search Console — the dashboard, the periods
+(#312/#316) and the narratives are ours, and with the links removed it is an empty screen rather
+than an absent one. `google` is an integration even though it enriches three modules.
+
+It is stated in five places and each one is load-bearing:
+
+- **The tree.** `apps/api/app/integrations/` and `apps/web/src/lib/integrations/`, beside
+  `modules/`. Registration, mounting, permissions, licensing and per-tenant enablement are all
+  identical — only the package differs, so the layout says the thing the code already means.
+  `app/registry.module_package()` is the **one** place that knows both roots; every dynamic load
+  (the app's mount, the worker's, the model aggregator's, the permission catalog's) goes through
+  it, because five copies of a two-root lookup is four copies that will not be updated.
+- **The descriptor.** `ModuleDescriptor.kind` (`KIND_MODULE` / `KIND_INTEGRATION`), defaulting to
+  `module` — the harmless wrong answer, since an integration mislabelled a module lands in the
+  wrong group while a module mislabelled an integration claims a credential it does not have.
+  Mirrored on the web by `registerWebModule({ kind })`, and served to any other client as
+  `module_kinds` on `/meta/modules`.
+- **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
+  its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
+  `invoicing`, `google_ads` → `google`. Deliberately *not* "modules this is nicer with":
+  over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
+  (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
+  nothing (its panels attach to `websites` **or** `domains`, which an AND-list cannot say).
+  `ensure_requirements_met` checks the **whole resulting set**, not the delta, because the
+  interesting failure is not enabling Cloudflare without domains — it is switching `domains` off
+  afterwards, which a delta check reads as a removal and waves through. It runs inside
+  `ensure_modules_enableable` *and* inside `validate_modules`, so the settings screen, the
+  instance-admin path and the first-run wizard cannot disagree, and it runs **before** the licence
+  gate: telling somebody to buy a licence for a combination that would not work anyway is the
+  worse of the two refusals.
+- **The screen.** Instellingen → Modules is two lists with two sentences ("what schakl does" /
+  "what schakl talks to"), and the settings index and rail have a `modules` group and an
+  `integrations` group instead of one drawer holding both. The requirement is **derived, not
+  validated**: ticking an integration pulls in what it needs, and unticking a module leaves the
+  integrations that needed it ticked-but-not-saved with an amber line naming what is missing —
+  the API's 409 is the backstop for callers that are not this screen, and a backstop should never
+  be the thing a user meets first.
+- **The licence.** `LICENSE-COMMERCIAL.md` lists Core, Modules and Integrations separately. They
+  are licensed identically — what is licensed is the code either way — but an integration's API,
+  terms and continued existence are not ours, and a reader should be able to tell which they are
+  looking at without opening the directory. `scripts/license-check.mjs` verifies both directions
+  and does not care which heading a path sits under.
+
+Core holds third-party seams that are not registry modules at all — the AI provider, the e-mail
+transport, S3 storage, the OIDC relying party. Their settings screens sit in the `integrations`
+group where they read as integrations (E-mail, AI) and stay where they are where they do not: SSO
+lives under Team & toegang, because what it configures is *who may sign in*, not what we read
+from someone else.
 
 ## 7. White-label / theming
 

@@ -1170,7 +1170,7 @@ async def test_the_monitor_list_costs_the_same_however_many_groups_there_are(
     Two groups and four children rather than one and one, because a per-row read and a grouped
     read agree at a single row and only diverge once the same parent is asked for twice.
     """
-    from app.modules.uptime import client as kuma_client
+    from app.integrations.uptime import client as kuma_client
     from tests.uptime_fake import FakeKuma
 
     fake = FakeKuma()

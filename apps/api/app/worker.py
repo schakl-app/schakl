@@ -21,14 +21,16 @@ from app.core.apikeys.jobs import flush_api_key_last_used
 from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
 from app.core.storage.jobs import storage_maintenance
 from app.core.update_check import check_for_update
-from app.registry import registry
+from app.registry import module_package, registry
 
 logger = logging.getLogger("schakl.worker")
 
 
 def _load_modules() -> None:
     for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+        package = module_package(name)
+        if package is not None:
+            importlib.import_module(package)
 
 
 def _collect_cron_jobs() -> list:

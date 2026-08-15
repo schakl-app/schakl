@@ -15,7 +15,7 @@ from sqlalchemy import select, text
 
 from app.core.crypto import decrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.google_ads.models import GoogleAdsAccount, GoogleAdsSettings
+from app.integrations.google_ads.models import GoogleAdsAccount, GoogleAdsSettings
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 pytestmark = pytest.mark.asyncio

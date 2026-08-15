@@ -2,8 +2,8 @@
 
 > The `oxxa` module (issue #296, the registrar half of epic #278): the four facts only a
 > registrar knows about a domain, and the one write that moves a delegation. Business-licensed
-> (`sku="oxxa"`). Read this before changing anything under `apps/api/app/modules/oxxa/`,
-> `apps/api/app/core/registrar/`, `apps/web/src/lib/modules/oxxa/` or
+> (`sku="oxxa"`). Read this before changing anything under `apps/api/app/integrations/oxxa/`,
+> `apps/api/app/core/registrar/`, `apps/web/src/lib/integrations/oxxa/` or
 > `apps/web/src/routes/(app)/settings/oxxa/`.
 
 Sibling to `docs/CLOUDFLARE.md`, and the two halves only meet at one seam — §7. `cloudflare`
@@ -527,7 +527,7 @@ capture real responses and re-cut the fake from them; that is the change that tu
 from a consistency check into evidence.
 
 The web half is built too, and listed here so a reader knows where all of it is: the panel, its
-actions and its generated types under `apps/web/src/lib/modules/oxxa/`, the settings screen at
+actions and its generated types under `apps/web/src/lib/integrations/oxxa/`, the settings screen at
 `apps/web/src/routes/(app)/settings/oxxa/`, the `oxxa.*` keys in both `messages/en.json` and
 `messages/nl.json` (Golden Rule 2 — the issue keys of §8, the permission labels, the activity
 sentences), the `settings-nav` entry gated on `oxxa.settings.manage`, and the three

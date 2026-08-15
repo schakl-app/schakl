@@ -49,12 +49,24 @@ from app.core.system import readiness
 from app.core.system import router as system_router
 from app.core.userprefs import router as userprefs_router
 from app.errors import register_error_handlers
-from app.registry import registry
+from app.registry import MODULE_ROOTS, module_package, registry
 
 
 def _load_enabled_modules() -> None:
+    """Import every enabled module and integration so it self-registers (CLAUDE.md §6a).
+
+    A name may live in either package root; ``module_package`` is the only thing that knows both,
+    and an unresolvable name is fatal here rather than skipped. Booting with a module silently
+    absent from the registry 404s every route it owns with nothing having said why.
+    """
     for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+        package = module_package(name)
+        if package is None:
+            raise ModuleNotFoundError(
+                f"enabled module {name!r} is in neither {' nor '.join(MODULE_ROOTS)}",
+                name=f"app.modules.{name}",
+            )
+        importlib.import_module(package)
 
 
 @asynccontextmanager

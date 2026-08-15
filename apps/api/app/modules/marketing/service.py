@@ -48,9 +48,9 @@ from app.core.timezone import org_zoneinfo
 from app.core.wordpress import open_client as open_wordpress_client
 from app.core.wordpress import resolve_credential as resolve_wordpress_credential
 from app.errors import AppError
+from app.integrations.google import client as google_client
+from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.companies.models import Company
-from app.modules.google import client as google_client
-from app.modules.google.models import ConnectionStatus, GoogleConnection
 from app.modules.marketing.layout import (
     GA4_KEY_EVENT_DRILLDOWN,
     GA4_KEY_EVENT_TILES,

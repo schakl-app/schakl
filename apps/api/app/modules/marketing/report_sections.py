@@ -39,8 +39,8 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.tenancy import RequestContext
-from app.modules.google import client as google_client
-from app.modules.google.models import ConnectionStatus, GoogleConnection
+from app.integrations.google import client as google_client
+from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.marketing.layout import resolved_tiles, source_layout
 from app.modules.marketing.models import (
     MarketingCompanySettings,

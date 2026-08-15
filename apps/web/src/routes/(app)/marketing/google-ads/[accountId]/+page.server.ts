@@ -7,8 +7,8 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
-import { reportTableId, type ReportView } from "$lib/modules/google_ads/columns";
-import { GOOGLE_ADS_FILTERS } from "$lib/modules/google_ads/filters";
+import { reportTableId, type ReportView } from "$lib/integrations/google_ads/columns";
+import { GOOGLE_ADS_FILTERS } from "$lib/integrations/google_ads/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
