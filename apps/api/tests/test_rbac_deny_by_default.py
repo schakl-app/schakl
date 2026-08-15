@@ -104,6 +104,19 @@ _EXEMPT_OPERATIONS = frozenset(
         # `tests/test_uptime_webhook.py` asserts each of those, plus that a wrong secret, an
         # unknown instance and another tenant's instance are indistinguishable.
         ("post", "/api/v1/uptime/hook/{token}"),
+        # SnelStart handing back a koppelsleutel a tenant just approved (docs/SNELSTART.md).
+        # The same shape a fifth time, with one twist that makes it the *most* constrained of
+        # them: the reference naming the tenant is not in the URL at all, it is in the body,
+        # because SnelStart posts every partner's couplings to **one** URL. So this sweep — which
+        # fills path params and posts nothing — reaches a route that reads an empty body, finds
+        # no reference, and does nothing, which is exactly the 200 it sees.
+        #
+        # What keeps it honest is not this exemption. The secret half of that reference is
+        # compared in constant time, every failure answers an identical 200 with no work done,
+        # and the koppelsleutel in the body is believed only after it has minted a token and
+        # named an administration. `tests/test_snelstart_coupling.py` asserts each of those,
+        # plus that a wrong secret and an unknown org are indistinguishable.
+        ("post", "/api/v1/snelstart/coupling/callback"),
         # OAuth 2.1 for MCP (docs/MCP.md). Every one of these is reached *before* a credential
         # exists — that is what an authorization server is for — so a 403 here would mean no
         # client could ever obtain one. They are exempt from this sweep and gated instead by

@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.core.richtext import markdown_to_plaintext
-from app.modules.invoicing.calc import CENTS, TaxGroup, Totals, round_cents
+from app.modules.invoicing.calc import CENTS, Totals, line_nets, round_cents
 from app.modules.invoicing.models import InvoiceKind, TaxCategory
 
 _CAC = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
@@ -81,32 +81,6 @@ def _party(parent: ET.Element, role: str, details: dict[str, Any]) -> None:
         _el(contact, _CBC, "ElectronicMail", details["email"])
 
 
-def _line_nets(lines: list[Any], groups: tuple[TaxGroup, ...], include_tax: bool) -> list[Decimal]:
-    """Net amount per line; on inclusive documents the per-group rounding drift lands on the
-    group's largest line so every sum reconciles exactly."""
-    nets: list[Decimal] = []
-    for line in lines:
-        if include_tax and line.tax_category not in (
-            TaxCategory.EXEMPT.value, TaxCategory.REVERSE_CHARGE.value
-        ) and line.tax_rate_pct != 0:
-            factor = Decimal(1) + Decimal(line.tax_rate_pct) / Decimal(100)
-            nets.append(round_cents(Decimal(line.amount) / factor))
-        else:
-            nets.append(Decimal(line.amount))
-    for group in groups:
-        indexes = [
-            i for i, line in enumerate(lines)
-            if Decimal(line.tax_rate_pct) == group.rate_pct
-            and line.tax_category == group.category
-        ]
-        if not indexes:
-            continue
-        delta = group.base - sum(nets[i] for i in indexes)
-        if delta:
-            largest = max(indexes, key=lambda i: abs(nets[i]))
-            nets[largest] += delta
-    return nets
-
 
 def invoice_ubl(
     invoice: Any,
@@ -160,7 +134,7 @@ def invoice_ubl(
         scheme = _el(category, _CAC, "TaxScheme")
         _el(scheme, _CBC, "ID", "VAT")
 
-    nets = _line_nets(lines, totals.groups, invoice.prices_include_tax)
+    nets = line_nets(lines, totals.groups, invoice.prices_include_tax)
     line_extension = round_cents(sum(nets, Decimal(0)))
     paid = Decimal(getattr(invoice, "paid_total", 0) or 0)
     monetary = _el(root, _CAC, "LegalMonetaryTotal")

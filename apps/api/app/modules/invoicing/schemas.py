@@ -180,6 +180,8 @@ class TaxRateRead(TaxRateBase):
 # --------------------------------------------------------------------------- #
 class ProductBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    #: The tenant's own article code (#377). Unique per org where set; blank clears it.
+    code: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=2000)
     unit: str | None = Field(default=None, max_length=20)
     unit_price: Decimal = Field(default=Decimal("0"), ge=0)
@@ -187,7 +189,7 @@ class ProductBase(BaseModel):
     active: bool = True
     position: int = 0
 
-    _blank_unit = field_validator("unit", "description", mode="before")(_blank_to_none)
+    _blank_unit = field_validator("unit", "description", "code", mode="before")(_blank_to_none)
 
 
 class ProductCreate(ProductBase):
@@ -196,6 +198,7 @@ class ProductCreate(ProductBase):
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    code: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=2000)
     unit: str | None = Field(default=None, max_length=20)
     unit_price: Decimal | None = Field(default=None, ge=0)
@@ -203,7 +206,7 @@ class ProductUpdate(BaseModel):
     active: bool | None = None
     position: int | None = None
 
-    _blank_unit = field_validator("unit", "description", mode="before")(_blank_to_none)
+    _blank_unit = field_validator("unit", "description", "code", mode="before")(_blank_to_none)
 
 
 class ProductRead(ProductBase):
