@@ -87,9 +87,17 @@ async def schedule_enrichment(org_id: uuid.UUID, interaction_id: uuid.UUID, task
         str(task_id),
         1,
         _defer_by=timedelta(seconds=FIRST_DELAY_SECONDS),
-        # Deterministic per task, so a double approve (two tabs, a retried request) queues one
-        # run rather than two racing writers of the same description.
-        _job_id=f"interactions-enrich-{task_id}",
+        # Deterministic per **task and email**, so a double approve (two tabs, a retried
+        # request) queues one run rather than two racing writers of the same description.
+        #
+        # The interaction id is what stops it repeating reporting's #300 bug, which
+        # ``core.jobs.enqueue`` already names: arq declines a ``_job_id`` whose *result* is
+        # still in Redis, one hour by default. Keyed on the task alone, filing a second email
+        # onto a task enriched within the hour queued nothing, ``offer_task_enrichment`` read
+        # the ``None`` as "no worker took it" and set ``failed`` — so the obvious response to a
+        # disappointing run ("try it with another mail") was the one thing guaranteed not to
+        # work. Two different emails are two different runs; the same email twice is not.
+        _job_id=f"interactions-enrich-{task_id}-{interaction_id}",
     )
 
 

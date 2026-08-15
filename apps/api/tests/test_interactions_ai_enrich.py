@@ -740,3 +740,89 @@ async def test_an_empty_plan_is_skipped_rather_than_written(client_for, monkeypa
                 .all()
             )
         assert comments == [] and items == []
+
+
+async def test_an_answer_that_ran_out_of_room_is_not_an_email_with_nothing_in_it(
+    client_for, monkeypatch
+) -> None:
+    """The report this fix came from: a mail full of work said "schakl found nothing in it".
+
+    A tool call's arguments stream as one JSON string, so an answer that hits the token ceiling
+    arrives as a fragment that parses to nothing — landing here as ``input={}``, which is
+    exactly what a model submitting an empty form sends. The two were the same value, so the
+    plan came out empty, the run settled ``skipped``, and the card told the user the email had
+    nothing in it. ``incomplete`` is the difference, and ``failed`` is the only state whose copy
+    ("schakl could not read this email. The task is unchanged.") is true of it.
+
+    Note the ``stop_reason``: #158 already established that a reasoning model can spend a whole
+    completion budget thinking and emit almost nothing. That is not an exotic failure — it is
+    the ordinary one this feature's 2048-token cap invited.
+    """
+    t = await make_tenant("enrich-truncated")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_email(t, t.user.id, message_id="msg-cut")
+    async with client_for(t.host) as c:
+        await _configure_ai(c, headers)
+        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        await _set_body(t, row_id, _BODY)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                [
+                    AIEvent(
+                        kind="tool_call",
+                        tool_call=ToolCall(
+                            id="c1", name=SUBMIT_PLAN.name, input={}, incomplete=True
+                        ),
+                    ),
+                    AIEvent(kind="done", stop_reason="length", tokens_in=900, tokens_out=2048),
+                ]
+            ),
+        )
+        assert await _run_enrichment(t, row_id, task["id"]) == TaskAIStatus.FAILED.value
+
+        # And nothing half-written: a run we could not read must leave the task exactly as the
+        # person left it, which is what makes "the task is unchanged" a promise, not just copy.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            written = await session.scalar(
+                select(func.count())
+                .select_from(TaskChecklistItem)
+                .where(TaskChecklistItem.org_id == t.org.id)
+            )
+        assert written == 0
+        assert (await _task_row(t, task["id"])).description in (None, "")
+
+
+async def test_a_second_email_onto_one_task_is_its_own_run(monkeypatch) -> None:
+    """arq declines a ``_job_id`` whose *result* is still in Redis, one hour by default — the
+    #300 bug ``core.jobs.enqueue`` already documents.
+
+    Keyed on the task alone, filing a second email onto a task enriched within the hour queued
+    nothing at all, and ``offer_task_enrichment`` reads that ``None`` as "no worker took it" and
+    writes ``failed``. So the obvious response to a disappointing run — try it with another mail
+    — was the one thing guaranteed not to work. Two emails are two runs; the same email twice is
+    still one.
+    """
+    from app.modules.interactions.jobs import schedule_enrichment
+
+    seen: list[str] = []
+
+    async def _capture(function, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        seen.append(kwargs["_job_id"])
+        return object()
+
+    monkeypatch.setattr("app.modules.interactions.jobs.enqueue", _capture)
+    org_id, task_id = uuid.uuid4(), uuid.uuid4()
+    first, second = uuid.uuid4(), uuid.uuid4()
+    await schedule_enrichment(org_id, first, task_id)
+    await schedule_enrichment(org_id, second, task_id)
+    await schedule_enrichment(org_id, first, task_id)
+
+    assert len(set(seen)) == 2, seen
+    assert seen[0] == seen[2], "the same email twice is one run, not two racing writers"

@@ -67,6 +67,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
+from app.core.ai import providers
 from app.core.ai.prompts import language_name
 from app.core.ai.providers import ChatMessage, ToolDef
 from app.core.ai.service import AIService, enabled_features
@@ -91,9 +92,17 @@ FEATURE = "email_assist"
 #: token spend against a mail somebody forwarded forty times.
 MAX_BODY_CHARS = 12_000
 
-#: A draft plan is a handful of short fields, like the quick-add parse. The 8192 default is
-#: sized for a written report and only costs latency here.
-MAX_TOKENS = 2048
+#: The ceiling for one plan. It was 2048, reasoned as "a draft plan is a handful of short
+#: fields … the 8192 default only costs latency here", and both halves were wrong. A cap costs
+#: nothing when the answer is short — a provider bills what it generates, not what it was
+#: allowed to — and ``SUBMIT_PLAN`` does not describe a handful of short fields: twenty
+#: checklist items of 512 + 2000 characters, a 4000-character summary and four links is an
+#: answer several times this budget, so the schema *invited* an answer the cap could not
+#: hold. Overflowing it was silent (a tool call's arguments stream as one JSON string, so a
+#: truncated one parses to nothing) and surfaced as "schakl found nothing in this email".
+#: ``build_plan`` now refuses to read a truncated answer as an empty one; this is the other
+#: half — room enough that it stays a safety net rather than the common case.
+MAX_TOKENS = providers.MAX_TOKENS
 
 #: Matches a URL as it appears in the message — the grounding set links are checked against.
 _URL_RE = re.compile(r"https?://[^\s<>\"'\)\]]+", re.IGNORECASE)
@@ -495,9 +504,18 @@ async def build_plan(ctx, row: Interaction) -> TaskEnrichment | None:  # noqa: A
 
     ``None`` is a real answer, distinct from a failure: a mail with no body yet, or one the
     model found nothing actionable in, is "we looked and there is nothing to carry over".
+
+    **What it must never mean is "we could not read the answer".** A tool call's arguments
+    stream as a single JSON string, so an answer that hits the token ceiling arrives as a
+    fragment that parses to nothing — which was indistinguishable here from a model that
+    submitted an empty form, and the card said *"schakl found nothing in this email"* over a
+    message full of work. A truncated run raises instead, so it settles as ``failed`` (the
+    task is unchanged, and the copy says so) and lands in the log with the model and the cap
+    that produced it. ``None`` keeps its one meaning: we read the answer, and it was empty.
     """
     body = _body(row)
     if not body.strip():
+        logger.info("email enrichment: interaction %s has no body to read", row.id)
         return None
 
     service = AIService(ctx)
@@ -526,10 +544,32 @@ async def build_plan(ctx, row: Interaction) -> TaskEnrichment | None:  # noqa: A
         await service.flush_usage(FEATURE)
 
     call = next((c for c in calls if c.name == SUBMIT_PLAN.name), None)
-    if call is None:
+    if call is None or call.incomplete:
+        # Two ways to have no readable answer, and neither is "the email said nothing". The
+        # forced tool means a run with no call at all did not finish either; an ``incomplete``
+        # one is the truncation above. Raising puts both in ``enrich_task``'s failure branch,
+        # which is the only one whose copy is true here.
+        raise AppError(
+            "ai_answer_truncated",
+            "errors.ai_answer_truncated",
+            status_code=502,
+        )
+    plan = plan_from_call(call.input, row=row, today=today)
+    if plan.empty():
+        logger.info(
+            "email enrichment: the model submitted an empty plan for interaction %s", row.id
+        )
         return None
-    plan = plan_from_call(call.input or {}, row=row, today=today)
-    return None if plan.empty() else plan
+    if service.truncated:
+        # The call closed cleanly and the run then ran out of room: what we have is a real
+        # plan, possibly missing its tail. Keeping it beats discarding it — but it is worth
+        # saying, because it is the signal that ``MAX_TOKENS`` is too small for this tenant.
+        logger.warning(
+            "email enrichment: plan for interaction %s may be incomplete (stop_reason=%s)",
+            row.id,
+            service.last_stop_reason,
+        )
+    return plan
 
 
 async def enrich_task(ctx, interaction_id: uuid.UUID, task_id: uuid.UUID) -> str:  # noqa: ANN001
@@ -538,21 +578,33 @@ async def enrich_task(ctx, interaction_id: uuid.UUID, task_id: uuid.UUID) -> str
     Reads the interaction directly (same module) and writes the task through the tasks module's
     published automation surface (§6) — never its internals, and never ``TaskService``, whose
     trail would try to store a worker's placeholder user against a real foreign key.
+
+    **Every way out says which way it was.** ``skipped`` is one word for five different
+    outcomes — no such row, a rejected email, no body, an empty plan, a plan none of whose
+    fields could land — and the card shows the same sentence for all of them. That is right for
+    the card (none of the five is the reader's problem) and wrong for the log, which was silent
+    on four of the five: "schakl found nothing in this email" was, until now, the *entire*
+    record of what happened, for us as much as for the tenant.
     """
     from app.modules.tasks.models import TaskAIStatus
 
     row = await ctx.session.get(Interaction, interaction_id)
     if row is None or row.org_id != ctx.org.id:
+        logger.info("email enrichment: interaction %s is gone; nothing to read", interaction_id)
         return TaskAIStatus.SKIPPED.value
     if row.status != InteractionStatus.LOGGED.value:
         # Rejected between the approve and this job: there is no email any more.
+        logger.info(
+            "email enrichment: interaction %s is %s, not logged", interaction_id, row.status
+        )
         return TaskAIStatus.SKIPPED.value
 
     try:
         plan = await build_plan(ctx, row)
     except AppError as exc:
-        # A provider outage, an exhausted budget, a key the tenant rotated away — all of them
-        # are "this run did not happen", never a 500 in a worker nobody is watching.
+        # A provider outage, an exhausted budget, a key the tenant rotated away, an answer that
+        # ran out of room — all of them are "this run did not happen", never a 500 in a worker
+        # nobody is watching.
         logger.warning("email enrichment failed for task %s: %s", task_id, exc.message_key)
         return TaskAIStatus.FAILED.value
 
@@ -563,6 +615,15 @@ async def enrich_task(ctx, interaction_id: uuid.UUID, task_id: uuid.UUID) -> str
         ctx, task_id, plan, today=await org_today(ctx.session, ctx.org.id)
     )
     if not applied:
+        # A plan that was not empty and still wrote nothing: a deadline outside the window or
+        # onto a date somebody set, a ``requires_interaction: false``, links that all turned
+        # out to be signature boilerplate. Worth a line — it is the one skip that means the
+        # model *did* answer and the seam declined every field of it.
+        logger.info(
+            "email enrichment: nothing of the plan landed on task %s (interaction %s)",
+            task_id,
+            interaction_id,
+        )
         return TaskAIStatus.SKIPPED.value
     await record_ai_activity_system(
         ctx,

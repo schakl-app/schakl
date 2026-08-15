@@ -2637,6 +2637,7 @@
   "errors.ai_feature_disabled": "This AI feature is switched off.",
   "errors.ai_budget_reached": "The monthly AI budget has been reached.",
   "errors.ai_provider_error": "The AI provider could not process the request.",
+  "errors.ai_answer_truncated": "schakl's answer was cut off before it was finished, so nothing was written.",
   "errors.ai_tool_failed": "An AI lookup failed.",
   "errors.ai_speech_not_configured": "No speech-to-text service is configured for this organisation.",
   "errors.ai_audio_too_large": "That recording is too long. Record a shorter entry.",

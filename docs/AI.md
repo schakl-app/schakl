@@ -30,6 +30,36 @@ one per round and pay a TLS handshake each time. The tests close it between case
 (`tests/conftest.py`): an httpx client outlives the event loop that made its connections, and
 reusing one across loops fails in ways that look nothing like their cause.
 
+### A truncated answer is not an empty one
+
+A tool call's arguments cross the wire as a **single JSON string**, assembled from deltas. So a
+run that hits the token ceiling ends mid-object — `{"summary": "Volgende week te` — and no
+parser accepts it. Both adapters used to answer that with `input={}` and say nothing further,
+which made *"the model was cut off"* and *"the model submitted an empty form"* the same value.
+Empty is a legitimate answer (a forced tool with no required properties may be called with
+`{}`), so the two cannot be told apart by the dict; `ToolCall.incomplete` is what tells them
+apart, and `AIService.truncated` answers the same question for the run as a whole
+(`stop_reason` is `length` on OpenAI and `max_tokens` on Anthropic).
+
+This is not an exotic failure. #158 already established that **a reasoning model can spend an
+entire completion budget thinking and emit almost nothing visible** — the connection test was
+taught that lesson and reports `ok=True` for it. Any feature setting a `max_tokens` smaller than
+the answer its own tool schema invites will meet the same thing, and #327 did: a 2048-token cap
+over a schema describing twenty checklist items, a 4000-character summary and four links, so an
+ordinary Dutch client email came back as *"schakl vond in deze e-mail niets om aan de taak toe
+te voegen."* — a sentence about the email, printed over a defect in our budget.
+
+Two rules follow, and the second is the one worth carrying to the next feature.
+
+* **A caller that can act on it must be able to ask.** `complete()` keeps its two-value return
+  (every caller wants the text and the calls); `last_stop_reason` and `truncated` sit on the
+  service, and `complete()` logs a warning either way — all five callers are exposed to this and
+  none of them could previously see it.
+* **Size the cap against the schema, not against the answer you picture.** `MAX_TOKENS` is the
+  provider default unless a feature has a reason to be lower, and "a plan is a handful of short
+  fields" is a picture, not a bound. A cap costs nothing when the answer is short — a provider
+  bills what it generates, never what it was allowed to.
+
 ## The rule that matters most: hand back the DB connection
 
 A request is **one transaction pinning one pooled connection** (`app/db.py`). A model call takes
@@ -167,6 +197,27 @@ the first sentence a hostile email would try). Closing the task with this contac
 the *other tick in the same dialog* (`close_task` → `Task.closing_interaction_id`), where a
 person makes it. A field whose only possible content is a duplicate or an unactionable verdict is
 noise, and the approve dialog never advertised one either.
+
+**And a fourth, reported from a real mailbox: `skipped` was one word for five outcomes and the
+log said nothing about any of them.** A Dutch client thread — a colleague promising to research
+something the following week, filed onto a task by Gmail id — came back as *"schakl vond in deze
+e-mail niets om aan de taak toe te voegen."* There was no way to tell, from the screen or from
+the logs, whether the body had never landed, whether the row was gone, whether the model had
+answered nothing, or whether the answer had simply not fit (see *A truncated answer is not an
+empty one*, above). The card keeps one sentence, correctly — none of the five is the reader's
+problem — but each exit now logs which one it was, and the one exit that is genuinely *our*
+failure settles as `failed` rather than borrowing the sentence about the email.
+
+Two related edges came out of the same read:
+
+* **`MAX_TOKENS` was 2048 against a schema that invites far more.** It is the provider default
+  now; `build_plan` raising on an unreadable answer is the safety net, not the mechanism.
+* **The enrichment job id was keyed on the task alone**, so filing a *second* email onto a task
+  enriched within the hour queued nothing — arq declines a `_job_id` whose result is still in
+  Redis, the #300 bug `core.jobs.enqueue` already documents — and `offer_task_enrichment` read
+  that `None` as "no worker took it" and wrote `failed`. The obvious response to a disappointing
+  run was the one thing guaranteed not to work. The id now carries the interaction too: two
+  emails are two runs, the same email twice is still one.
 
 Three things make it different from every other feature here, and all three follow from one
 fact: **its input is written by someone outside the organisation.**
