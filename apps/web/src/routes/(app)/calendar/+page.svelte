@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     CalendarClock,
+    CalendarPlus,
     ChevronLeft,
     ChevronRight,
     Plus,
@@ -19,15 +20,19 @@
   import type { CalendarEvent } from "$lib/core/registry";
   import { labelDotParts } from "$lib/core/ui/colors";
   import ColorPicker from "$lib/core/ui/ColorPicker.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import DayCalendar from "$lib/core/ui/DayCalendar.svelte";
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
   import YearCalendar from "$lib/core/ui/YearCalendar.svelte";
+  import AvailabilityForm from "$lib/modules/leave/AvailabilityForm.svelte";
   import ScheduleTaskModal from "$lib/modules/tasks/ScheduleTaskModal.svelte";
 
   let { data, form } = $props();
 
-  // The "+" create menu (#188): schedule a task, or deep-link to request leave.
+  // The "+" create menu (#188): schedule a task, deep-link to request leave, or record
+  // availability (#368) — the third one because a feed you can read and not write makes the user
+  // retype the day already on the screen.
   const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
   const canScheduleWrite = $derived(can(page.data.user, "tasks.schedule.write"));
   const canScheduleAny = $derived(can(page.data.user, "tasks.schedule.write", "any"));
@@ -35,10 +40,14 @@
   const canRequestLeave = $derived(
     enabledModules.includes("leave") && can(page.data.user, "leave.request.write"),
   );
-  const showAdd = $derived(canScheduleTask || canRequestLeave);
+  // The load already decided this: the permission *and* the employment kind (#368). Drawn here
+  // only, so the browser never re-derives a rule the server answered with the contract in hand.
+  const canAddAvailability = $derived(Boolean(data.canAddAvailability));
+  const showAdd = $derived(canScheduleTask || canRequestLeave || canAddAvailability);
   let addOpen = $state(false);
   let addRoot: HTMLElement | undefined = $state();
   let scheduleOpen = $state(false);
+  let availabilityOpen = $state(false);
 
   // Per-person feed overlays (#188): a writable derived, following the stored selection per
   // source until a toggle overwrites it (the `hiddenDraft` pattern below).
@@ -458,8 +467,11 @@
               </button>
             {/if}
             {#if canRequestLeave}
+              <!-- Carrying the day being looked at, exactly as the task item beside it does:
+                   an agenda control that throws away the date on the screen makes the user
+                   retype what they just clicked (#368). -->
               <a
-                href="/leave?new=1"
+                href="/leave?new=1&date={data.date}"
                 class="flex items-center gap-2 px-3 py-2 text-sm text-text hover:bg-surface"
                 onclick={() => (addOpen = false)}
               >
@@ -467,12 +479,41 @@
                 {t("leave.request_button")}
               </a>
             {/if}
+            {#if canAddAvailability}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text hover:bg-surface"
+                onclick={() => {
+                  addOpen = false;
+                  availabilityOpen = true;
+                }}
+              >
+                <CalendarPlus size={16} />
+                {t("leave.availability.add")}
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
     {/if}
   </div>
 </div>
+
+<!-- Recording availability without leaving the agenda (#368). The feed drew a freelancer's
+     exceptions and offered no way to add one, so the day being planned was on screen and had to
+     be retyped on another page; the form is the same one `/leave/availability` uses, and the
+     actions are the same four every host spreads. -->
+{#if canAddAvailability}
+  <Modal bind:open={availabilityOpen} title={t("leave.availability.add")}>
+    {#key data.date}
+      <AvailabilityForm
+        defaultDate={data.date}
+        error={form?.error ?? null}
+        ondone={() => (availabilityOpen = false)}
+      />
+    {/key}
+  </Modal>
+{/if}
 
 {#if canScheduleTask}
   <ScheduleTaskModal

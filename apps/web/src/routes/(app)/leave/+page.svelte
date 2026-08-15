@@ -92,6 +92,12 @@
   // (#188), mirroring the `?request=` edit deep link. A `$state` initializer, not a `$derived`:
   // it opens on load and the user can then close it.
   let createOpen = $state(page.url.searchParams.get("new") === "1");
+  // …on the day the agenda's "+" was pressed on (#368). Resolved once into a state initializer,
+  // like every other deep-link intent on this page; junk in the query string simply means "no
+  // date", never a 500 on a link anybody can edit.
+  const newDate = /^\d{4}-\d{2}-\d{2}$/.test(page.url.searchParams.get("date") ?? "")
+    ? (page.url.searchParams.get("date") ?? "")
+    : "";
   // Recurring free days, self-service (#107): balance-tracked auto-approve types only. The
   // approval requirement keeps vacation a manager's act (generated days are pre-approved);
   // the balance requirement keeps "sick" out — a *recurring sick day* is not a plan, and a
@@ -142,8 +148,7 @@
         icon: Ban,
         danger: true,
         eligible: bulkCancellableIds.length,
-        disabledReason:
-          bulkCancellableIds.length === 0 ? t("leave.bulk.cancel_none") : undefined,
+        disabledReason: bulkCancellableIds.length === 0 ? t("leave.bulk.cancel_none") : undefined,
         onclick: () => (bulkCancelOpen = true),
       },
     ],
@@ -481,6 +486,7 @@
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
     balances={remainingByType}
+    defaultDate={newDate}
     canBackdate={can(page.data.user, "leave.request.write", "any")}
     error={form?.error ?? null}
     ondone={() => (createOpen = false)}

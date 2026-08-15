@@ -591,6 +591,131 @@ async def test_a_member_keeps_their_own_availability_but_not_a_colleague_s(clien
         assert rows.status_code == 403
 
 
+async def test_a_row_can_be_corrected_rather_than_retyped(client_for) -> None:
+    """``PATCH`` was the one availability write nothing exercised and nothing called (#368).
+
+    Three things it has to get right, all of them shapes the POST already refuses: an explicit
+    ``null`` clears rather than reading as an omission, the re-validation runs against the row as
+    it *will* be (clearing a cadence must not leave its bound behind), and somebody else's row is
+    a 404 rather than a 403 that would confirm it exists (§15).
+    """
+    t = await make_tenant("avail-patch")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "patch@example.com")
+        my_headers = await auth_cookie(member)
+        friday, saturday = _monday() + timedelta(days=4), _monday() + timedelta(days=5)
+
+        created = await c.post(
+            "/api/v1/leave/availability",
+            json={
+                "kind": "extra",
+                "date": saturday.isoformat(),
+                "start_time": "10:00",
+                "end_time": "14:00",
+                "repeat_weeks": 2,
+                "repeat_until": (saturday + timedelta(weeks=8)).isoformat(),
+            },
+            headers=my_headers,
+        )
+        assert created.status_code == 201, created.text
+        entry_id = created.json()["id"]
+
+        # Move the day and widen the window — the edit a delete-and-retype used to cost.
+        moved = await c.patch(
+            f"/api/v1/leave/availability/{entry_id}",
+            json={"date": friday.isoformat(), "end_time": "17:00", "note": "afgestemd"},
+            headers=my_headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["date"] == friday.isoformat()
+        assert moved.json()["end_time"] == "17:00"
+        assert moved.json()["start_time"] == "10:00"  # untouched, not cleared
+        assert moved.json()["note"] == "afgestemd"
+
+        # Dropping the cadence has to take its bound with it, or the row keeps a limit on a
+        # repeat that no longer happens — the shape the POST refuses outright.
+        kept = await c.patch(
+            f"/api/v1/leave/availability/{entry_id}",
+            json={"repeat_weeks": None},
+            headers=my_headers,
+        )
+        assert kept.status_code == 422
+        assert "leave_availability_repeat_required" in kept.text
+
+        cleared = await c.patch(
+            f"/api/v1/leave/availability/{entry_id}",
+            json={"repeat_weeks": None, "repeat_until": None, "start_time": None},
+            headers=my_headers,
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["repeat_weeks"] is None
+        assert cleared.json()["repeat_until"] is None
+        assert cleared.json()["start_time"] is None
+
+        # And the resolved day follows the correction: Friday now runs to 17:00, Saturday is
+        # back to the untouched week (a day it does not work at all).
+        days = {
+            d["date"]: float(d["hours"])
+            for d in (
+                await c.get(
+                    "/api/v1/leave/availability/days",
+                    params={
+                        "date_from": friday.isoformat(),
+                        "date_to": saturday.isoformat(),
+                        "user_id": str(member.id),
+                    },
+                    headers=my_headers,
+                )
+            ).json()
+        }
+        assert days[saturday.isoformat()] == 0.0
+        assert days[friday.isoformat()] == 8.0
+
+        # A colleague's row is not there to be edited, and the refusal does not say it exists.
+        stranger = await _member(c, headers, "stranger@example.com")
+        assert (
+            await c.patch(
+                f"/api/v1/leave/availability/{entry_id}",
+                json={"note": "niet van mij"},
+                headers=await auth_cookie(stranger),
+            )
+        ).status_code == 404
+
+
+async def test_a_list_names_the_people_it_answers_for(client_for) -> None:
+    """A cross-person list has to print a name, and the browser holds no roster to join on."""
+    t = await make_tenant("avail-names")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "named@example.com")
+        saturday = _monday() + timedelta(days=5)
+        assert (
+            await c.post(
+                "/api/v1/leave/availability",
+                json={
+                    "user_id": str(member.id),
+                    "kind": "extra",
+                    "date": saturday.isoformat(),
+                },
+                headers=headers,
+            )
+        ).status_code == 201
+
+        rows = (
+            await c.get(
+                "/api/v1/leave/availability",
+                params={
+                    "date_from": saturday.isoformat(),
+                    "date_to": saturday.isoformat(),
+                    "all_users": True,
+                },
+                headers=headers,
+            )
+        ).json()
+        assert [r["user_name"] for r in rows] == ["Member"]
+
+
 async def test_availability_is_tenant_isolated(client_for) -> None:
     a = await make_tenant("avail-iso-a")
     b = await make_tenant("avail-iso-b")

@@ -6534,6 +6534,8 @@ export interface paths {
         /**
          * List Availability
          * @description The exception rows with an occurrence in the window — own, or anyone's with ``:any``.
+         *
+         *     Each row carries the person's name, so a cross-person list needs no second read.
          */
         get: operations["list_availability_api_v1_leave_availability_get"];
         put?: never;
@@ -12091,6 +12093,11 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /**
+             * User Name
+             * @default
+             */
+            user_name: string;
         };
         /**
          * AvailabilityUpdate

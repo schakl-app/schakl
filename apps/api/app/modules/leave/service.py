@@ -51,6 +51,7 @@ from app.modules.leave.schemas import (
     AvailabilityCreate,
     AvailabilityDay,
     AvailabilityMove,
+    AvailabilityRead,
     AvailabilityUpdate,
     AvailabilityWindow,
     EmploymentContractCreate,
@@ -1003,7 +1004,7 @@ class LeaveService:
         date_to: date,
         user_id: uuid.UUID | None = None,
         all_users: bool = False,
-    ) -> Sequence[EmploymentAvailability]:
+    ) -> list[AvailabilityRead]:
         """The exception rows with an occurrence inside the window.
 
         Narrowed to the caller's own unless they hold ``:any`` — a row carries a note and is the
@@ -1025,8 +1026,37 @@ class LeaveService:
                 EmploymentAvailability.user_id
                 == self._availability_user(user_id, write=False)
             )
-        rows = (await self.ctx.session.execute(stmt)).scalars().all()
-        return [r for r in rows if avail.overlaps_window(r, date_from, date_to)]
+        rows = [
+            r
+            for r in (await self.ctx.session.execute(stmt)).scalars().all()
+            if avail.overlaps_window(r, date_from, date_to)
+        ]
+        # One name query for the whole page, never one per row (docs/PERFORMANCE.md) — and
+        # resolved here rather than in the browser, because a cross-person list is exactly the
+        # caller that holds no roster to join against.
+        names = await self._availability_names({r.user_id for r in rows})
+        return [
+            AvailabilityRead.model_validate(r).model_copy(
+                update={"user_name": names.get(r.user_id, "")}
+            )
+            for r in rows
+        ]
+
+    async def _availability_names(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Live account names for the people a list answered for. The snapshot rule (§16) does
+        not apply: an availability row is a statement about a *future* week, so a departed
+        colleague's rows are gone with them and there is no past to keep readable."""
+        if not user_ids:
+            return {}
+        return dict(
+            (
+                await self.ctx.session.execute(
+                    select(User.id, func.coalesce(User.full_name, User.email)).where(
+                        User.id.in_(list(user_ids))
+                    )
+                )
+            ).all()
+        )
 
     async def availability_days(
         self,
@@ -1091,17 +1121,7 @@ class LeaveService:
             contracts_by_user.setdefault(contract.user_id, []).append(contract)
         # Names for the people actually answered for, and the zone every instant below is
         # anchored in — one query each for the whole window, never one per day (PERFORMANCE.md).
-        names: dict[uuid.UUID, str] = {}
-        if by_user:
-            names = dict(
-                (
-                    await self.ctx.session.execute(
-                        select(User.id, func.coalesce(User.full_name, User.email)).where(
-                            User.id.in_(list(by_user))
-                        )
-                    )
-                ).all()
-            )
+        names = await self._availability_names(set(by_user))
         zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
 
         days: list[AvailabilityDay] = []

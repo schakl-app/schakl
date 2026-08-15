@@ -82,7 +82,8 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
-  import AvailabilityManager, { type AvailabilityEntry } from "./AvailabilityManager.svelte";
+  import AvailabilityManager from "./AvailabilityManager.svelte";
+  import type { AvailabilityEntry } from "./availability";
   import EmploymentWizard, {
     type WizardContract,
     type WizardPattern,

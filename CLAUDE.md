@@ -1064,6 +1064,26 @@ apply as everywhere.
   `any` for an admin), not `leave.profile.manage` — **the contract is the agency's and the
   exceptions are the freelancer's**, so "I'm also free on Wednesdays" is a weekly `extra` rather
   than a rewrite of the period somebody was engaged under.
+- **A record needs a list, and the list is where the second permission finally works** (#368).
+  Availability shipped as a *section* and two ⋯ modals — three surfaces, each about one person —
+  so "who can I book on the 14th" meant opening one modal per freelancer, `PATCH` had no caller
+  anywhere in the web and therefore no test, and every host hardcoded `today → +365`, which made
+  the past unreachable and uncorrectable. `/leave/availability` is the rows themselves, with the
+  window in the URL. Four rules generalise. **An endpoint nothing calls is not "ready", it is
+  untested** — the PATCH was written, mounted, documented and unreachable, and its first test
+  found nothing wrong precisely because writing one is what closes that loop. **A screen's gate
+  must be the gate its own permission names**: the roster read `approver && can(availability
+  .write:any)` under a comment saying that availability is deliberately *not* leave approval, and
+  it also derived "who is a freelancer" from contracts fetched only for `leave.profile.manage` —
+  so the permission the module invented to avoid requiring that one required it, plus approval,
+  on every screen that offered it. #310's shape, twice, in the same menu item. **A repeat is a
+  rule, so the list it appears in is bounded by a window rather than by a pager** — there is no
+  offset to page on and no column to sort by (docs/PERFORMANCE.md names the exception), which is
+  exactly why the window has to be a control and not a constant. And **a feed you can read and
+  cannot write makes the user retype the day already on the screen**: the agenda's ＋ now records
+  availability and hands the leave form its date, because `CalendarSourceSpec` has `load`, `move`,
+  `people` and `splitPeople` and no create seam — the generic version of that is the right fix and
+  the hardcoded menu is the honest interim.
 - **On the agenda it is its own feed, and only the deviations are drawn** (`leave.availability`,
   the §6 calendar-source pattern). Separate from `leave.team` because it answers the opposite
   question — that feed says who is away, this one says who can be booked — and a viewer planning

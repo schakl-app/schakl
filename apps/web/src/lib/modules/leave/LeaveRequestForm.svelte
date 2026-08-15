@@ -54,6 +54,7 @@
   let {
     types,
     request = null,
+    defaultDate = "",
     balances = {},
     userOptions = null,
     canOverride = false,
@@ -65,6 +66,8 @@
     types: LeaveTypeInfo[];
     /** Existing request → edit mode (posts its id). */
     request?: RequestValues | null;
+    /** The day a create opens on — the agenda's own (#368). Ignored in edit mode. */
+    defaultDate?: string;
     /** remaining_hours by leave_type_id, to show the balance next to the type. */
     balances?: Record<string, number>;
     /** Manager register-for-someone flow: member picker options. */
@@ -117,8 +120,10 @@
   // The picked *option* — a group's representative type, or a standalone type. What actually
   // posts is `submitTypeId` below, which keeps the original pot on a same-group edit.
   let typeId = $state(optionValueFor(request?.leave_type_id ?? types[0]?.id ?? ""));
-  let startDate = $state(request?.start_date ?? "");
-  let endDate = $state(request?.end_date ?? "");
+  // A create opens on the day the caller was looking at (the agenda's "+", #368): a control that
+  // throws away the date on the screen makes the user retype what they just clicked.
+  let startDate = $state(request?.start_date ?? defaultDate);
+  let endDate = $state(request?.end_date ?? defaultDate);
   let partDay = $state(Boolean(request?.start_time || request?.end_time));
   let startTime = $state(request?.start_time ?? "");
   let endTime = $state(request?.end_time ?? "");

@@ -400,6 +400,11 @@ class AvailabilityRead(BaseModel):
     id: uuid.UUID
     org_id: uuid.UUID
     user_id: uuid.UUID
+    #: The live account, resolved on the list read the way ``AvailabilityDay.user_name`` is. A
+    #: cross-person list has to name somebody, and the alternative — the browser joining these
+    #: rows against a member roster it happens to hold — is a lookup only some hosts can make.
+    #: Empty on the single-row responses, where the caller already knows whose row they wrote.
+    user_name: str = ""
     kind: AvailabilityKind
     date: date
     start_time: Clock | None
