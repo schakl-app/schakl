@@ -28,6 +28,7 @@
     sourceLabel,
   } from "./format";
   import {
+    ALL_SOURCES,
     HEADLINE_METRICS,
     connectHref,
     type CompanyMarketing,
@@ -61,11 +62,11 @@
   );
 
   // Google's three, then the two that are not (#300, docs/WORDPRESS.md). Order is display
-  // order; the later pickers wrap onto their own row rather than squeezing the others.
-  const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads", "seranking", "rankmath"];
+  // order; the later pickers wrap onto their own row rather than squeezing the others. Shared
+  // with the connect dialog (#338) so a sixth source cannot land in one and not the other.
   const linkedIdsBySource = $derived(
     Object.fromEntries(
-      SOURCE_ORDER.map((s) => [s, sources.filter((x) => x.source === s).map((x) => x.external_id)]),
+      ALL_SOURCES.map((s) => [s, sources.filter((x) => x.source === s).map((x) => x.external_id)]),
     ) as Record<MarketingSource, string[]>,
   );
 
@@ -152,7 +153,7 @@
         </div>
       {/if}
       <div class="grid gap-4 sm:grid-cols-3">
-        {#each SOURCE_ORDER as s (s)}
+        {#each ALL_SOURCES as s (s)}
           <MarketingAccountPicker
             source={s}
             linkedIds={linkedIdsBySource[s]}

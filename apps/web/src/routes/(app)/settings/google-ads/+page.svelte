@@ -14,11 +14,17 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
 
   const busy = new InFlight();
+
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  // Empty is the agency's own account — a real state, and the one thing on this screen that
+  // cannot be a marketing link, which is why this form still exists (#338).
+  let linkCompanyId = $state("");
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -198,12 +204,17 @@
         <label for="gads-company" class="mb-1 block text-sm font-medium text-text">
           {t("settings.google_ads.client")}
         </label>
-        <select id="gads-company" name="company_id" class={inputClass}>
-          <option value="">{t("settings.google_ads.no_client")}</option>
-          {#each data.companies as company (company.id)}
-            <option value={company.id}>{company.name}</option>
-          {/each}
-        </select>
+        <!-- The house type-ahead, not a native <select> over every company (docs/UX.md, #256):
+             a closed vocabulary is still a vocabulary you search. No `oncreate` — this form is
+             for an account you already hold, and minting a client from a credentials screen is
+             not a gesture anybody standing here is making. -->
+        <Combobox
+          items={companyItems}
+          name="company_id"
+          id="gads-company"
+          bind:value={linkCompanyId}
+          placeholder={t("settings.google_ads.no_client")}
+        />
       </div>
       <div>
         <label for="gads-manager" class="mb-1 block text-sm font-medium text-text">

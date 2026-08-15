@@ -12,6 +12,14 @@
  */
 export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking" | "rankmath";
 
+/**
+ * Every source, in display order: Google's three, then the two that are not.
+ *
+ * The company panel's edit mode already had this list inline; the connect dialog (#338) needs the
+ * same one, and two copies of an order is how a sixth source lands in one place and not the other.
+ */
+export const ALL_SOURCES: MarketingSource[] = ["ga4", "gsc", "gads", "seranking", "rankmath"];
+
 /** Sources whose credential is an org-level API key, not the shared Google consent. */
 export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
 

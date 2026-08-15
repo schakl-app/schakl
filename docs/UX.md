@@ -1400,3 +1400,30 @@
   standing rule for all of them — an untrusted path goes through `safeInternalPath` at the point
   of *use*, since `//evil.example` and `/\evil.example` both read as another origin to a browser
   and a login screen is exactly where a look-alike host is worth the most.
+
+- **Two front doors to one fact, and the discoverable one was the wrong one.** A client's page
+  drew Marketing and Google Ads as two panels, one under the other, both about Google Ads and
+  each offering to connect it. They wrote to different tables: the marketing panel's picker
+  recorded the marketing link *and* the Ads account row, while the Google Ads panel's "Account
+  koppelen" sent you to Instellingen → Google Ads, which recorded only the account. So the
+  obvious path left the client half-connected — the Google Ads panel listed the account, the
+  marketing panel directly above it still said nothing was connected, and `/marketing` agreed
+  with the panel that was wrong. Nothing on any of the three screens could explain it, and the
+  cure was to do it a second time somewhere else. Three rules (#338).
+  **The write is the thing to unify, not the button.** Deduplicating the controls without the
+  API mirror (`google_ads.account.attached` → `marketing`) would have left the same split state
+  reachable through the MCP surface and the hand-typed form; deduplicating the write without the
+  controls would have left two screens teaching two different gestures. Do both, and do the write
+  first — it is what makes any of the buttons safe to point at the same place.
+  **A panel that is about X must be able to do X, without leaving the client.** Every other panel
+  on a company page keeps the client in the link it offers (`＋ Nieuwe website` →
+  `?company=<id>&new=1`); the Ads panel dropped it and landed you on an org-wide credentials
+  screen. If the reason a control lives elsewhere is "that is where the table is managed", the
+  control is in the wrong place.
+  **A field a picker can answer must never be typed.** Instellingen asked for the customer id, the
+  account name *and* the `Beheerdersaccount (MCC)` by hand — the last of which is the one value
+  that 403s every later call on that account if it is wrong. `GET /google-ads/accounts/available`
+  had resolved all three since the module shipped, walking the manager hierarchy and tagging each
+  child with the manager it must be reached through, and **no screen called it**: `grep` found it
+  only in `schema.d.ts`. A finished endpoint with no caller is not a spare part; it is a screen
+  somebody still has to write.

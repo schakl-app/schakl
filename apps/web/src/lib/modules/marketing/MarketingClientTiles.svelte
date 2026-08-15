@@ -12,7 +12,7 @@
    * so the back button lands where the user left and a link to a client's dashboard is
    * shareable (CLAUDE.md §9, the URL is the view).
    */
-  import { AlertTriangle, Clock } from "@lucide/svelte";
+  import { AlertTriangle, Clock, Plus } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
 
@@ -23,11 +23,21 @@
     rows,
     total,
     hrefFor,
+    onconnect,
   }: {
     rows: MarketingClientRow[];
     /** Linked clients in view — `rows` is capped, and a cap must never read as everything. */
     total: number;
     hrefFor: (companyId: string) => string;
+    /**
+     * Open the connect dialog (#338). Absent when the caller may not link, in which case the
+     * old sentence stands: it still says where connecting happens, which is all a reader
+     * without the permission can act on.
+     *
+     * It replaced a link to `/companies` — the whole client list, from which the actual gesture
+     * (open the client, ⋯ → Bewerken, then the picker) was still two undiscoverable steps away.
+     */
+    onconnect?: () => void;
   } = $props();
 
   let query = $state("");
@@ -47,9 +57,20 @@
 {#if rows.length === 0}
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
     <p class="text-sm text-text-muted">{t("marketing.clients.empty")}</p>
-    <a href="/companies" class="mt-2 inline-block text-sm font-medium text-brand hover:underline">
-      {t("marketing.clients.missing_cta")}
-    </a>
+    {#if onconnect}
+      <button
+        type="button"
+        class="mt-3 inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white"
+        onclick={onconnect}
+      >
+        <Plus size={15} aria-hidden="true" />
+        {t("marketing.connect.open")}
+      </button>
+    {:else}
+      <a href="/companies" class="mt-2 inline-block text-sm font-medium text-brand hover:underline">
+        {t("marketing.clients.missing_cta")}
+      </a>
+    {/if}
   </div>
 {:else}
   {#if filterable}
@@ -120,8 +141,14 @@
       {t("marketing.clients.showing", { shown: String(rows.length), total: String(total) })} ·
     {/if}
     {t("marketing.clients.missing")}
-    <a href="/companies" class="font-medium text-brand hover:underline">
-      {t("marketing.clients.missing_cta")}
-    </a>
+    {#if onconnect}
+      <button type="button" class="font-medium text-brand hover:underline" onclick={onconnect}>
+        {t("marketing.connect.open")}
+      </button>
+    {:else}
+      <a href="/companies" class="font-medium text-brand hover:underline">
+        {t("marketing.clients.missing_cta")}
+      </a>
+    {/if}
   </p>
 {/if}
