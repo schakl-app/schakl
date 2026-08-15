@@ -112,6 +112,20 @@ export interface BulkConfig {
   deletePermission?: string;
   /** The confirmation copy — entity-specific, because "12 clients" is not "12 rows". */
   deleteMessage?: string;
+  /**
+   * How many of the selected rows a delete would actually remove. Same contract as
+   * `BulkAction.eligible`, and it exists because the generic delete button had no way to say
+   * it. On `interactions` a page of Gmail email is refused per row by the service, so the bar
+   * offered an ordinary "Verwijderen" over fifty rows and the banner then answered "0
+   * verwijderd · 50 overgeslagen". The three review actions beside it had carried a count all
+   * along — "a subset of none has to say so out loud" (#299) is not the review trio's rule, it
+   * is the bar's, and the one button core owns itself was the one that could not obey it.
+   *
+   * Omit where every selectable row is deletable; the button then reads exactly as it did.
+   */
+  deleteEligible?: number;
+  /** Why a delete can do nothing with this selection. Paired with `deleteEligible: 0`. */
+  deleteDisabledReason?: string;
   /** Module-specific actions, shown before the generic pair. */
   items?: BulkAction[];
   updateAction?: string;

@@ -162,6 +162,28 @@
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
   const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
+  /**
+   * `InteractionService.delete`'s own gate (`_writable_or_404`), mirrored — the key the call
+   * makes, at the scope it makes it (§15).
+   *
+   * Deleting is **not** the edit rule, and riding `mayEdit` here is what hid that: a logged
+   * Gmail e-mail is refused no edit anybody would want (its fields mirror a real message) but it
+   * is an ordinary record to delete, so its ⋯ menu had no Verwijderen at all and the only way to
+   * meet the rule was to tick a whole page of them and read "0 verwijderd" afterwards. Nothing
+   * about the source or the status is a bar any more; whose row it is still is.
+   */
+  const mayDelete = (item: InteractionItem) =>
+    isOwner(item)
+      ? can(page.data.user, "interactions.interaction.delete", "own")
+      : can(page.data.user, "interactions.interaction.delete", "any");
+  /**
+   * How many contact moments a row actually stands for — the fold's own badge (#272).
+   *
+   * A row is a folded conversation, so deleting one deletes the thread; the confirmation has to
+   * count messages and not rows, or "9 contactmomenten verwijderen?" is the wrong number over a
+   * page where three of them are threads.
+   */
+  const messageCount = (item: InteractionItem) => item.conversation_count ?? 1;
 
   /**
    * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
@@ -199,6 +221,17 @@
     selectedItems
       .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
       .map((item) => item.id),
+  );
+  /**
+   * The rows a delete would actually remove — `mayDelete`, which is the API's own rule, over
+   * the selection. One predicate for the ⋯ menu and the bar, because a row whose menu offers
+   * Verwijderen and a bar that skips it are two answers to one question.
+   */
+  const bulkDeletableRows = $derived(selectedItems.filter(mayDelete));
+  const bulkDeletableIds = $derived(bulkDeletableRows.map((item) => item.id));
+  /** What those rows stand for: the folded threads counted out into messages. */
+  const bulkDeletableCount = $derived(
+    bulkDeletableRows.reduce((total, item) => total + messageCount(item), 0),
   );
   /**
    * Why a review action can do nothing with what is ticked — `undefined` while it can.
@@ -251,9 +284,21 @@
       : [],
     // No `fields`: nothing on a contact moment is worth setting across a selection. Delete is
     // the one generic action it takes (`app/modules/interactions/bulk.py`), and the service
-    // refuses per row what it always refuses — a row still in review, or someone else's.
+    // refuses per row what it always refuses — a row still in review, or someone else's. Which
+    // is exactly why it carries a count like the three above it: the API reporting a skipped
+    // row is the honest answer to a batch, not a substitute for saying beforehand that none of
+    // these qualify.
     deletePermission: "interactions.interaction.delete",
-    deleteMessage: t("interactions.bulk.delete_message", { count: bulkSelected.length }),
+    deleteEligible: bulkDeletableIds.length,
+    deleteDisabledReason: reviewBlocked(
+      bulkDeletableIds.length,
+      "interactions.bulk.none_deletable",
+    ),
+    // The count the dialog asks about is the count that will *go*, not the count that is ticked
+    // — and a ticked row is a folded conversation, so those are different numbers. Ticking nine
+    // rows of which three are threads deletes more than nine contact moments, and the one place
+    // to say so is before it happens.
+    deleteMessage: t("interactions.bulk.delete_message", { count: bulkDeletableCount }),
   });
 
   let showCreate = $state(false);
@@ -271,6 +316,8 @@
   let showConversation = $state(false);
   let linkingConv = $state<InteractionItem | null>(null);
   let deleteId = $state("");
+  /** What the row about to be deleted stands for, so the confirmation can name a whole thread. */
+  let deleteCount = $state(1);
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
@@ -318,13 +365,14 @@
         },
       });
     }
-    if (mayEdit(item)) {
+    if (mayDelete(item)) {
       entries.push({
         label: t("common.delete"),
         icon: Trash2,
         danger: true,
         onclick: () => {
           deleteId = item.id;
+          deleteCount = messageCount(item);
           confirmDelete = true;
         },
       });
@@ -833,10 +881,14 @@
   {/if}
 </Modal>
 
+<!-- A folded row is a conversation (#272) and deleting it deletes the thread, so the confirmation
+     says how many messages that is. One press, one honest number. -->
 <ConfirmDialog
   bind:open={confirmDelete}
   title={t("interactions.delete_title")}
-  message={t("interactions.delete_message")}
+  message={deleteCount > 1
+    ? t("interactions.delete_conversation_message", { count: deleteCount })
+    : t("interactions.delete_message")}
   action="?/deleteInteraction"
   fields={{ id: deleteId }}
 />

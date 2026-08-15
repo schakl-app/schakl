@@ -32,6 +32,8 @@
     writePermission,
     deletePermission,
     deleteMessage,
+    deleteEligible,
+    deleteDisabledReason,
     items = [],
     updateAction = "?/bulkUpdate",
     deleteAction = "?/bulkDelete",
@@ -151,15 +153,20 @@
         {/if}
 
         {#if canDelete}
+          <!-- Same three rules the `items` loop above obeys, for the same reason: an action that
+               can do nothing with what is ticked must say so instead of offering itself and
+               answering "0 verwijderd" afterwards. "Nothing is selected" still outranks the
+               entity's own reason — over an empty selection that reason answers the wrong
+               question. -->
           <button
             type="button"
             class="{button} hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
-            disabled={count === 0}
-            title={count === 0 ? t("bulk.select_first") : undefined}
+            disabled={count === 0 || deleteEligible === 0 || !!deleteDisabledReason}
+            title={count === 0 ? t("bulk.select_first") : deleteDisabledReason}
             onclick={() => (confirmDelete = true)}
           >
             <Trash2 size={14} />
-            {t("common.delete")}
+            {t("common.delete")}{partial(deleteEligible)}
           </button>
         {/if}
       </div>

@@ -778,45 +778,48 @@ async def test_a_mixed_invoice_selection_deletes_the_drafts_and_reports_the_rest
             assert still.json()["number"] == invoice["number"]
 
 
-async def test_a_gmail_row_is_reported_while_the_rest_of_the_interactions_are_deleted(
-    client_for,
-) -> None:
-    """The same contract for the other delete-only entity, refused for its own reason.
+async def test_a_selection_of_interactions_deletes_whole_conversations(client_for) -> None:
+    """The same contract for the other delete-only entity, over what its rows actually are.
 
-    ``InteractionService.delete`` guards with ``_writable_or_404`` (someone else's row without
-    ``:any`` reads as absent) and ``_reviewless_only`` (a gmail-sourced row changes through the
-    review flow, never through a plain delete). The second is the cheap one to stage — seed a
-    gmail row for the caller themselves and the ownership half passes, leaving exactly one
-    refusal — and it is the one a real selection meets: the Interacties list mixes logged
-    e-mails with notes somebody typed.
+    A page of Interacties is a page of **folded conversations** (#272), so a batch of four ticked
+    rows is not a batch of four records. This selection is a three-message thread, a pending row
+    and two hand-logged notes: six contact moments behind four rows, and all six go.
 
-    Its ``errors.interactions_gmail_readonly`` also rides ``BulkService._reason``'s other
-    branch: a refusal carrying no ``fields`` is already its own reason and passes through whole.
+    Both halves of the original bug are pinned here. Nothing is *skipped* — ``delete`` used to
+    share ``_reviewless_only`` with edit, which reads ``source == gmail`` and not the status, so
+    every one of these e-mails came back in ``failed`` and the whole page answered "0 deleted".
+    And the count is **6, not 4** — deleting only each fold's representative left the thread on
+    screen while reporting success, which is the same complaint one layer along.
     """
     t = await make_tenant("bulk-int-del")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        from_gmail = await _seed_gmail_row(t, t.user.id, message_id="m1", thread_id="t1")
+        thread = [
+            await _seed_gmail_row(
+                t, t.user.id, message_id=f"m{i}", thread_id="one-thread", pending=False
+            )
+            for i in range(3)
+        ]
+        pending = await _seed_gmail_row(t, t.user.id, message_id="p1", thread_id="p-thread")
         manual = [await _interaction(c, headers, subject) for subject in ("Kick-off", "Bellen")]
 
+        # Exactly what the screen hands over: the ids of the *rows*, folds and all.
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()
+        assert listed["total"] == 4, [row["subject"] for row in listed["items"]]
         result = await c.post(
             "/api/v1/bulk/interaction/delete",
-            json={"ids": [from_gmail, *(row["id"] for row in manual)]},
+            json={"ids": [row["id"] for row in listed["items"]]},
             headers=headers,
         )
         assert result.status_code == 200, result.text
-        assert result.json() == {
-            "succeeded": 2,
-            "failed": [{"id": from_gmail, "error": "errors.interactions_gmail_readonly"}],
-        }
+        # One row deleted is one row succeeded; the thread's other two rode along with theirs.
+        assert result.json() == {"succeeded": 4, "failed": []}
 
-        for row in manual:
+        for row_id in (*thread, pending, *(row["id"] for row in manual)):
             assert (
-                await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)
+                await c.get(f"/api/v1/interactions/{row_id}", headers=headers)
             ).status_code == 404
-        assert (
-            await c.get(f"/api/v1/interactions/{from_gmail}", headers=headers)
-        ).status_code == 200
+        assert (await c.get("/api/v1/interactions", headers=headers)).json()["total"] == 0
 
 
 def test_a_delete_only_entity_mounts_no_update_route() -> None:
