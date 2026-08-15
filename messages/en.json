@@ -2795,7 +2795,7 @@
   "interactions.close_task_no_terminal": "No finished status is configured; add one under Settings.",
   "interactions.approve_close_task": "Close the task with this interaction",
   "interactions.approve_enrich_task": "Let schakl fill the task in",
-  "interactions.approve_enrich_task_hint": "Reads this email and adds notes, a checklist, a deadline and the links it names. Happens in the background; you do not have to wait.",
+  "interactions.approve_enrich_task_hint": "Reads this email and adds short notes, a checklist, a deadline and the links the work needs. Happens in the background; you do not have to wait.",
   "interactions.close_after_approve_failed": "The email was approved, but closing the task failed:",
   "interactions.close_after_create_failed": "The contact moment was saved, but closing the task failed:",
   "interactions.quoted_show": "Show earlier messages",

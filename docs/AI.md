@@ -128,10 +128,45 @@ they were working on.
 ## Email into task (#327)
 
 `email_assist` reads an approved email into the task it was filed onto: notes, a checklist, a
-deadline, a comment, the links it names, and whether closing it needs an answer to the sender.
+deadline, the links the work needs, and whether closing it needs an answer to the sender.
 Opt-in per approval (`InteractionApprove.enrich_task`), off by default. It lives in
 `app/modules/interactions/enrich.py` — the module owns its prompt and its grounding, exactly as
 `reporting` does — and writes through `tasks/system.py`, never `TaskService`.
+
+### What real mail changed
+
+Three faults, and the first two are one rule twice: **the screen around the task already answers
+this, so writing it again is not thoroughness, it is noise.**
+
+**Notes are the few lines that let someone act.** They arrived as a provenance header (sender ·
+subject · date), then a paragraph naming the sender, then the message retold one bullet per
+sentence, then a line stating what the mail did *not* say. All four are on the interaction, which
+is linked to the task and one click away. The header is gone outright; the other three are
+refused **by name** in the prompt, because the instruction that was already there — "never
+restate the whole email" — described the fault without naming any of its shapes, and a model
+cannot avoid a shape it has not been shown.
+
+**Grounding answers forgery, not relevance, and only one of those was ever a problem.** "The URL
+must appear in the body" is honest about a footer link: it *is* in the body. So one mail put
+eight links on a task of which three were the work — the sender's homepage, their Google review
+invitation, their terms page, a contact page, and the Calendly embed's own `widget.js`. The
+second question is asked structurally (`_is_boilerplate_url`), for the reason a filter usually
+is: a model obeying "only what appears in the message" is being obedient, and being wrong. It is
+answered by **what the URL points at** — a bare host (a name, not a destination), a standing page
+(`voorwaarden`, `privacy`, `contact`, `review`, `unsubscribe`, …), a social/map/profile host, an
+asset extension — and never by locating a signature block, because no boundary survives the
+HTML→markdown conversion, an inline footer with no `--` delimiter, and a forwarded thread
+carrying two of them, whereas what boilerplate *points at* is the same in all three.
+`MAX_EMAIL_LINKS = 4`, far under the seam's own ten: a link panel is a shortlist of what to open,
+and past a handful nobody opens any of them.
+
+**The comment is off the vocabulary.** It only ever restated the notes a paragraph later, most
+often as "the sender asks nothing further" — a conclusion the model is deliberately unable to act
+on, since status is not on `TaskEnrichment` and never will be ("this is resolved, close it" is
+the first sentence a hostile email would try). Closing the task with this contact moment stays
+the *other tick in the same dialog* (`close_task` → `Task.closing_interaction_id`), where a
+person makes it. A field whose only possible content is a duplicate or an unactionable verdict is
+noise, and the approve dialog never advertised one either.
 
 Three things make it different from every other feature here, and all three follow from one
 fact: **its input is written by someone outside the organisation.**
@@ -156,14 +191,17 @@ and it is a request rather than a control. What actually bounds the damage:
 3. **Links are grounded in the message.** A URL the model proposes must appear in the body. Be
    precise about what that buys: it does **not** make a link safe — whoever wrote the email chose
    its links, and carrying them over is the feature. It guarantees nothing is added that was *not
-   in the message*, which is what stops an invented address landing on a colleague's board.
+   in the message*, which is what stops an invented address landing on a colleague's board. The
+   boilerplate filter above sits *beside* it and answers a different question; neither substitutes
+   for the other.
 4. **Our own markup is stripped** before storage (`tasks/system._untrusted_markdown`, using
    `MENTION_RE` itself so the strip cannot drift from the extractor that finds them). An email
    must not be able to make the platform notify anyone.
 5. **The writes are conservative wherever they are irreversible**: the description is appended,
    never replaced; a due date only fills a blank, and only inside a bounded window;
    `requires_interaction` is one-way (adding a guard is safe to be wrong about, removing one a
-   person asked for is not); and the comment fans out to nobody.
+   person asked for is not); and the notes are capped at `MAX_SUMMARY_CHARS` so a runaway answer
+   is a bounded one.
 
 **Its own toggle, against this file's own advice.** Riding an existing key is usually right, and
 here it is not: this is the only feature that sends a *client's own words* to a model, and an

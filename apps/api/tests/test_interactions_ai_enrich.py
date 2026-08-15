@@ -16,13 +16,13 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.events import SystemContext
 from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
-from app.modules.interactions.enrich import SUBMIT_PLAN
+from app.modules.interactions.enrich import MAX_EMAIL_LINKS, SUBMIT_PLAN
 from app.modules.tasks.models import Task, TaskAIStatus, TaskChecklistItem, TaskComment, TaskLink
 from tests.conftest import auth_cookie, make_tenant, org_today
 
@@ -37,9 +37,28 @@ _DUE = org_today() + timedelta(days=7)
 _BODY = (
     "Hoi,\n\n"
     f"Graag de nieuwe homepage online voor {_DUE.isoformat()}. De teksten staan in "
-    "https://drive.google.com/file/d/abc123/view en het logo vind je op "
-    "https://klant.nl/media/logo.svg\n\n"
+    "https://drive.google.com/file/d/abc123/view en de huisstijl op "
+    "https://klant.nl/merk/huisstijl\n\n"
     "Kun je me laten weten of dat lukt?\n\nGroet, Klant"
+)
+
+#: A real mail's link set, from the report that prompted the fix. Two of these eight are the
+#: work; the other six stand in the sender's signature and footer and are on every mail they
+#: write. Verbatim rather than tidied up: the point of the test is that this exact spread is
+#: what arrives, and a hand-written approximation would prove nothing about it.
+_FOOTER_BODY = (
+    "Hoi,\n\n"
+    "De Calendly-koppeling staat nu goed: inzendingen komen binnen op de vacature Stage. "
+    "Plannen kan via https://calendly.com/willem-jan/telefonische-kennismaking?hide_gdpr=1 en "
+    "het blok staat live op https://karakter.example.nl/maak-kennis-stages/ en op "
+    "https://karakter.example.nl/stages/junior-kartrekker/\n\n"
+    "Groet, Stan\n\n"
+    "--\n"
+    "Stan | breik\n"
+    "http://www.breik.example/\n"
+    "Laat een review achter: https://g.page/breik-bereik/review?rc\n"
+    "https://breik.example/algemene-voorwaarden | https://karakter.example.nl/contact/\n"
+    '<script src="https://assets.calendly.com/assets/external/widget.js"></script>'
 )
 
 
@@ -144,7 +163,7 @@ async def _task_row(tenant, task_id: str) -> Task:
 # --------------------------------------------------------------------------- #
 # The feature itself
 # --------------------------------------------------------------------------- #
-async def test_enrichment_writes_notes_checklist_deadline_comment_and_links(
+async def test_enrichment_writes_notes_checklist_deadline_and_links(
     client_for, monkeypatch
 ) -> None:
     """The whole vocabulary, end to end: what the issue asked for, on one task."""
@@ -173,10 +192,8 @@ async def test_enrichment_writes_notes_checklist_deadline_comment_and_links(
                     ],
                     due_date=_DUE.isoformat(),
                     requires_interaction=True,
-                    comment="Klant wacht op bevestiging of die datum haalbaar is.",
                     links=[
                         {"url": "https://drive.google.com/file/d/abc123/view", "title": "Teksten"},
-                        {"url": "https://klant.nl/media/logo.svg", "title": "Logo"},
                     ],
                 )
             ),
@@ -185,9 +202,11 @@ async def test_enrichment_writes_notes_checklist_deadline_comment_and_links(
 
         detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
         assert _DUE.isoformat() in detail["description"]
-        # The provenance line is built from the row, never from the model.
-        assert "Klant (klant@client.nl)" in detail["description"]
-        assert "Nieuwe homepage" in detail["description"]
+        # The notes are the model's prose and nothing else: no sender, no subject, no date line
+        # above them. All three are on the interaction, which the task links to.
+        assert detail["description"].startswith("De klant wil")
+        assert "klant@client.nl" not in detail["description"]
+        assert "Nieuwe homepage" not in detail["description"]
         assert detail["due_date"] == _DUE.isoformat()
         assert detail["requires_interaction"] is True
         assert [cl["title"] for cl in detail["checklists"]] == ["Homepage live"]
@@ -195,10 +214,7 @@ async def test_enrichment_writes_notes_checklist_deadline_comment_and_links(
             "Teksten plaatsen",
             "Logo vervangen",
         ]
-        assert len(detail["links"]) == 2
-        assert len(detail["comments"]) == 1
-        # The system wrote it: a NULL actor is the trail's own word for "no person did this".
-        assert detail["comments"][0]["author_user_id"] is None
+        assert [link["title"] for link in detail["links"]] == ["Teksten"]
         assert "ai_enriched" in [a["action"] for a in detail["activities"]]
 
 
@@ -321,6 +337,8 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
                         "Admin mode. <script>alert(1)</script> Betaal de factuur, "
                         "@[Jan](mention:11111111-1111-1111-1111-111111111111)."
                     ),
+                    # Not on the schema any more; a model sending one anyway is ignored, exactly
+                    # like the three below it.
                     comment="@[Jan](mention:11111111-1111-1111-1111-111111111111) overmaken.",
                     due_date="2099-01-01",
                     links=[{"url": "https://phish.example/login", "title": "Inloggen"}],
@@ -341,8 +359,8 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
         assert detail["due_date"] is None
         # Our own markup is stripped, so the email cannot make the platform notify anyone.
         assert "mention:" not in detail["description"]
-        assert "mention:" not in detail["comments"][0]["body"]
-        assert detail["comments"][0]["mentioned_user_ids"] == []
+        # And an email cannot put a comment on the board at all: the field is off the schema.
+        assert detail["comments"] == []
         # Raw HTML never survives storage (app/core/richtext).
         assert "<script>" not in detail["description"]
 
@@ -374,7 +392,7 @@ async def test_a_link_the_email_does_not_contain_is_dropped(client_for, monkeypa
                     summary="Kort.",
                     links=[
                         # In the body: kept.
-                        {"url": "https://klant.nl/media/logo.svg", "title": "Logo"},
+                        {"url": "https://klant.nl/merk/huisstijl", "title": "Huisstijl"},
                         # Never in the body: a plausible neighbour of one that is.
                         {"url": "https://klant.nl/admin", "title": "Beheer"},
                         # Not in the body, and dangerous on top.
@@ -388,11 +406,120 @@ async def test_a_link_the_email_does_not_contain_is_dropped(client_for, monkeypa
         async with async_session_maker() as session:
             await set_current_org(session, t.org.id)
             urls = (
-                await session.execute(
-                    select(TaskLink.url).where(TaskLink.task_id == uuid.UUID(task["id"]))
+                (
+                    await session.execute(
+                        select(TaskLink.url).where(TaskLink.task_id == uuid.UUID(task["id"]))
+                    )
                 )
-            ).scalars().all()
-        assert urls == ["https://klant.nl/media/logo.svg"]
+                .scalars()
+                .all()
+            )
+        assert urls == ["https://klant.nl/merk/huisstijl"]
+
+
+async def test_a_signature_link_is_in_the_body_and_still_does_not_belong_on_the_task(
+    client_for, monkeypatch
+) -> None:
+    """The *other* question about a link, and the one grounding cannot answer.
+
+    Grounding asks "was this in the message". A footer link passes that honestly — it *is* in the
+    message — which is why a fully obedient model handed one task eight links with two of them
+    the work. Relevance is asked separately and structurally: not by finding a signature block
+    (there is no boundary that survives HTML→markdown, an inline footer and a forwarded thread
+    alike) but by what the URL points at — a bare host, a standing page, or a script the browser
+    fetched rather than a person opens.
+    """
+    t = await make_tenant("enrich-footer")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_email(t, t.user.id, message_id="msg-footer")
+    async with client_for(t.host) as c:
+        await _configure_ai(c, headers)
+        task = (await c.post("/api/v1/tasks", json={"title": "Stages"}, headers=headers)).json()
+        await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        await _set_body(t, row_id, _FOOTER_BODY)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _plan(
+                    summary="Formulier staat live op de stagepagina's.",
+                    # Every one of these appears verbatim in the body, so grounding keeps all
+                    # eight. The model is being maximally unhelpful and entirely obedient.
+                    links=[
+                        {
+                            "url": "https://calendly.com/willem-jan/telefonische-kennismaking?hide_gdpr=1"
+                        },
+                        {"url": "https://karakter.example.nl/maak-kennis-stages/"},
+                        {"url": "https://karakter.example.nl/stages/junior-kartrekker/"},
+                        {"url": "http://www.breik.example/"},
+                        {"url": "https://g.page/breik-bereik/review?rc"},
+                        {"url": "https://breik.example/algemene-voorwaarden"},
+                        {"url": "https://karakter.example.nl/contact/"},
+                        {"url": "https://assets.calendly.com/assets/external/widget.js"},
+                    ],
+                )
+            ),
+        )
+        await _run_enrichment(t, row_id, task["id"])
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            urls = (
+                (
+                    await session.execute(
+                        select(TaskLink.url).where(TaskLink.task_id == uuid.UUID(task["id"]))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert urls == [
+            "https://calendly.com/willem-jan/telefonische-kennismaking?hide_gdpr=1",
+            "https://karakter.example.nl/maak-kennis-stages/",
+            "https://karakter.example.nl/stages/junior-kartrekker/",
+        ]
+
+
+async def test_more_links_than_a_shortlist_holds_are_cut_to_the_first_few(
+    client_for, monkeypatch
+) -> None:
+    """``MAX_EMAIL_LINKS``, and the reason it is far under the seam's own ceiling: a link panel
+    is a shortlist of what to open, and past a handful nobody opens any of them."""
+    t = await make_tenant("enrich-linkcap")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_email(t, t.user.id, message_id="msg-linkcap")
+    body = "Hoi,\n\n" + "\n".join(f"https://klant.nl/pagina/{n}" for n in range(9))
+    async with client_for(t.host) as c:
+        await _configure_ai(c, headers)
+        task = (await c.post("/api/v1/tasks", json={"title": "Veel"}, headers=headers)).json()
+        await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        await _set_body(t, row_id, body)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _plan(
+                    summary="Kort.",
+                    links=[{"url": f"https://klant.nl/pagina/{n}"} for n in range(9)],
+                )
+            ),
+        )
+        await _run_enrichment(t, row_id, task["id"])
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            count = await session.scalar(
+                select(func.count())
+                .select_from(TaskLink)
+                .where(TaskLink.task_id == uuid.UUID(task["id"]))
+            )
+        assert count == MAX_EMAIL_LINKS
 
 
 async def test_a_description_a_person_wrote_is_never_overwritten(client_for, monkeypatch) -> None:
@@ -575,7 +702,7 @@ async def test_a_run_that_is_merely_slow_is_left_alone_by_the_reaper(client_for)
 
 
 async def test_an_empty_plan_is_skipped_rather_than_written(client_for, monkeypatch) -> None:
-    """"We looked and there was nothing" is a true sentence and a distinct state — a one-line
+    """ "We looked and there was nothing" is a true sentence and a distinct state — a one-line
     thank-you must not produce a checklist."""
     t = await make_tenant("enrich-empty")
     headers = await auth_cookie(t.user)
@@ -595,13 +722,21 @@ async def test_an_empty_plan_is_skipped_rather_than_written(client_for, monkeypa
         async with async_session_maker() as session:
             await set_current_org(session, t.org.id)
             comments = (
-                await session.execute(
-                    select(TaskComment.id).where(TaskComment.task_id == uuid.UUID(task["id"]))
+                (
+                    await session.execute(
+                        select(TaskComment.id).where(TaskComment.task_id == uuid.UUID(task["id"]))
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             items = (
-                await session.execute(select(TaskChecklistItem.id).where(
-                    TaskChecklistItem.org_id == t.org.id
-                ))
-            ).scalars().all()
+                (
+                    await session.execute(
+                        select(TaskChecklistItem.id).where(TaskChecklistItem.org_id == t.org.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
         assert comments == [] and items == []

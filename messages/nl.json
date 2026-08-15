@@ -2795,7 +2795,7 @@
   "interactions.close_task_no_terminal": "Er is geen afgeronde status ingesteld; voeg er een toe via Instellingen.",
   "interactions.approve_close_task": "Rond de taak af met dit contactmoment",
   "interactions.approve_enrich_task": "Laat schakl de taak invullen",
-  "interactions.approve_enrich_task_hint": "Leest deze e-mail en voegt notities, een checklist, een deadline en de genoemde links toe. Gebeurt op de achtergrond; je hoeft niet te wachten.",
+  "interactions.approve_enrich_task_hint": "Leest deze e-mail en voegt korte notities, een checklist, een deadline en de links die je nodig hebt toe. Gebeurt op de achtergrond; je hoeft niet te wachten.",
   "interactions.close_after_approve_failed": "De e-mail is goedgekeurd, maar het afronden van de taak is mislukt:",
   "interactions.close_after_create_failed": "Het contactmoment is opgeslagen, maar het afronden van de taak is mislukt:",
   "interactions.quoted_show": "Toon eerdere berichten",
