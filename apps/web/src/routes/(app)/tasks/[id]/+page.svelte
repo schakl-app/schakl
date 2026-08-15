@@ -1785,11 +1785,14 @@
               {/each}
             </ul>
             {#if canEditTask}
-              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
+              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244).
+                   `clearAndFocus`, not `clear`: this row is typed into in runs, and a successful
+                   action ends with SvelteKit focusing the body, so Enter used to add the item and
+                   then drop the cursor (#367). -->
               <form
                 method="POST"
                 action="?/addItem"
-                use:enhance={busy.wrap(`addItem:${checklist.id}`)}
+                use:enhance={busy.clearAndFocus(`addItem:${checklist.id}`, "title")}
                 class="mt-2 flex gap-2"
               >
                 <input type="hidden" name="checklist_id" value={checklist.id} />

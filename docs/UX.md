@@ -728,6 +728,16 @@
     that already exists, and `busy.clear(key)` when you actively want the form emptied for the
     next entry. Choosing between two named methods is a decision; remembering to hand-write a
     `reset: false` callback is a thing to forget, and twenty components had each re-derived it.
+  - **A quick-add row also has to keep the caret: `busy.clearAndFocus(key, name)`** (#367). A
+    field that exists to be filled in over and over — a checklist to-do, a tag — wants the reset
+    *and* wants the cursor left in it, and the second half does not come for free: `applyAction`
+    ends every successful action with SvelteKit's `reset_focus()`, an accessibility rule written
+    for navigations and applied to form results too, which focuses `document.body`. So Enter
+    added the item and then quietly took the field away, and adding five to-dos cost five trips
+    back to the mouse. The affordance refocuses the form's own input once the update has settled
+    (so no `bind:this` inside an `{#each}`), only on success — a refusal leaves focus where the
+    error handling put it — and places the caret at the *end*, because anything typed while the
+    request was in flight survives the reset that fired before it.
   - **The affordance was not enough on its own, so the rule is now enforced**
     (`scripts/forms-check.mjs`, `pnpm forms:check`, run in CI's web job and by the pre-commit
     hook on any staged `.svelte`). It shipped a *third* time after the two above — Instellingen

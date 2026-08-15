@@ -13,6 +13,7 @@
 //
 //   use:enhance={busy.keep(key)}                     edits what exists — never reset
 //   use:enhance={busy.clear(key)}                    starts something new — empty it
+//   use:enhance={busy.clearAndFocus(key, name)}      a quick-add row — empty it, keep the caret
 //   use:enhance={busy.wrap(key, () => ({update}) =>  the mixed case, argued in place
 //     update({ reset: !entry }))}
 //
@@ -65,12 +66,12 @@ function tagEnd(src, start) {
  * A form may delegate to a named `SubmitFunction`, so follow one hop into the script.
  */
 function decided(tag, src) {
-  if (/\.(keep|clear)\(|reset\s*:/.test(tag)) return true;
+  if (/\.(keep|clear|clearAndFocus)\(|reset\s*:/.test(tag)) return true;
   const expr = tag.match(/use:enhance=\{([\s\S]*)$/)?.[1] ?? '';
   const name = expr.match(/^\s*([A-Za-z_$][\w$]*)\s*\}/)?.[1];
   if (!name) return false;
   const at = src.search(new RegExp(`(?:const|let|function)\\s+${name}\\b`));
-  return at !== -1 && /reset\s*:|\.(keep|clear)\(/.test(src.slice(at, at + 1200));
+  return at !== -1 && /reset\s*:|\.(keep|clear|clearAndFocus)\(/.test(src.slice(at, at + 1200));
 }
 
 /** Does this form body hold a control whose value a reset would destroy? */

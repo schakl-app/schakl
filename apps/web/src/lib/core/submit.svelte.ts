@@ -102,4 +102,47 @@ export class InFlight {
       await update({ reset: true });
     });
   }
+
+  /**
+   * {@link clear}, for a **quick-add row**: one field that exists to be filled in over and
+   * over — a checklist to-do, a tag, a line item — where the next thing the user does is
+   * type the next one.
+   *
+   * Emptying it is right and already happens; what does not happen is keeping the caret.
+   * `applyAction` ends a successful action with SvelteKit's `reset_focus()`, an
+   * accessibility rule written for navigations and applied to form results too: it focuses
+   * `document.body`, so the field the user was typing in goes quiet a moment after the
+   * response lands and adding five to-dos costs five trips back to the mouse (#367). This
+   * puts the cursor back in the same input — `formElement`'s, so a row inside an `{#each}`
+   * needs no `bind:this` — after the update has settled, and only when the write succeeded:
+   * a refusal leaves focus where SvelteKit's own error handling put it.
+   *
+   * Whatever was typed *while the request was in flight* survives (the reset fires at the
+   * start of `update()`, the keystrokes after it), so the caret is placed at the end of the
+   * value rather than at the start.
+   *
+   * @param field `name` of the input to return to; the first non-hidden control otherwise.
+   */
+  clearAndFocus(
+    key: string | ((input: Parameters<SubmitFunction>[0]) => string) = "",
+    field?: string,
+  ): SubmitFunction {
+    return this.wrap(key, ({ formElement }) => async ({ update, result }) => {
+      await update({ reset: true });
+      if (result.type !== "success") return;
+      const el = field
+        ? formElement.elements.namedItem(field)
+        : formElement.querySelector("input:not([type='hidden']), textarea, select");
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+      el.focus();
+      // `setSelectionRange` throws on the input types that have no text selection (number,
+      // date, colour, …), and a quick-add row is free to use one.
+      if (SELECTABLE.has(el instanceof HTMLTextAreaElement ? "textarea" : el.type)) {
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  }
 }
+
+/** Controls whose selection can be moved — everything else throws on `setSelectionRange`. */
+const SELECTABLE = new Set(["text", "search", "url", "tel", "password", "textarea"]);
