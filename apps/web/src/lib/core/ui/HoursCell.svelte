@@ -1,89 +1,50 @@
 <script lang="ts">
   /**
-   * Available (remaining) hours against a budget, with a burn bar (#25).
+   * Hours against a budget in a table cell, with a burn bar (#25).
    *
-   * `12,5 / 40 u` plus a bar on the one documented scale (`core/burn.ts`). Over budget the number
-   * goes negative and red rather than clamping to a reassuring zero; the bar's *width* clamps,
-   * because a bar cannot be 130 % long.
+   * `0 / 5 u` is **spent of budget** — the one meaning the bare form has anywhere in the app
+   * (`core/hours.ts`, #340). This cell used to print the *remainder* in the same nine glyphs,
+   * so the same project read `0 / 5 u` on My Day and `5 / 5 u` here, with the identical empty
+   * bar under both. What is left is still the more useful sentence on a client list, so it is
+   * still here — on hover, in words (`5 u over`), where it cannot be mistaken for the other
+   * number. Over budget the remainder goes negative and red rather than clamping to a
+   * reassuring zero; the bar's *width* clamps, because a bar cannot be 130 % long.
    *
    * With no budget there is nothing to remain, so this shows an em-dash — never a fabricated
    * total — while still reporting the hours that were spent. Hours the budget never covered
-   * (unapproved, or on the client's unbudgeted work) are named in the tooltip: excluded from the
-   * arithmetic, never dropped from the record.
+   * (unapproved, or on the client's unbudgeted work) are named in the tooltip and marked with a
+   * `*`: excluded from the arithmetic, never dropped from the record.
    */
-  import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
-  import { fmtNumber } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { hoursBurn, hoursSpentText, type HoursFields } from "$lib/core/hours";
+  import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
 
-  interface Hours {
-    period?: string | null;
-    budget_hours?: number | null;
-    spent_hours?: number;
-    unapproved_hours?: number;
-    unbudgeted_hours?: number;
-    remaining_hours?: number | null;
-  }
+  let { hours }: { hours?: HoursFields | null } = $props();
 
-  let { hours }: { hours?: Hours | null } = $props();
-
-  const budget = $derived(hours?.budget_hours ?? null);
-  const spent = $derived(hours?.spent_hours ?? 0);
-  const remaining = $derived(hours?.remaining_hours ?? null);
-  const pct = $derived(burnPct(spent, budget));
-
-  const periodLabel = $derived(
-    hours?.period ? t(`table.hours.period.${hours.period}`) : t("table.hours.period.mixed"),
-  );
-
-  // Everything the bar deliberately does not account for, said out loud on hover.
-  const caveats = $derived(
-    [
-      hours?.unapproved_hours
-        ? t("table.hours.unapproved", { hours: fmtNumber(hours.unapproved_hours) })
-        : null,
-      hours?.unbudgeted_hours
-        ? t("table.hours.unbudgeted", { hours: fmtNumber(hours.unbudgeted_hours) })
-        : null,
-    ].filter(Boolean) as string[],
-  );
-
-  const tooltip = $derived(
-    [
-      budget != null
-        ? t("table.hours.of_budget", { spent: fmtNumber(spent), budget: fmtNumber(budget) })
-        : t("table.hours.no_budget"),
-      budget != null ? periodLabel : null,
-      ...caveats,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-  );
+  const burn = $derived(hoursBurn(hours));
+  // Without a budget the whole record is what was logged, so a client whose hours all sit outside
+  // a budgeted project still reports them rather than an unexplained zero.
+  const loose = $derived(hoursSpentText(burn?.spent || (hours?.unbudgeted_hours ?? 0), null));
 </script>
 
-{#if !hours}
+{#if !burn}
   <span class="text-text-muted">—</span>
-{:else if budget == null}
+{:else if burn.budget == null}
   <!-- No allowance to burn. The spend is still on the record. -->
-  <span class="text-text-muted" title={tooltip}>
+  <span class="text-text-muted" title={burn.title}>
     —
-    {#if spent > 0 || hours.unbudgeted_hours}
-      <span class="ml-1 text-xs">
-        ({fmtNumber(spent || (hours.unbudgeted_hours ?? 0))} u)
-      </span>
+    {#if burn.spent > 0 || hours?.unbudgeted_hours}
+      <span class="ml-1 text-xs">({loose})</span>
     {/if}
   </span>
 {:else}
-  <span class="inline-flex flex-col items-end gap-1" title={tooltip}>
-    <span class="whitespace-nowrap text-xs">
-      <span class="font-medium {burnTextClass(pct)}">{fmtNumber(remaining ?? 0)}</span>
-      <span class="text-text-muted">/ {fmtNumber(budget)} u</span>
-      {#if caveats.length > 0}<span class="text-text-muted" aria-hidden="true">*</span>{/if}
-    </span>
-    <span class="h-1.5 w-full min-w-16 overflow-hidden rounded-full bg-surface">
-      <span
-        class="block h-full rounded-full {burnBarClass(pct)}"
-        style="width: {burnBarWidth(pct)}%"
-      ></span>
-    </span>
-  </span>
+  <!-- The one burn block (core/ui/BudgetBar.svelte): thresholds, the unclamped remainder and the
+       clamped width are decided there, the words in core/hours.ts. -->
+  <BudgetBar
+    variant="inline"
+    spent={burn.spent}
+    budget={burn.budget}
+    spentText={burn.caveats.length > 0 ? `${burn.spentText} *` : burn.spentText}
+    remainingText={burn.remainingText}
+    titleText={burn.title}
+  />
 {/if}

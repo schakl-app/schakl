@@ -644,6 +644,23 @@
   caller passes the two raw numbers (which decide the colour) and the formatted strings (which say
   it in that module's unit and words), because a task budgets minutes and a project budgets hours.
   Reach for it before writing a bar.
+- **A bare `x / y` is spent-of-budget, and a remainder always carries its own word** (#340,
+  `core/hours.ts`). `0 / 5 u` and `5 / 5 u` are the same nine glyphs: My Day printed the spend,
+  the companies and projects lists printed what was left of the same budget, and both drew the
+  identical bar underneath — so on the list an empty bar sat beside the figure `5`, which reads
+  as "5 used". One screen apart, the same project. The meaning was chosen because two things
+  already agreed on it: the bar has always drawn the spend, and `/time` already printed
+  `0 / 5 u deze periode`. What is left is the more useful sentence on a client list, so it did
+  not disappear — it moved to the hover, in words (`5 u over`), where it cannot be mistaken for
+  the other number. `HoursCell`'s tooltip used to *lead* with `{spent} van {budget} u` while the
+  cell beside it showed the remainder, so a single element disagreed with itself.
+  Three rules generalise past this bug. **The words live with the numbers**: `core/hours.ts` is
+  `modules/tasks/budget.ts` for the unit a project budgets in, and a shared *component* only
+  fixes half of it while five callers still write the sentence themselves. **A column header is
+  part of the figure** — the cell could not be corrected without renaming *Beschikbare uren* to
+  *Geboekt / budget*, because a header naming the other reading is the same bug one row up. And
+  **an ambiguous figure is not fixed by formatting it better**: `{spent} / {budget}` was
+  perfectly formatted on both screens.
 - **A task's hour budget belongs where the hours are spent, not only on the task** (#313). The
   allocation existed for a year and was drawn on exactly one screen — the task's own card, the one
   place you are *not* when you are logging against it or deciding what to pick up. It is now on

@@ -13,7 +13,7 @@
    * never reads as "those are all the budgets" when it isn't.
    */
   import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
-  import { fmtNumber } from "$lib/core/format";
+  import { hoursBurn, type HoursFields } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
 
   interface ProjectRow {
@@ -21,11 +21,7 @@
     name?: string;
     status?: string;
     company_id?: string | null;
-    hours?: {
-      budget_hours?: number | null;
-      spent_hours?: number;
-      remaining_hours?: number | null;
-    } | null;
+    hours?: HoursFields | null;
     budget_sources?: { subscription_id: string; name: string }[] | null;
   }
 
@@ -47,16 +43,13 @@
     const items = projects
       .filter((p) => p.status !== "archived" && p.hours?.budget_hours != null)
       .map((p) => {
-        const spent = p.hours?.spent_hours ?? 0;
-        const budget = p.hours?.budget_hours ?? 0;
+        const burn = hoursBurn(p.hours);
         return {
           id: p.id,
           name: p.name ?? "",
           company: companyName(p.company_id),
-          spent,
-          budget,
-          remaining: p.hours?.remaining_hours ?? Math.round((budget - spent) * 100) / 100,
-          pct: burnPct(spent, budget),
+          burn,
+          pct: burnPct(burn?.spent ?? 0, burn?.budget ?? null),
           sources: (p.budget_sources ?? []).map((s) => s.name).join(", "),
         };
       });
@@ -79,9 +72,7 @@
               {project.name}
             </a>
             <span class="shrink-0 text-sm font-semibold tabular-nums {burnTextClass(project.pct)}">
-              {project.remaining < 0
-                ? t("time.budget.over", { hours: fmtNumber(-project.remaining, 1) })
-                : t("time.budget.remaining", { hours: fmtNumber(project.remaining, 1) })}
+              {project.burn?.remainingText}
             </span>
           </div>
           {#if project.pct != null}
@@ -95,10 +86,7 @@
           {/if}
           <div class="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs">
             <span class="tabular-nums text-text-muted">
-              {t("time.budget.spent", {
-                spent: fmtNumber(project.spent, 1),
-                budget: fmtNumber(project.budget, 1),
-              })}
+              {t("time.budget.spent", { hours: project.burn?.spentText ?? "" })}
             </span>
             <span class="min-w-0 truncate text-text-muted">
               {project.sources

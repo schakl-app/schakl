@@ -7,9 +7,9 @@
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
-  import { burnPct } from "$lib/core/burn";
   import { formatDurationInput, parseDurationText } from "$lib/core/duration";
-  import { fmtDateTime, fmtNumber, fmtNumericDate } from "$lib/core/format";
+  import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
+  import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
@@ -267,17 +267,11 @@
   // **is** the agreement's included hours (#225). One number, named after where it comes from.
   const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
   const pickedBurn = $derived.by(() => {
-    const hours = pickedProject?.hours;
-    if (!hours || hours.budget_hours == null) return null;
-    const spent = hours.spent_hours ?? 0;
-    return {
-      spent,
-      budget: hours.budget_hours,
-      // The API's own remainder (unclamped, so an over-budget project reads negative).
-      remaining: hours.remaining_hours ?? Math.round((hours.budget_hours - spent) * 100) / 100,
-      pct: burnPct(spent, hours.budget_hours),
-      sources: pickedProject?.budget_sources ?? [],
-    };
+    // Numbers and words alike from the one helper (core/hours.ts, #340), so the form, the
+    // Beschikbare uren panel beside it and the lists cannot word the same burn three ways.
+    const burn = hoursBurn(pickedProject?.hours);
+    if (!burn || burn.budget == null) return null;
+    return { ...burn, sources: pickedProject?.budget_sources ?? [] };
   });
 
   // The same question about the *task* (#313). Both bars are drawn when both exist: a task's
@@ -616,13 +610,8 @@
           spent={pickedBurn.spent}
           budget={pickedBurn.budget}
           label={t("time.budget.remaining_label")}
-          remainingText={pickedBurn.remaining < 0
-            ? t("time.budget.over", { hours: fmtNumber(-pickedBurn.remaining, 1) })
-            : t("time.budget.remaining", { hours: fmtNumber(pickedBurn.remaining, 1) })}
-          spentText={t("time.budget.spent", {
-            spent: fmtNumber(pickedBurn.spent, 1),
-            budget: fmtNumber(pickedBurn.budget, 1),
-          })}
+          remainingText={pickedBurn.remainingText}
+          spentText={t("time.budget.spent", { hours: pickedBurn.spentText })}
           noteText={pickedBurn.sources.length > 0
             ? t("time.budget.from_subscription", {
                 name: pickedBurn.sources.map((s) => s.name).join(", "),

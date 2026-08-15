@@ -49,10 +49,11 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     width: 140,
   },
   // Shown by default — seeing who has budget left is the point of the column (#25). Turning it
-  // off is what proves a hidden aggregate costs nothing.
+  // off is what proves a hidden aggregate costs nothing. The header names what the cell prints
+  // (spent of budget, #340); what remains is on hover, in words.
   {
     key: HOURS_COLUMN,
-    labelKey: "table.column.available_hours",
+    labelKey: "table.column.hours_burn",
     align: "right",
     defaultVisible: true,
     width: 200,

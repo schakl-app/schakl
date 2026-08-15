@@ -24,6 +24,7 @@
     budget,
     spentText,
     remainingText,
+    titleText,
     label,
     noteText,
     variant = "block",
@@ -36,6 +37,12 @@
     spentText: string;
     /** "1u 30m over" / "20m over budget". Omitted when there is no allowance to remain of. */
     remainingText?: string;
+    /**
+     * Hover text for the inline variant. Defaults to `remainingText`, which is what a cell with
+     * nothing else to say wants; a caller with more (the period the figure counts over, hours the
+     * budget never covered) composes the whole sentence and passes it here.
+     */
+    titleText?: string;
     /** Left of the remainder in the block variant. */
     label?: string;
     /** Trailing note in the block variant's footer (e.g. which agreement the budget came from). */
@@ -47,7 +54,7 @@
 </script>
 
 {#if variant === "inline"}
-  <span class="inline-flex flex-col items-end gap-1" title={remainingText}>
+  <span class="inline-flex flex-col items-end gap-1" title={titleText ?? remainingText}>
     <span class="whitespace-nowrap text-xs tabular-nums {burnTextClass(pct)}">{spentText}</span>
     {#if pct != null}
       <span class="h-1 w-full min-w-12 overflow-hidden rounded-full bg-surface">

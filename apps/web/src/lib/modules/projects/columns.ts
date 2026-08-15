@@ -37,7 +37,7 @@ export const PROJECT_COLUMNS: ColumnMeta[] = [
   },
   {
     key: HOURS_COLUMN,
-    labelKey: "table.column.available_hours",
+    labelKey: "table.column.hours_burn",
     align: "right",
     defaultVisible: true,
     width: 200,
