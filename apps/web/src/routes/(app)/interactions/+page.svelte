@@ -33,6 +33,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import GmailRefreshButton from "$lib/modules/google/GmailRefreshButton.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
@@ -452,8 +453,13 @@
   <h1 class="text-xl font-semibold text-text">
     {navLabel("interactions", t("interactions.title"))}
   </h1>
-  {#if canWrite}
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
+    <!-- Whether the feed is up to date, and a way to make it so (#341). Outside `canWrite`:
+         scanning your own mailbox writes nothing here that you did not already receive, and the
+         person who most needs to know the timeline is stale is the one who cannot add rows by
+         hand. It draws itself only when this user's own mailbox is actually syncing. -->
+    <GmailRefreshButton status={data.gmailStatus} result={form?.gmailRefresh ?? null} />
+    {#if canWrite}
       <!-- An email from outside a connected mailbox is logged from its .eml export (#262). -->
       <button
         type="button"
@@ -471,8 +477,8 @@
         <Plus size={15} aria-hidden="true" />
         {t("interactions.add")}
       </button>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 {#if form?.error}

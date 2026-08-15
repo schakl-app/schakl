@@ -3259,6 +3259,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/gmail/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Gmail
+         * @description Poll this mailbox once, now — rate-limited to one manual poll per minute.
+         */
+        post: operations["refresh_gmail_api_v1_google_gmail_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gmail Status
+         * @description When this mailbox was last polled, and whether asking for another one is worth it.
+         */
+        get: operations["read_gmail_status_api_v1_google_gmail_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/oauth/callback": {
         parameters: {
             query?: never;
@@ -15673,6 +15713,63 @@ export interface components {
          * @enum {string}
          */
         GmailApprovalMode: "approval_required" | "auto_approve";
+        /** GmailRefreshResult */
+        GmailRefreshResult: {
+            /**
+             * Logged
+             * @default 0
+             */
+            logged: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "polled" | "cooldown" | "error";
+            sync: components["schemas"]["GmailSyncStatus"];
+        };
+        /**
+         * GmailSyncStatus
+         * @description Everything the button needs to decide whether to draw itself, and what to say.
+         */
+        GmailSyncStatus: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /**
+             * Connection Error
+             * @default false
+             */
+            connection_error: boolean;
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** Last Polled At */
+            last_polled_at?: string | null;
+            /**
+             * Retry After Seconds
+             * @default 0
+             */
+            retry_after_seconds: number;
+            /**
+             * Scope Granted
+             * @default false
+             */
+            scope_granted: boolean;
+            /**
+             * Sync Enabled
+             * @default false
+             */
+            sync_enabled: boolean;
+        };
         /**
          * GmailThreadFollowup
          * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
@@ -34566,6 +34663,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_gmail_api_v1_google_gmail_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailRefreshResult"];
+                };
+            };
+        };
+    };
+    read_gmail_status_api_v1_google_gmail_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSyncStatus"];
                 };
             };
         };

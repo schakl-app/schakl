@@ -1578,3 +1578,155 @@ async def test_approval_keeps_the_html_formatting_and_inlines_the_logo(
         await set_current_org(session, t.org.id)
         stored = (await session.execute(select(StoredFile))).scalars().all()
         assert [(f.content_id, f.size_bytes) for f in stored] == [("logo@bureau", 6)]
+
+
+# --------------------------------------------------------------------------- #
+# The manual "scan my mailbox now" button (#341)
+# --------------------------------------------------------------------------- #
+
+
+async def test_manual_refresh_polls_once_and_then_cools_down(client_for, monkeypatch) -> None:
+    """One press logs the mail; the next press inside the minute is refused, not re-polled.
+
+    The cooldown is the whole rate limit, so the assertion that matters is not the status
+    string but ``stub.calls``: a second poll that quietly happened while the response said
+    "cooldown" would spend Gmail quota with nothing on the screen to show for it.
+    """
+    t = await make_tenant("gmail-refresh")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+        stub = _StubGmail(
+            history=["msg-1"],
+            messages={"msg-1": _message("msg-1", sender="Klant <klant@client.nl>")},
+            history_id="9100",
+        )
+        polls = []
+        factory = _stub_acting_as(stub)
+
+        @asynccontextmanager
+        async def _counting(session, org, connection):  # noqa: ANN001
+            polls.append(connection.id)
+            async with factory(session, org, connection) as inner:
+                yield inner
+
+        monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _counting)
+
+        first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["status"] == "polled" and body["logged"] == 1
+        assert body["sync"]["available"] is True
+        assert body["sync"]["last_polled_at"] is not None
+        assert body["sync"]["retry_after_seconds"] > 0  # the press it just spent
+
+        second = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert second.status_code == 200, second.text
+        cooled = second.json()
+        assert cooled["status"] == "cooldown" and cooled["logged"] == 0
+        assert 0 < cooled["sync"]["retry_after_seconds"] <= 60
+        # Still one poll: the refusal never reached Gmail.
+        assert len(polls) == 1
+
+        # And the status read agrees with the refresh's own answer.
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status["available"] is True
+        assert status["last_polled_at"] == body["sync"]["last_polled_at"]
+        assert status["retry_after_seconds"] > 0
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.kind == "email" and row.status == "pending"
+
+
+async def test_manual_refresh_is_refused_when_the_mailbox_is_not_syncing(
+    client_for,
+) -> None:
+    """A control that would always refuse is never drawn — and the API says why it would."""
+    t = await make_tenant("gmail-refresh-off")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Nothing connected at all: the org has not even switched Gmail on.
+        assert (await c.post("/api/v1/google/gmail/refresh", headers=headers)).status_code == 409
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status == {
+            "connected": False,
+            "gmail_enabled": False,
+            "sync_enabled": False,
+            "scope_granted": False,
+            "connection_error": False,
+            "last_polled_at": None,
+            "available": False,
+            "retry_after_seconds": 0,
+        }
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(GoogleSettings(org_id=t.org.id, gmail_enabled=True))
+        session.add(
+            GoogleConnection(
+                org_id=t.org.id,
+                user_id=t.user.id,
+                google_sub="sub",
+                email="me@agency.nl",
+                scopes=["openid", "email", SCOPE_GMAIL],
+                refresh_token_encrypted=encrypt("rt"),
+                gmail_sync_enabled=False,  # connected, mailbox opted out
+            )
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        refused = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert refused.status_code == 409
+        assert refused.json()["error"]["message"] == "errors.gmail_sync_off"
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status["connected"] is True and status["available"] is False
+
+
+async def test_manual_refresh_spends_its_budget_even_when_gmail_fails(
+    client_for, monkeypatch
+) -> None:
+    """A failing mailbox must not become a control anyone can hold down.
+
+    The stamp is written before the poll and outside its savepoint precisely so this holds:
+    the poll rolls back, the cooldown does not.
+    """
+    t = await make_tenant("gmail-refresh-fail")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    @asynccontextmanager
+    async def _broken(session, org, connection):  # noqa: ANN001, ARG001
+        raise RuntimeError("gmail is having a day")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _broken)
+
+    async with client_for(t.host) as c:
+        first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert first.status_code == 200, first.text
+        assert first.json()["status"] == "error"
+        # The failure is reported, the budget is spent.
+        second = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert second.json()["status"] == "cooldown"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_manual_poll_at is not None
+        assert connection.gmail_last_polled_at is None  # the poll itself never landed

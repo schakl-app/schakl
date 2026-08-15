@@ -311,6 +311,28 @@ agency tool — so, direct.
 - **Ingestion:** Gmail's real-time `watch` requires **Google Pub/Sub** (unlike Calendar) —
   extra infra. Start with **periodic ARQ polling using `historyId`** (incremental, cheap); add
   Pub/Sub push later only if latency demands it.
+- **A five-minute cron is invisible, so the timeline states its own freshness** (#341,
+  `gmail/refresh.py`). An email sent thirty seconds ago is simply not on the list yet, and
+  nothing on the screen distinguished *not synced yet* from *not matched at all* — so the
+  interactions page now prints when this mailbox was last polled and offers `POST
+  /google/gmail/refresh` to poll it now. Four rules, and none of them is really about Gmail. It
+  is the **caller's own** mailbox, resolved from `ctx.user` and never from a parameter: a grant
+  is per-user, and "refresh everyone's mail" is one person spending colleagues' quota against
+  consents they did not give (hence `google.connection.manage`, the same key as the rest of
+  your own connection). The **rate limit is a row, not a Redis bucket** —
+  `google_connections.gmail_manual_poll_at`, one manual poll per minute — because what is being
+  protected is a per-user quota, the row is the thing that knows, and a ceiling in the database
+  survives a Redis outage and holds across both API replicas; two clicks racing it are settled
+  by `SELECT … FOR UPDATE`, not by application code (the `docs/PAYMENTS.md` rule, one layer
+  down). It is **stamped before the poll and outside its savepoint**, so a mailbox that errors
+  is reported *and* still spends its budget: otherwise the one grant most worth leaving alone is
+  the one anybody can hold the button down on. That stamp is deliberately **not**
+  `gmail_last_polled_at`, which answers "how fresh is this feed?", is written by the cron too,
+  and — because the first poll of a new mailbox baselines and returns early without setting it —
+  could not bound a freshly connected account at all. And "too soon" is a 200 carrying
+  `status="cooldown"` and the seconds left, never an error envelope: it is the honest answer
+  *this feed is already fresh*, and it has to arrive with `last_polled_at` beside it or the
+  screen loses the one thing it was drawn to say.
 - A dedicated `email_logs` module (or generic `relations` rows, §6) attaching to
   company/contact/project, with its own company panel.
 - **Privacy:** mailbox connection is per-user and opt-in; let users scope it to a label/query.

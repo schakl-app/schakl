@@ -7,6 +7,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { gmailActions } from "$lib/modules/google/gmail-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
 import { RECORD_FIELDS, type RecordField } from "$lib/modules/interactions/scope";
@@ -183,4 +184,11 @@ export const actions: Actions = {
   // name-and-client stub with no billable flag and none of the tenant's project custom fields,
   // which docs/UX.md rules out.
   ...interactionActions,
+
+  /**
+   * "Scan my mailbox now" (#341). The button is google's, not this list's — but this is the
+   * screen where a missing email is noticed, so this is the page that hosts it, the same way
+   * the detail pages host `driveActions`.
+   */
+  ...gmailActions,
 };

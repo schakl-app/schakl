@@ -38,12 +38,14 @@ from app.modules.google.gmail.jobs import (
     google_gmail_poll_connection,
     google_gmail_sweep_bodies,
 )
+from app.modules.google.gmail.router import router as gmail_router
 from app.modules.google.permissions import GOOGLE_PERMISSIONS
 from app.modules.google.router import router
 from app.registry import ModuleDescriptor, registry
 
 router.include_router(calendar_router)
 router.include_router(drive_router)
+router.include_router(gmail_router)
 
 module = ModuleDescriptor(
     name="google",

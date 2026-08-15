@@ -166,3 +166,9 @@ class GoogleConnection(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     gmail_last_polled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: When the owner last *asked* for a poll (the "Verversen" button, #341) — the cooldown
+    #: the manual refresh is rate-limited against. Kept apart from ``gmail_last_polled_at``,
+    #: which the cron writes too: see :mod:`app.modules.google.gmail.refresh`.
+    gmail_manual_poll_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
