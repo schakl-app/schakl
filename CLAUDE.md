@@ -956,6 +956,41 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   only ever turns on. It earns its **own** `AI_FEATURES` key against this file's usual "ride an
   existing one" advice, because an agency happy for AI to polish a colleague's paragraph has not
   thereby agreed to it reading the client mailbox.
+- **A narrow schema and a human review are two answers to the same question, and paying for both
+  buys nothing** (#382, `docs/VOICE.md`). A task arrives in someone's head as one spoken sentence
+  and reached the platform as twelve fields on two screens, so create-then-edit (#230) — right for
+  a *typed* task — is exactly wrong for a remembered one: by the time the detail page is open in
+  edit mode the steps have been forgotten and what lands is a title. `task_assist` records,
+  transcribes through the tenant's own provider (#246's machinery, one record over) and turns one
+  dictation into a **draft** the speaker reviews whole. Four rules generalise past it. **The
+  vocabulary a model may write is decided by who wrote the words and who is watching, not by "it
+  is AI"** — #327 narrowed `TaskEnrichment` to six fields because an email is written by an
+  outsider and applied by an ARQ worker with nobody in front of a screen, and both halves invert
+  here (a colleague's own microphone, a session holding `tasks.task.create`, nothing written until
+  a button beside every field it filled in), so copying the omissions would keep the shape, drop
+  the reason, and cost the speaker retyping the half the schema refused to carry. What does **not**
+  relax is grounding, and here it is **per type**: an id the model was never shown is dropped, and
+  `assignee_user_id` / `label_ids` check their own evidence sets rather than the time parse's
+  single pool — a project id offered as a company fails the write anyway, while another entity's
+  id in `assignee_user_id` is a real user id from the same space, so a misheard name comes back as
+  *no client selected* (one click to fix) and never as somebody else's client (which nobody
+  notices). **A rule about a surface is a rule about the control, not about the click**: #246
+  requires the transcript be readable before it is parsed *because a misheard proper noun is only
+  fixable while the words are visible*, which the sheet honours with an editable transcript and an
+  *Opnieuw verwerken* while the parse itself runs unprompted — and a second press **appends**,
+  because people dictate in breaths and a recorder that discards the first forty seconds is one
+  nobody presses twice. And **an utterance is one act, so it is one write**: `TaskCreate` grew
+  `checklist` / `links` / `label_ids`, applied through the service's own methods inside the
+  create's transaction, because 1 + 1 + N + M round trips for one button is the shape
+  `docs/PERFORMANCE.md` rejects on every other screen — the items are written the way a template
+  copy already writes them, since calling `add_checklist_item` per step re-reads the task and the
+  checklist each time and merely relocates the fan-out — and because §12 makes every operation a
+  tool, an MCP agent can now create a task *with its steps* in one call instead of four. Two
+  smaller ones, both found by running it rather than reading it: **every way out of a capturing
+  surface must release the microphone** — `SlideOver` owns three of its four exits and closes by
+  writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
+  dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
+  such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
 - **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
   MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
   source adapter inside `marketing`, so a licensed module on top of it meant one of the two

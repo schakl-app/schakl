@@ -200,6 +200,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/tasks/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Task Parse
+         * @description One dictation into a *draft* task. Creates nothing (#129's rule).
+         */
+        post: operations["task_parse_api_v1_ai_tasks_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/tasks/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Task Transcribe
+         * @description Speech to text for the dictated-task field (#382).
+         *
+         *     ``ai.use`` is the enumerable route permission; the service additionally requires
+         *     ``tasks.task.create``, because the transcript exists to become a task — #246's rule, one
+         *     record over.
+         */
+        post: operations["task_transcribe_api_v1_ai_tasks_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/time/parse": {
         parameters: {
             query?: never;
@@ -27349,12 +27393,17 @@ export interface components {
             assignee_user_id?: string | null;
             /** Assignees */
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
+            checklist?: components["schemas"]["TaskCreateChecklist"] | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */
             description?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Label Ids */
+            label_ids?: string[];
+            /** Links */
+            links?: components["schemas"]["app__modules__tasks__schemas__LinkCreate"][];
             /** @default normal */
             priority: components["schemas"]["TaskPriority"];
             /** Project Id */
@@ -27376,6 +27425,20 @@ export interface components {
              * @default false
              */
             visible_to_client: boolean;
+        };
+        /**
+         * TaskCreateChecklist
+         * @description A checklist a task is born with (#382).
+         *
+         *     Its own shape rather than ``ChecklistCreate`` because the two answer different questions:
+         *     that one may name a *template* to copy, which is a second lookup a create has no business
+         *     doing, and this one carries its items inline, which that one cannot.
+         */
+        TaskCreateChecklist: {
+            /** Items */
+            items?: components["schemas"]["ChecklistItemCreate"][];
+            /** Title */
+            title?: string | null;
         };
         /**
          * TaskDetail
@@ -27464,6 +27527,20 @@ export interface components {
              * @default false
              */
             visible_to_client: boolean;
+        };
+        /** TaskDraftChecklistItem */
+        TaskDraftChecklistItem: {
+            /** Description */
+            description?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** TaskDraftLink */
+        TaskDraftLink: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url: string;
         };
         /**
          * TaskLabelsSet
@@ -27602,6 +27679,73 @@ export interface components {
              */
             started_at: string;
         };
+        /** TaskParseRequest */
+        TaskParseRequest: {
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Project Id */
+            project_id?: string | null;
+            /** Text */
+            text: string;
+            /** Today */
+            today?: string | null;
+        };
+        /**
+         * TaskParseResult
+         * @description A *draft* task: prefills the review form and creates nothing (#129's rule, #382's feature).
+         *
+         *     Every field is optional and an unstated one stays ``None`` — the two booleans included,
+         *     whose third state is what lets the form keep the platform's own defaults instead of
+         *     recording a decision nobody made. ``billable``'s lesson (#284), one module over.
+         *
+         *     The vocabulary is wide **because the input is a colleague's own voice and a human presses
+         *     the button**. #327's narrow ``TaskEnrichment`` exists because an email is written by an
+         *     outsider and applied by a worker with nobody watching; copying its omissions here would
+         *     keep the shape and drop the reason, and the only effect would be the speaker retyping the
+         *     half the schema refused to carry.
+         */
+        TaskParseResult: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Checklist Items */
+            checklist_items?: components["schemas"]["TaskDraftChecklistItem"][];
+            /** Checklist Title */
+            checklist_title?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Label Ids */
+            label_ids?: string[];
+            /** Links */
+            links?: components["schemas"]["TaskDraftLink"][];
+            /** Priority */
+            priority?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Requires Interaction */
+            requires_interaction?: boolean | null;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Visible To Client */
+            visible_to_client?: boolean | null;
+        };
         /**
          * TaskPriority
          * @enum {string}
@@ -27681,6 +27825,26 @@ export interface components {
              * @default false
              */
             visible_to_client: boolean;
+        };
+        /**
+         * TaskTranscribeRequest
+         * @description A recorded task dictation (#382).
+         *
+         *     Identical on the wire to :class:`TimeTranscribeRequest` — the same clip, the same base64,
+         *     the same caps — and a distinct type on purpose: the two services ask for different
+         *     permissions, and one shared request model is what makes the next reader assume they are
+         *     one call.
+         */
+        TaskTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
         };
         /** TaskUpdate */
         TaskUpdate: {
@@ -31520,6 +31684,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AITestResult"];
+                };
+            };
+        };
+    };
+    task_parse_api_v1_ai_tasks_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskParseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_transcribe_api_v1_ai_tasks_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

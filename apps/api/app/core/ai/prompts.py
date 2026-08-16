@@ -155,6 +155,75 @@ def time_parse_system(
     return "\n\n".join(parts)
 
 
+def task_parse_system(
+    *, today: date, locale: str, candidates: str = "", pinned: str = ""
+) -> str:
+    """The dictated-task prompt (#382).
+
+    Written against *speech*, which is what makes it different from ``time_parse_system``
+    rather than a copy of it. A dictation is one unpunctuated run of words in which the steps,
+    the deadline and the client arrive in whatever order they occurred to the speaker, and the
+    recogniser has already had its way with every proper noun. So the instructions spend their
+    length on three things: splitting the *steps* out of the *description*, refusing to invent
+    a name the recogniser mangled, and leaving unsaid things unsaid.
+    """
+    weekday = today.strftime("%A")
+    parts = [
+        "You turn one spoken, dictated sentence (Dutch or English) into a draft task for an "
+        "agency's own staff. You never create anything — you fill in a form the speaker sees "
+        "and confirms.",
+        f"Today is {weekday} {today.isoformat()}. Resolve relative deadlines ('vrijdag', "
+        "'volgende week dinsdag', 'end of the month', 'over twee weken') against it. Write "
+        f"any prose you produce in {language_name(locale)}.",
+        # The single most useful instruction here: a dictation is a run-on, and the difference
+        # between a task with three steps and a task with a paragraph is where it gets split.
+        "This text was spoken, not typed. It has no punctuation you can trust, the ideas "
+        "arrive in the order they occurred to the speaker, and the speech recogniser has "
+        "already guessed at every name in it. Read it for intent.\n"
+        "- The title is what the task IS, in a handful of words. Never the whole sentence.\n"
+        "- checklist_items are the separable steps the speaker enumerated ('eerst …, dan …, "
+        "daarna …'), one per step, in the order given. A dictation that enumerates nothing "
+        "gets no checklist: one vague item is worse than none.\n"
+        "- The description is what someone picking the task up needs to know that is not "
+        "already the title or a step — a constraint, a preference, a reason. Null when the "
+        "dictation is only a title and its steps. Never restate the title, never transcribe "
+        "the sentence back, and never write that something was not mentioned.",
+    ]
+    if pinned:
+        parts.append(pinned)
+    if candidates:
+        parts.append(
+            "These are the tenant's own records. Match names in the dictation against them, "
+            "and copy an id character for character — never edit, shorten or invent one.\n\n"
+            "A spoken name is the field most likely to be wrong: the recogniser writes "
+            "'Janssen' for 'Jansen' and splits surnames it has never heard. Prefer a close "
+            "match to none, and prefer null to a guess — an unmatched name leaves its field "
+            "empty and the speaker fixes it on the form in one click, while the wrong client "
+            "is a task filed under someone else that nobody notices.\n\n" + candidates
+        )
+    parts.append(
+        "Set a field only when the dictation actually says so; everything else stays null, "
+        "because the form has a default and a null is what lets it keep it:\n"
+        "- priority: 'urgent', 'spoed', 'belangrijk' → high; 'als er tijd is', 'geen haast' → "
+        "low. Nothing said → null, and the form keeps the platform's own default.\n"
+        "- allocated_minutes: an estimate of the work ('reken drie uur', 'half uurtje') in "
+        "minutes. Not a deadline, and not the length of a meeting that already happened.\n"
+        "- status: exactly one of the status keys listed above, copied verbatim, and only when "
+        "the speaker names a state. Never invent or translate a key.\n"
+        "- label_ids: only labels listed above whose name the speaker actually said.\n"
+        "- requires_interaction: true only when finishing the work means going back to the "
+        "client with an answer.\n"
+        "- visible_to_client: true only when the speaker says the client should see it.\n"
+        "- links: only a URL the speaker spelled out. Never construct one from a company name."
+    )
+    parts.append(
+        "Call submit_task exactly once with your best draft. Whatever you could not determine "
+        "stays null — a short, correct draft beats a full, invented one."
+    )
+    parts.append(_INJECTION_STANCE)
+    return "\n\n".join(parts)
+
+
 def time_reconstruct_system(*, today: date, target: date) -> str:
     return "\n\n".join(
         [

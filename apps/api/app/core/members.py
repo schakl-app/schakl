@@ -275,6 +275,32 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
     ]
 
 
+def staff_select(org_id: uuid.UUID, *, include_clients: bool = False):  # noqa: ANN201
+    """The org's **staff** accounts, name-ordered — the one definition of "a colleague".
+
+    Extracted from ``lookup_members`` when a second caller appeared (#382: the AI candidate
+    shortlist, which offers assignees to a dictated task). The client-role exclusion is the
+    part worth having exactly one copy of: a portal contact holds a membership too, and a
+    second hand-written version of this join is how one of them comes to offer clients as
+    assignees months after the other stopped.
+    """
+    stmt = (
+        select(User)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == org_id)
+        .order_by(func.lower(User.full_name).asc().nulls_last(), func.lower(User.email).asc())
+    )
+    if not include_clients:
+        stmt = stmt.where(
+            Membership.id.in_(
+                select(MembershipRole.membership_id)
+                .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+                .where(MembershipRole.org_id == org_id, RoleRow.key != ROLE_CLIENT)
+            )
+        )
+    return stmt
+
+
 @router.get(
     "/lookup",
     response_model=list[MemberLookup],
@@ -317,23 +343,7 @@ async def lookup_members(
     absent. Dropping the row here would take that choice away from every caller at once and
     blank the name on every task the person was holding when they left.
     """
-    stmt = (
-        select(User)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.org_id == ctx.org.id)
-        .order_by(func.lower(User.full_name).asc().nulls_last(), func.lower(User.email).asc())
-    )
-    if not include_clients:
-        stmt = stmt.where(
-            Membership.id.in_(
-                select(MembershipRole.membership_id)
-                .join(RoleRow, RoleRow.id == MembershipRole.role_id)
-                .where(
-                    MembershipRole.org_id == ctx.org.id,
-                    RoleRow.key != ROLE_CLIENT,
-                )
-            )
-        )
+    stmt = staff_select(ctx.org.id, include_clients=include_clients)
     if permission is not None:
         if permission not in set(permission_keys()):
             raise AppError(

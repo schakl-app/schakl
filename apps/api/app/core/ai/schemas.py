@@ -166,6 +166,79 @@ class TimeTranscribeResult(BaseModel):
     text: str
 
 
+class TaskTranscribeRequest(TimeTranscribeRequest):
+    """A recorded task dictation (#382).
+
+    Identical on the wire to :class:`TimeTranscribeRequest` — the same clip, the same base64,
+    the same caps — and a distinct type on purpose: the two services ask for different
+    permissions, and one shared request model is what makes the next reader assume they are
+    one call.
+    """
+
+
+class TaskDraftChecklistItem(BaseModel):
+    title: str = Field(min_length=1, max_length=512)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class TaskDraftLink(BaseModel):
+    url: str = Field(min_length=1, max_length=1024)
+    title: str | None = Field(default=None, max_length=255)
+
+
+class TaskParseRequest(BaseModel):
+    #: Longer than the time parse's 2000: a spoken task carries its steps, and 2000 characters
+    #: is about ninety seconds of dictation.
+    text: str = Field(min_length=1, max_length=8000)
+    #: The org's today unless the client says otherwise — the #129 rule: "volgende vrijdag"
+    #: resolved against the server's UTC day is a day out for several hours every night.
+    today: dt.date | None = None
+    #: Pin the draft to the client / project the surface already knows (a task dictated from a
+    #: company page). A **default the speaker overrides**, never a filter: naming another
+    #: client still wins, because a draft that silently disagrees with the words it was made
+    #: from is worse than one that needs a correction.
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    override_budget: bool = False
+
+
+class TaskParseResult(BaseModel):
+    """A *draft* task: prefills the review form and creates nothing (#129's rule, #382's feature).
+
+    Every field is optional and an unstated one stays ``None`` — the two booleans included,
+    whose third state is what lets the form keep the platform's own defaults instead of
+    recording a decision nobody made. ``billable``'s lesson (#284), one module over.
+
+    The vocabulary is wide **because the input is a colleague's own voice and a human presses
+    the button**. #327's narrow ``TaskEnrichment`` exists because an email is written by an
+    outsider and applied by a worker with nobody watching; copying its omissions here would
+    keep the shape and drop the reason, and the only effect would be the speaker retyping the
+    half the schema refused to carry.
+    """
+
+    title: str | None = None
+    description: str | None = None
+    due_date: dt.date | None = None
+    #: One of ``TaskPriority``; ``None`` when the words implied nothing.
+    priority: str | None = None
+    #: A key from the org's own ``task_statuses``, grounded by membership in that set.
+    status: str | None = None
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    assignee_user_id: uuid.UUID | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list)
+    allocated_minutes: int | None = None
+    checklist_title: str | None = None
+    checklist_items: list[TaskDraftChecklistItem] = Field(default_factory=list)
+    links: list[TaskDraftLink] = Field(default_factory=list)
+    requires_interaction: bool | None = None
+    visible_to_client: bool | None = None
+    #: True when the model's answer ran out of room. The review still opens — a partial draft
+    #: beats a lost dictation — but the surface says so rather than presenting a cut-off plan
+    #: as a complete one (docs/AI.md, "a truncated answer is not an empty one").
+    truncated: bool = False
+
+
 class TimeParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     #: The day the user is looking at. "vanmiddag 2 uur" typed while viewing last Tuesday means
@@ -276,6 +349,11 @@ __all__ = [
     "ReportGenerateRequest",
     "ReportRead",
     "ReportUpdate",
+    "TaskDraftChecklistItem",
+    "TaskDraftLink",
+    "TaskParseRequest",
+    "TaskParseResult",
+    "TaskTranscribeRequest",
     "TimeParseRequest",
     "TimeParseResult",
     "TimeReconstructRequest",

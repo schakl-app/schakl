@@ -34,13 +34,26 @@ AI_PROVIDERS: tuple[str, ...] = ("anthropic", "openai", "openai_compatible")
 #: a model, and an agency happy for AI to polish a colleague's paragraph may well not be happy
 #: for it to read the mailbox. Folding the two together would have switched the second on for
 #: everyone who had already agreed to the first.
+#:
+#: ``task_assist`` (#382) earns one for the ordinary reason: both keys it could have ridden say
+#: the wrong thing. ``time_assist`` would make dictating a *task* die when a tenant switches off
+#: the *time* quick-add — a consequence nothing on the settings screen predicts — and
+#: ``writing_assist`` is about polishing prose somebody already wrote, not about drafting a record.
 AI_FEATURES: tuple[str, ...] = (
     "assistant",
     "writing_assist",
     "time_assist",
+    "task_assist",
     "reporting",
     "email_assist",
 )
+
+#: The features that consume a microphone. ``speech`` stays a capability rather than a toggle
+#: (see ``service.SPEECH_CAPABILITY``), but it still has to be *for* something: reporting it on
+#: an org whose every dictating feature is off would draw a microphone with no host. A tuple
+#: rather than the single ``"time_assist"`` this used to be spelled as inline, because #382 added
+#: the second host and the single-name version made task dictation die with the time quick-add.
+SPEECH_FEATURES: tuple[str, ...] = ("time_assist", "task_assist")
 
 
 class AISettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

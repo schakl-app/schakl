@@ -10,6 +10,7 @@ const FEATURES = [
   "assistant",
   "writing_assist",
   "time_assist",
+  "task_assist",
   "reporting",
   "email_assist",
 ] as const;

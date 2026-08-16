@@ -21,6 +21,9 @@ const ALLOWED: Record<string, RegExp[]> = {
     // would cost more than the encoding does.
     /^time\/transcribe$/,
     /^time\/reconstruct$/,
+    // Dictating a whole task (#382): the same two steps, one record over.
+    /^tasks\/transcribe$/,
+    /^tasks\/parse$/,
     new RegExp(`^companies/${UUID}/digest$`),
     /^reports\/generate$/,
     /^reports$/,

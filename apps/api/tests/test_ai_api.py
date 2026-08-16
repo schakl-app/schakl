@@ -538,10 +538,29 @@ async def test_speech_capability_is_reported_only_when_it_can_work(client_for) -
         me = await c.get("/api/v1/meta/me", headers=headers)
         assert "speech" in me.json()["ai_features"]
 
-        # Turning time assist off takes dictation with it — it has no separate toggle.
+        # A capability needs a host as well as a provider, and since #382 there are two hosts
+        # (``SPEECH_FEATURES``). Switching off the *time* quick-add alone no longer takes the
+        # microphone with it — dictating a task is still on, and a microphone that vanished
+        # from the tasks screen because somebody edited a time setting is a coupling neither
+        # screen could explain.
         await c.put(
             "/api/v1/ai/settings",
             json={**SPEECH_BODY, "features": {"time_assist": {"enabled": False}}},
+            headers=headers,
+        )
+        invalidate_features_cache(t.org.id)
+        assert "speech" in (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
+
+        # Both off, and there is nothing left for a microphone to be for.
+        await c.put(
+            "/api/v1/ai/settings",
+            json={
+                **SPEECH_BODY,
+                "features": {
+                    "time_assist": {"enabled": False},
+                    "task_assist": {"enabled": False},
+                },
+            },
             headers=headers,
         )
         invalidate_features_cache(t.org.id)

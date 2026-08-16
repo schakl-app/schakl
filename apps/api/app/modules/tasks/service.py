@@ -900,6 +900,12 @@ class TaskService:
         # Nullable on the wire so an existing caller need not mention it (#350); the column is
         # `NOT NULL`, and "the caller said nothing" means the task has a title somebody chose.
         values["unnamed"] = bool(values.get("unnamed"))
+        # What the task arrives with (#382). Popped before the column write and applied after the
+        # row exists — each through this service's own method, so an inline checklist gets the
+        # same validation, activity line and 403 that a separate POST would.
+        composite_checklist = values.pop("checklist", None)
+        composite_links = values.pop("links", None) or []
+        composite_labels = values.pop("label_ids", None) or []
         # A task's company/project FKs must live in this tenant (audit F19).
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
@@ -949,6 +955,12 @@ class TaskService:
         await self.assignees.replace(task.id, links)
         task.assignees = await self.assignees.for_entity(task.id)
         await self._record(task.id, "created")
+        await self._apply_composite(
+            task.id,
+            checklist=composite_checklist,
+            links=composite_links,
+            label_ids=composite_labels,
+        )
         # Automation trigger (issue #27); deliberately not in the notifications vocabulary,
         # so it fans out to nobody. Status/company/project ride along for condition matching.
         await self._emit_task(
@@ -969,6 +981,45 @@ class TaskService:
                 "task.assigned", task, [link.user_id for link in task.assignees]
             )
         return task
+
+    async def _apply_composite(
+        self,
+        task_id: uuid.UUID,
+        *,
+        checklist: dict[str, Any] | None,
+        links: list[dict[str, Any]],
+        label_ids: list[uuid.UUID],
+    ) -> None:
+        """Write what a composite create carried alongside the row (#382).
+
+        Every branch goes through the ordinary method rather than touching a table, so an
+        inline checklist is validated, recorded on the trail and permission-checked exactly as
+        one added a minute later from the card would be. That is the whole reason this is a
+        wider ``TaskCreate`` and not a second endpoint: a second write path is how "creating a
+        task" and "creating a task with steps" come to mean two different things.
+
+        A checklist with a title and no items is still a checklist — an agency dictating
+        "maak een checklist Oplevering" and filling it in later is asking for exactly that —
+        so the guard is on *neither* being present, not on the items alone. A checklist with
+        items and no title borrows the task's, the fallback ``tasks.system`` already uses for
+        the same reason: ``add_checklist`` refuses an untitled one, an i18n key cannot help
+        (this is stored tenant data, and the reader's locale is not the writer's), and the
+        task's own title is the only string here that is neither invented nor English.
+        """
+        if checklist is not None and (checklist.get("title") or checklist.get("items")):
+            title = checklist.get("title") or None
+            if title is None:
+                row = await self.repo.get_or_404(task_id)
+                title = row.title[:255]
+            await self.add_checklist(
+                task_id,
+                ChecklistCreate(title=title, description=None),
+                items=[ChecklistItemCreate(**item) for item in checklist.get("items") or []],
+            )
+        for link in links:
+            await self.add_link(task_id, LinkCreate(**link))
+        if label_ids:
+            await self.set_task_labels(task_id, list(label_ids))
 
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
@@ -1556,8 +1607,23 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Checklists
     # ------------------------------------------------------------------ #
-    async def add_checklist(self, task_id: uuid.UUID, data: ChecklistCreate) -> TaskChecklist:
-        """A fresh checklist, or a copy of an org checklist template (title + items)."""
+    async def add_checklist(
+        self,
+        task_id: uuid.UUID,
+        data: ChecklistCreate,
+        *,
+        items: list[ChecklistItemCreate] | None = None,
+    ) -> TaskChecklist:
+        """A fresh checklist, a copy of an org checklist template, or one with its items (#382).
+
+        ``items`` is a **service** parameter and not a wire field: the checklist endpoint's
+        shape is unchanged, and the one caller that has its items in hand at creation time is
+        the composite create. It writes them exactly as the template branch below already does
+        — one flush for the lot — because the alternative, calling ``add_checklist_item`` in a
+        loop, re-reads the task and the checklist per step. Ten dictated steps cost six
+        statements each that way, which is the fan-out the composite create exists to remove
+        rather than relocate (``tests/test_perf_query_budgets.py``).
+        """
         await self._writable_task_or_403(task_id)
 
         template = None
@@ -1580,9 +1646,14 @@ class TaskService:
             description=sanitize_markdown(data.description),
             position=position,
         )
+        seeds: list[dict[str, Any]] = []
         if template is not None:
             # Copy each item's title *and* description from the template's rich shape (issue #66).
-            for index, entry in enumerate(_rich_items(template.items_rich, template.items)):
+            seeds = list(_rich_items(template.items_rich, template.items))
+        elif items:
+            seeds = [{"title": item.title, "description": item.description} for item in items]
+        if seeds:
+            for index, entry in enumerate(seeds):
                 self.ctx.session.add(
                     TaskChecklistItem(
                         org_id=self.ctx.org.id,
