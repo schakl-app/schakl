@@ -200,6 +200,20 @@ Contacts, Timeon invoices as documents, tasks, categories, travel kilometres, ra
 billable-duration field, so such an entry carries its full worked duration. Distance, expenses and
 the category are **carried across a push** (rule 7) but never authored or read into schakl.
 
+**Invoice *state* is guarded in both directions and carried in neither, and that is a decision
+rather than an omission.** `protect_invoiced` refuses to let anything rewrite what schakl has
+billed, and a Timeon row carrying an `invoiceID` blocks a push and is reported — but a *pulled*
+hour never has `invoiced_at` set from it. Since `invoiced_at IS NULL` is exactly what puts an
+hour on **Nog te factureren**, that would matter if an hour could still be invoiced in Timeon:
+it would arrive here unbilled and be offered up a second time. It cannot. Invoicing moved to
+schakl at the migration, the importer stamped every billable imported hour as invoiced so three
+years of settled history can never reappear in that backlog, and `history_floor` keeps the sync
+out of that past — so the only hours this integration pulls are ones schakl is going to invoice.
+Owner's call, 2026-08-16, and the assumption it rests on is worth re-reading rather than
+inheriting: **if anyone ever raises an invoice in Timeon again, this becomes a double-billing
+hazard**, and the fix is to read `invoiceID` on the pull path — where the value is already in
+`observed` and is already read for the push guard.
+
 ### 9. Turning it on, safely
 
 1. Instellingen → Timeon → paste the API key. Both directions start `off`.
