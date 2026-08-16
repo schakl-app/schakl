@@ -1,7 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
-import { checked, triflag } from "$lib/core/forms";
+import { checked, excludedFrom, triflag } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
@@ -190,12 +190,10 @@ export const actions: Actions = {
     // override alone — not clear it. `report_all_links` is what tells the two apart, and it is
     // also what makes the exclusion complete: the ticked boxes say what is *in*, and a property
     // whose checkbox never rendered would otherwise silently stay in.
-    const allLinks = String(form.get("report_all_links") ?? "")
-      .split(",")
-      .filter(Boolean);
-    const kept = new Set(form.getAll("report_links").map(String));
+    const rendered = String(form.get("report_all_links") ?? "");
+    const allLinks = rendered.split(",").map((id) => id.trim()).filter(Boolean);
     const split = inherited(form.get("report_split"));
-    const exclude = allLinks.filter((id) => !kept.has(id));
+    const exclude = excludedFrom(rendered, form.getAll("report_links"));
     const anyReport = allLinks.length > 0 && (split !== null || exclude.length > 0);
     const marketing = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
       params: { path: { company_id: event.params.id } },
