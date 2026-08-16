@@ -206,6 +206,7 @@ def campaign_create(
     target_google_search: bool = True,
     target_search_network: bool = True,
     target_content_network: bool = False,
+    eu_political_advertising: bool = False,
 ) -> dict[str, Any]:
     """A campaign that is **paused from the moment it exists**.
 
@@ -218,6 +219,12 @@ def campaign_create(
     ``targetContentNetwork`` is off by default for the same reason it is the first thing an
     agency turns off by hand: a Search campaign quietly opted into Display spends its budget
     somewhere nobody was looking.
+
+    ``containsEuPoliticalAdvertising`` is **required** on create in v25 — the EU political
+    advertising regulation — and omitting it fails every create with ``fieldError: REQUIRED``
+    naming a field no error message we surfaced ever mentioned. It is an argument rather than a
+    constant because a political advertiser is a real client and answering for them is not ours
+    to do; the default is the honest one for an agency that does not run those campaigns.
     """
     return {
         "name": name,
@@ -230,6 +237,11 @@ def campaign_create(
             "targetContentNetwork": target_content_network,
             "targetPartnerSearchNetwork": False,
         },
+        "containsEuPoliticalAdvertising": (
+            "CONTAINS_EU_POLITICAL_ADVERTISING"
+            if eu_political_advertising
+            else "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
+        ),
         # A bidding strategy is required and Maximize Clicks is the only one that needs no
         # conversion history, which a campaign created five seconds ago does not have.
         "targetSpend": {},

@@ -23,6 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
+from app.core import directory
 from app.core.googleads import format_customer_id
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
@@ -72,6 +73,12 @@ from app.integrations.google_ads.writes import GoogleAdsWriteService
 logger = logging.getLogger("schakl.googleads")
 
 router = APIRouter(prefix="/google-ads", tags=["google_ads"])
+
+
+async def _read_one(ctx: RequestContext, row: GoogleAdsAccount) -> GoogleAdsAccountRead:
+    """One account, with its client's name resolved. The single-row form of the list's batch."""
+    names = await directory.labels_for(ctx, "company", [row.company_id])
+    return _read(row, names.get(row.company_id) if row.company_id else None)
 
 
 def _read(row: GoogleAdsAccount, company_name: str | None = None) -> GoogleAdsAccountRead:
@@ -168,7 +175,12 @@ async def list_google_ads_accounts(
     horizon, and an account attached to no client (the agency's own) stays visible to all.
     """
     rows = await GoogleAdsService(ctx).list_accounts(company_id=company_id, active_only=active_only)
-    return [_read(row) for row in rows]
+    # One batched lookup for the whole page, through the seam that applies the client's own
+    # horizon (§15). `company_name` shipped in this payload from the start and was never once
+    # populated, so every caller — the MCP tool surface included — was handed a column of nulls
+    # beside a UUID it then had to resolve itself.
+    names = await directory.labels_for(ctx, "company", (row.company_id for row in rows))
+    return [_read(row, names.get(row.company_id) if row.company_id else None) for row in rows]
 
 
 @router.get(
@@ -207,7 +219,7 @@ async def list_available_google_ads_accounts(
 async def get_google_ads_account(
     account_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
 ) -> GoogleAdsAccountRead:
-    return _read(await GoogleAdsService(ctx).get_account(account_id))
+    return await _read_one(ctx, await GoogleAdsService(ctx).get_account(account_id))
 
 
 @router.post(
@@ -236,6 +248,7 @@ async def link_google_ads_account(
         connection_id=connection.id if connection else None,
         descriptive_name=payload.descriptive_name,
         currency_code=payload.currency_code,
+        time_zone=payload.time_zone,
     )
     # Fill thirteen months in the background, so a year-over-year comparison works the day after
     # linking rather than a year after. Deferred so this transaction has committed before the
@@ -252,7 +265,7 @@ async def link_google_ads_account(
         )
     except Exception:  # noqa: BLE001 — a nicety this request rides on, never its purpose
         logger.warning("could not enqueue google ads backfill for account %s", row.id)
-    return _read(row)
+    return await _read_one(ctx, row)
 
 
 @router.patch(
@@ -274,7 +287,7 @@ async def update_google_ads_account(
         active=payload.active,
         company_id_set="company_id" in payload.model_fields_set,
     )
-    return _read(row)
+    return await _read_one(ctx, row)
 
 
 @router.delete(
@@ -305,7 +318,7 @@ async def verify_google_ads_account(
     is what lets a screen say "the grant was revoked" instead of showing a red toast with no
     detail. A success clears the flag it may have set last time.
     """
-    return _read(await GoogleAdsService(ctx).verify(account_id))
+    return await _read_one(ctx, await GoogleAdsService(ctx).verify(account_id))
 
 
 # --- reads ------------------------------------------------------------------------------------ #
@@ -837,6 +850,40 @@ async def save_google_ads_policy(
     )
 
 
+@router.delete(
+    "/accounts/{account_id}/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def clear_google_ads_policy(
+    account_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> GoogleAdsPolicyRead:
+    """Drop this account's own rules, so it inherits the agency's house policy again.
+
+    Not the same as saving every field empty: that leaves a row that reports `stored: true` and
+    holds nothing. Returns what the account is left with.
+    """
+    service = GoogleAdsPolicyService(ctx)
+    await service.clear(account_id)
+    return _policy_read(
+        await service.get(account_id), await service.resolve(account_id), account_id
+    )
+
+
+@router.delete(
+    "/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def clear_google_ads_house_policy(
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsPolicyRead:
+    """Drop the agency's house rules, leaving only the built-in ceiling every account gets."""
+    service = GoogleAdsPolicyService(ctx)
+    await service.clear(None)
+    return _policy_read(await service.get(None), await service.resolve(None), None)
+
+
 @router.get(
     "/accounts/{account_id}/decisions",
     response_model=GoogleAdsDecisionPage,
@@ -1047,6 +1094,7 @@ async def create_google_ads_campaign(
         budget_id=payload.budget_id,
         channel=payload.channel,
         target_content_network=payload.target_content_network,
+        eu_political_advertising=payload.eu_political_advertising,
         validate_only=payload.validate_only,
     )
     return _mutation(outcome, account)
@@ -1324,7 +1372,7 @@ async def update_google_ads_ad(
     payload: GoogleAdsAdUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsMutationRead:
-    """Pause, resume or remove one ad.
+    """Pause or resume one ad. `status` is ENABLED or PAUSED; to delete it, use DELETE.
 
     Status only. An ad's creative is immutable at Google — its performance history belongs to its
     text — so changing a headline means creating a new ad and removing this one.
@@ -1335,5 +1383,115 @@ async def update_google_ads_ad(
         ad_id=payload.ad_id,
         status=payload.status,
         validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+# --- removals ------------------------------------------------------------------------------- #
+#
+# Deleting is its own verb because at Google it is its own operation: `status: "REMOVED"` is
+# output-only and refused, so the update routes above could document a removal they could never
+# perform. `validate_only` is a query parameter rather than a body, because a DELETE with a body
+# is ignored by enough proxies and clients that "it validated" and "it deleted" would be one
+# request apart with nothing to tell them apart.
+
+
+@router.delete(
+    "/accounts/{account_id}/budgets/{budget_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.budget.write")],
+)
+async def remove_google_ads_budget(
+    account_id: uuid.UUID,
+    budget_id: str,
+    validate_only: bool = Query(default=False, description="Check and change nothing."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Delete a daily budget.
+
+    Google refuses while a campaign still uses it, so remove or re-point the campaign first.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).remove_budget(
+        account_id, budget_id, validate_only=validate_only
+    )
+    return _mutation(outcome, account)
+
+
+@router.delete(
+    "/accounts/{account_id}/campaigns/{campaign_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def remove_google_ads_campaign(
+    account_id: uuid.UUID,
+    campaign_id: str,
+    validate_only: bool = Query(default=False, description="Check and change nothing."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Delete a campaign. **Permanent** at Google — it can be recreated, never restored.
+
+    Its ad groups and ads stop serving with it but are *not* themselves removed, and afterwards
+    they can no longer be removed at all. Delete them first if you want a clean account.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).remove_campaign(
+        account_id, campaign_id, validate_only=validate_only
+    )
+    return _mutation(outcome, account)
+
+
+@router.delete(
+    "/accounts/{account_id}/ad-groups/{ad_group_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def remove_google_ads_ad_group(
+    account_id: uuid.UUID,
+    ad_group_id: str,
+    validate_only: bool = Query(default=False, description="Check and change nothing."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Delete an ad group, with the keywords and ads inside it. Permanent at Google."""
+    outcome, account = await GoogleAdsWriteService(ctx).remove_ad_group(
+        account_id, ad_group_id, validate_only=validate_only
+    )
+    return _mutation(outcome, account)
+
+
+@router.delete(
+    "/accounts/{account_id}/ad-groups/{ad_group_id}/ads/{ad_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def remove_google_ads_ad(
+    account_id: uuid.UUID,
+    ad_group_id: str,
+    ad_id: str,
+    validate_only: bool = Query(default=False, description="Check and change nothing."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Delete one ad. Permanent at Google — a replacement is a new ad with its own history."""
+    outcome, account = await GoogleAdsWriteService(ctx).remove_ad(
+        account_id, ad_group_id=ad_group_id, ad_id=ad_id, validate_only=validate_only
+    )
+    return _mutation(outcome, account)
+
+
+@router.delete(
+    "/accounts/{account_id}/negative-lists/{shared_set_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.negative.write")],
+)
+async def remove_google_ads_negative_list(
+    account_id: uuid.UUID,
+    shared_set_id: str,
+    validate_only: bool = Query(default=False, description="Check and change nothing."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Delete a shared negative-keyword list.
+
+    Every campaign attached to it stops excluding those terms, so check what uses it first.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).remove_negative_list(
+        account_id, shared_set_id, validate_only=validate_only
     )
     return _mutation(outcome, account)

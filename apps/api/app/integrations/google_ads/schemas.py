@@ -75,6 +75,10 @@ class GoogleAdsAccountCreate(BaseModel):
     login_customer_id: str | None = Field(default=None, max_length=32)
     descriptive_name: str = Field(default="", max_length=255)
     currency_code: str | None = Field(default=None, max_length=3)
+    #: Google's IANA name for the account, as the picker offered it. Ads reports every day in
+    #: the *account's* timezone, so a row without one silently falls back to the instance
+    #: default — which is why the picker now carries it rather than waiting for a verify.
+    time_zone: str | None = Field(default=None, max_length=64)
 
 
 class GoogleAdsAccountUpdate(BaseModel):
@@ -93,6 +97,7 @@ class GoogleAdsAvailableAccount(BaseModel):
     descriptive_name: str
     login_customer_id: str | None = None
     currency_code: str | None = None
+    time_zone: str | None = None
     hint: str
     #: The picker hides nothing — it *marks*. An account already linked to another client is
     #: exactly what someone needs to see when they are wondering why it is missing.
@@ -464,6 +469,11 @@ class GoogleAdsCampaignCreate(_Validatable):
     #: Off by default: a Search campaign quietly opted into Display spends its budget where
     #: nobody is looking.
     target_content_network: bool = False
+    #: Google **requires** a declaration on every campaign created in v25 (the EU political
+    #: advertising regulation) and refuses the create outright without one. Asked rather than
+    #: assumed because it is a legal declaration made on the advertiser's behalf; the default is
+    #: the true answer for every client an agency has unless it says otherwise.
+    eu_political_advertising: bool = False
 
 
 class GoogleAdsCampaignUpdate(_Validatable):

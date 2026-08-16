@@ -352,7 +352,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 ## 9. Conventions
 
 - REST: plural nouns, `/api/v1/<module>/<resource>`; cursor or page/limit pagination;
-  consistent error envelope `{ error: { code, message, fields? } }` (message is an i18n key).
+  consistent error envelope `{ error: { code, message, fields?, details? } }` (message is an i18n
+  key, and so is every value in `fields`). **`details` is the machine-readable half and it exists
+  because `fields` cannot be**: its values are i18n keys, so a refusal could name the parameter and
+  never the number — "over the ceiling" without saying what the ceiling is, which an agent cannot
+  correct without a second call, and which #305 already established as the difference between a
+  constraint that reads as a rule and one that reads as a broken control. It carries literals
+  (`{"limit": 50}`) and provider identifiers (`{"google_error_code": "fieldError.REQUIRED"}`),
+  never translated text and **never the provider's own prose** — that is what `message` is for,
+  and untranslated vendor English in the envelope is a screen in the wrong language
+  (`test_google_s_own_text_never_reaches_the_envelope`).
 - Auth: a single FastAPI dependency yields `(current_user, current_org, role)`.
 - Tests: `pytest` (API, incl. a tenant-isolation test per module) + Playwright (web smoke).
 - Migrations: one per change, named `<module>_<verb>_<noun>`.

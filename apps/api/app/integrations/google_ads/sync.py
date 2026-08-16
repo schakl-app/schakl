@@ -81,8 +81,23 @@ async def sync_account(
     start = end - timedelta(days=days - 1)
     window = Window(start=start, end=end)
     service = GoogleAdsService(SyncContext(org=org, session=session))
+    learned_zone: str | None = None
     try:
         async with service.open_client(account_id=account.id, tool="sync") as (client, _a):
+            if account.time_zone is None:
+                # Self-heal: a row linked before the picker carried a timezone has none, and
+                # this loop is the only thing that touches them all. One extra query, once per
+                # account ever. Asked *before* the reads so the window can be rebuilt from the
+                # real zone rather than the instance default — otherwise the run that learns the
+                # zone is the one run that still mirrors the wrong day, which is exactly the
+                # boundary case the column exists for.
+                meta = await service._customer_meta(client, account.customer_id)
+                learned_zone = meta[3] if meta else None
+                if learned_zone:
+                    end = datetime.now(resolve_zoneinfo(learned_zone)).date() - timedelta(
+                        days=1 + ends_days_ago
+                    )
+                    window = Window(start=end - timedelta(days=days - 1), end=end)
             daily = await reporting.read_account_daily(client, account.customer_id, window)
             campaigns = await reporting.read_campaign_daily(client, account.customer_id, window)
             devices = await reporting.read_device_daily(client, account.customer_id, window)
@@ -115,6 +130,8 @@ async def sync_account(
     await _upsert_daily(session, account, GoogleAdsDimension.CAMPAIGN, campaigns)
     await _upsert_daily(session, account, GoogleAdsDimension.DEVICE, devices)
     await _upsert_changes(session, account, changes.rows)
+    if learned_zone:
+        account.time_zone = learned_zone
     account.last_synced_at = datetime.now(UTC)
     account.last_sync_error = None
     return True

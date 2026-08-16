@@ -81,6 +81,12 @@ class AvailableAccount:
     #: ``"1234567890 · Breik hoofdaccount"`` — the combobox hint, so several connected Google
     #: accounts disambiguate without a grouping header.
     hint: str
+    #: Google's own IANA name for this account. Carried from the picker because **Ads reports
+    #: every day in the account's timezone, not the org's** — and without it here the column was
+    #: selected in the GAQL, discarded on the way into this dataclass, and stored as NULL, which
+    #: left `resolve_window` and the nightly sync silently reasoning in the instance default for
+    #: every account nobody had pressed Verifiëren on.
+    time_zone: str | None = None
     already_linked: bool = False
 
 
@@ -499,7 +505,7 @@ class GoogleAdsService:
                 meta = await self._customer_meta(client, customer_id)
                 if meta is None:
                     continue
-                name, currency, is_manager, _tz = meta
+                name, currency, is_manager, time_zone = meta
                 if is_manager:
                     children, capped = await self._manager_children(client, customer_id, name)
                     if capped:
@@ -513,6 +519,7 @@ class GoogleAdsService:
                             login_customer_id=None,
                             currency_code=currency,
                             hint=customer_id,
+                            time_zone=time_zone,
                         )
                     ]
                 for option in candidates:
@@ -597,6 +604,7 @@ class GoogleAdsService:
                     login_customer_id=manager_id,
                     currency_code=child.get("currencyCode") or None,
                     hint=f"{child_id} · {manager_name}",
+                    time_zone=child.get("timeZone") or None,
                 )
             )
         return out, capped

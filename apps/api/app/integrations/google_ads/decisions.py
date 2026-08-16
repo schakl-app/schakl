@@ -136,6 +136,28 @@ class GoogleAdsPolicyService:
             )
         return row
 
+    async def clear(self, account_id: uuid.UUID | None) -> None:
+        """Drop a policy row entirely, so what it held goes back to being inherited.
+
+        Distinct from saving every field as ``None``, which leaves a row behind and makes
+        ``stored`` keep answering true — the difference between "this account has a policy that
+        happens to say nothing" and "this account has no policy of its own". Nulling each field
+        was also the only way back, and it needs a scalar ``null`` per field: reachable over
+        REST, and not over every client that speaks to this API.
+        """
+        self.ctx.require("google_ads.policy.manage")
+        if account_id is not None:
+            await self._account(account_id)
+        row = await self.get(account_id)
+        if row is None:
+            return
+        row_id = row.id
+        await self.ctx.session.delete(row)
+        await self.ctx.session.flush()
+        await self.activity.record(
+            _POLICY_ENTITY, row_id, "deleted", {"account_id": str(account_id or "")}
+        )
+
     async def _account(self, account_id: uuid.UUID) -> GoogleAdsAccount:
         row = await self.ctx.session.scalar(
             self.ctx.repo(GoogleAdsAccount)

@@ -1,8 +1,16 @@
 """Curated AI tools for Google Ads. Business-licensed — see LICENSE.
 
-Every ``/api/v1`` route is *already* an MCP tool (CLAUDE.md §12), so this file is not how the
-surface becomes reachable — it is where a **richer shape than a 1:1 endpoint mapping** earns its
-place. Three do:
+**These reach the in-app assistant, and not the MCP server.** ``mcp_tools`` is read by
+``app/core/ai/tools.py`` alone; ``/mcp`` is built by ``FastMCP.from_fastapi(...)`` off the
+OpenAPI document and never looks at this list — so an external MCP client gets the 45 routes in
+``router.py`` and none of the four below. The file name, the constant and §6 all say "MCP",
+which is how that went unnoticed until somebody diffed a live ``tools/list`` against it. Serving
+one catalog to both consumers is what ``core/ai/tools.py`` has always promised and has never
+done; it needs a ``RequestContext`` built outside the HTTP path, so it is its own piece of work.
+
+Every ``/api/v1`` route *is* an MCP tool (CLAUDE.md §12), so this file is not how a Google Ads
+surface becomes reachable to an agent — it is where a **richer shape than a 1:1 endpoint
+mapping** earns its place for the assistant. Three do:
 
 * ``google_ads.accounts`` — grounding. Every other tool takes an account id, and an assistant
   asked about "AAZET" needs a way to turn a client's name into one.

@@ -389,6 +389,7 @@ class GoogleAdsWriteService:
         channel: str,
         target_content_network: bool,
         validate_only: bool,
+        eu_political_advertising: bool = False,
     ) -> tuple[MutationOutcome, GoogleAdsAccount]:
         """A new campaign, **paused**, on a budget that already exists.
 
@@ -410,6 +411,7 @@ class GoogleAdsWriteService:
                         budget_resource=ops.budget_rn(account.customer_id, budget_id),
                         channel=channel,
                         target_content_network=target_content_network,
+                        eu_political_advertising=eu_political_advertising,
                     )
                 )
             ],
@@ -980,13 +982,22 @@ class GoogleAdsWriteService:
         fields = ops.validate_ad_copy(headlines, descriptions, final_urls)
         if fields:
             raise AppError("validation", "errors.validation", status_code=422, fields=fields)
-        banned = policy_rules.banned_hit(policy, *headlines, *descriptions)
+        # Checked per part, so the field named is the field to edit: `headlines` was hardcoded,
+        # which sent whoever wrote a banned word in a description to the wrong box.
+        banned = policy_rules.banned_hit(policy, *headlines)
+        culprit = "headlines"
+        if banned is None:
+            banned = policy_rules.banned_hit(policy, *descriptions)
+            culprit = "descriptions"
         if banned is not None:
             raise AppError(
                 "google_ads_banned_phrase",
                 "errors.google_ads_banned_phrase",
                 status_code=422,
-                fields={"headlines": "errors.google_ads_banned_phrase"},
+                fields={culprit: "errors.google_ads_banned_phrase"},
+                # Which phrase, for the reason §10a gives about protected terms: naming what was
+                # found invites a fix, while a bare refusal invites an argument with the software.
+                details={"blocks": banned},
             )
         outcome = await self._mutate(
             account,
@@ -1046,7 +1057,9 @@ class GoogleAdsWriteService:
             [
                 ops.operation_update(
                     ops.ad_group_ad_rn(account.customer_id, ad_group_id, ad_id),
-                    {"status": status.strip().upper()},
+                    # Through the shared guard, not a bare upper(): this route documented
+                    # removal through `status` too, and REMOVED is refused by Google.
+                    _status_and_name(status, None),
                 )
             ],
             validate_only=validate_only,
@@ -1066,6 +1079,161 @@ class GoogleAdsWriteService:
                 )
             ],
             action="google_ads.ad_changed",
+        )
+        return outcome, account
+
+    # --- removals ------------------------------------------------------------------------------- #
+    #
+    # Removal is a `remove` operation and **never** ``status: "REMOVED"``. That enum is
+    # output-only: Google answers ``requestError.INVALID_ENUM_VALUE``, *"Enum value 'REMOVED'
+    # cannot be used"*, so every route that documented removal through the status field could
+    # never perform one. Keywords and negatives were the only two resources that could be
+    # removed, because they were the only two with a route that built the right operation.
+    #
+    # Removing a campaign does not cascade its children to REMOVED, and afterwards they cannot
+    # be removed at all (``contextError.OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE``). So a
+    # caller who wants a clean tree removes the ad, then the ad group, then the campaign — and
+    # `_record` keeps each of those as its own line, because they are three decisions.
+
+    async def remove_budget(
+        self, account_id: uuid.UUID, budget_id: str, *, validate_only: bool
+    ) -> tuple[MutationOutcome, GoogleAdsAccount]:
+        """Delete a daily budget. Google refuses while a campaign still uses it."""
+        account, _policy = await self._prepare(account_id, "google_ads.budget.write")
+        outcome = await self._mutate(
+            account,
+            "campaignBudgets",
+            [ops.operation_remove(ops.budget_rn(account.customer_id, budget_id))],
+            validate_only=validate_only,
+            partial_failure=False,
+            tool="budget_remove",
+        )
+        await self._record(
+            account,
+            outcome,
+            [
+                Recordable(
+                    GoogleAdsDecisionSubject.BUDGET.value,
+                    budget_id,
+                    GoogleAdsDecisionKind.REMOVED.value,
+                )
+            ],
+            action="google_ads.budget_removed",
+        )
+        return outcome, account
+
+    async def remove_campaign(
+        self, account_id: uuid.UUID, campaign_id: str, *, validate_only: bool
+    ) -> tuple[MutationOutcome, GoogleAdsAccount]:
+        """Delete a campaign. Permanent at Google — it can be recreated, never restored."""
+        account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
+        outcome = await self._mutate(
+            account,
+            "campaigns",
+            [ops.operation_remove(ops.campaign_rn(account.customer_id, campaign_id))],
+            validate_only=validate_only,
+            partial_failure=False,
+            tool="campaign_remove",
+        )
+        await self._record(
+            account,
+            outcome,
+            [
+                Recordable(
+                    GoogleAdsDecisionSubject.CAMPAIGN.value,
+                    campaign_id,
+                    GoogleAdsDecisionKind.REMOVED.value,
+                    scope=f"campaign:{campaign_id}",
+                )
+            ],
+            action="google_ads.campaign_removed",
+        )
+        return outcome, account
+
+    async def remove_ad_group(
+        self, account_id: uuid.UUID, ad_group_id: str, *, validate_only: bool
+    ) -> tuple[MutationOutcome, GoogleAdsAccount]:
+        """Delete an ad group, with its keywords and ads."""
+        account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
+        outcome = await self._mutate(
+            account,
+            "adGroups",
+            [ops.operation_remove(ops.ad_group_rn(account.customer_id, ad_group_id))],
+            validate_only=validate_only,
+            partial_failure=False,
+            tool="ad_group_remove",
+        )
+        await self._record(
+            account,
+            outcome,
+            [
+                Recordable(
+                    GoogleAdsDecisionSubject.AD_GROUP.value,
+                    ad_group_id,
+                    GoogleAdsDecisionKind.REMOVED.value,
+                    scope=f"ad_group:{ad_group_id}",
+                )
+            ],
+            action="google_ads.ad_group_removed",
+        )
+        return outcome, account
+
+    async def remove_ad(
+        self, account_id: uuid.UUID, *, ad_group_id: str, ad_id: str, validate_only: bool
+    ) -> tuple[MutationOutcome, GoogleAdsAccount]:
+        """Delete one ad from its ad group."""
+        account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
+        outcome = await self._mutate(
+            account,
+            "adGroupAds",
+            [ops.operation_remove(ops.ad_group_ad_rn(account.customer_id, ad_group_id, ad_id))],
+            validate_only=validate_only,
+            partial_failure=False,
+            tool="ad_remove",
+        )
+        await self._record(
+            account,
+            outcome,
+            [
+                Recordable(
+                    GoogleAdsDecisionSubject.AD.value,
+                    ad_id,
+                    GoogleAdsDecisionKind.REMOVED.value,
+                    scope=f"ad_group:{ad_group_id}",
+                )
+            ],
+            action="google_ads.ad_removed",
+        )
+        return outcome, account
+
+    async def remove_negative_list(
+        self, account_id: uuid.UUID, shared_set_id: str, *, validate_only: bool
+    ) -> tuple[MutationOutcome, GoogleAdsAccount]:
+        """Delete a shared negative-keyword list, and with it every campaign's use of it."""
+        account, _policy = await self._prepare(account_id, "google_ads.negative.write")
+        outcome = await self._mutate(
+            account,
+            "sharedSets",
+            [ops.operation_remove(ops.shared_set_rn(account.customer_id, shared_set_id))],
+            validate_only=validate_only,
+            partial_failure=False,
+            tool="negative_list_remove",
+        )
+        await self._record(
+            account,
+            outcome,
+            [
+                # The same subject `create_negative_list` files under, deliberately: the log's
+                # "newest row about a subject wins" rule only holds while a create and its
+                # removal are about the same subject.
+                Recordable(
+                    GoogleAdsDecisionSubject.SEARCH_TERM.value,
+                    shared_set_id,
+                    GoogleAdsDecisionKind.REMOVED.value,
+                    scope="account",
+                )
+            ],
+            action="google_ads.negative_list_removed",
         )
         return outcome, account
 
@@ -1091,13 +1259,42 @@ def _refuse(refusal: policy_rules.PolicyRefusal | None) -> None:
         refusal.key,
         status_code=422,
         fields={refusal.field: refusal.key},
+        # `fields` values are i18n keys and a key cannot hold a number, so the figures ride in
+        # `details` — the same two facts `skipped[]` already reports per row (`limit`, `blocks`).
+        # Without them the docstring above was describing a payload that was never sent.
+        details={
+            key: value
+            for key, value in (("limit", refusal.limit), ("blocks", refusal.subject))
+            if value is not None
+        }
+        or None,
     )
+
+
+#: The only two an update may set. ``REMOVED`` is output-only at Google — sending it answers
+#: ``requestError.INVALID_ENUM_VALUE`` — so it is refused here, where the message can name the
+#: route that does work, rather than 200 operations later as somebody else's enum complaint.
+_SETTABLE_STATUSES = frozenset({"ENABLED", "PAUSED"})
 
 
 def _status_and_name(status: str | None, name: str | None) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     if status:
-        fields["status"] = status.strip().upper()
+        wanted = status.strip().upper()
+        if wanted not in _SETTABLE_STATUSES:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={
+                    "status": (
+                        "errors.google_ads_status_removed"
+                        if wanted == "REMOVED"
+                        else "errors.google_ads_status_invalid"
+                    )
+                },
+            )
+        fields["status"] = wanted
     if name:
         fields["name"] = name
     if not fields:

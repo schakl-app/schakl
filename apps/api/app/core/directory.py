@@ -49,6 +49,9 @@ if TYPE_CHECKING:  # only for the annotation — importing tenancy here would cy
 #: model belongs to the model, and core never carries a per-module table.
 EMAIL_ATTR = "__directory_email__"
 
+#: A model whose display column is not called ``name`` says so here, for :func:`labels_for`.
+LABEL_ATTR = "__directory_label__"
+
 # ``PORTAL_CLAUSE_ATTR`` — a model whose **external (client) login** rule is stricter than its
 # staff horizon — moved to ``app/core/scope.py`` in #266, because ``entity_visible`` there needs
 # the same fact and this module imports that one. Both seams read the one definition; that is
@@ -91,6 +94,36 @@ async def visible_ids(
         _visible_select(ctx, model).where(model.id.in_(wanted))
     )
     return set(rows.scalars())
+
+
+async def labels_for(
+    ctx: RequestContext, entity_type: str, ids: Iterable[uuid.UUID | None]
+) -> dict[uuid.UUID, str]:
+    """The display label of each visible row of ``entity_type`` among ``ids``.
+
+    The third question a borrowing module asks about somebody else's rows, after "may I see
+    these?" and "which one owns this address?": *what do I call this one on screen?* Every
+    module that wanted it grew its own ``SELECT id, name FROM companies`` — which is tenant-safe
+    only by RLS and horizon-blind by construction (§15's failure mode 3), and is a second copy
+    of a predicate that lives on the model. Here it is one copy, and an id the caller may not
+    see is simply absent rather than answered with a name.
+
+    ``LABEL_ATTR`` lets a model name its own display column; ``name`` is the default because it
+    is what almost every entity here calls it.
+    """
+    wanted = [value for value in dict.fromkeys(ids) if value is not None]
+    if not wanted:
+        return {}
+    model = horizon_entity_model(entity_type)
+    if model is None:
+        return {}
+    column = getattr(model, getattr(model, LABEL_ATTR, "name"), None)
+    if column is None:
+        return {}
+    rows = await ctx.session.execute(
+        _visible_select(ctx, model).add_columns(column).where(model.id.in_(wanted))
+    )
+    return {row[0]: row[1] for row in rows if row[1]}
 
 
 async def ids_by_email(

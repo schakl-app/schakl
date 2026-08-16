@@ -469,18 +469,30 @@ already allowed to make and never its own grant (§16).
 
 ## 10b. The write surface
 
-Fourteen routes across the six mutate resources, each declaring one of the four write keys.
+Nineteen routes across the six mutate resources, each declaring one of the four write keys.
 
 | Route | Key | Notes |
 |---|---|---|
-| `POST` / `PATCH /budgets` | `budget.write` | the money |
-| `POST` / `PATCH /campaigns` | `campaign.write` | created **PAUSED** |
-| `POST` / `PATCH /ad-groups` | `campaign.write` | created **PAUSED** |
+| `POST` / `PATCH` / `DELETE /budgets` | `budget.write` | the money |
+| `POST` / `PATCH` / `DELETE /campaigns` | `campaign.write` | created **PAUSED** |
+| `POST` / `PATCH` / `DELETE /ad-groups` | `campaign.write` | created **PAUSED** |
 | `POST /keywords`, `PATCH /keywords`, `POST /keywords/remove` | `keyword.write` | batched |
-| `POST /negatives`, `POST /negatives/remove`, `POST /negative-lists` | `negative.write` | batched |
-| `POST` / `PATCH /ads` | `campaign.write` | created **PAUSED** |
+| `POST /negatives`, `POST /negatives/remove`, `POST` / `DELETE /negative-lists` | `negative.write` | batched |
+| `POST` / `PATCH /ads`, `DELETE /ad-groups/{id}/ads/{id}` | `campaign.write` | created **PAUSED** |
 
-Six things are worth knowing before touching it.
+Seven things are worth knowing before touching it.
+
+**Deleting is its own verb, because at Google it is its own operation.** `status: "REMOVED"` is
+output-only — sending it answers `requestError.INVALID_ENUM_VALUE`, *"Enum value 'REMOVED' cannot
+be used"* — so for a year the `PATCH` routes documented a removal they could never perform, and
+keywords and negatives were removable only because they were the two resources with a route that
+built a real `remove` operation. `_status_and_name` now refuses the enum where the message can
+name the route that works, and every created resource has a `DELETE`. Two consequences worth
+knowing: removing a campaign does **not** cascade its children to REMOVED and afterwards they
+cannot be removed at all (`contextError.OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE`), so a clean
+tree is deleted leaf-first; and `validate_only` is a query parameter on `DELETE` rather than a
+body, because a DELETE body is dropped by enough proxies that "it validated" and "it deleted"
+would be one silently-ignored field apart.
 
 **Creating a campaign takes an existing `budget_id`, and cannot make one.** That is the four-way
 split holding: creating a budget is somebody's decision made with `budget.write`, and a campaign
@@ -543,13 +555,19 @@ for.
 6. **Every in-request Google call goes inside `ctx.release_db()`**, entering the client *first*.
    A request pins one pool connection for its whole transaction; held across a thirty-second
    call, a handful of these drain the pool and the site appears to freeze.
-7. **`campaign.start_date` does not exist.** v25 names them `startDateTime`/`endDateTime`, and
+7. **A campaign create needs `contains_eu_political_advertising`.** Required in v25 — the EU
+   political advertising regulation — and a create without it fails every time with
+   `fieldError: REQUIRED` naming a field that appears in no integration guide. It is an argument
+   on the route (`eu_political_advertising`, default false) rather than a constant, because it is
+   a legal declaration made on the advertiser's behalf. Found by replaying our own payload against
+   a live account after every create had failed silently behind a 502.
+8. **`campaign.start_date` does not exist.** v25 names them `startDateTime`/`endDateTime`, and
    the shorter name is an `UNRECOGNIZED_FIELD` query error rather than a null. Check the
    discovery document before adding a field: `curl "https://googleads.googleapis.com/$discovery/rest?version=v25"`.
-8. **`user_location_view` carries only `country_criterion_id`.** Country, region and city come
+9. **`user_location_view` carries only `country_criterion_id`.** Country, region and city come
    from *segments*, and the resource names they return (`geoTargetConstants/2528`) need a second,
    batched lookup to become readable places.
-9. **`change_event.old_resource` is a wrapper**, not the message. Its single populated key names
+10. **`change_event.old_resource` is a wrapper**, not the message. Its single populated key names
    the resource type, and `changedFields` is a FieldMask relative to what is *inside* it. Walking
    from the wrapper yields "from null to null" for every change — plausible and useless.
 

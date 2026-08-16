@@ -550,3 +550,71 @@ async def test_the_accounts_table_is_rls_forced() -> None:
         await set_current_org(session, b.org.id)
         rows = (await session.scalars(select(GoogleAdsAccount))).all()
         assert rows == []
+
+
+# --- what the live account taught us (#379) ---------------------------------------------------- #
+
+
+async def test_a_linked_account_keeps_the_timezone_the_picker_offered(client_for) -> None:
+    """Ads reports every day in the **account's** timezone, so a row without one silently
+    reasons in the instance default.
+
+    The picker's GAQL selected `customer_client.time_zone` from the start and `AvailableAccount`
+    had nowhere to put it, so it was fetched and dropped: ten of thirteen live accounts had no
+    timezone, and only pressing Verifiëren ever filled one in.
+    """
+    t = await make_tenant("gads-link-tz")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id)
+    async with client_for(t.host) as c:
+        res = await c.post(
+            "/api/v1/google-ads/accounts",
+            json={
+                "customer_id": "1242643293",
+                "company_id": str(company_id),
+                "descriptive_name": "AAZET",
+                "currency_code": "EUR",
+                "time_zone": "America/New_York",
+            },
+            headers=headers,
+        )
+    assert res.status_code == 201
+    assert res.json()["time_zone"] == "America/New_York"
+
+
+async def test_an_account_answers_with_its_clients_name(client_for) -> None:
+    """`company_name` shipped in this payload from the start and was never populated: `_read`
+    took it as an argument that all five call sites left out, so every caller — the MCP tool
+    surface included — got a column of nulls beside a UUID it then had to resolve itself."""
+    t = await make_tenant("gads-company-name")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id, "Van de Velde Auto's")
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/google-ads/accounts",
+            json={"customer_id": "1242643293", "company_id": str(company_id)},
+            headers=headers,
+        )
+        assert created.status_code == 201
+        assert created.json()["company_name"] == "Van de Velde Auto's"
+
+        listed = await c.get("/api/v1/google-ads/accounts", headers=headers)
+        one = await c.get(
+            f"/api/v1/google-ads/accounts/{created.json()['id']}", headers=headers
+        )
+    assert [row["company_name"] for row in listed.json()] == ["Van de Velde Auto's"]
+    assert one.json()["company_name"] == "Van de Velde Auto's"
+
+
+async def test_an_account_with_no_client_has_no_client_name(client_for) -> None:
+    """The agency's own account belongs to no client, and a blank name is the honest answer —
+    not a lookup that quietly resolves to somebody."""
+    t = await make_tenant("gads-no-company-name")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/google-ads/accounts", json={"customer_id": "1242643293"}, headers=headers
+        )
+    assert created.status_code == 201
+    assert created.json()["company_id"] is None
+    assert created.json()["company_name"] is None
