@@ -26,7 +26,12 @@ export interface TaskOption extends LinkOption {
    * `tasks.task.write:own` means *assignee*. Without it the checkbox rendered for a member on
    * every colleague's task and the close came back refused. It rides the list response
    * already (`TaskListItem`, `meta=false` and all), so carrying it costs nothing.
+   *
+   * The **roster**, not the starred one: `:own` is satisfied by any assignee
+   * (`caller_may_write_task`), so a task shared by two people must offer the close to both.
    */
+  assignees: { user_id: string }[];
+  /** The primary, mirrored by the API — kept beside the roster for callers that read it. */
   assignee_user_id: string | null;
   /**
    * Set once the task reached a finished status — the tenant's own vocabulary stamps it (#62),
@@ -87,6 +92,7 @@ export async function loadLinkLookups(
         title: string;
         project_id?: string | null;
         company_id?: string | null;
+        assignees?: { user_id: string }[] | null;
         assignee_user_id?: string | null;
         completed_at?: string | null;
       }) => ({
@@ -94,6 +100,7 @@ export async function loadLinkLookups(
         label: task.title,
         project_id: task.project_id ?? null,
         company_id: task.company_id ?? null,
+        assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
         assignee_user_id: task.assignee_user_id ?? null,
         completed_at: task.completed_at ?? null,
       }),

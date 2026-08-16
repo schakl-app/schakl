@@ -1,17 +1,22 @@
 <script lang="ts">
   /**
    * The new-task dialog behind a picker's "＋ … toevoegen" (docs/UX.md): real fields —
-   * title, due date, assignee — prefilled with what was typed, posting to the caller's
-   * `createTask`-style action, which reports back via `inlineCreated` so the asking picker
-   * auto-selects the new task. The company/project ride along hidden when the caller has
-   * them pinned (e.g. the approve dialog's current picks).
+   * title, due date, the employees on it — prefilled with what was typed, posting to the
+   * caller's `createTask`-style action, which reports back via `inlineCreated` so the asking
+   * picker auto-selects the new task. The company/project ride along hidden when the caller
+   * has them pinned (e.g. the approve dialog's current picks).
+   *
+   * The roster is the same `AssigneePicker` the full task form draws (#375), not a single
+   * Combobox. A task created from a pending email is routinely work for two people, and a
+   * dialog that can only name one made "assign the pair" a second visit to the task itself —
+   * which is exactly the trip the inline-create exists to save. It posts the whole roster in
+   * one hidden field, so the caller's action forwards `assignees` and never a lone id.
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
-  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -37,12 +42,6 @@
     /** Echoed in `inlineCreated` so only the picker that asked auto-selects. */
     pickerSlot?: string;
   } = $props();
-
-  // A brand-new task never *starts* on a deactivated account, so the dialog opens on the
-  // people still here; typing a name still finds the rest, wearing their state.
-  const memberPicker = $derived(splitMemberOptions(members));
-  const memberOptions = $derived(memberPicker.live);
-  let assigneeId = $state("");
 
   const busy = new InFlight();
 
@@ -70,30 +69,18 @@
         >
         <input id="qc-task-title" name="title" value={title} required class={inputClass} />
       </div>
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.due_date")}</span>
-          <DateInput name="due_date" id="qc-task-due" />
-        </div>
-        <!-- Guarded on the roster, not on the opening list: a picker whose every option sits
-             behind the search is still a picker, and hiding it would take the search with it. -->
-        {#if members.length > 0}
-          <div>
-            <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.assignee")}</span
-            >
-            <Combobox
-              items={memberOptions}
-              name="assignee_user_id"
-              value={assigneeId}
-              placeholder={t("common.none")}
-              onselect={(v) => (assigneeId = v)}
-              id="qc-task-assignee"
-              archived={memberPicker.retired}
-              archivedLabel={memberArchivedLabel()}
-            />
-          </div>
-        {/if}
+      <div>
+        <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.due_date")}</span>
+        <DateInput name="due_date" id="qc-task-due" />
       </div>
+      <!-- Guarded on the roster, not on the opening list: a picker whose every option sits
+           behind the search is still a picker, and hiding it would take the search with it. -->
+      {#if members.length > 0}
+        <div>
+          <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.assignees")}</span>
+          <AssigneePicker {members} id="qc-task-assignees" />
+        </div>
+      {/if}
       {#if error}<p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>{/if}
       <div class="flex justify-end gap-2">
         <button

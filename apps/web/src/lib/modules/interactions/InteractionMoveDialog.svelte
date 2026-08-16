@@ -61,7 +61,12 @@
   interface TaskOption extends Option {
     project_id: string | null;
     company_id: string | null;
-    /** Whose task it is — "sluit deze taak" is a task write, and `:own` means assignee. */
+    /**
+     * Whose task it is — "sluit deze taak" is a task write, and `:own` means assignee. The
+     * whole roster, because `:own` is satisfied by *any* of them (`caller_may_write_task`),
+     * so a task shared by two people offers the close to both.
+     */
+    assignees: { user_id: string }[];
     assignee_user_id: string | null;
   }
   interface ProjectOption extends Option {
@@ -226,6 +231,7 @@
           name?: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignees?: { user_id: string }[] | null;
           assignee_user_id?: string | null;
         }
       | undefined;
@@ -240,6 +246,7 @@
             label: created.name ?? (taskDraft || "—"),
             project_id: created.project_id ?? null,
             company_id: created.company_id ?? null,
+            assignees: created.assignees ?? [],
             assignee_user_id: created.assignee_user_id ?? null,
           },
         ];
@@ -342,6 +349,7 @@
           title: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignees?: { user_id: string }[] | null;
           assignee_user_id?: string | null;
           completed_at?: string | null;
         }) => ({
@@ -349,6 +357,7 @@
           label: task.title,
           project_id: task.project_id ?? null,
           company_id: task.company_id ?? null,
+          assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
           assignee_user_id: task.assignee_user_id ?? null,
           completed_at: task.completed_at ?? null,
         }),

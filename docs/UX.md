@@ -1266,6 +1266,20 @@
   for a *type*, which is just the section the line already sits in. Both were dropped: derive
   what the kind determines, and ask only where the answer is genuinely open (a service line
   really is sold in stuks or dagen).
+- **An inline-create dialog that quietly offers less than the field it stands in for.**
+  `TaskQuickCreate` — the "＋ taak toevoegen" behind every task picker, and the only way a task
+  is made while reviewing a pending e-mail — asked for *one* assignee with a plain Combobox,
+  years after tasks grew a roster (#375). The dialog was not wrong when it was written; it was
+  never revisited, and nothing failed: a task created there simply came out assigned to one
+  person, so "assign the pair" meant opening the task afterwards — the exact trip the inline
+  create exists to save. It draws `AssigneePicker` now, the same chips the full form does, and
+  the form action forwards `assignees` rather than a lone id. Two rules come out of it. **A
+  quick-create is a shortcut to a record, not a smaller kind of record**: when the entity gains
+  a field, the dialog is part of the change. And **a permission mirror must follow the roster
+  it now creates** — "sluit deze taak hiermee" is gated on `tasks.task.write:own`, which means
+  *any* assignee server-side (`caller_may_write_task`), while the browser's `canWriteTask` read
+  only the starred one; harmless while a quick-created task had exactly one assignee, and a
+  disappearing control the moment it could have two.
 - **A picker that hides what it has already done.** A billed subscription period is listed and
   disabled with "al gefactureerd", not omitted: "did I invoice March?" is the question the
   picker exists to answer, and answering it by omission is what produces the duplicate.

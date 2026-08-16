@@ -6,6 +6,7 @@
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
+import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
@@ -502,14 +503,18 @@ export const interactionActions = {
     if (!title) return fail(400, { qcError: "errors.required" });
     const company_id = String(form.get("company_id") ?? "").trim();
     const project_id = String(form.get("project_id") ?? "").trim();
-    const assignee_user_id = String(form.get("assignee_user_id") ?? "").trim();
+    // The whole roster, not one id (#375): the dialog draws `AssigneePicker`, which serialises
+    // every chip into one hidden field. `undefined` is "the dialog did not render the picker"
+    // — an org with no roster to offer — and is not the same as `[]` ("nobody"), so it is never
+    // synthesised here.
+    const assignees = parseAssignees(form.get("assignees"));
     const due_date = String(form.get("due_date") ?? "").trim();
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
         title,
         company_id: company_id || undefined,
         project_id: project_id || undefined,
-        assignee_user_id: assignee_user_id || undefined,
+        assignees,
         due_date: due_date || undefined,
         priority: "normal",
         requires_interaction: false,
@@ -532,6 +537,10 @@ export const interactionActions = {
         // API resolves it (the dialog may leave it blank), so read it off the created row
         // rather than off the form.
         assignee_user_id: data.assignee_user_id ?? null,
+        // …and the *whole* roster beside it, because `:own` means **any** assignee, not the
+        // starred one (`caller_may_write_task`). Sending only the primary would hide "sluit
+        // deze taak" from the second person on a task they may certainly close.
+        assignees: (data.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
       },
     };
   },
