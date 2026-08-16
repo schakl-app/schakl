@@ -4930,6 +4930,7 @@
   "gtm.client": "Client",
   "gtm.no_client": "No client",
   "gtm.checked": "Checked {when}",
+  "gtm.live_loading": "Reading Tag Manager\u2026",
   "gtm.never_checked": "Not checked yet",
   "gtm.verify": "Check",
   "gtm.open_in_gtm": "Open in Tag Manager",

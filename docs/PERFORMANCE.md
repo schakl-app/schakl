@@ -81,6 +81,19 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
   captured before writing anything. And **the pending state is a state, not an absence** — the
   shell says "laden", never the empty "nothing linked yet" screen, which is a different answer to
   a different question.
+- **Count the requests before you hide them.** The Tag Manager container page was six API round
+  trips and **nine** Google requests, and streaming it would have left it nine — which on an API
+  whose quota is counted *per user per minute* decides how many times somebody may open the page,
+  not merely how long they wait. Four of those reads each resolved the workspace for themselves,
+  which means listing the container's workspaces first, so one endpoint that resolves once and
+  gathers the four took the page to two round trips and six Google requests
+  (`docs/GOOGLE_TAG_MANAGER.md` §3b). *Then* the shell was split from the live halves and the
+  live halves streamed. A spinner in front of an unfixed data path is a slow page that has learnt
+  to look busy.
+- **A streamed section's error streams with it.** The same page carried `liveError` as a top-level
+  key, which by definition cannot be computed before the reads answer — one such key holds the
+  whole shell back however many promises sit beside it. It belongs *inside* the promise, resolved
+  with the rows it describes.
 - **Nothing fetches on mount for a dropdown nobody opened.** `RichTextEditor` fetches its `@`/`#`
   candidates on first focus from a TTL cache (`lib/core/richtext/candidates.ts`); pass it a
   `scope`, never a pre-fetched list. Where several components on one page want the same browser-

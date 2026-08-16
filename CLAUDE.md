@@ -1011,7 +1011,20 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   screen: the same search is now the *only* way a container is named anywhere — Instellingen, the
   connect dialog, and the client's own page, where the panel finally has the `＋` every other panel
   has (#338), keeping the client from the route and mirroring the key the **call** makes rather
-  than the one the panel is about (#310).
+  than the one the panel is about (#310). Its second sibling is the same quota read as a *page*
+  budget: **count the requests before you hide them.** The container page was six API round trips
+  over **nine** Google requests, because four of its reads each resolved the workspace for
+  themselves — and resolving means listing the container's workspaces. Streaming it would have
+  left it nine, which on a per-user-per-minute limit decides how many times somebody may *open*
+  the page, not merely how long they wait. So one endpoint resolves once and gathers the four
+  (two round trips, six requests), and only **then** does the shell — heading, client, the
+  conversions schakl set up, every write control — separate from the live halves and the live
+  halves stream behind it: first byte at 145 ms where before nothing was sent until everything
+  had answered. Two rules ride along. A streamed section's **error streams with it**: `liveError`
+  was a top-level key, which by definition cannot be computed before the reads answer, so one such
+  key holds the whole shell back however many promises sit beside it. And the pending copy is a
+  **state, not an absence** — "Tag Manager lezen…", never "geen tags", which is a different answer
+  to a different question, and the staged-count tile carries three states for exactly that reason.
 
 ## 11. Working agreement (for Claude Code)
 

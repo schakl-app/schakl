@@ -53,6 +53,7 @@ from app.integrations.google_tag_manager.schemas import (
     GtmVersionCreate,
     GtmVersionCreated,
     GtmVersionRead,
+    GtmWorkspaceContentsRead,
     GtmWorkspaceRead,
     GtmWorkspaceStatusRead,
 )
@@ -343,6 +344,33 @@ async def list_gtm_workspaces(
     async with service.open_client(container_id, tool="workspaces") as (client, row):
         rows = await reads.list_workspaces(client, row.path)
     return [GtmWorkspaceRead(**entry) for entry in rows]
+
+
+@router.get(
+    "/containers/{container_id}/workspace",
+    response_model=GtmWorkspaceContentsRead,
+    dependencies=[require_permission("google_tag_manager.container.read")],
+)
+async def read_gtm_workspace(
+    container_id: uuid.UUID,
+    workspace_id: str | None = Query(default=None),
+    ctx: RequestContext = Depends(require_context),
+) -> GtmWorkspaceContentsRead:
+    """One workspace, whole: its tags, triggers, variables and what of them is staged.
+
+    The four routes below answer the same questions separately, and each resolves the workspace
+    for itself — which means listing the container's workspaces first. A screen wanting all four
+    therefore spent **eight** Google requests where this spends **five**, on an API whose quota is
+    counted per user per minute. Ask for this when you want the workspace; ask for one of the
+    others when you want one of them.
+    """
+    service = GtmService(ctx)
+    choice = WorkspaceChoice.from_row(await service.settings_row())
+    async with service.open_client(container_id, tool="workspace") as (client, row):
+        payload = await reads.workspace_contents(
+            client, row.path, workspace_id=workspace_id, choice=choice
+        )
+    return GtmWorkspaceContentsRead(**payload)
 
 
 @router.get(

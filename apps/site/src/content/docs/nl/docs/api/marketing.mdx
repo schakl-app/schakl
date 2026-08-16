@@ -7,7 +7,7 @@ sidebar:
 
 De cijfers van de klant, de advertenties die ze bewegen, de container die ze meet, en het maandelijkse document dat ze uitlegt.
 
-118 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+119 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `marketing`
 
@@ -1036,6 +1036,7 @@ Antwoord: `200` · `GoogleAdsSettingsRead`
 | `GET` `/gtm/containers/{container_id}/versions` | `google_tag_manager.container.read` |
 | `POST` `/gtm/containers/{container_id}/versions` | `google_tag_manager.tag.write` |
 | `POST` `/gtm/containers/{container_id}/versions/{version_id}/publish` | `google_tag_manager.version.publish` |
+| `GET` `/gtm/containers/{container_id}/workspace` | `google_tag_manager.container.read` |
 | `GET` `/gtm/containers/{container_id}/workspaces` | `google_tag_manager.container.read` |
 | `GET` `/gtm/containers/available` | `google_tag_manager.settings.manage` |
 | `GET` `/gtm/settings` | `google_tag_manager.settings.manage` |
@@ -1358,6 +1359,22 @@ Recht: `google_tag_manager.version.publish`
 Padparameters: `container_id`, `version_id`
 
 Antwoord: `200` · `GtmPublishResult`
+
+#### `GET /api/v1/gtm/containers/{container_id}/workspace`
+
+**Read Gtm Workspace** — One workspace, whole: its tags, triggers, variables and what of them is staged.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `200` · `GtmWorkspaceContentsRead`
 
 #### `GET /api/v1/gtm/containers/{container_id}/workspaces`
 

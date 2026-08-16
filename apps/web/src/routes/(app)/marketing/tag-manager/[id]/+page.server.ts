@@ -15,9 +15,16 @@ import type { Actions, PageServerLoad } from "./$types";
  * question, because half the edits to it are made in the Tag Manager interface by people who do
  * not work here. Waiting is the point on this page, and a surprise on the client page.
  *
- * The four reads are fanned rather than sequenced, and a refusal on any of them is *not* fatal:
- * a container whose grant lost the publish scope should still show its tags. Each one keeps its
- * own error so the section that failed can say so instead of the page going blank.
+ * But "waiting is the point" is an argument about the *lists*, and it had been applied to the
+ * whole page: the heading, the client's name, the conversions schakl set up and every write
+ * control sat behind six Google round trips. So the shell is what this load returns and the live
+ * halves are **streamed** behind it (docs/PERFORMANCE.md) — the pending state saying "laden",
+ * never the empty list, which is a different answer to a different question.
+ *
+ * The reads that stream are two, not six, and that is the other half of the fix. Each of
+ * tags/triggers/variables/status resolved the workspace for itself — and resolving means listing
+ * the container's workspaces — so the page cost nine Google requests where it now costs six, on
+ * an API whose quota is counted **per user per minute**. `/workspace` answers the four at once.
  */
 /** The first refusal among several calls, as an i18n key — or `null` when they all answered. */
 function firstError(...errors: unknown[]): string | null {
@@ -30,46 +37,55 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const container_id = event.params.id;
 
-  const container = await api.GET("/api/v1/gtm/containers/{container_id}", {
-    params: { path: { container_id } },
-  });
-  if (!container.data) throw error(404, "not_found");
+  // Fired before anything is awaited and never awaited here: these are the slow ones, and the
+  // shell below needs nothing they answer. `.catch` rather than a bare promise because a network
+  // throw on a streamed value has no `{data, error}` to fall into and would take the page with it.
+  const workspaceP = api
+    .GET("/api/v1/gtm/containers/{container_id}/workspace", {
+      params: { path: { container_id } },
+    })
+    .catch(() => ({ data: null, error: { detail: "network" } }));
+  const versionsP = api
+    .GET("/api/v1/gtm/containers/{container_id}/versions", {
+      params: { path: { container_id } },
+    })
+    .catch(() => ({ data: null, error: { detail: "network" } }));
 
-  const [tags, triggers, variables, versions, conversions, status, companies] = await Promise.all([
-    api.GET("/api/v1/gtm/containers/{container_id}/tags", { params: { path: { container_id } } }),
-    api.GET("/api/v1/gtm/containers/{container_id}/triggers", {
-      params: { path: { container_id } },
-    }),
-    api.GET("/api/v1/gtm/containers/{container_id}/variables", {
-      params: { path: { container_id } },
-    }),
-    api.GET("/api/v1/gtm/containers/{container_id}/versions", {
-      params: { path: { container_id } },
-    }),
+  const [container, conversions, companies] = await Promise.all([
+    api.GET("/api/v1/gtm/containers/{container_id}", { params: { path: { container_id } } }),
     api.GET("/api/v1/gtm/containers/{container_id}/conversions", {
-      params: { path: { container_id } },
-    }),
-    api.GET("/api/v1/gtm/containers/{container_id}/status", {
       params: { path: { container_id } },
     }),
     api.GET("/api/v1/companies", {
       params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
     }),
   ]);
+  if (!container.data) throw error(404, "not_found");
 
   return {
     container: container.data,
-    tags: tags.data ?? [],
-    triggers: triggers.data ?? [],
-    variables: variables.data ?? [],
-    versions: versions.data ?? [],
     conversions: conversions.data ?? [],
-    status: status.data ?? null,
     companies: companies.data?.items ?? [],
-    // The first refusal any section met, so the page can say what happened rather than render
-    // five empty lists that look exactly like an empty container. `apiErrorKey` falls back to a
-    // validation key for a *null* error, so the presence check comes first.
-    liveError: firstError(tags.error, triggers.error, versions.error, status.error),
+    /**
+     * The workspace and the version history, behind the shell.
+     *
+     * One promise per section rather than one for both: the version list is a container-level
+     * read and the workspace is four workspace-level ones, so they do not arrive together and
+     * pretending otherwise would hold the faster one back.
+     *
+     * `liveError` travels *inside* each, not beside it — a refusal is something the streamed
+     * half learns, and a top-level key would have to be resolved before the shell could render,
+     * which is the thing this stopped doing. `apiErrorKey` falls back to a validation key for a
+     * *null* error, so the presence check comes first.
+     */
+    workspace: workspaceP.then((r) => ({
+      status: r.data?.status ?? null,
+      tags: r.data?.tags ?? [],
+      triggers: r.data?.triggers ?? [],
+      variables: r.data?.variables ?? [],
+      error: firstError(r.error),
+    })),
+    versions: versionsP.then((r) => ({ versions: r.data ?? [], error: firstError(r.error) })),
     // Mirrors the key each call actually makes (#310), never the one the page is about.
     canWrite: can(event.locals.user, "google_tag_manager.tag.write"),
     canPublish: can(event.locals.user, "google_tag_manager.version.publish"),

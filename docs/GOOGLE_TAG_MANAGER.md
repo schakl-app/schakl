@@ -186,6 +186,38 @@ every other panel's ＋ does (#338's argument, one integration over). It posts t
 page's own `?/gtmLink`, mounted by `gtmActions`, and mirrors `google_tag_manager.settings.manage`
 — the key the *call* makes, not the one the panel is about (#310).
 
+## 3b. The container page: five requests, and a shell that does not wait for them
+
+The same quota is the reason the container's own page was rebuilt, and the fix has two halves
+that are easy to confuse.
+
+**The call count came first.** The page wanted tags, triggers, variables, the staged count and the
+version history — six HTTP round trips to our API, and behind them **nine** Google requests,
+because each of the first four resolves the workspace for itself and resolving means *listing the
+container's workspaces*. `GET /gtm/containers/{id}/workspace` resolves once and gathers the four,
+so the page is now two round trips and **six** Google requests. Against the sleep-injected harness
+that is 1.8 s where the four separate calls were 1.8 s *each*. The per-resource routes stay, for
+the agent that wants only tags — this is the shape the *screen* reads, not a replacement.
+
+**Streaming came second, and only after the count.** Hiding a nine-request page behind a spinner
+would have left it nine requests, and on a per-user-per-minute quota that is not a cosmetic
+detail. With the count fixed, the shell — the heading, the client's name, the conversions schakl
+set up, every write control — is served from the container row and the database, and the two live
+halves stream behind it (docs/PERFORMANCE.md). Measured on the harness: **first byte at 145 ms**,
+live data at 1.86 s, where before nothing was sent until everything had answered.
+
+Three details are the usual ones and all three are load-bearing. The promises resolve into
+`$state`, never a raw `{#await}` — a form post re-runs the load, and an `{#await}` would drop back
+to its pending branch and blank the lists behind the dialog somebody is typing in. **A stale
+resolution loses** (the `.then` compares `data.workspace` against the promise it captured), because
+a form post leaves two loads in flight. And the pending copy is a **state, not an absence**:
+"Tag Manager lezen…", never "geen tags", which is a different answer to a different question — the
+staged-count tile has three states for exactly that reason.
+
+The error moved with them. `liveError` used to be a top-level key, which by definition cannot be
+computed until the reads have answered — it would have held the shell back on its own. It now
+travels *inside* each streamed half.
+
 ## 4. Workspaces, and the trap in them
 
 A GTM workspace is a **shared draft**, not a personal branch. Writing into "Default Workspace" puts

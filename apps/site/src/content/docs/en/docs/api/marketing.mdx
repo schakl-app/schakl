@@ -7,7 +7,7 @@ sidebar:
 
 The client's numbers, the advertising that moves them, the container that measures them, and the monthly document that explains them.
 
-118 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+119 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `marketing`
 
@@ -1036,6 +1036,7 @@ Returns: `200` · `GoogleAdsSettingsRead`
 | `GET` `/gtm/containers/{container_id}/versions` | `google_tag_manager.container.read` |
 | `POST` `/gtm/containers/{container_id}/versions` | `google_tag_manager.tag.write` |
 | `POST` `/gtm/containers/{container_id}/versions/{version_id}/publish` | `google_tag_manager.version.publish` |
+| `GET` `/gtm/containers/{container_id}/workspace` | `google_tag_manager.container.read` |
 | `GET` `/gtm/containers/{container_id}/workspaces` | `google_tag_manager.container.read` |
 | `GET` `/gtm/containers/available` | `google_tag_manager.settings.manage` |
 | `GET` `/gtm/settings` | `google_tag_manager.settings.manage` |
@@ -1358,6 +1359,22 @@ Permission: `google_tag_manager.version.publish`
 Path parameters: `container_id`, `version_id`
 
 Returns: `200` · `GtmPublishResult`
+
+#### `GET /api/v1/gtm/containers/{container_id}/workspace`
+
+**Read Gtm Workspace** — One workspace, whole: its tags, triggers, variables and what of them is staged.
+
+Permission: `google_tag_manager.container.read`
+
+Path parameters: `container_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Returns: `200` · `GtmWorkspaceContentsRead`
 
 #### `GET /api/v1/gtm/containers/{container_id}/workspaces`
 

@@ -3936,6 +3936,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gtm/containers/{container_id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gtm Workspace
+         * @description One workspace, whole: its tags, triggers, variables and what of them is staged.
+         *
+         *     The four routes below answer the same questions separately, and each resolves the workspace
+         *     for itself — which means listing the container's workspaces first. A screen wanting all four
+         *     therefore spent **eight** Google requests where this spends **five**, on an API whose quota is
+         *     counted per user per minute. Ask for this when you want the workspace; ask for one of the
+         *     others when you want one of them.
+         */
+        get: operations["read_gtm_workspace_api_v1_gtm_containers__container_id__workspace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gtm/containers/{container_id}/workspaces": {
         parameters: {
             query?: never;
@@ -18605,6 +18631,26 @@ export interface components {
             path: string;
             /** Version Id */
             version_id: string;
+        };
+        /**
+         * GtmWorkspaceContentsRead
+         * @description One workspace, whole: what is in it and what of that is staged.
+         *
+         *     The shape a *screen* reads. Its four per-resource siblings each resolve the workspace for
+         *     themselves — which means listing the container's workspaces — so asking for all four cost
+         *     eight Google requests where this costs five, on a provider whose quota is per user per minute.
+         *     The siblings stay for the caller who wants one of them (an agent asking only for tags).
+         */
+        GtmWorkspaceContentsRead: {
+            status?: components["schemas"]["GtmWorkspaceStatusRead"] | null;
+            /** Tags */
+            tags?: components["schemas"]["GtmTagRead"][];
+            /** Triggers */
+            triggers?: components["schemas"]["GtmTriggerRead"][];
+            /** Variables */
+            variables?: components["schemas"]["GtmVariableRead"][];
+            /** Workspace Id */
+            workspace_id: string;
         };
         /** GtmWorkspaceRead */
         GtmWorkspaceRead: {
@@ -38284,6 +38330,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GtmPublishResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_gtm_workspace_api_v1_gtm_containers__container_id__workspace_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmWorkspaceContentsRead"];
                 };
             };
             /** @description Validation Error */

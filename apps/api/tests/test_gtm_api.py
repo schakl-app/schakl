@@ -458,6 +458,65 @@ async def test_reading_tags_resolves_a_workspace_without_creating_one(client_for
     assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
 
 
+async def test_the_whole_workspace_costs_one_resolution_not_four(client_for, fake) -> None:
+    """The number this endpoint exists for, written down.
+
+    Asking for tags, triggers, variables and the staged count separately is **eight** Google
+    requests, because each of the four lists the container's workspaces to find out which one it
+    means. This is five, and the difference is not only latency: Tag Manager's quota is counted
+    per user per minute, so the count is how many times somebody may open the page.
+
+    Invisible in the JSON — the four separate calls answer exactly the same rows — which is why
+    it is pinned by a number rather than left to review (docs/PERFORMANCE.md).
+    """
+    t = await _connected("gtm-one-resolve")
+    headers = await auth_cookie(t.user)
+    fake.tags["1"] = [{"tagId": "5", "name": "GA4 config", "type": "googtag"}]
+    fake.triggers["1"] = [{"triggerId": "6", "name": "Alle pagina's", "type": "pageview"}]
+    fake.variables["1"] = [{"variableId": "7", "name": "Klant-id", "type": "c"}]
+    async with client_for(t.host) as c:
+        container = await _link(c, headers, public_id=PUBLIC_ID)
+        fake.calls.clear()
+        res = await c.get(f"/api/v1/gtm/containers/{container['id']}/workspace", headers=headers)
+    body = res.json()
+    assert res.status_code == 200, res.text
+    assert [row["name"] for row in body["tags"]] == ["GA4 config"]
+    assert [row["name"] for row in body["triggers"]] == ["Alle pagina's"]
+    assert [row["name"] for row in body["variables"]] == ["Klant-id"]
+    # The staged count rides along rather than costing its own workspace resolution — which is
+    # the whole point, and the reason the overview tile can stop being a fifth round trip.
+    assert body["status"]["workspace_id"] == "1"
+    assert body["workspace_id"] == "1"
+
+    paths = fake.paths("GET")
+    assert sum(1 for p in paths if p.endswith("/workspaces")) == 1
+    assert len(paths) == 5, paths
+    # And still never creates one: a read that mints a workspace puts our name in front of the
+    # client because somebody opened a screen.
+    assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
+
+
+async def test_a_container_with_no_workspace_reads_empty_rather_than_erroring(
+    client_for, fake
+) -> None:
+    """An empty page, never a 502 — and never a workspace brought into existence to fill it."""
+    t = await _connected("gtm-no-workspace")
+    headers = await auth_cookie(t.user)
+    fake.workspaces.clear()
+    async with client_for(t.host) as c:
+        container = await _link(c, headers, public_id=PUBLIC_ID)
+        res = await c.get(f"/api/v1/gtm/containers/{container['id']}/workspace", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {
+        "workspace_id": "",
+        "status": None,
+        "tags": [],
+        "triggers": [],
+        "variables": [],
+    }
+    assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
+
+
 async def test_a_list_follows_every_page(client_for, fake) -> None:
     """A client that ignores ``nextPageToken`` returns a prefix, and no assertion about the first
     page would ever notice."""

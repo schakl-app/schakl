@@ -242,6 +242,24 @@ class GtmVariableRead(BaseModel):
     path: str = ""
 
 
+class GtmWorkspaceContentsRead(BaseModel):
+    """One workspace, whole: what is in it and what of that is staged.
+
+    The shape a *screen* reads. Its four per-resource siblings each resolve the workspace for
+    themselves — which means listing the container's workspaces — so asking for all four cost
+    eight Google requests where this costs five, on a provider whose quota is per user per minute.
+    The siblings stay for the caller who wants one of them (an agent asking only for tags).
+    """
+
+    #: Empty when the container has no workspace at all — an empty page, never an error, and
+    #: never a workspace brought into existence by somebody opening a screen.
+    workspace_id: str
+    status: GtmWorkspaceStatusRead | None = None
+    tags: list[GtmTagRead] = Field(default_factory=list)
+    triggers: list[GtmTriggerRead] = Field(default_factory=list)
+    variables: list[GtmVariableRead] = Field(default_factory=list)
+
+
 class GtmVariableWrite(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     type: str = Field(min_length=1, max_length=120)
