@@ -50,6 +50,8 @@ class Api:
         self.jar = CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
         self.created: dict[str, int] = {}
+        self.skipped: dict[str, int] = {}
+        self.skipped_detail: dict[str, str] = {}
 
     def _request(
         self, method: str, path: str, body: Any = None, form: str | None = None
@@ -91,10 +93,27 @@ class Api:
         status, out = self._request("POST", path, body)
         if status >= 400:
             if status in tolerate:
+                self._tolerated(path, status, out)
                 return None
-            raise SystemExit(f"POST {path} -> {status}: {json.dumps(out)[:600]}\n{json.dumps(body)[:600]}")
+            raise SystemExit(
+                f"POST {path} -> {status}: {json.dumps(out)[:600]}\n{json.dumps(body)[:600]}"
+            )
         self.created[path.split("?")[0]] = self.created.get(path.split("?")[0], 0) + 1
         return out
+
+    def _tolerated(self, path: str, status: int, out: Any) -> None:
+        """Record a refusal we chose to carry on past, and print it at the end.
+
+        `tolerate` exists so a re-run does not die on the rows it already made, and it hid a
+        real bug: every leave request went in with `{"decision": "approved"}` where the schema
+        wants `{"approved": true}`, so all four 422'd, all four were swallowed, and the demo
+        instance quietly had no approved leave at all. A tolerated failure is still a failure —
+        it just is not fatal — so it has to leave a mark somewhere a person will look.
+        """
+        key = f"{status} {path.split('?')[0]}"
+        self.skipped[key] = self.skipped.get(key, 0) + 1
+        if key not in self.skipped_detail:
+            self.skipped_detail[key] = json.dumps(out)[:200]
 
     def upload(self, path: str, filename: str, blob: bytes, fields: dict[str, Any]) -> Any:
         """A multipart POST, for the one endpoint that takes a file.
@@ -141,8 +160,10 @@ class Api:
 
     def patch(self, path: str, body: Any, *, tolerate: tuple[int, ...] = ()) -> Any:
         status, out = self._request("PATCH", path, body)
-        if status >= 400 and status not in tolerate:
-            raise SystemExit(f"PATCH {path} -> {status}: {json.dumps(out)[:600]}")
+        if status >= 400:
+            if status not in tolerate:
+                raise SystemExit(f"PATCH {path} -> {status}: {json.dumps(out)[:600]}")
+            self._tolerated(path, status, out)
         return out
 
     def put(self, path: str, body: Any, *, tolerate: tuple[int, ...] = ()) -> Any:
@@ -1089,7 +1110,7 @@ def seed(api: Api) -> None:
                 if decide:
                     api.post(
                         f"/api/v1/leave/requests/{out['id']}/decide",
-                        {"decision": "approved"},
+                        {"approved": True},
                         tolerate=(409, 422),
                     )
     log(f"{nl_requests} leave requests")
@@ -1097,6 +1118,11 @@ def seed(api: Api) -> None:
     print("\nWritten:")
     for path, n in sorted(api.created.items()):
         print(f"  {n:>5}  {path}")
+    if api.skipped:
+        print("\nRefused and carried past (check these — a tolerated failure is still a failure):")
+        for key, n in sorted(api.skipped.items()):
+            print(f"  {n:>5}  {key}")
+            print(f"         {api.skipped_detail[key]}")
 
 
 def main() -> int:

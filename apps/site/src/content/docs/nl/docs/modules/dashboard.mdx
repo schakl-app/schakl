@@ -1,0 +1,94 @@
+---
+title: Dashboard
+description: "Mijn dag: de tegels die je zelf kiest en ordent, over het werk dat werkelijk van jou is, met een standaardindeling voor het hele bureau eronder."
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Het eerste scherm na het inloggen beantwoordt één vraag: *wat doe ik vandaag?* Het is een bord met
+tegels, elk aangedragen door een module die je hebt aangezet, en elk met alleen wat degene die
+kijkt mag zien.
+
+![Mijn dag: de tegels die je zelf kiest en ordent, met het werk van vandaag links en de stand van zaken rechts.](/img/docs/nl-dashboard.png)
+
+## Waar je het vindt
+
+**Dashboard** in het hoofdmenu, en de pagina waar je na het inloggen op uitkomt. Je eigen indeling
+pas je ter plekke aan met **Aanpassen**; de indeling waar iedereen mee begint stel je in onder
+*Instellingen → Dashboard*.
+
+## Wat erop staat
+
+Elke tegel komt uit een module. Zet je een module uit, dan verdwijnen zijn tegels met hem uit de
+galerij; heb je geen recht op wat een tegel leest, dan wordt hij je überhaupt niet aangeboden. Een
+dashboard tekent geen kaart die zou weigeren.
+
+| Tegel | Welke vraag hij beantwoordt |
+| --- | --- |
+| Uren vandaag | Wat je vandaag geboekt hebt, en of er een timer loopt |
+| Team deze maand | Totaal, facturabel aandeel, omzet, en wat er nog goedgekeurd moet worden |
+| Mijn openstaande taken | De jouwe, eerstvolgende eerst |
+| Openstaande taken per project / klant | Waar het open werk zit, met aantallen over tijd |
+| Verlof | Je eigen saldo, in uren en in dagen |
+| Vandaag afwezig | Wie er vandaag weg is |
+| Openstaande facturen | Wat er openstaat, en hoeveel daarvan vervallen is |
+| Openstaande offertes | Offertes die nog op antwoord wachten |
+| Terugkerende omzet | Het abonnementenboek per jaar, en wat er als eerste verlengt |
+| Nog te factureren | Werk dat af is en nog op geen factuur staat |
+| E-mails te beoordelen | Mail die wacht tot jij hem op een klant accepteert of afwijst |
+| Marketing | De klantcijfers, samengevat |
+| Rapportages | De laatste rapportages, en hun status |
+
+<Aside type="note" title="Een tegel toont jouw werk, niet dat van het bureau">
+"Mijn openstaande taken" is van jou. "Team deze maand" is van het bureau, en die wordt alleen
+aangeboden aan iemand die het recht heeft om de uren van anderen te lezen. Juist die scheiding
+maakt hetzelfde dashboard bruikbaar voor een ontwikkelaar en voor een eigenaar, zonder dat een van
+beiden iets hoeft in te stellen.
+</Aside>
+
+## Zelf indelen
+
+<Steps>
+1. Druk op **Aanpassen**. Het bord gaat in bewerkstand.
+2. Sleep de tegels in de volgorde die je wilt. Sommige zijn halfbreed en sommige volle breedte;
+   het raster houdt zijn eigen vorm.
+3. Voeg er een toe uit de galerij, of haal er een van het bord af. Een tegel weghalen haalt nooit
+   meer weg dan die tegel.
+4. Verlaat de bewerkstand. Je indeling wordt bij je account bewaard en niet in de browser, dus hij
+   reist mee naar een ander apparaat.
+</Steps>
+
+Een beheerder stelt de **huisindeling** in onder *Instellingen → Dashboard*. Dat is wat iedereen
+ziet die zijn eigen bord nog niet heeft ingericht, dus ook iedereen op zijn eerste dag. Zodra
+iemand zijn eigen indeling heeft gemaakt, geldt de huisindeling voor hem niet meer; er is bewust
+geen knop die de indeling van een collega overschrijft.
+
+## Het dashboard van de klant is een ander bord
+
+Een klant met een portaallogin komt op een eigen bord uit. Het gebruikt dezelfde machinerie en een
+andere galerij: een tegel die naar een scherm linkt dat een klant niet kan openen, wordt daar niet
+aangeboden, en de marketingtegel die een klant ziet is de samengestelde versie en niet de volledige
+set van het bureau.
+
+## Rechten
+
+Het dashboard zelf vraagt geen recht: het is jouw eigen kijk op je eigen werkruimte. Elke tegel
+draagt het recht van de gegevens erachter, dus een bord is precies zo informatief als degene die
+ernaar kijkt mag zijn. Wat wél afgeschermd is, is het indelen van een bord en, apart daarvan, het
+bepalen van de indeling waar iedereen mee begint:
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `dashboard.prefs.read` | Een indeling lezen | Iedereen |
+| `dashboard.prefs.write` | **Je eigen** bord indelen | Iedereen |
+| `settings.dashboard.manage` | De huisindeling instellen waar iedereen mee begint | Beheerder |
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Agenda" href="/nl/docs/modules/calendar/" description="Het andere scherm dat je elke ochtend opent." />
+  <LinkCard title="Taken" href="/nl/docs/modules/tasks/" description="Waar de tegels over openstaand werk vandaan komen." />
+  <LinkCard title="Huisstijl" href="/nl/docs/modules/branding/" description="De navigatie en de huisindeling, per organisatie." />
+</CardGrid>

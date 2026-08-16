@@ -1,0 +1,100 @@
+---
+title: Agenda
+description: "Eén agenda over alle feeds die het platform heeft: ingeplande taakblokken, deadlines, teamverlof, beschikbaarheid, feestdagen en je Google Agenda."
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Ingepland werk, deadlines, wie er weg is en wat er in je Google Agenda staat zijn vier
+verschillende vragen die een week alleen samen beantwoordt. De agenda zet ze allemaal op hetzelfde
+raster, elk als een feed die je kunt verbergen, verkleuren of per persoon uitsplitsen.
+
+![De agenda in weekweergave: ingeplande taakblokken naast de balk voor hele dagen met verlof en feestdagen.](/img/docs/nl-calendar.png)
+
+## Waar je het vindt
+
+**Agenda** in het hoofdmenu. Vier weergaven (**Dag**, **Week**, **Maand** en **Jaar**), met
+**Vandaag** en de pijlen om te verspringen, en daarnaast een filterknop met alle feeds erin.
+
+De weergave waarop je hem verlaat wordt onthouden, dus de agenda opent zoals je hem het laatst
+gebruikte.
+
+## De feeds
+
+| Feed | Wat hij tekent |
+| --- | --- |
+| Ingeplande taken | Taakblokken, op het uur waarvoor ze ingepland zijn |
+| Deadlines | De einddatum van een taak, als markering voor de hele dag |
+| Teamverlof | Goedgekeurde en aangevraagde afwezigheid, per collega |
+| Beschikbaarheid | De eigen afwijkingen van een freelancer op zijn basisweek |
+| Feestdagen | De feestdagen die jouw organisatie werkelijk aanhoudt |
+| Google Agenda | Je eigen gekoppelde Google Agenda |
+
+Elke feed kun je **uitzetten**, **verkleuren** en, bij verlof en beschikbaarheid, **per persoon
+uitsplitsen**, zodat de afwezigheid van één collega een eigen kleur houdt terwijl de rest er samen
+een deelt. Die keuzes zijn van jou en worden bij je account bewaard.
+
+<Aside type="note" title="Een aanvraag die nog niet beslist is, staat er vaag bij, met een vraagteken">
+Verlof dat is aangevraagd en nog niet beoordeeld, staat al op de agenda: iets doorzichtiger en met
+een `?` ervoor. Dat is met opzet. Een afwezigheid die jij nog moet goedkeuren is nog steeds iets om
+omheen te plannen, en hem verbergen tot iemand op Goedkeuren drukt is precies hoe twee mensen op
+dezelfde donderdag ingepland raken.
+</Aside>
+
+## Werk erop inplannen
+
+Een taak kan een **ingepland blok** dragen: een dag, een begintijd, een duur en voor wie het is.
+Dat blok verschijnt hier in de kleur van die persoon, en je kunt het naar een andere dag of tijd
+slepen; de taak gaat mee.
+
+<Steps>
+1. Open een taak en geef hem met **Inplannen** een blok.
+2. Of druk op de agenda op **＋ Nieuw** en kies wat je toevoegt.
+3. Sleep een blok om het te verplaatsen. Blokken zijn versleepbaar; de chips die voor verlof staan
+   niet, want zo'n chip is één voorval van een regel en hem verslepen zou de regel verplaatsen.
+</Steps>
+
+Inplannen is niet hetzelfde als boeken. Een blok zegt *wanneer je het van plan bent*; uren leg je
+apart vast, en een taak afronden biedt aan om de tijd te boeken op het blok dat ervoor was
+ingepland, zodat hetzelfde werk nooit dubbel geteld wordt.
+
+## Google Agenda, en welke kant het op loopt
+
+Is de koppeling met Google Workspace per medewerker gelegd, dan verschijnt je eigen Google Agenda
+hier als feed, en gaat wat schakl. inplant de andere kant op: goedgekeurd verlof en ingeplande
+taakblokken worden naar Google geschreven.
+
+<Aside type="caution" title="De agenda schrijft één kant op">
+Verlof en ingeplande taken gaan **naar** Google toe. Google-afspraken worden gelezen en getoond,
+nooit omgezet in records in schakl. Zo blijft er per soort ding één eigenaar, in plaats van twee
+systemen die allebei denken dat dezelfde afspraak van hen is.
+</Aside>
+
+Een verloftype bepaalt zelf hoe zijn afwezigheid getekend wordt: als chip voor de hele dag, of als
+blok tussen de uren waarop iemand ingeroosterd stond. Dat is een eigenschap van het *soort* verlof
+en niet van één aanvraag (of een afwezigheid leest als "vandaag weg" of als "weg tussen 08:30 en
+17:00" is elke keer hetzelfde antwoord), en de Google-spiegel volgt diezelfde instelling, zodat één
+afwezigheid nooit hier een uurblok is en daar een banner voor de hele dag.
+
+## Rechten
+
+De agenda vraagt zelf geen recht: elke feed draagt het recht van de module erachter. Iemand die de
+uren van anderen niet mag lezen, krijgt dus gewoon een agenda zonder de teamfeed in plaats van een
+agenda die weigert.
+
+| Feed | Wat erachter zit |
+| --- | --- |
+| Ingeplande taken, Deadlines | `tasks.task.read`, en `tasks.schedule.write` om in te plannen |
+| Teamverlof | `leave.request.read` |
+| Beschikbaarheid | `leave.availability.read` |
+| Google Agenda | Je eigen Google-koppeling |
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Taken" href="/nl/docs/modules/tasks/" description="Waar een ingepland blok vandaan komt." />
+  <LinkCard title="Verlof" href="/nl/docs/modules/leave/" description="De afwezigheid die de agenda tekent." />
+  <LinkCard title="Google Workspace" href="/nl/docs/integrations/google-workspace/" description="De agenda koppelen, per medewerker." />
+</CardGrid>
