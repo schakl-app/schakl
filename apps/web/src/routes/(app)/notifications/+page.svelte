@@ -10,7 +10,19 @@
    *
    * Marking read is a non-destructive, reversible toggle, so it stays inline rather than hiding
    * behind the ⋯ menu (docs/UX.md).
+   *
+   * **A row opens its record, and opening it marks it read.** Both halves were missing. The row
+   * link was `rowHref`, which `DataTable` only draws when the primary column has *no* cell
+   * snippet — this list gives all four columns one, so the desktop inbox was a wall of plain
+   * text you could not click at all, while the phone (whose stretched overlay reads `rowHref`
+   * directly) could. And a notification you have acted on stayed bold for ever unless you
+   * remembered the ✓ beside it, which is the bell's #164 lesson never applied to the page the
+   * bell links to. The sentence itself is the link now, in both layouts, and a plain left click
+   * clears the row on the way out — a modifier-click (open in a new tab) deliberately does not,
+   * because a row you sent to a background tab has not been read yet.
    */
+  import { SvelteSet } from "svelte/reactivity";
+
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { Check, Undo2 } from "@lucide/svelte";
@@ -66,6 +78,34 @@
   });
 
   const hasUnread = $derived(data.items.some((item) => item.read_at === null));
+
+  /**
+   * Rows this session has cleared by opening them, so the dot goes out immediately.
+   *
+   * The PATCH is fire-and-forget through the bell's own proxy (the one seam the browser has to
+   * the API, Golden Rule 6) — awaiting it would hold up the navigation the click is actually
+   * for. `read_at` on the row is the server's answer and stays authoritative on the next load;
+   * this set only covers the frame between the click and it.
+   */
+  const opened = new SvelteSet<string>();
+  const isRead = (item: Item) => item.read_at !== null || opened.has(item.id);
+
+  /**
+   * A left click without modifiers is "I am reading this"; ⌘/ctrl/shift/middle is "later, in
+   * another tab", which is exactly the case where marking it read loses the reminder.
+   */
+  function openRow(event: MouseEvent, item: Item): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    if (item.read_at !== null || opened.has(item.id)) return;
+    opened.add(item.id);
+    void fetch("/notifications/bell", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: item.id }),
+    });
+  }
 
   function filterHref(patch: Record<string, string | null>): string {
     const url = new URL(page.url);
@@ -130,26 +170,48 @@
   />
 </div>
 
+{#snippet sentence(item: Item)}
+  <!-- A person's event is a predicate after their name; a system reminder stands alone. -->
+  {#if item.actor_name}
+    {item.actor_name}
+    {notificationText(item)}
+  {:else}
+    {notificationText(item)}
+  {/if}
+  {#if !isRead(item)}
+    <span class="sr-only">{t("notifications.unread")}</span>
+  {/if}
+{/snippet}
+
 {#snippet messageCell(item: Item)}
+  {@const href = notificationHref(item)}
   <span class="flex items-start gap-2">
     <span
-      class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {item.read_at === null
-        ? 'bg-brand'
-        : 'bg-transparent'}"
+      class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {isRead(item)
+        ? 'bg-transparent'
+        : 'bg-brand'}"
       aria-hidden="true"
     ></span>
-    <span class={item.read_at === null ? "font-medium text-text" : "text-text-muted"}>
-      <!-- A person's event is a predicate after their name; a system reminder stands alone. -->
-      {#if item.actor_name}
-        {item.actor_name}
-        {notificationText(item)}
-      {:else}
-        {notificationText(item)}
-      {/if}
-      {#if item.read_at === null}
-        <span class="sr-only">{t("notifications.unread")}</span>
-      {/if}
-    </span>
+    <!-- The sentence wraps rather than ellipsizing: it *is* the content of this list, and a
+         notification cut at one line is one you have to open to read. `min-w-0` is what lets
+         it wrap inside the flex row instead of overflowing it. -->
+    {#if href}
+      <a
+        {href}
+        class="min-w-0 hover:text-brand hover:underline {isRead(item)
+          ? 'text-text-muted'
+          : 'font-medium text-text'}"
+        onclick={(event) => openRow(event, item)}
+      >
+        {@render sentence(item)}
+      </a>
+    {:else}
+      <!-- No destination: a plain span, never an empty `href`, which navigates to the page you
+           are already on and reads as a control that refuses (docs/UX.md, #253). -->
+      <span class="min-w-0 {isRead(item) ? 'text-text-muted' : 'font-medium text-text'}">
+        {@render sentence(item)}
+      </span>
+    {/if}
   </span>
 {/snippet}
 
@@ -170,29 +232,38 @@
        harmless in the desktop actions cell where there is no overlay. -->
   <form method="POST" action="?/markRead" use:enhance class="relative z-10">
     <input type="hidden" name="id" value={item.id} />
-    <input type="hidden" name="read" value={item.read_at === null ? "true" : "false"} />
+    <input type="hidden" name="read" value={isRead(item) ? "false" : "true"} />
     <button
       class="rounded p-1.5 text-text-muted hover:bg-surface hover:text-brand"
-      title={item.read_at === null ? t("notifications.mark_read") : t("notifications.mark_unread")}
-      aria-label={item.read_at === null
-        ? t("notifications.mark_read")
-        : t("notifications.mark_unread")}
+      title={isRead(item) ? t("notifications.mark_unread") : t("notifications.mark_read")}
+      aria-label={isRead(item) ? t("notifications.mark_unread") : t("notifications.mark_read")}
     >
-      {#if item.read_at === null}
-        <Check size={15} />
-      {:else}
+      {#if isRead(item)}
         <Undo2 size={15} />
+      {:else}
+        <Check size={15} />
       {/if}
     </button>
   </form>
 {/snippet}
 
 {#snippet mobileRow(item: Item)}
+  {@const href = notificationHref(item)}
   <div class="flex items-start gap-3">
+    {#if href}
+      <!-- The phone's whole-row tap (#59), rendered here rather than through `DataTable`'s
+           `rowHref`: this row needs the click as well as the destination, and `rowHref` is a
+           bare URL. `absolute inset-0` resolves against the `<li>`, which is already
+           `relative`, so it stretches the same way — and the ✓ above it keeps its own tap. -->
+      <a
+        {href}
+        class="absolute inset-0"
+        aria-label={t("table.open_row")}
+        onclick={(event) => openRow(event, item)}
+      ></a>
+    {/if}
     <span class="min-w-0 flex-1">
-      <span
-        class="block text-sm {item.read_at === null ? 'font-medium text-text' : 'text-text-muted'}"
-      >
+      <span class="block text-sm {isRead(item) ? 'text-text-muted' : 'font-medium text-text'}">
         {#if item.actor_name}{item.actor_name}{/if}
         {notificationText(item)}
       </span>
@@ -216,7 +287,6 @@
   sort={table.sort}
   widths={table.widths}
   locale={data.locale}
-  rowHref={(item) => notificationHref(item) ?? ""}
   actions={readToggle}
   {mobileRow}
   {empty}

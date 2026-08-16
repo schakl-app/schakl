@@ -106,6 +106,9 @@ export const load: PageServerLoad = async (event) => {
   const to = isoDay(params.get("to"));
   // The URL wins over the saved default so a sorted list stays shareable (docs/UX.md).
   const sort = params.get("sort") ?? resolved.sort ?? undefined;
+  // `?interaction=<id>` opens that moment's detail modal on arrival (#184).
+  const deepLinkId = params.get("interaction");
+  const deepLink = deepLinkId && UUID_RE.test(deepLinkId) ? deepLinkId : null;
 
   // Only the URL-dependent read. The kind vocabulary, the member names and the company custom
   // fields come from the section layout, which does not rerun on a search keystroke, a date
@@ -138,8 +141,32 @@ export const load: PageServerLoad = async (event) => {
     Promise.all(scoped.map((r) => recordLabel(api, r.field, r.id))),
   ]);
 
+  /**
+   * The deep-linked moment, when the page it landed on does not hold it.
+   *
+   * It used to be resolved *from the loaded rows*, which is true of the dashboard tile the
+   * param was built for (#15 — always the newest few) and false of every other caller: a
+   * notification about an @mention names a note somebody else wrote, weeks back, behind an
+   * owner filter, so the link opened the list and said nothing. That is the worst answer
+   * available to "open this one" — it looks exactly like a page that simply loaded.
+   *
+   * One by-id read, and only when the page came back without it, so the common case still costs
+   * nothing. `null` is a moment that was deleted or that this caller may not read: the list is
+   * then what they get, which is the same thing the old code did for every other reason.
+   */
+  const items = list.data?.items ?? [];
+  const deepLinked =
+    deepLink && !items.some((item) => item.id === deepLink)
+      ? ((
+          await api.GET("/api/v1/interactions/{interaction_id}", {
+            params: { path: { interaction_id: deepLink } },
+          })
+        ).data ?? null)
+      : null;
+
   return {
-    items: list.data?.items ?? [],
+    items,
+    deepLinked,
     total: list.data?.total ?? 0,
     paging,
     canReadAll,

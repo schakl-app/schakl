@@ -3230,6 +3230,7 @@
   "notifications.event.snelstart.sync.failed": "de synchronisatie met {administration} is niet gelukt: {message}",
   "notifications.event.interactions.mentioned": "noemde je in een contactmoment: “{subject}”",
   "notifications.entity.interaction": "Contactmoment",
+  "notifications.entity.snelstart_account": "Boekhoudkoppeling",
   "ai.time.parsed": "Concept ingevuld: {summary}. Controleer het formulier en sla op.",
   "ai.time.parse_empty": "Kon hier geen registratie uit afleiden; voeg een tijd, duur of klantnaam toe en probeer opnieuw.",
   "permissions.marketing.metrics.read": "Marketingcijfers bekijken",

@@ -10,8 +10,22 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 
 export const NOTIFICATIONS_TABLE_ID = "notifications";
 
-/** The entity types the API will filter by; anything else is not a filter we offer. */
-export const ENTITY_TYPES = ["task", "project", "company", "leave_request", "timesheet"] as const;
+/**
+ * The entity types the API will filter by; anything else is not a filter we offer.
+ *
+ * Mirrors `schemas.EntityType` on the API exactly — a value this list holds and that one does
+ * not is a tab that 422s, and a value only the API holds is a tab nobody was ever offered.
+ * `snelstart_account` is in neither on purpose: it is one admin event, and "Alles" already
+ * shows it.
+ */
+export const ENTITY_TYPES = [
+  "task",
+  "project",
+  "company",
+  "leave_request",
+  "timesheet",
+  "interaction",
+] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
 export function asEntityType(value: string | null): EntityType | undefined {

@@ -29508,7 +29508,7 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+            entity_type: "task" | "project" | "company" | "leave_request" | "timesheet" | "interaction";
             /** Watching */
             watching?: boolean | null;
         };
@@ -47123,7 +47123,7 @@ export interface operations {
                 offset?: number;
                 /** @description true = unread only, false = read only */
                 unread?: boolean | null;
-                entity_type?: ("task" | "project" | "company" | "leave_request" | "timesheet") | null;
+                entity_type?: ("task" | "project" | "company" | "leave_request" | "timesheet" | "interaction") | null;
                 /** @description created_at, '-' desc */
                 sort?: string | null;
                 /** @description false skips the count query (docs/PERFORMANCE.md) */
@@ -47158,7 +47158,7 @@ export interface operations {
     activity_api_v1_notifications_activity_get: {
         parameters: {
             query: {
-                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet" | "interaction";
                 entity_id: string;
                 limit?: number;
             };
@@ -47650,7 +47650,7 @@ export interface operations {
     get_watch_api_v1_notifications_watch_get: {
         parameters: {
             query: {
-                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet" | "interaction";
                 entity_id: string;
             };
             header?: never;

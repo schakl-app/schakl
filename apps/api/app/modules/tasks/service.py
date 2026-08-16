@@ -1342,7 +1342,12 @@ class TaskService:
                 # Everyone on it (#375) — someone doing half the work has the same reason to
                 # hear it was finished as the person holding the star.
                 [link.user_id for link in task.assignees],
-                {"from": old_status, "to": new_status},
+                # ``finished`` is published because the *notifications* module needs it and may
+                # not ask: a status list is tenant-defined, so "did this reach a terminal
+                # status" is a lookup in ``task_statuses`` only this module owns. It retires the
+                # task's own "due soon" / "overdue" reminders, which describe a state that has
+                # stopped being true (``notifications/service.py::RESOLVING_EVENTS``).
+                {"from": old_status, "to": new_status, "finished": finishing},
             )
         if roster_touched:
             # A colleague joining or leaving moves no star, so ``changed`` (which reads the

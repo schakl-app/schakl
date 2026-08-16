@@ -347,10 +347,15 @@
   // Deep link from the dashboard tile (issue #15) and anything else naming one moment:
   // `?interaction=<id>` opens that row's detail modal on arrival, the same shape the leave
   // calendar's `?request=` uses. A `$state` initializer rather than a `$derived`, so closing the
-  // modal does not reopen it while the param is still in the URL; an id the current page does
-  // not hold simply lands on the list.
+  // modal does not reopen it while the param is still in the URL. An id this page does not hold
+  // is the load's own by-id read (`data.deepLinked`) — a notification names a note that is
+  // weeks old and behind somebody else's owner filter, so "not on page 1" is the normal case
+  // rather than the exception. The row wins where there is one, so the modal and the list stay
+  // one object.
   const deepLinked = () =>
-    items.find((item) => item.id === page.url.searchParams.get("interaction")) ?? null;
+    items.find((item) => item.id === page.url.searchParams.get("interaction")) ??
+    (data.deepLinked as InteractionItem | null) ??
+    null;
   const initialDetail = deepLinked();
   let showDetail = $state(initialDetail !== null);
   let detailItem = $state<InteractionItem | null>(initialDetail);

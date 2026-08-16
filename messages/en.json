@@ -3230,6 +3230,7 @@
   "notifications.event.snelstart.sync.failed": "the sync with {administration} did not complete: {message}",
   "notifications.event.interactions.mentioned": "mentioned you in a contact moment: “{subject}”",
   "notifications.entity.interaction": "Interaction",
+  "notifications.entity.snelstart_account": "Accounting connection",
   "ai.time.parsed": "Draft filled in: {summary}. Check the form and save.",
   "ai.time.parse_empty": "Couldn't derive an entry from this; add a time, duration or client name and try again.",
   "permissions.marketing.metrics.read": "View marketing metrics",
