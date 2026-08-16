@@ -28,6 +28,7 @@
   import { entryTypeLabel, entryTypes, formatMinutes, formatTime } from "$lib/modules/time/format";
   import ProjectBudgetsPanel from "$lib/modules/time/ProjectBudgetsPanel.svelte";
   import { nextStartFrom, shouldKeepPrefill } from "$lib/modules/time/quickadd";
+  import { pickCompany, pickProject, scopeIndex } from "$lib/modules/time/scope";
   import TimesheetGrid from "$lib/modules/time/TimesheetGrid.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
@@ -458,6 +459,15 @@
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: [timerCompany, qcProjectCompany] }),
   );
+  // The same cascade the entry form runs (`time/scope.ts`), two fields wide: the timer has no
+  // task picker, so its scope carries an empty one. Without it, starting a timer on a project
+  // left the client blank — and a running timer is the one entry nobody revisits before it is
+  // stopped and saved.
+  const timerScope = $derived(scopeIndex(data.projects, []));
+  function timerPick(next: { companyId: string; projectId: string }) {
+    timerCompany = next.companyId;
+    timerProject = next.projectId;
+  }
 
   // A quick-create answers with `inlineCreated` (server create → auto-select): only the
   // slot that asked gets the new id. The entry form's pickers keep their own wiring.
@@ -583,6 +593,14 @@
             bind:value={timerCompany}
             id="timer-company"
             placeholder={t("time.field.company")}
+            onselect={(companyId) =>
+              timerPick(
+                pickCompany(
+                  companyId,
+                  { companyId: timerCompany, projectId: timerProject, taskId: "" },
+                  timerScope,
+                ),
+              )}
             oncreate={(name) => quickCreateCompany(name, "timer_company")}
           />
         </div>
@@ -595,6 +613,14 @@
             bind:value={timerProject}
             id="timer-project"
             placeholder={t("time.field.project")}
+            onselect={(projectId) =>
+              timerPick(
+                pickProject(
+                  projectId,
+                  { companyId: timerCompany, projectId: timerProject, taskId: "" },
+                  timerScope,
+                ),
+              )}
             oncreate={(name) => quickCreateProject(name, "timer_project", timerCompany)}
           />
         </div>

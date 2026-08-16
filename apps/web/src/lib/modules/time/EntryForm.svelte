@@ -29,6 +29,13 @@
     formatMinutes,
     type TimeEntryTypeDef,
   } from "$lib/modules/time/format";
+  import {
+    pickCompany,
+    pickProject,
+    pickTask,
+    scopeIndex,
+    type Scope,
+  } from "$lib/modules/time/scope";
   import { splitTaskOptions } from "$lib/modules/time/task-picker";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
@@ -243,11 +250,19 @@
     ),
   );
   const projectOptions = $derived(projectPicker.live);
+  // Whose task is whose, indexed once per lookup change (`scope.ts`). Both the narrowing below
+  // and the cascade underneath it read this, so the dropdown and the fields cannot disagree
+  // about which client a project-attached task belongs to.
+  const cascade = $derived(scopeIndex(projects, tasks));
   // Open tasks in the dropdown, finished ones behind a search (`task-picker.ts` holds the rule
-  // and the reasons). Both buckets get the same hint, deadline included.
+  // and the reasons). Both buckets get the same hint, deadline included. The client narrows it
+  // as well as the project now: naming the client is often all anyone knows when they sit down
+  // to log an afternoon, and it is enough to cut the list to that client's work.
   const taskBuckets = $derived(
     splitTaskOptions(tasks, {
       projectId: fProject,
+      companyId: fCompany,
+      companyOf: cascade.companyOfTask,
       selectedId: fTask,
       statuses: taskStatuses,
       labels: {
@@ -256,15 +271,36 @@
       },
     }),
   );
-  function onProjectPicked(projectId: string) {
-    const project = projects.find((p) => p.id === projectId);
-    if (project?.company_id) fCompany = project.company_id;
+
+  // --- the three pickers, as one cascade (`scope.ts` holds the rules and the reasons) --------
+  //
+  // Only an explicit pick moves anything: these run from `Combobox.onselect`, never from an
+  // effect watching the fields. An effect could not tell a *pick* from the field being filled in
+  // by the pick before it, so "the project set the client" would come straight back round as
+  // "the client contradicts the project" and empty the field that had just been answered.
+  function currentScope(): Scope {
+    return { companyId: fCompany, projectId: fProject, taskId: fTask };
+  }
+  function applyScope(next: Scope) {
+    fCompany = next.companyId;
+    fProject = next.projectId;
+    fTask = next.taskId;
     // The project seeds "is this billable" (#284) — and a project a subscription covers seeds
     // *not* billable, because the retainer already pays for the work. Only until the person
     // says otherwise: once they have touched the toggle themselves, switching projects never
     // overrules them. The API resolves the same default when a client sends nothing, so this
-    // is the form showing the answer up front, not deciding it.
-    if (project && !billableTouched) fBillable = project.billable_default ?? true;
+    // is the form showing the answer up front, not deciding it. It hangs off the *project*
+    // wherever the project came from — picking a task that carries one is picking that project.
+    if (!billableTouched) fBillable = projectBillable(next.projectId);
+  }
+  function onCompanyPicked(companyId: string) {
+    applyScope(pickCompany(companyId, currentScope(), cascade));
+  }
+  function onProjectPicked(projectId: string) {
+    applyScope(pickProject(projectId, currentScope(), cascade));
+  }
+  function onTaskPicked(taskId: string) {
+    applyScope(pickTask(taskId, currentScope(), cascade));
   }
 
   // Tell the host what this entry is about — on mount and on every change of either field, so a
@@ -606,6 +642,7 @@
       bind:value={fCompany}
       id="company-{action}"
       placeholder={t("time.field.company")}
+      onselect={onCompanyPicked}
       oncreate={oncreatecompany}
     />
   </div>
@@ -662,6 +699,7 @@
       bind:value={fTask}
       id="task-{action}"
       placeholder={t("time.field.task")}
+      onselect={onTaskPicked}
     />
     {#if pickedTaskBurn}
       <!-- What is left of *this task* before saving (#313). The project's bar above answers a
