@@ -860,3 +860,39 @@ async def test_being_unreachable_does_not_flag_the_credential_as_broken(
         row = (await c.get("/api/v1/snelstart/accounts", headers=headers)).json()[0]
         assert row["status"] == "active", "an outage is not a broken credential"
         assert row["last_error"], "…but it is still recorded"
+
+
+# --------------------------------------------------------------------------------------- #
+# The nightly cron
+# --------------------------------------------------------------------------------------- #
+async def test_a_failed_nightly_sync_reaches_somebody_who_can_fix_it(
+    client_for, snelstart
+) -> None:
+    """#31: failures are visible, retryable **and notified**.
+
+    The notification's default audience is the *watchers* of its entity, and nobody watches a
+    ``snelstart_account`` — there is no screen on which to start. So an emit with no recipient
+    hint writes an event row nobody ever sees: the requirement satisfied on paper and by nobody
+    in practice. This asserts the other thing — that it lands in the inbox of somebody holding
+    ``snelstart.settings.manage``.
+    """
+    from app.integrations.snelstart.jobs import snelstart_nightly
+
+    t: Tenant = await make_tenant("snel-nightly")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _connected(c, headers)
+        before = await c.get("/api/v1/notifications?limit=50", headers=headers)
+        assert before.status_code == 200, before.text
+        seen_before = len(before.json().get("items", before.json()))
+
+    # The credential stops working overnight, which is the ordinary way this fails.
+    snelstart.reject_key = True
+    await snelstart_nightly()
+
+    async with client_for(t.host) as c:
+        after = await c.get("/api/v1/notifications?limit=50", headers=headers)
+        assert after.status_code == 200, after.text
+        items = after.json().get("items", after.json())
+        assert len(items) > seen_before, after.text
+        assert any(row["event_type"] == "snelstart.sync.failed" for row in items), after.text

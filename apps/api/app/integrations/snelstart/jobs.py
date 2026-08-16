@@ -75,16 +75,25 @@ async def _nightly_for_org(org: Org, session: AsyncSession) -> None:
                 "snelstart: nightly sync failed for org %s account %s", org.slug, account.id
             )
             continue
-        await _notify_failures(ctx, account, runs)
+        await _notify_failures(ctx, session, account, runs)
 
 
-async def _notify_failures(ctx, account: SnelstartAccount, runs: list[SnelstartSyncRun]) -> None:
+async def _notify_failures(
+    ctx, session: AsyncSession, account: SnelstartAccount, runs: list[SnelstartSyncRun]
+) -> None:
     """Tell somebody when an unattended finance sync did not do what it set out to.
+
+    **The recipients are named, and that is the whole point.** A notification's default audience
+    is the *watchers* of its entity, and nobody watches a ``snelstart_account`` — there is no
+    screen on which to start. Emitting without a hint would write an event row with an empty
+    audience: a "failures are visible" requirement (#31) satisfied on paper and by nobody in
+    practice. So it goes to the people who can actually act on it, which is the people holding
+    ``snelstart.settings.manage``.
 
     One notification per account per night rather than one per failed row: an administration
     whose credential expired would otherwise send four hundred, and the first one already said
-    everything. ``_dedup_key`` carries the account so two connected administrations still each
-    get a voice.
+    everything. The dedup key carries the account *and the day*, so two connected administrations
+    each get a voice and tomorrow's failure is still news.
 
     Imported inside the function (§6): ``notifications`` is another module, and a hard import at
     module scope would make this one depend on it being enabled.
@@ -92,9 +101,17 @@ async def _notify_failures(ctx, account: SnelstartAccount, runs: list[SnelstartS
     failed = [run for run in runs if not run.ok]
     if not failed:
         return
+    recipients = await _managers(session, account.org_id)
+    if not recipients:
+        # Nobody may administer this connection, so there is nobody to tell. Silence here is
+        # correct and worth being explicit about: the alternative is an event nobody can open.
+        logger.info("snelstart: sync failed for account %s and nobody holds the key", account.id)
+        return
+
     from app.modules.notifications.service import NotificationService
 
     worst = failed[0]
+    day = worst.created_at.date().isoformat() if worst.created_at else ""
     try:
         await NotificationService(ctx).ingest(
             "snelstart.sync.failed",
@@ -106,11 +123,37 @@ async def _notify_failures(ctx, account: SnelstartAccount, runs: list[SnelstartS
                 "kind": worst.kind,
                 "message": worst.message or "",
                 "failed": sum(int(run.counts.get("failed") or 0) for run in failed),
-                "_dedup_key": f"snelstart.sync.failed:{account.id}",
+                "_recipients": recipients,
+                "_dedup_key": f"snelstart.sync.failed:{account.id}:{day}",
             },
         )
     except Exception:  # noqa: BLE001 — a notification failure must not lose the sync's work
         logger.warning("snelstart: could not notify sync failure for account %s", account.id)
+
+
+async def _managers(session: AsyncSession, org_id) -> list:
+    """Everyone in this org who may administer a SnelStart connection.
+
+    Read through the RBAC tables directly rather than through ``ctx.can``, which answers about
+    *one* caller — here the question is the other way round, and it is asked once per night per
+    account. The owner's ``"*"`` is matched explicitly: it is stored literally on
+    ``role_permissions`` and would otherwise make an owner the one person never told.
+    """
+    from app.core.models import Membership
+    from app.core.permissions.models import MembershipRole, RolePermission
+
+    rows = await session.execute(
+        select(Membership.user_id)
+        .join(MembershipRole, MembershipRole.membership_id == Membership.id)
+        .join(RolePermission, RolePermission.role_id == MembershipRole.role_id)
+        .where(
+            Membership.org_id == org_id,
+            RolePermission.org_id == org_id,
+            RolePermission.permission.in_(["*", "snelstart.settings.manage"]),
+        )
+        .distinct()
+    )
+    return [row[0] for row in rows]
 
 
 async def snelstart_prune_runs() -> None:

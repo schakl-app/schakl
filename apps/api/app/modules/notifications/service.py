@@ -96,6 +96,9 @@ ENTITY_ID_KEY: dict[str, str] = {
     # Ingested directly by the gmail feed (#146); the bus handler exists for completeness.
     "interactions.email_pending": "interaction_id",
     "interactions.mentioned": "interaction_id",
+    # Ingested directly by the nightly sync (#377), which is the only thing that can know a
+    # sync failed; the bus handler exists for completeness, like the gmail feed's above.
+    "snelstart.sync.failed": "account_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}

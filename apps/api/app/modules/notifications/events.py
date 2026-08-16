@@ -16,6 +16,9 @@ ENTITY_COMPANY = "company"
 ENTITY_LEAVE = "leave_request"
 ENTITY_TIMESHEET = "timesheet"
 ENTITY_INTERACTION = "interaction"
+#: A connected accounting administration (#377). Not a record anybody opens — which is exactly
+#: why the event that names it must hint its recipients rather than rely on watchers.
+ENTITY_SNELSTART_ACCOUNT = "snelstart_account"
 
 ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TASK,
@@ -24,6 +27,7 @@ ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_LEAVE,
     ENTITY_TIMESHEET,
     ENTITY_INTERACTION,
+    ENTITY_SNELSTART_ACCOUNT,
 )
 
 # --- event types ------------------------------------------------------------------------- #
@@ -73,6 +77,12 @@ INTERACTION_MENTIONED = "interactions.mentioned"
 AUTOMATION_NOTIFY = "automation.notify"
 
 #: Every notifiable event, in display order. The settings matrix renders exactly this list.
+# snelstart (#377): an unattended finance sync that did not do what it set out to. Registered
+# here like every other event so it appears in the preferences matrix — an agency that has
+# decided to watch its ledger on a screen instead can switch it off, which is not the same thing
+# as it never having been offered.
+SNELSTART_SYNC_FAILED = "snelstart.sync.failed"
+
 EVENT_TYPES: tuple[str, ...] = (
     TASK_ASSIGNED,
     TASK_UNASSIGNED,
@@ -96,6 +106,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TIME_TIMESHEET_REMINDER,
     INTERACTION_EMAIL_PENDING,
     INTERACTION_MENTIONED,
+    SNELSTART_SYNC_FAILED,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -122,6 +133,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TIME_TIMESHEET_REMINDER: ENTITY_TIMESHEET,
     INTERACTION_EMAIL_PENDING: ENTITY_INTERACTION,
     INTERACTION_MENTIONED: ENTITY_INTERACTION,
+    SNELSTART_SYNC_FAILED: ENTITY_SNELSTART_ACCOUNT,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

@@ -3,119 +3,148 @@
   "name": "SnelStart",
   "order": 21,
   "category": "accounting",
-  "status": "planned",
+  "status": "beta",
   "lucide": "ledger",
   "mark": {
     "monogram": "SS",
     "color": "#0D6EFD"
   },
   "tagline": {
-    "nl": "Het UBL-bestand nu, de koppeling later",
-    "en": "The UBL file now, the connector later"
+    "nl": "Klanten en facturen naar je boekhouding, betalingen terug",
+    "en": "Clients and invoices into your books, payments back out"
   },
   "summary": {
-    "nl": "Een live koppeling met SnelStart is er nog niet. Wel kun je elke definitieve factuur en creditfactuur als UBL 2.1 downloaden, het formaat dat SnelStart importeert. Voor een bureau dat een handvol facturen per maand stuurt is dat vaak het hele werk: één bestand per factuur, of een mapje voor je boekhouder.",
-    "en": "There is no live SnelStart connection yet. You can download every issued invoice and credit note as UBL 2.1, the format SnelStart imports. For an agency that sends a handful of invoices a month that is often the whole job: one file per invoice, or a folder for your bookkeeper."
+    "nl": "Koppel je SnelStart-administratie en stuur je klanten, je definitieve facturen (met de pdf eraan) en je artikelen erheen. Wat terugkomt is het enige waar SnelStart de baas over is: wie er betaald heeft. Die betaling landt in schakl. als een gewone betaling op de factuur, dus alles wat daarna gebeurt (status, herinneringen, het klantportaal) werkt precies zoals altijd.",
+    "en": "Connect your SnelStart administration and send it your clients, your issued invoices (with the PDF attached) and your articles. One thing comes back, and it is the thing SnelStart is authoritative about: who has paid. That payment lands in schakl. as an ordinary payment on the invoice, so everything downstream (status, reminders, the client portal) behaves exactly as it always has."
   },
   "highlights": {
     "nl": [
-      "UBL 2.1 volgens EN 16931, per definitieve factuur of creditfactuur",
-      "Je bedrijfsgegevens, btw-nummer, KvK-nummer en IBAN staan erin",
-      "Geen account koppelen, geen sleutel, geen synchronisatie: alleen een bestand"
+      "Eén factuur belandt nooit twee keer in de boekhouding, ook niet als de verbinding halverwege wegvalt",
+      "De btw-soort komt uit de tarieventabel van je eigen administratie, niet uit een aanname",
+      "Een boeking die er al stond nemen we over, we overschrijven hem niet: je boekhouder had gelijk",
+      "Elke run laat zien wat er gelukt is en wat aandacht vraagt, per regel"
     ],
     "en": [
-      "UBL 2.1 shaped by EN 16931, per issued invoice or credit note",
-      "Your company details, VAT number, chamber-of-commerce number and IBAN are in it",
-      "No account to link, no key, no sync: just a file"
+      "One invoice never lands in the books twice, not even when the connection drops halfway",
+      "The VAT kind comes from your own administration's rate table, not from an assumption",
+      "A booking that was already there is adopted, never overwritten: your bookkeeper was right",
+      "Every run says what worked and what needs a look, row by row"
     ]
   },
   "where": {
-    "nl": "Instellingen → Facturatie → Boekhouding, en de actie UBL downloaden op een definitieve factuur.",
-    "en": "Instellingen → Facturatie → Boekhouding (Settings → Invoicing → Accounting), and the UBL downloaden action on an issued invoice."
+    "nl": "Instellingen → SnelStart. Per klant staat de stand ook op de klantpagina.",
+    "en": "Instellingen → SnelStart (Settings → SnelStart). Each client's state also shows on their own page."
   },
   "roadmapNote": {
-    "nl": "Er is nog geen adapter voor SnelStart, dus er valt op dit moment niets te koppelen. Het scherm Instellingen → Facturatie → Boekhouding somt geïnstalleerde koppelingen op en meldt vandaag 'Geen live boekhoudkoppelingen geïnstalleerd'. De UBL-download werkt wel en verandert niet als de koppeling er later bijkomt.",
-    "en": "There is no SnelStart adapter yet, so there is nothing to connect right now. Instellingen → Facturatie → Boekhouding lists installed connectors and today reports 'Geen live boekhoudkoppelingen geïnstalleerd' (no live accounting connections installed). The UBL download does work, and it does not change when the connector arrives later."
+    "nl": "Koppelen gaat vandaag met een koppelsleutel uit SnelStart Web. De koppeling met één klik, waarbij SnelStart de sleutel zelf naar schakl. stuurt, wacht op certificering door SnelStart; het scherm laat die knop pas zien als hij echt werkt. Offertes gaan nog niet mee.",
+    "en": "Connecting is a connection key from SnelStart Web today. The one-click flow, where SnelStart sends the key to schakl. itself, is waiting on certification by SnelStart; the screen only shows that button once it really works. Quotes do not travel yet."
   },
   "page": {
     "lead": {
-      "nl": "SnelStart importeert UBL 2.1-verkoopfacturen, en dat is het bestand dat schakl. van een definitieve factuur maakt. Een koppeling die zelf boekt is er nog niet.",
-      "en": "SnelStart imports UBL 2.1 sales invoices, and that is the file schakl. produces from an issued invoice. A connector that books them for you does not exist yet."
+      "nl": "SnelStart is de boekhouding en schakl. is het CRM, en dat blijft ook zo. Klanten, facturen en artikelen gaan erheen; wie er betaald heeft komt terug.",
+      "en": "SnelStart is the bookkeeping and schakl. is the CRM, and it stays that way. Clients, invoices and articles go there; who has paid comes back."
     },
     "sections": [
       {
         "heading": {
-          "nl": "Eén bestand per factuur",
-          "en": "One file per invoice"
+          "nl": "Wat er heen gaat",
+          "en": "What goes out"
         },
         "body": {
-          "nl": "Zodra een factuur definitief is, staat de actie UBL downloaden in het actiemenu. Het bestand bevat je bedrijfsgegevens en die van de klant, het factuurnummer, de factuurdatum en de vervaldatum, je IBAN als betaalwijze, de regels met nettobedragen en de btw per tariefgroep. Een creditfactuur gaat mee als het eigen UBL-type, met negatieve bedragen die terugwijzen naar de bron.",
-          "en": "Once an invoice is issued, the UBL downloaden action appears in its actions menu. The file carries your company details and the client's, the invoice number, the issue date and the due date, your IBAN as the payment means, the lines with net amounts and the VAT per rate group. A credit note travels as its own UBL type, with negative amounts pointing back at the source."
+          "nl": "Je klanten worden relaties, je definitieve facturen worden verkoopboekingen met de gerenderde pdf als bijlage, en je producten worden artikelen. Een regel boekt op de grootboekrekening die bij zijn btw-tarief hoort, met een standaardrekening voor de rest; welke btw-soort dat is zoeken we op in de tarieventabel van je eigen administratie, want het lage tarief was 6% tot 2019 en 9% daarna en een factuur uit 2018 hoort nog steeds als laag geboekt te worden.",
+          "en": "Your clients become relations, your issued invoices become sales bookings with the rendered PDF attached, and your products become articles. A line books to the ledger account its VAT rate points at, with a default account for the rest; which VAT kind that is we look up in your own administration's rate table, because the low rate was 6% until 2019 and 9% after, and a 2018 invoice still has to book as low."
         },
         "bullets": {
           "nl": [
-            "Een concept heeft nog geen nummer en kan dus niet geëxporteerd worden",
-            "Btw wordt één keer per tariefgroep afgerond, niet per regel",
-            "Bij prijzen inclusief btw klopt de optelling van de nettoregels tot op de cent",
-            "Vrijgesteld en verlegd krijgen hun eigen categoriecode en de verplichte toelichting"
+            "Een concept gaat nooit mee: die heeft nog geen nummer en is nog niemands afspraak",
+            "Wat je in SnelStart zelf hebt ingevuld (memo, kredietlimiet, incassomachtiging) blijft staan",
+            "Een leeg veld in schakl. wist niets in SnelStart: niet ingevuld is geen opdracht om te wissen",
+            "Een artikelcode die van je administratie niet mag, wordt vooraf gemeld en niet halverwege"
           ],
           "en": [
-            "A draft has no number yet and therefore cannot be exported",
-            "VAT is rounded once per rate group, never per line",
-            "On tax-inclusive documents the net lines still add up to the cent",
-            "Exempt and reverse charge get their own category code and the required explanation"
+            "A draft never travels: it has no number yet and is nobody's agreement",
+            "What you filled in inside SnelStart (memo, credit limit, direct-debit mandate) stays",
+            "An empty field in schakl. erases nothing in SnelStart: not filled in is not an instruction to clear",
+            "An article code your administration refuses is reported up front, not halfway through"
           ]
         }
       },
       {
         "heading": {
-          "nl": "Zet je bedrijfsgegevens en btw-tarieven goed",
-          "en": "Get your company details and VAT rates right"
+          "nl": "Nooit twee keer dezelfde factuur",
+          "en": "Never the same invoice twice"
         },
         "body": {
-          "nl": "Alles wat over jou in het bestand staat komt uit Instellingen → Facturatie, onderdeel Bedrijfsgegevens: naam, adres, postcode, plaats, land, btw-nummer, KvK-nummer en IBAN. Een factuur definitief maken lukt niet zolang de naam leeg is. In hetzelfde scherm staan je btw-tarieven, met per tarief een categorie (standaard, verlaagd, nultarief, vrijgesteld of verlegd) en een optionele Grootboekcode voor het pakket dat erom vraagt. De categorie bepaalt wat er gebeurt: vrijgesteld en verlegd rekenen niets, wat het percentage ook zegt.",
-          "en": "Everything the file says about you comes from Instellingen → Facturatie (Settings → Invoicing), section Bedrijfsgegevens: name, address, postcode, city, country, VAT number, chamber-of-commerce number and IBAN. You cannot issue an invoice while the name is empty. The same screen holds your VAT rates, each with a category (standard, reduced, zero, exempt or reverse charge) and an optional Grootboekcode for the package that asks for one. The category drives behaviour: exempt and reverse charge bill no VAT at all, whatever the nominal percentage says."
+          "nl": "Een dubbele factuur bij een klant is geen foutje maar een incident, dus er zitten vier sloten op. We onthouden wat we gestuurd hebben. Weten we het niet meer, dan vragen we het op factuurnummer. Weigert SnelStart het nummer omdat het al bestaat, dan is dat geen fout maar een antwoord: we zoeken de boeking op en nemen hem over. En krijgen we helemaal geen antwoord (een time-out), dan kijken we eerst of de boeking er staat voordat we iets opnieuw sturen.",
+          "en": "A duplicate invoice at a client is not a slip, it is an incident, so there are four locks on it. We remember what we sent. If we do not, we ask by invoice number. If SnelStart refuses the number because it already exists, that is not a failure but an answer: we look the booking up and adopt it. And if we get no answer at all (a timeout), we check whether the booking is there before sending anything again."
+        },
+        "bullets": {
+          "nl": [
+            "Een boeking die er al stond wordt overgenomen, niet overschreven",
+            "Klopt het bedrag daarvan niet met je factuur, dan staat dat op het scherm in plaats van dat het stilletjes wordt rechtgetrokken",
+            "Een tweede keer synchroniseren schrijft niets: ongewijzigd is het normale antwoord"
+          ],
+          "en": [
+            "A booking that was already there is adopted, not overwritten",
+            "If its amount disagrees with your invoice, that is on the screen instead of being quietly corrected",
+            "Syncing a second time writes nothing: unchanged is the normal answer"
+          ]
         }
       },
       {
         "heading": {
-          "nl": "Wat er nodig is voordat de koppeling er kan zijn",
-          "en": "What has to exist before the connector can"
+          "nl": "Wie er betaald heeft",
+          "en": "Who has paid"
         },
         "body": {
-          "nl": "De plek waar een boekhoudkoppeling zich aanmeldt bestaat al, net als de administratie van wat een extern pakket van een document weet, uniek per pakket en per record. Dat laatste is precies wat voorkomt dat dezelfde factuur er twee keer in belandt als een verbinding halverwege wegvalt. Wat ontbreekt is de adapter zelf: de OAuth-verbinding met SnelStart, de vertaling van een factuurregel naar hun model en de vastlegging van je inloggegevens per organisatie.",
-          "en": "The place where an accounting connector registers itself already exists, as does the record of what an external package knows about a document, unique per package and per record. That last part is exactly what stops the same invoice landing there twice when a connection drops halfway. What is missing is the adapter itself: the OAuth connection to SnelStart, the translation of an invoice line into their model, and the per-organisation storage of your credentials."
+          "nl": "Het bankafschrift wordt in SnelStart afgeletterd, dus SnelStart is de enige die weet dat een factuur betaald is. Dat lezen we terug en het wordt in schakl. een gewone betaling op de factuur: de status springt op betaald, herinneringen stoppen, en het klantportaal klopt weer. Een deelbetaling telt ook mee, want iemand die de helft betaald heeft is geen betaler.",
+          "en": "The bank statement is matched inside SnelStart, so SnelStart is the only place that knows an invoice was paid. We read that back, and in schakl. it becomes an ordinary payment on the invoice: the status flips to paid, reminders stop, and the client portal is right again. A partial payment counts too, because somebody who paid half is not somebody who paid."
+        },
+        "bullets": {
+          "nl": [
+            "Er wordt alleen geld bíj geboekt: een betaling terugdraaien is een beslissing van een mens",
+            "Elke nacht vanzelf, of wanneer je zelf op de knop drukt",
+            "Mislukt er iets 's nachts, dan krijgt degene die de koppeling beheert er meteen bericht van"
+          ],
+          "en": [
+            "Only money *in* is booked: reversing a payment is a person's decision",
+            "Every night on its own, or whenever you press the button yourself",
+            "If something fails overnight, whoever administers the connection hears about it straight away"
+          ]
         }
       }
     ],
     "permissions": [
       {
-        "key": "invoicing.invoice.read",
-        "nl": "Facturen bekijken en de UBL van een definitieve factuur downloaden.",
-        "en": "View invoices and download the UBL of an issued invoice."
+        "key": "snelstart.settings.manage",
+        "nl": "De administratie koppelen, de sleutel vervangen, de standaard grootboekrekening kiezen en de koppeling verwijderen.",
+        "en": "Connect the administration, replace the key, choose the default ledger account and remove the connection."
       },
       {
-        "key": "invoicing.settings.manage",
-        "nl": "Bedrijfsgegevens, btw-tarieven met Grootboekcode en het onderdeel Boekhouding beheren in Instellingen → Facturatie.",
-        "en": "Manage company details, VAT rates with their ledger code, and the Boekhouding section under Instellingen → Facturatie (Settings → Invoicing)."
+        "key": "snelstart.sync.run",
+        "nl": "De administratie uitlezen: basisgegevens ophalen, relaties beoordelen en betalingen teruglezen. Er verandert niets in SnelStart.",
+        "en": "Read the administration: fetch reference data, review relations and pull payments back. Nothing changes inside SnelStart."
+      },
+      {
+        "key": "snelstart.ledger.write",
+        "nl": "Naar de boekhouding schrijven. Facturen pushen vraagt daarnaast ook het recht om facturen te bewerken.",
+        "en": "Write into the books. Pushing invoices additionally requires the right to edit invoices."
       }
     ],
     "limits": {
       "nl": [
-        "Er valt niets te koppelen: geen SnelStart-account, geen sleutel, geen automatische boeking.",
-        "Je downloadt per factuur. Er is geen bulkexport en geen taak die de bestanden vanzelf klaarzet.",
-        "Niets komt terug uit SnelStart: betaalde facturen, dagboeken en grootboek blijven daar.",
-        "Offertes hebben geen UBL-export; die is er voor verkoopfacturen en creditfacturen.",
-        "Facturen en offertes doen niet mee met de spreadsheet-import en -export van de rest van de app.",
-        "Peppol en e-facturatienetwerken staan los hiervan en komen later."
+        "Offertes gaan niet mee; verkoopfacturen en creditfacturen wel.",
+        "De koppeling met één klik wacht op certificering door SnelStart: vandaag plak je een koppelsleutel uit SnelStart Web.",
+        "Eén koppeling is één administratie. Voer je er meer, dan koppel je ze los van elkaar.",
+        "Uren, projecten en abonnementen gaan niet als zodanig mee: wat er heen gaat is de factuur die eruit komt.",
+        "Peppol en e-facturatienetwerken staan hier los van."
       ],
       "en": [
-        "There is nothing to connect: no SnelStart account, no key, no automatic booking.",
-        "You download per invoice. There is no bulk export and no job that prepares the files for you.",
-        "Nothing comes back from SnelStart: paid invoices, day books and the ledger stay there.",
-        "Quotes have no UBL export; it exists for sales invoices and credit notes.",
-        "Invoices and quotes are not part of the spreadsheet import and export the rest of the app has.",
-        "Peppol and e-invoicing networks are separate from this and come later."
+        "Quotes do not travel; sales invoices and credit notes do.",
+        "The one-click connect is waiting on certification by SnelStart: today you paste a connection key from SnelStart Web.",
+        "One connection is one administration. If you run several, you connect them separately.",
+        "Hours, projects and subscriptions do not travel as such: what goes across is the invoice that comes out of them.",
+        "Peppol and e-invoicing networks are separate from this."
       ]
     }
   }
