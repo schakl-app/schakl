@@ -7,18 +7,28 @@ sidebar:
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Niet elk bureau gebruikt alles. Onder *Instellingen → Modules* bepaal je welke onderdelen van
-het platform in deze werkomgeving zichtbaar zijn. Wat je uitzet verdwijnt uit het menu, van het
-klantdossier en uit Instellingen, zonder dat er ook maar één regel gegevens verdwijnt.
+Niet elk bureau gebruikt alles. Twee schermen bepalen wat deze werkomgeving zelf doet en met wie
+hij praat, en wat je uitzet verdwijnt uit het menu, van het klantdossier en uit Instellingen,
+zonder dat er ook maar één regel gegevens verdwijnt.
 
 ![De instellingenindex, gegroepeerd naar wat elke groep bestuurt.](/img/docs/nl-settings.png)
 
-## Waar je het vindt
+## Twee schermen, en het verschil ertussen
 
-*Instellingen → Modules* (`/settings/modules`), in de groep **Werkruimte**. Je ziet één vinkje
-per module die op deze installatie is meegeleverd, en daaronder **Opslaan**. Het scherm is er
-voor wie het recht "Huisstijl en modules wijzigen" heeft; standaard zijn dat de eigenaar en de
-beheerder.
+- **Instellingen → Modules** (`/settings/modules`): wat schakl. zelf voor deze werkruimte doet,
+  zoals klanten, taken, projecten, uren, facturatie, domeinen en rapportage. Het is het waard ook
+  als je elk account bij een andere partij ter wereld opzegt.
+- **Instellingen → Integraties** (`/settings/integrations`): met welke diensten van buiten
+  schakl. praat, zoals Google, Cloudflare, OXXA, Mollie, SnelStart, WordPress, Uptime Kuma, Tag
+  Manager en Google Ads. Elk daarvan bewaart een inlog van jou, en wat het opslaat is een spiegel
+  van gegevens die daar staan.
+
+De toets is één zin: *als de leverancier morgen ophoudt te bestaan, is het ding dan weg of alleen
+armer?* Weg is een koppeling. Armer is een module. Elk scherm staat als eerste in de groep
+instellingen waar hij over gaat, zodat een kop en het scherm eronder het niet oneens kunnen zijn.
+
+Allebei zijn ze er voor wie het recht "Huisstijl en modules wijzigen" heeft; standaard zijn dat
+de eigenaar en de beheerder.
 
 Staat een module die je verwacht er niet tussen? Dan draait hij niet op deze installatie.
 *Instellingen → Systeeminformatie* toont onder **Ingeschakelde modules** wat er op de
@@ -60,28 +70,38 @@ Modules bepalen wat er voor iedereen in beeld is, niet wie wat mag. Wil je dat e
 medewerker de uren of de facturen niet ziet, regel dat dan onder *Instellingen → Rollen*.
 </Aside>
 
-## Modules die elkaar nodig hebben
+## Wat wat nodig heeft, en wie dat uitzoekt
 
-Het platform controleert dit niet voor je, dus het is goed om te weten welke combinaties
-logisch zijn:
+Een koppeling die zonder een module nergens zijn gegevens kwijt kan, zegt dat, en het scherm doet
+er iets mee in plaats van je achteraf te weigeren.
 
-| Module | Heeft in de praktijk nodig |
+| Koppeling | Kan niet zonder |
 | --- | --- |
-| Websites | Domeinen: een website hoort altijd bij een domein |
-| Cloudflare, OXXA | Domeinen: beide werken op de domeinen uit dat register |
-| Mollie | Facturatie: de betaallink hoort bij een factuur |
-| Marketing | Google Workspace voor de Google-bronnen (GA4, Search Console, Ads) |
+| Cloudflare, OXXA | Domeinen |
+| WordPress | Websites |
+| Mollie, SnelStart | Facturatie |
+| Google Ads, Google Tag Manager | Google Workspace |
 
-<Aside type="caution" title="Mollie en OXXA zijn nog niet op een echt account beproefd">
-Beide koppelingen zijn geschreven op basis van de officiële documentatie van de leverancier,
-maar nog nooit tegen een live account gedraaid. Zet ze aan met dat in gedachten en controleer
-de eerste betaling en de eerste registeruitlezing met de hand.
+Een van die koppelingen aanvinken **zet meteen aan wat hij nodig heeft**. Een module uitvinken
+laat de koppelingen die daarvan afhingen aangevinkt-maar-niet-opgeslagen staan, met een oranje
+regel die zegt wat er ontbreekt, zodat je het merkt vóór het opslaan in plaats van via een
+weigering.
+
+En omdat beide schermen dezelfde lijst bewerken, noemt elk scherm zijn slachtoffers **op het
+andere scherm, bij naam**: Domeinen uitzetten onder Modules vertelt je dat Cloudflare en OXXA
+meegaan, vóór het opslaan, op een scherm dat ze niet eens toont.
+
+<Aside type="note" title="Bewust geen lijst met wensen">
+Google Workspace heeft niets nodig, ook al verrijkt hij contactmomenten, taken en verlof. Uptime
+Kuma heeft ook niets nodig, want zijn panelen hangen aan Websites **of** aan Domeinen, en een
+lijst met eisen die met "en" verbonden is kan dat niet zeggen. Te veel eisen opgeven zou je een
+module laten aanzetten die je niet wilde.
 </Aside>
 
 ## Licentie en modules
 
 Klanten, Contactpersonen, Taken en Meldingen horen bij de vrij te gebruiken kern. Alle andere
-modules zijn gelicentieerd. Wat een sleutel dekt en hoe je er een installeert, staat op
+modules en alle koppelingen zijn gelicentieerd. Wat een sleutel dekt en hoe je er een installeert, staat op
 [Licenties](/nl/docs/admin/licenses/).
 
 Twee dingen komen op dit scherm samen:

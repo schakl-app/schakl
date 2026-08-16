@@ -7,17 +7,27 @@ sidebar:
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Not every agency uses everything. *Instellingen → Modules* (Settings → Modules) decides which
-parts of the platform are visible in this workspace. What you switch off disappears from the
-menu, from the client record and from Settings, without a single row of data going anywhere.
+Not every agency uses everything. Two screens decide what this workspace does and what it talks
+to, and what you switch off disappears from the menu, from the client record and from Settings
+without a single row of data going anywhere.
 
 ![The settings index, grouped by what each group governs.](/img/docs/en-settings.png)
 
-## Where to find it
+## Two screens, and the difference between them
 
-*Instellingen → Modules* (`/settings/modules`), in the **Werkruimte** (Workspace) group. You
-get one checkbox per module this installation ships, with **Opslaan** (Save) underneath. The
-screen is there for anyone holding the "Huisstijl en modules wijzigen" (Change branding and
+- **Instellingen → Modules** (`/settings/modules`) — what schakl. itself does for this
+  workspace: clients, tasks, projects, hours, invoicing, domains, reporting. Worth having with
+  every third-party account in the world cancelled.
+- **Instellingen → Integraties** (`/settings/integrations`) — which outside services schakl.
+  talks to: Google, Cloudflare, OXXA, Mollie, SnelStart, WordPress, Uptime Kuma, Tag Manager,
+  Google Ads. Each holds a credential of yours, and what it stores is a mirror of state that
+  lives over there.
+
+The test is one sentence: *if the vendor went out of business tomorrow, is the thing gone, or is
+it merely poorer?* Gone means integration. Poorer means module. Each screen sits first in the
+group of settings it governs, so a heading and the screen under it cannot disagree.
+
+Both are there for anyone holding the "Huisstijl en modules wijzigen" (Change branding and
 enabled modules) permission; by default that is the owner and the administrator.
 
 Missing a module you expected? Then it is not part of this installation.
@@ -60,27 +70,37 @@ Modules decide what is on screen for everybody, not who may do what. If one empl
 see the hours or the invoices, that belongs under *Instellingen → Rollen* (Settings → Roles).
 </Aside>
 
-## Modules that lean on each other
+## What needs what, and who works it out
 
-The platform does not check this for you, so it is worth knowing which combinations make sense:
+An integration that has nowhere to put its data without a module says so, and the screen acts on
+it rather than refusing you afterwards.
 
-| Module | Needs in practice |
+| Integration | Cannot work without |
 | --- | --- |
-| Websites | Domeinen (Domains): a website always belongs to a domain |
-| Cloudflare, OXXA | Domeinen: both work on the domains in that register |
-| Mollie | Facturatie (Invoicing): the payment link belongs to an invoice |
-| Marketing | Google Workspace for the Google sources (GA4, Search Console, Ads) |
+| Cloudflare, OXXA | Domeinen (Domains) |
+| WordPress | Websites |
+| Mollie, SnelStart | Facturatie (Invoicing) |
+| Google Ads, Google Tag Manager | Google Workspace |
 
-<Aside type="caution" title="Mollie and OXXA have not been exercised against a live account">
-Both integrations were written from the vendor's official documentation and have never been run
-against a real credential. Switch them on with that in mind, and check the first payment and the
-first register read by hand.
+Ticking one of those **pulls in what it needs**. Unticking a module leaves the integrations that
+depended on it ticked-but-not-saved with an amber line naming what is missing, so you find out
+before you save rather than through a refusal.
+
+Because the two screens edit one list, each names its casualties **on the other screen, by
+name**: switching Domeinen off under Modules tells you Cloudflare and OXXA go with it, before you
+save, on a screen that does not even list them.
+
+<Aside type="note" title="Deliberately not a list of nice-to-haves">
+Google Workspace requires nothing, though it enriches interactions, tasks and leave. Uptime Kuma
+requires nothing either, because its panels attach to Websites **or** Domains, and a list of
+requirements joined by "and" cannot say that. Over-declaring would make you switch on a module
+you did not want.
 </Aside>
 
 ## Licensing and modules
 
 Klanten (Clients), Contactpersonen (Contacts), Taken (Tasks) and Meldingen (Notifications)
-are part of the freely usable core. Every other module is licensed. What a key covers and how you install one is on
+are part of the freely usable core. Every other module and every integration is licensed. What a key covers and how you install one is on
 [Licenses](/en/docs/admin/licenses/).
 
 Two things meet on this screen:
