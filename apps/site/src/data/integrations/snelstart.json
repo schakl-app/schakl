@@ -35,10 +35,7 @@
     "nl": "Instellingen → SnelStart. Per klant staat de stand ook op de klantpagina.",
     "en": "Instellingen → SnelStart (Settings → SnelStart). Each client's state also shows on their own page."
   },
-  "roadmapNote": {
-    "nl": "Koppelen gaat vandaag met een koppelsleutel uit SnelStart Web. De koppeling met één klik, waarbij SnelStart de sleutel zelf naar schakl. stuurt, wacht op certificering door SnelStart; het scherm laat die knop pas zien als hij echt werkt. Offertes gaan nog niet mee.",
-    "en": "Connecting is a connection key from SnelStart Web today. The one-click flow, where SnelStart sends the key to schakl. itself, is waiting on certification by SnelStart; the screen only shows that button once it really works. Quotes do not travel yet."
-  },
+  "docs": "/docs/integrations/snelstart/",
   "page": {
     "lead": {
       "nl": "SnelStart is de boekhouding en schakl. is het CRM, en dat blijft ook zo. Klanten, facturen en artikelen gaan erheen; wie er betaald heeft komt terug.",

@@ -42,6 +42,11 @@ A beta integration proves that our code agrees with the vendor's documentation, 
 agrees with their servers. So run a rehearsal of your own — a test key, or a single domain —
 before you send clients or money through it. Today **Mollie** and **OXXA** are beta.
 
+**SnelStart** is beta for a different reason and is worth reading separately: it *was* built and
+driven against a real administration with a real connection key. What is unfinished there is the
+one-click connect, which waits on certification by SnelStart, and the mileage: it has not yet run
+in dozens of administrations, and administrations differ. Start with a handful of invoices.
+
 **SE Ranking** is a separate case and does not fit that definition: it was written against SE
 Ranking's live API and those responses are pinned in our tests. Two things about it have never
 been tried with a real key: the exact `Authorization` header scheme and the path the project
@@ -56,6 +61,11 @@ project too.
     title="Mollie (beta)"
     href="/en/docs/integrations/mollie/"
     description="Let clients pay an open invoice online with iDEAL, cards, Bancontact or PayPal; the confirmed payment becomes a payment line on that invoice by itself."
+  />
+  <LinkCard
+    title="SnelStart (beta)"
+    href="/en/docs/integrations/snelstart/"
+    description="Clients, issued invoices and articles into your books; who has paid comes back as an ordinary payment on the invoice."
   />
   <LinkCard
     title="Cloudflare"

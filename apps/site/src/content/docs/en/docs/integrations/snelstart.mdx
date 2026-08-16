@@ -1,0 +1,174 @@
+---
+title: SnelStart
+description: "Connect your SnelStart administration: clients, issued invoices and articles go out, and who has paid comes back as an ordinary payment on the invoice."
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+SnelStart is the bookkeeping and schakl. is the CRM, and it stays that way. Your clients become
+relations, your issued invoices become sales bookings with the rendered PDF attached, and your
+products become articles. One thing comes back, and it is exactly the thing SnelStart is
+authoritative about: who has paid. That payment lands here as an ordinary payment line on the
+invoice, so status, reminders and the client portal behave afterwards as they always have.
+
+<Aside type="caution" title="Why this is beta (and why it is not)">
+This integration was built and driven against a real SnelStart administration with a real
+connection key: connecting, fetching ledger accounts, adopting relations, booking invoices with
+the PDF attached, reading a payment back, and re-syncing until everything reported "unchanged".
+
+Beta refers to two other things. The one-click connect has not been certified by SnelStart yet,
+and the integration is young: it has not run in dozens of administrations, and administrations
+differ (their own chart of accounts, their own day books, their own article settings). So start
+with a handful of invoices and check in SnelStart that they look the way you expect.
+</Aside>
+
+## Where to find it
+
+*Instellingen → SnelStart* (Settings → SnelStart), in the **Integrations** group. Each client's
+state also shows on their own page, in the **SnelStart** panel: whether that client is paired with
+a relation, what has been booked of their invoices, and what needs a look.
+
+## Connecting
+
+<Steps>
+
+1. **Make sure you hold the right.** *Settings → Roles* → `snelstart.settings.manage`. By default
+   only the **admin** role has this, and the client role never does.
+
+2. **Get a connection key from SnelStart.** SnelStart Web → *Instellingen → Koppelingen* → new
+   key. A connection key names exactly one administration; if you run several, you connect them
+   separately.
+
+3. **Paste the key.** *Settings → SnelStart* → **Connect administration**. schakl. immediately
+   exchanges the key for a token and asks SnelStart for the administration details, so you see
+   your own administration's name come straight back. If you do not, the key is wrong and nothing
+   was stored.
+
+4. **Fetch the reference data.** Ledger accounts, day books, VAT rates and countries are read once
+   and kept. This is a read: nothing changes in your books.
+
+5. **Choose the default ledger account.** An invoice line books to the account its VAT rate points
+   at; for everything you have not mapped, schakl. uses this one. If you want it finer-grained,
+   map an account per VAT rate.
+
+6. **Review the relations.** schakl. lays your clients beside the administration's relations and
+   shows which are already there and which are not. You confirm each pairing yourself; nothing is
+   matched up automatically on the strength of a similar name.
+
+7. **Book one invoice.** Take an issued invoice, push it, and check in SnelStart that the booking
+   looks right: the amount, the VAT kind and the ledger account. If that is right, the rest is
+   right.
+
+</Steps>
+
+## What goes out
+
+Only **issued** invoices and credit notes. A draft never travels: it has no number yet and is
+nobody's agreement.
+
+An invoice becomes a **sales booking** (`verkoopboeking`), not a sales order. That is deliberate: a
+sales order has SnelStart produce and send an invoice of its own, and then a second,
+differently-designed invoice lands with your client. What schakl. renders and sends is the
+document; SnelStart keeps the books, with the PDF attached.
+
+The **VAT kind is looked up**, not assumed. The Dutch low rate was 6% until 2019 and 9% after, so a
+percentage on its own says nothing: schakl. reads your own administration's rate table at the
+invoice's date. A rate it cannot find there is reported rather than quietly resolved to something
+plausible.
+
+Filling in a relation **erases nothing**. What you entered inside SnelStart (the memo, the credit
+limit, the direct-debit mandate) stays, and an empty field in schakl. is not an instruction to
+clear it there.
+
+## Never the same invoice twice
+
+A duplicate invoice at a client is not a slip, it is an incident, so there are four locks on it:
+
+1. schakl. remembers what it sent.
+2. If it does not, it asks by invoice number.
+3. If SnelStart refuses the number because it already exists, that is not a failure but an answer:
+   the booking is looked up and adopted.
+4. And if there is no answer at all (a timeout), it checks whether the booking is there before
+   sending anything again.
+
+A booking that was already there is **adopted, not overwritten**: somebody made it. If its amount
+disagrees with your invoice, that lands on the screen as "needs a look" instead of being quietly
+corrected.
+
+## Who has paid
+
+The bank statement is matched inside SnelStart, so SnelStart is the only place that knows an
+invoice was paid. schakl. reads that back every night (or whenever you press the button yourself)
+and turns it into an ordinary payment line on the invoice: the status flips to paid, reminders
+stop, and the client portal is right again. A partial payment counts, because somebody who paid
+half is not yet somebody who paid.
+
+Only money *in* is booked. Reversing a payment is a person's decision and does not happen here on
+its own.
+
+## Permissions
+
+| Right | What it opens | Default for |
+| --- | --- | --- |
+| `snelstart.settings.manage` | Connect the administration, replace the key, choose the ledger accounts and remove the connection | Admin |
+| `snelstart.sync.run` | Read the administration: fetch reference data, review relations and pull payments back. Nothing changes inside SnelStart | Admin |
+| `snelstart.ledger.write` | Write into the books. Pushing invoices additionally requires the right to edit invoices | Admin |
+
+Reading and writing are deliberately separate: reading and reviewing is a different act from
+changing something in your agency's books.
+
+## When something goes wrong
+
+Every sync records what happened, row by row: what worked, what stayed unchanged, what failed and
+what needs a look. A failed row can be retried without redoing the rest.
+
+If it fails overnight, whoever administers the connection hears about it straight away. If you
+would rather they did not, switch that notification off in your notification preferences; the
+difference from "we never offered it" is exactly the point.
+
+<Aside type="tip" title="Two keys, two owners">
+There are two secrets in play and they belong to different people. The **connection key**
+(koppelsleutel) is yours and names your administration; you replace it yourself in SnelStart Web.
+The **subscription key** belongs to the installation and to whoever administers it. SnelStart
+refuses both with the same kind of error, so schakl. keeps them apart and says which of the two it
+was. If you are told it is the subscription key, re-issuing your connection key will not help.
+</Aside>
+
+## Good to know
+
+- **Quotes do not travel.** A quote has no accounting consequence yet, and SnelStart would turn it
+  into a second, differently-designed quote. Sales invoices and credit notes do travel.
+- **One connection is one administration.**
+- **One-click connecting is waiting on certification.** Today you paste a connection key. If you
+  run your own installation, that button does not appear at all: SnelStart has never heard of your
+  hostname and could never post anything to it.
+- **Hours, projects and subscriptions do not travel as such.** What goes across is the invoice that
+  comes out of them.
+- **Syncing a second time writes nothing.** "Unchanged" is the normal answer.
+- **Client numbers need not collide.** If your client number is already a relation code in
+  SnelStart, schakl. looks at whose code it is: if it is the same client, that relation is adopted,
+  and otherwise SnelStart allocates a number of its own. The relation is the point; the shared
+  number is a convenience.
+- **Peppol and e-invoicing networks are separate from this.**
+
+## Further reading
+
+<CardGrid>
+  <LinkCard
+    title="Invoicing"
+    href="/en/docs/modules/invoicing/"
+    description="Where the invoice comes from and what happens to a payment."
+  />
+  <LinkCard
+    title="Mollie"
+    href="/en/docs/integrations/mollie/"
+    description="Paying online. The confirmed payment lands in the same place this one does."
+  />
+  <LinkCard
+    title="All integrations"
+    href="/en/docs/integrations/"
+    description="What else there is to connect, and what is available or beta."
+  />
+</CardGrid>
