@@ -28,6 +28,7 @@ checklist of what to re-verify the day the API changes shape.
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
@@ -55,6 +56,13 @@ API_V1 = "https://api.seranking.com/v1"
 #: A keyword ranked outside this is "not in sight" for a client report. The workflow this
 #: replaces used the same threshold to decide which rows are worth printing at all.
 VISIBLE_DEPTH = 25
+
+#: SE Ranking's global search-engine catalogue, cached process-wide — see
+#: :meth:`SeRankingAdapter._engine_catalogue` for why that is safe on a multi-tenant box.
+_ENGINE_CATALOGUE: dict[str, dict[str, Any]] | None = None
+_ENGINE_CATALOGUE_AT: float = 0.0
+#: A day. The list gains a row when SE Ranking starts tracking a new country.
+_CATALOGUE_TTL = 86_400.0
 
 
 class SeRankingNotConfigured(RuntimeError):
@@ -97,17 +105,88 @@ def _keyword_entries(body: Any) -> list[dict]:
     engines has two entries, and ``body["keywords"]`` — the shape the flow being replaced
     assumed — is simply absent.
     """
-    engines = _rows(body)
-    keywords: list[dict] = []
-    for engine in engines:
+    return [keyword for _, keywords in _engine_entries(body) for keyword in keywords]
+
+
+def _engine_summary(keywords: list[dict]) -> dict[str, Any]:
+    """One engine's position table folded into the figures a client reads.
+
+    Measured at the **ends of the period**, not averaged across it: "where do I stand" is a
+    question about now, and the movement beside it is what the month did. That is the same
+    begin/end shape :meth:`SeRankingAdapter.keyword_rows` prints per keyword, one level up, so
+    the two tables in one document cannot tell different stories about the same month.
+
+    ``pos == 0`` is *not ranking* rather than "position zero" — the trap this whole adapter is
+    written around. A tracked term that appears nowhere counts in ``keywords_tracked`` and in
+    nothing else, which is what stops an invisible keyword improving the average.
+    """
+    tracked = 0
+    begin_positions: list[int] = []
+    end_positions: list[int] = []
+    for keyword in keywords:
+        entries = [
+            entry
+            for entry in (keyword.get("positions") or [])
+            if isinstance(entry, dict) and _parse_date(entry.get("date")) is not None
+        ]
+        if not entries:
+            continue
+        tracked += 1
+        entries.sort(key=lambda entry: str(entry.get("date")))
+        first, last = _int(entries[0].get("pos")), _int(entries[-1].get("pos"))
+        if first > 0:
+            begin_positions.append(first)
+        if last > 0:
+            end_positions.append(last)
+    if not tracked:
+        return {}
+    average = round(sum(end_positions) / len(end_positions), 1) if end_positions else 0.0
+    before = round(sum(begin_positions) / len(begin_positions), 1) if begin_positions else 0.0
+    return {
+        "keywords_tracked": float(tracked),
+        "keywords_ranking": float(len(end_positions)),
+        "top3": float(sum(1 for pos in end_positions if pos <= 3)),
+        "top10": float(sum(1 for pos in end_positions if pos <= 10)),
+        "top30": float(sum(1 for pos in end_positions if pos <= 30)),
+        "avg_position": average,
+        # Positive = improved, the convention the keyword table already prints (rank 8 → 3
+        # is +5). Zero when either end has nothing to compare, never a move invented out of an
+        # empty set.
+        "change": round(before - average, 1) if (before and average) else 0.0,
+    }
+
+
+def _engine_entries(body: Any) -> list[tuple[str, list[dict]]]:
+    """The same ``/positions`` response kept **per engine** (#381).
+
+    :func:`_keyword_entries` flattens, which is right for a keyword table and destroys the one
+    fact the "Zoekmachines" section is about. Both read the same body so a report can fetch it
+    once: at 145 keywords over a 31-day month that payload is the largest thing SE Ranking
+    returns, and asking twice for two views of it is a call nobody would defend out loud.
+
+    The engine key is ``site_engine_id`` — *this project's* engine row, not the catalogue's
+    ``search_engine_id``. Naming it needs ``/sites/{id}/search-engines`` to bridge the two, and
+    conflating them resolves engine 1104694 against a catalogue that stops at 889.
+    """
+    out: list[tuple[str, list[dict]]] = []
+    for engine in _rows(body):
         nested = engine.get("keywords")
         if isinstance(nested, list):
-            keywords.extend(row for row in nested if isinstance(row, dict))
+            out.append(
+                (
+                    str(engine.get("site_engine_id") or ""),
+                    [row for row in nested if isinstance(row, dict)],
+                )
+            )
         elif "positions" in engine:
-            keywords.append(engine)  # already flat
-    if not keywords and isinstance(body, dict) and isinstance(body.get("keywords"), list):
-        keywords = [row for row in body["keywords"] if isinstance(row, dict)]
-    return keywords
+            # Already flat — one unnamed engine, which is what the fallbacks below also produce.
+            out.append(("", [engine]))
+    if not out and isinstance(body, dict) and isinstance(body.get("keywords"), list):
+        out.append(("", [row for row in body["keywords"] if isinstance(row, dict)]))
+    merged: dict[str, list[dict]] = {}
+    for key, keywords in out:
+        merged.setdefault(key, []).extend(keywords)
+    return list(merged.items())
 
 
 class SeRankingAdapter:
@@ -236,6 +315,7 @@ class SeRankingAdapter:
         end: date,
         *,
         max_position: int = VISIBLE_DEPTH,
+        body: Any = None,
     ) -> list[dict[str, Any]]:
         """Per-keyword begin/end positions for the period, with its group and landing page.
 
@@ -249,8 +329,15 @@ class SeRankingAdapter:
         they asked for it for the next, depending on which integration the agency happened to
         hold. The default stays :data:`VISIBLE_DEPTH`, which is the same number the setting
         defaults to, so nothing moves for a caller that does not care.
+
+        ``body`` is a ``/positions`` response the caller already holds, so a report producing
+        both keyword rows *and* the per-engine table pays for that payload once
+        (:meth:`positions_body`). Left out, this fetches its own, which is what the drilldown
+        wants.
         """
-        keywords = await self._positions(client, external_id, start, end, landing_pages=True)
+        if body is None:
+            body = await self.positions_body(client, external_id, start, end)
+        keywords = _keyword_entries(body)
         groups = await self._keyword_groups(client, external_id)
         rows: list[dict[str, Any]] = []
         for keyword in keywords:
@@ -285,6 +372,77 @@ class SeRankingAdapter:
             )
         rows.sort(key=lambda row: (row["group"].lower(), row["keyword"].lower()))
         return rows
+
+    async def engine_rows(
+        self,
+        client: httpx.AsyncClient,
+        external_id: str,
+        start: date,
+        end: date,
+        *,
+        body: Any = None,
+    ) -> list[dict[str, Any]]:
+        """One row per search engine this project tracks — the "Zoekmachines" section (#381).
+
+        The section had that name and answered a different question: it was GA4's
+        ``organic_sources`` split, which on a Dutch client is a single row reading ``google``
+        and a pie chart with one slice. Correct, and not something an agency's customer asks.
+        *Waar sta ik, en per zoekmachine* is, and it is a question only a rank tracker can
+        answer — Google Analytics knows which engine sent a session and nothing about a position.
+
+        Three reads, and each is a different kind of fact:
+
+        * ``/positions`` — the positions themselves, shared with :meth:`keyword_rows`;
+        * ``/sites/{id}/search-engines`` — *this project's* engines, which is the only thing
+          that bridges a ``site_engine_id`` to a catalogue ``search_engine_id``;
+        * ``/system/search-engines`` — the catalogue, so 320 prints as *Google Netherlands*
+          rather than as 320. Cached process-wide: it is SE Ranking's own reference list, the
+          same 690 rows for every tenant, and no part of it is anybody's data.
+        """
+        if body is None:
+            body = await self.positions_body(client, external_id, start, end, landing_pages=False)
+        per_engine = _engine_entries(body)
+        if not per_engine:
+            return []
+        meta = await self._site_engines(client, external_id)
+        catalogue = await self._engine_catalogue(client)
+        rows: list[dict[str, Any]] = []
+        for site_engine_id, keywords in per_engine:
+            info = meta.get(site_engine_id) or {}
+            engine = catalogue.get(str(info.get("search_engine_id") or "")) or {}
+            summary = _engine_summary(keywords)
+            if not summary:
+                continue
+            rows.append(
+                {
+                    # The catalogue's own name, then whatever the project row can say, then the
+                    # bare id. Never an invented "Google" — a project tracking Bing would then
+                    # print a row naming the wrong search engine, which is worse than a number.
+                    "label": str(
+                        engine.get("name")
+                        or info.get("region_name")
+                        or (f"#{site_engine_id}" if site_engine_id else "")
+                    ),
+                    **summary,
+                }
+            )
+        # Loudest first: the engine somebody tracks most terms on is the one they mean.
+        rows.sort(key=lambda row: float(row.get("keywords_tracked") or 0), reverse=True)
+        return rows
+
+    async def positions_body(
+        self,
+        client: httpx.AsyncClient,
+        external_id: str,
+        start: date,
+        end: date,
+        *,
+        landing_pages: bool = True,
+    ) -> Any:
+        """The raw ``/positions`` payload, for a caller that wants two views of one read."""
+        return await self._positions_body(
+            client, external_id, start, end, landing_pages=landing_pages
+        )
 
     async def audit(self, client: httpx.AsyncClient, external_id: str) -> dict[str, Any] | None:
         """The latest finished site audit for this project, flattened to what a report prints.
@@ -406,6 +564,20 @@ class SeRankingAdapter:
         *,
         landing_pages: bool,
     ) -> list[dict]:
+        body = await self._positions_body(
+            client, external_id, start, end, landing_pages=landing_pages
+        )
+        return _keyword_entries(body)
+
+    async def _positions_body(
+        self,
+        client: httpx.AsyncClient,
+        external_id: str,
+        start: date,
+        end: date,
+        *,
+        landing_pages: bool,
+    ) -> Any:
         params: dict[str, Any] = {
             "date_from": start.isoformat(),
             "date_to": end.isoformat(),
@@ -414,7 +586,57 @@ class SeRankingAdapter:
             params["with_landing_pages"] = "1"
         response = await client.get(f"{API4}/sites/{external_id}/positions", params=params)
         response.raise_for_status()
-        return _keyword_entries(response.json())
+        return response.json()
+
+    async def _site_engines(
+        self, client: httpx.AsyncClient, external_id: str
+    ) -> dict[str, dict[str, Any]]:
+        """This project's own engine rows, keyed by ``site_engine_id``.
+
+        Soft on failure like :meth:`_keyword_groups`: without it the per-engine table loses its
+        *names*, which is a poorer section, while raising would lose the section entirely.
+        """
+        response = await client.get(f"{API4}/sites/{external_id}/search-engines")
+        if response.status_code >= 400:
+            return {}
+        return {
+            str(row.get("site_engine_id")): row
+            for row in _rows(response.json())
+            if row.get("site_engine_id") is not None
+        }
+
+    async def _engine_catalogue(self, client: httpx.AsyncClient) -> dict[str, dict[str, Any]]:
+        """``search_engine_id`` → ``{name, type}``, from SE Ranking's global list.
+
+        Cached for the life of the process rather than per request. Two things make that safe
+        and one makes it worth doing: the payload is the same 690 rows for every tenant and
+        holds no tenant data (so a shared cache crosses no boundary — CLAUDE.md §5 is about
+        *rows*, and these are the vendor's own reference list); it changes when SE Ranking adds
+        a country, which is not a thing that happens during a report run; and it is ~52 KB,
+        which is not a thing to re-download once per client in a nightly batch of thirty.
+
+        ``id`` arrives as a **string** here and ``search_engine_id`` as an **int** on the
+        project row — the mismatch this file's docstring already warns about for keyword
+        groups, in a second place. Everything is keyed on ``str()``.
+        """
+        global _ENGINE_CATALOGUE, _ENGINE_CATALOGUE_AT
+        now = time.monotonic()
+        if _ENGINE_CATALOGUE is not None and now - _ENGINE_CATALOGUE_AT < _CATALOGUE_TTL:
+            return _ENGINE_CATALOGUE
+        response = await client.get(f"{API4}/system/search-engines")
+        if response.status_code >= 400:
+            return _ENGINE_CATALOGUE or {}
+        catalogue = {
+            str(row.get("id")): {
+                "name": str(row.get("name") or ""),
+                "type": str(row.get("type") or ""),
+            }
+            for row in _rows(response.json())
+            if row.get("id") is not None
+        }
+        if catalogue:
+            _ENGINE_CATALOGUE, _ENGINE_CATALOGUE_AT = catalogue, now
+        return catalogue
 
     async def _keyword_groups(
         self, client: httpx.AsyncClient, external_id: str

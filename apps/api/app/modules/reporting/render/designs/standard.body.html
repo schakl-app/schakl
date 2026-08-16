@@ -230,7 +230,7 @@
 
     {% elif section.rows %}
       <table class="data">
-        {{ head(section.columns, labels.source, section.name_width) }}
+        {{ head(section.columns, section.name_label, section.name_width) }}
         <tbody>
           {% for row in section.rows %}
             {# `.get`, never `row.label`: the environment is StrictUndefined, and a row that

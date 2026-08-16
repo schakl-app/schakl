@@ -106,6 +106,10 @@ class GatheredMarketing:
     #: catalog and the run itself cannot disagree about what will happen.
     keyword_source: RankingSource | None = None
     ranking_settings: RankingSettings = field(default_factory=RankingSettings)
+    #: One row per tracked search engine, where SE Ranking is this client's position source
+    #: (#381). Empty means the "Zoekmachines" section falls back to GA4's organic split, which
+    #: is the answer for a client with no rank tracker and was the only answer before.
+    engines: list[dict[str, Any]] = field(default_factory=list)
     audit: dict[str, Any] | None = None
     ai_search: list[dict[str, Any]] = field(default_factory=list)
     key_event_labels: dict[str, str] = field(default_factory=dict)
@@ -323,18 +327,43 @@ async def _gather_seranking(
             # call order the keywords survived by luck, and the failure was one reordering away
             # from discarding sixty-eight rows that had been fetched successfully.
             if want_keywords:
-                out.keywords = await _seranking_part(
+                # One ``/positions`` read, two tables. At 145 keywords over a month that is the
+                # largest payload SE Ranking returns, and the keyword table and the per-engine
+                # summary are two views of it rather than two questions.
+                positions = await _seranking_part(
                     out,
                     "rankings",
-                    adapter.keyword_rows(
-                        client,
-                        link.external_id,
-                        window.start,
-                        window.end,
-                        max_position=settings.max_position,
+                    adapter.positions_body(
+                        client, link.external_id, window.start, window.end
                     ),
-                    default=[],
+                    default=None,
                 )
+                if positions is not None:
+                    out.keywords = await _seranking_part(
+                        out,
+                        "rankings",
+                        adapter.keyword_rows(
+                            client,
+                            link.external_id,
+                            window.start,
+                            window.end,
+                            max_position=settings.max_position,
+                            body=positions,
+                        ),
+                        default=[],
+                    )
+                    out.engines = await _seranking_part(
+                        out,
+                        "engines",
+                        adapter.engine_rows(
+                            client,
+                            link.external_id,
+                            window.start,
+                            window.end,
+                            body=positions,
+                        ),
+                        default=[],
+                    )
             out.audit = await _seranking_part(
                 out, "audit", adapter.audit(client, link.external_id), default=None
             )
@@ -562,6 +591,74 @@ def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
     return provider
 
 
+#: The columns the per-engine table prints. Six, which is what the design's ``column_widths``
+#: is willing to lay out beside a name — see #373 on stating a printed table's geometry.
+#:
+#: ``keywords_ranking`` is deliberately not among them and is still on the row: the model reads
+#: the snapshot and can say "of the 145, ninety rank at all", while the printed table spends its
+#: sixth column on the *move* — which is what makes a section a report rather than a screenshot.
+_ENGINE_COLUMNS = (
+    "keywords_tracked",
+    "top3",
+    "top10",
+    "top30",
+    "avg_position",
+    "change",
+)
+
+_ORGANIC_TRAFFIC = _split_section("organic_sources", "share", 10)
+
+
+async def _search_engines(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
+    """Where this client stands per search engine — or, failing that, what each one sent (#381).
+
+    The section is named for the question and used to answer a different one. It was GA4's
+    ``organic_sources`` split: on a Dutch client, one row reading ``google`` and a pie chart
+    with a single slice. Nobody's monthly report needs to be told that Google is their search
+    engine, and beside a "Zoekwoordposities" section three headings further down it read as a
+    duplicate of it that disagreed.
+
+    So where a client has a rank tracker, this is the per-engine position summary — *Google
+    Netherlands · 145 termen · 21 in de top 3 · gemiddeld 19,4* — which is the one thing GA4
+    structurally cannot say: it knows which engine sent a session and nothing about a position.
+
+    **The fallback is not a fallback for the same data, and that is deliberate.** A client with
+    no rank tracker keeps the organic-traffic split, because for them the honest answer to
+    "zoekmachines" is which ones sent people. Which of the two a client gets follows their own
+    ``rankings`` source (#373's ``effective_source``) rather than a second setting: one
+    preference decides where positions come from, and inventing a parallel control for this
+    section is how two screens come to disagree about one client's search reporting.
+    """
+    data = await gather(ctx, window)
+    if not data.engines:
+        return await _ORGANIC_TRAFFIC(ctx, window)
+    rows = _capped(data.engines, MAX_TABLE_ROWS, data, "search_engines")
+    return {
+        "kind": "engines",
+        "columns": list(_ENGINE_COLUMNS),
+        "rows": rows,
+        "totals": {},
+        "compare": None,
+        # A bar per engine, only where there is more than one: a chart of a single category is
+        # a rectangle, and #373 already established that a picture nobody perceives as a picture
+        # is a printing fault rather than a design choice.
+        "chart": {
+            "type": "grouped",
+            "labels": [row["label"] for row in rows],
+            "series": [
+                {"key": "top10", "values": [float(r.get("top10") or 0) for r in rows]},
+                {
+                    "key": "keywords_tracked",
+                    "values": [float(r.get("keywords_tracked") or 0) for r in rows],
+                },
+            ],
+        }
+        if len(rows) > 1
+        else None,
+        "notes": data.notes,
+    }
+
+
 async def _conversions(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
     data = await gather(ctx, window)
     if not data.show_conversions:
@@ -774,8 +871,8 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.search_engines",
         title_key="reporting.section.search_engines",
         brief_key="reporting.brief.search_engines",
-        source_key="reporting.source.ga4",
-        provider=_split_section("organic_sources", "share", 10),
+        source_key="reporting.source.search_engines",
+        provider=_search_engines,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=20,

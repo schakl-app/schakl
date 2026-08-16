@@ -84,6 +84,12 @@ _DELTA_AS_FACTOR = 1000.0
 #: columns narrowed for a client, because only these have a tail worth folding.
 _SOURCE_KINDS = {"organic_sources", "social_sources", "referral_sources"}
 
+#: What a section's *name* column is called, by kind. Anything unlisted is a source, which is
+#: what every table on the document was before there was one whose rows are search engines —
+#: including ``ai_search``, whose column is arguably misnamed too and is not this change's to
+#: rename: a heading a client has read for three months is not collateral on a different fix.
+_NAME_LABELS = {"engines": "search_engine"}
+
 #: Columns a **client** document drops from a traffic-split table. The provider returns the
 #: marketeer's seven (`report_sections._split_section`), which is the right answer for the
 #: internal analysis and a data dump on a client's desk: nobody reading a monthly report needs
@@ -403,6 +409,14 @@ def build_context(
                 "key": key,
                 "title": section_titles.get(key, key),
                 "kind": data.get("kind") or "table",
+                # What the *name* column holds. It was hardcoded to "Bron", which is right for
+                # a table of referring domains and wrong for one of search engines — and the
+                # `reporting.doc.engine` label existed for exactly this and was never wired to
+                # anything. Decided from the kind, so a design never has to know which sections
+                # count as sources (#381).
+                "name_label": translate(
+                    f"reporting.doc.{_NAME_LABELS.get(data.get('kind') or '', 'source')}", locale
+                ),
                 "columns": [
                     {
                         "key": column,
@@ -478,7 +492,8 @@ def build_context(
                 "summary", "period", "compared_with", "actions", "questions",
                 "internal_banner", "generated", "no_data", "keyword", "landing_page",
                 "start_position", "end_position", "score", "errors", "warnings", "pages",
-                "audited_at", "source", "engine", "new_keyword", "at_a_glance", "move",
+                "audited_at", "source", "engine", "search_engine", "new_keyword",
+                "at_a_glance", "move",
             )
         },
         # Helpers a tenant's own template gets too, so "print this number properly" does not

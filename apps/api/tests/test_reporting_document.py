@@ -94,10 +94,13 @@ def test_a_column_heading_is_the_short_name_and_the_tile_keeps_the_long_one() ->
     """Said once, in the place with room for it — not abbreviated everywhere."""
     assert ctx.metric_short("keyEvents", "nl") == "Doelen"
     assert ctx.metric_label("keyEvents", "nl") == "Belangrijke gebeurtenissen"
-    # A metric with no short form falls back rather than printing a message key.
-    assert ctx.metric_short("keywords_tracked", "nl") == ctx.metric_label(
-        "keywords_tracked", "nl"
-    )
+    # And the long name is what a *tile* gets — the point being that a short form narrows the
+    # heading without hiding the metric's name anywhere it has room.
+    assert ctx.metric_short("keywords_tracked", "nl") == "Gevolgd"
+    assert ctx.metric_label("keywords_tracked", "nl") == "Gevolgde zoekwoorden"
+    # A metric with no short form falls back rather than printing a message key. `top3` is
+    # already two characters and a digit, which is the case that needs no short form at all.
+    assert ctx.metric_short("top3", "nl") == ctx.metric_label("top3", "nl") == "Top 3"
 
 
 def test_a_metric_glyph_is_inline_svg_or_nothing() -> None:
