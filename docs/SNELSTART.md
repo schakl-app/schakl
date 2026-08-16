@@ -30,6 +30,8 @@ and the response read before the code that makes it was written.
 | `POST /documenten/Verkoopboekingen` (base64 PDF) | 201 |
 | Money as a JSON **string** (`"121.00"`) | 201, read back as the number `121.00` |
 
+Every screen was also driven by hand against that administration — §10 lists exactly what.
+
 **Not exercised against a live credential**: the coupling activation flow (§3) — it needs a
 certified `appShortName` and a webhook URL registered with SnelStart, neither of which exists
 yet. Everything about it is built from SnelStart's own `/oAuth` documentation page and covered
@@ -80,7 +82,8 @@ on the row, never in an error envelope (§9). The ones worth knowing:
 | `BOE-0062` | Verlegd may not be combined with other btw-soorten | A mixed invoice is refused by SnelStart, not by us |
 | `BOE-0082` | The btw-soort is missing or disagrees with the ledger's | The two vocabularies were swapped (§4.3) |
 | `BOE-0083` | Cannot delete an invoice with payments | We never delete a boeking |
-| `REL-0007` / `REL-0008` | Name required / relatiecode in use | Refused before writing |
+| `REL-0007` | Name required (max 50) | Refused before writing |
+| `REL-0008` | Relatiecode already in use | **Not a failure** — see §4.4a |
 | `REL-0088` | Invalid BTW number | SnelStart validates it properly; a plausible-looking fake is rejected |
 | `ART-0002/3/5` | Article code required / not numeric / already exists | Checked against the administration's own rules first (§4.5) |
 | `ALG-0104` | Invalid OData filter | A typo in a filter, on an endpoint that actually applies them |
@@ -231,6 +234,14 @@ overwritten. Somebody wrote it, and silently replacing a bookkeeper's entry is t
 mirroring integration in this codebase is warned about. `push_hash` stays `NULL` on an adopted
 row precisely because we cannot claim the payload matches.
 
+**And an adopted boeking whose amount is not the invoice's is `drift`.** Adopting is right;
+adopting *silently* would leave schakl showing €635,25 and the ledger €1.428,00 under one number
+with nothing anywhere saying so — the silent half of a silent overwrite. So it is its own run
+outcome (not a failure: nothing went wrong and nothing needs retrying), it rides the run's own
+attention list, and it has a number on the client's panel. A push that meets its *own* previous
+work is `adopted` and stays quiet, because a signal that fires on every match is worthless
+within a week.
+
 ### 4.3 The btw-soort is derived, not typed
 
 `GET /btwtarieven` returns date-ranged percentages per `btwSoort`, so a schakl rate of 21,00 on an
@@ -283,6 +294,37 @@ with nothing on any screen to suggest it.
 
 A relation nothing matches is stored as `unlinked` — a real state, and how an agency finds out
 their bookkeeper has forty clients the CRM has never heard of.
+
+### 4.4a A relatiecode collision costs a client record, so it does not
+
+schakl's `client_number` and SnelStart's `relatiecode` are two numbering systems that were never
+coordinated, so a collision is ordinary — and it used to fail the whole create, reported as
+*"SnelStart weigert dit verzoek. Relatiecode reeds in gebruik"* with nothing an admin could do
+but renumber their CRM. **The relation is the requirement; the shared number is a convenience.**
+
+So `REL-0008` sends us to look at who holds it, compared on the identifiers that identify (KvK,
+then VAT, then an exact name):
+
+- **the same client** → adopt them. This is the usual case: the bookkeeper entered them first.
+- **somebody else** → create without a code and let SnelStart allocate its own. The link then
+  records the code it really got, so the screen tells the truth rather than what we asked for.
+
+The comparison here is deliberately stricter than §4.4's: nothing about it reaches a human for
+review, so a *guess* would be applied silently.
+
+### 4.4b What is not a client
+
+Every administration ships three rows that are not clients: the agency's own relation
+(`Relatiesoort` contains `Eigen` — in a fresh administration still called
+*"<Vul hier uw bedrijfsnaam in>"*) and the reserved placeholders `-1 Leverancier onbekend` and
+`-2 Klant onbekend`. SnelStart reserves negative relatiecodes for exactly this. All three are
+filtered out of the review, because a list an admin has to read row by row is only worth reading
+if every row on it is a real question.
+
+One schakl record pairs with one SnelStart record per administration, and the partial unique
+index says so. Pairing by hand therefore refuses (409 `errors.snelstart.already_linked`) rather
+than letting the index enforce it as a 500 — and the picker does not offer a client who is
+already taken, since a control that can only refuse should not be drawn (#253).
 
 ### 4.5 Pushing a relation merges; it does not replace
 
@@ -462,7 +504,24 @@ booking into whichever was created first.
 
 ---
 
-## 10. What to check the day a certified key arrives
+## 10. What was driven in a browser
+
+Not a smoke test: the whole flow, against the live *Marcusse Online Marketing* administration,
+through the real screens.
+
+Connect and verify (`companyInfo` named the administration and its financial year) · reference
+sync (233 ledgers, 6 journals, 252 countries, 8 revenue groups, 19 VAT rates) · relations pushed,
+one of them adopted over a `REL-0008` collision · invoices booked, one of them adopted over a
+number already in the books, with per-rate ledger accounts, derived btw-soorten and the rendered
+PDF attached · a real `bankboeking` created in SnelStart settling one invoice and part-paying
+another, pulled back as ordinary `InvoicePayment`s · articles pushed, the codeless one skipped ·
+the relation review worked by hand, from three noise rows down to one real decision and then
+paired in a click · and every sync re-run until it reported all-unchanged.
+
+The screen also renders from the **built image**, not just from `vite dev` — which is what
+proves the SSR bundle is self-contained (`docs/WEB.md`).
+
+## 11. What to check the day a certified key arrives
 
 The paste path has run against a live administration; the coupling flow has not. When a
 production `appShortName` and webhook URL exist:

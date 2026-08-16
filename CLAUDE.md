@@ -800,7 +800,15 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   float, so money now travels as decimal text that .NET parses exactly; and **§18's per-row
   savepoint and §11's `release_db` cannot both hold** in a batch that calls out per row, because
   `release_db` commits and a commit closes the savepoint — `release_db` wins, and its commit gives
-  the per-row durability the savepoint was for.
+  the per-row durability the savepoint was for. Two more came out of *working the screens* rather
+  than reading them, and both are the same shape: **a uniqueness the database guarantees is a
+  refusal the service owes**. Pairing a client already paired hit the partial unique index and
+  answered **500** — so it is a 409 naming what happened, and the picker no longer offers a client
+  who is taken (#253 again: a control that can only refuse should not be drawn). And **a
+  numbering system somebody else owns will collide with yours**: a client number that is already
+  a `relatiecode` failed the whole create, when the relation is the requirement and the shared
+  number is only a convenience — so the collision is resolved by *looking at who holds it* and
+  either adopting them or letting SnelStart allocate its own.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
