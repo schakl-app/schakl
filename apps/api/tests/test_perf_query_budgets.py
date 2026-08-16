@@ -326,7 +326,12 @@ _MEMBER_REQUEST_BUDGET = 8
 #: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
 #: composer skips every panel the caller may not read, so a restricted member's page costs
 #: strictly less than this. The budget stays measured as the owner, which is the worst case.
-_PANELS_BUDGET = 47
+#: 47 -> 50 (#382): the timeon panel, which answers "is this client's time registration in
+#: step?" in three statements — the customer pairing (carrying the organisation's name on its
+#: own join rather than a fourth round trip), one `GROUP BY status` over the client's hour
+#: pairings, and one count of what is waiting for a decision. It calls Timeon **never**: a
+#: company page must not wait on somebody else's timesheet server to render.
+_PANELS_BUDGET = 50
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.

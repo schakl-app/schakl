@@ -79,6 +79,7 @@ apps/
       uptime/      # Uptime Kuma
       wordpress/
       mollie/      # payments
+      timeon/      # time registration (migration + two-way sync)
     main.py        # discovers enabled modules/integrations and mounts their routers
   web/src/
     lib/core/      # api client, tenant/theme loader, i18n runtime, module + nav registry
@@ -86,7 +87,7 @@ apps/
       companies/   # components, CompanyPanel(s), nav items, message namespace
       ...
     lib/integrations/   # mirrors apps/api/app/integrations/ (§6a)
-      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/
+      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/ timeon/
     routes/        # thin route files that delegate into modules
     paraglide/     # generated (do not edit by hand)
 messages/          # en.json (SOURCE), nl.json (required, default UI lang) — flat, namespaced keys
@@ -234,7 +235,7 @@ and it is worth having with every third-party account in the world cancelled: `c
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
 over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
-`wordpress`, `mollie`.
+`wordpress`, `mollie`, `timeon` (an outgoing time registration a cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -257,7 +258,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`. Deliberately *not* "modules this is nicer with":
+  `invoicing`, `google_ads` → `google`, `timeon` → `time`. Deliberately *not* "modules this
+  is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
   (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
   nothing (its panels attach to `websites` **or** `domains`, which an AND-list cannot say).
@@ -1105,6 +1107,53 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   key holds the whole shell back however many promises sit beside it. And the pending copy is a
   **state, not an absence** — "Tag Manager lezen…", never "geen tags", which is a different answer
   to a different question, and the staged-count tile carries three states for exactly that reason.
+- **A cutover that takes months is two systems both being used, and an importer loses one of the
+  two directions by construction** (`timeon`, `docs/TIMEON.md`). The migration that moved breik.'s
+  2814 hours off Timeon argued *against* ever syncing, on a ground that was exactly right:
+  `TimeEntry.invoiced_at` is a downstream fact, so a sync lets the other system rewrite the basis
+  of an invoice already sent. What it got wrong was the shape of the problem — between the import
+  and the day Timeon is switched off, people log hours there and correct them here, and a
+  re-runnable importer can only ever *create* Timeon's version, so a correction made in schakl is
+  overwritten or duplicated. The invoicing objection becomes a **mechanism** rather than a veto
+  (`protect_invoiced`, refusing per entry and *reporting* the divergence; `history_floor`, putting
+  the whole imported past out of reach), which is the same move `payments` made from the other end:
+  gate what the agency does, never rewrite what has already happened to them. Five rules generalise
+  past Timeon. **Adoption comes before creation, always** — the first run against an instance an
+  importer already filled must *recognise* those rows and pair them writing nothing, which is why
+  the natural key here is byte-identical to the importer's; a sync that created first would double
+  three years of somebody's timesheet on its first press. **A pairing carries two fingerprints, not
+  a `synced` flag**: `local_hash` and `remote_hash` compared against *now* answer "which side
+  moved", and only both moving is a conflict — one bit makes that question unaskable, which is
+  `cloudflare`'s decided-vs-observed rule stated twice because either side may write. **Where the
+  provider has no modified timestamp, the window *is* the sync** — Timeon's hour rows carry
+  `createdOn` and nothing else (`billableModified` is a boolean, and a cursor read off it is always
+  false), so "what changed since" is not a question its API can answer; the run re-reads a span,
+  and because that span is a real horizon it is stored on the run and printed on the screen rather
+  than implied. **Absence is a deletion only inside a window known to be complete, and only after
+  asking again**: `filter.deleted` is accepted and ignored, so the read asserts its row count
+  against the server's own total and a vanished row is re-fetched by id first — an hour moved to
+  another month is absent from this one and is not gone. And **a conflict is a stored decision**
+  (#318 again): "these two rows may differ" is a real answer, and a queue that re-derives divergence
+  nightly re-proposes the same twelve rows until nobody reads it. Its own sibling is the ordinary
+  one: `hour/save` **replaces** rather than patches, measured — a save carrying `{hourID, seconds}`
+  blanks the remark and detaches both the project and the client — so a push sends the whole row,
+  carrying what schakl has no field for and, crucially, carrying a reference schakl *cannot express*
+  rather than asserting its absence. That conflict rule has a sibling found only by **running the
+  thing against the real organisation twice**, and it is the one worth carrying furthest: **a
+  sentinel is not a value, so agreement cannot be equality of two fingerprints.** `UNRESOLVED` is
+  what an unpairable reference canonicalises to on either side, and hashing it made a Timeon project
+  with no pairing here (`"?"`) differ from the entry the pull had *just written* (`""`) — 62 of the
+  first run's 66 rows, all filed in the "these may differ" arm, which is where a **dismissed
+  conflict** lives. A decision nobody made, recorded 62 times, burying the one signal that arm
+  carries. Two halves. The two hashes answer **"did *this* side move"** — a strictly one-sided
+  question they are right for and must keep — while **agreement is pairwise** (`mapping.differences`),
+  because only a pairwise test can see that a field is unactionable on both sides at once. And **a
+  difference no direction could ever act on is not a difference**: neither pulling nor pushing can
+  name a project the other system has never heard of, so it is reported once per run as the
+  `project_unmapped` warning an admin can close, and the row says nothing — the general form of
+  #318's "a queue nobody reads", one level below the queue. Nothing is lost by staying quiet: the
+  moment the pairing appears the sentinel becomes a real id, the fingerprint moves, and that side
+  reads as changed on the very next run.
 
 ## 11. Working agreement (for Claude Code)
 

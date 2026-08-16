@@ -145,6 +145,10 @@ def test_paid_module_set_is_pinned() -> None:
         "snelstart": "snelstart",
         "subscriptions": "subscriptions",
         "time": "time",
+        # Timeon is a credential and a conversation with somebody else's time-registration
+        # service — the `snelstart` bracket, one module over. A tenant licenses `time`
+        # without ever having heard of it.
+        "timeon": "timeon",
         # Landed on dev with a sku and without an entry here, which is precisely what this test
         # exists to catch — recorded rather than quietly widened.
         "uptime": "uptime",

@@ -152,3 +152,67 @@ async def record_entry(
     ctx.session.add(row)
     await ctx.session.flush()
     return row
+
+
+async def revise_entry(
+    ctx: EmitContext,
+    entry: TimeEntry,
+    *,
+    started_at: datetime | None = None,
+    minutes: int | None = None,
+    company_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
+    description: str | None = None,
+    billable: bool | None = None,
+    touch: frozenset[str] = frozenset(),
+) -> TimeEntry:
+    """Correct one stopped entry on behalf of whoever owns it (#382, the Timeon sync).
+
+    The counterpart to :func:`record_entry`, and it exists for the same reason: a mirror of an
+    external timesheet has to be able to carry a *correction* across, and ``TimeService.update``
+    cannot — it resolves the row against ``ctx.user``, refuses an approved entry unless the
+    caller may approve, and clears the owner's draft for that day. None of those is wrong for a
+    person editing their own hours and all three are wrong for a sync acting for somebody else.
+
+    ``touch`` names the fields the caller means to write, so ``None`` keeps its ordinary meaning
+    — a company or project being *cleared* — instead of being indistinguishable from "leave it
+    alone" (§18's rule: absent means leave alone, explicit null means clear). Anything not named
+    is untouched.
+
+    ``ended_at`` is kept consistent with the new duration, because everything downstream — the
+    day view, the calendar, capacity — positions the block by it and a stale end is an entry that
+    renders at the wrong length while reporting the right number.
+    """
+    values: dict[str, Any] = {}
+    if "started_at" in touch and started_at is not None:
+        values["started_at"] = started_at
+    if "minutes" in touch and minutes is not None:
+        values["minutes"] = max(0, int(minutes))
+    if "company_id" in touch:
+        values["company_id"] = company_id
+    if "project_id" in touch:
+        values["project_id"] = project_id
+    if "description" in touch:
+        values["description"] = description
+    if "billable" in touch and billable is not None:
+        values["billable"] = billable
+    for key, value in values.items():
+        setattr(entry, key, value)
+    if entry.ended_at is not None or "minutes" in values or "started_at" in values:
+        entry.ended_at = entry.started_at + timedelta(
+            minutes=int(entry.minutes) + int(entry.break_minutes or 0)
+        )
+    await ctx.session.flush()
+    return entry
+
+
+async def remove_entry(ctx: EmitContext, entry: TimeEntry) -> None:
+    """Delete one entry on behalf of its owner.
+
+    Named rather than left as ``session.delete`` so the boundary is a function another module
+    calls (§6) and so there is one place to state the rule the callers depend on: this deletes a
+    *record of work*, so whoever calls it owes the decision — the Timeon sync refuses on an
+    invoiced or approved entry before it ever gets here.
+    """
+    await ctx.session.delete(entry)
+    await ctx.session.flush()

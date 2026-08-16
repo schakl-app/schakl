@@ -11575,6 +11575,267 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/timeon/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Connected Timeon organisations. The API key is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_timeon_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential. Both directions start at ``off``: a connection that began syncing the
+         *     moment a key was pasted would be an irreversible act performed by a form.
+         */
+        post: operations["create_account_api_v1_timeon_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Options
+         * @description The connections a sync may run against.
+         *
+         *     Gated on the weaker ``sync.run`` rather than ``settings.manage``: choosing which organisation
+         *     to sync is the operator's job and should not require holding the credential screen's key.
+         */
+        get: operations["account_options_api_v1_timeon_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Forget the connection. Pairings, conflicts and runs go with it; **time entries do not** —
+         *     a pulled entry is schakl's record of work somebody did, and removing a credential is not a
+         *     statement about whether that work happened.
+         */
+        delete: operations["delete_account_api_v1_timeon_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, rotate the key, or change what the sync does. An omitted key keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_timeon_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/timeon/accounts/{account_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Sync
+         * @description Run one sync and answer with its report.
+         *
+         *     A dry run needs only ``timeon.sync.run`` — it is a read of both systems and a piece of
+         *     arithmetic. A real one additionally needs ``timeon.sync.write`` *and* ``time.entry.write`` at
+         *     ``:any``, because what it writes are other people's hours (#314, and §15's rule that the
+         *     service refines what the route declares).
+         */
+        post: operations["run_sync_api_v1_timeon_accounts__account_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Ask Timeon which organisation this key opens, and how big it is.
+         *
+         *     Answers ``200`` with ``ok=false`` for a refused credential rather than an error status: the
+         *     probe succeeded, its answer was no, and the row keeps Timeon's own words on it — raising here
+         *     would roll back the very row that records what happened.
+         */
+        post: operations["verify_account_api_v1_timeon_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conflicts
+         * @description The queue. Readable on ``sync.run`` — seeing what needs deciding must not require the
+         *     power to decide it.
+         */
+        get: operations["list_conflicts_api_v1_timeon_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/conflicts/{conflict_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Conflict
+         * @description Settle one conflict: keep schakl's version, keep Timeon's, or record that they may differ.
+         *
+         *     Writing into schakl needs ``time.entry.write:any`` for the same reason the sync does, and it
+         *     is asked for here rather than left to the engine so a caller holding only ``timeon.sync.write``
+         *     cannot reach an employee's hours through the queue.
+         */
+        post: operations["resolve_conflict_api_v1_timeon_conflicts__conflict_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Links
+         * @description The pairings, filterable by what is wrong with them.
+         *
+         *     The company horizon applies by construction: ``timeon_links.company_id`` is a real column
+         *     with a real FK precisely so a restricted staff member's read filters (#285 failure mode 1 —
+         *     a link with no anchor would have filtered nothing at all).
+         */
+        get: operations["list_links_api_v1_timeon_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unpair
+         * @description Forget one pairing without touching either record.
+         *
+         *     Its own route because "these two are not the same thing" is a different act from every
+         *     resolution in the conflict queue, and the alternative — editing rows by hand — is not an
+         *     act an agency should have to ask for. The next run treats both sides as new.
+         */
+        delete: operations["unpair_api_v1_timeon_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description What the last runs did, and what they could not do.
+         */
+        get: operations["list_runs_api_v1_timeon_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/timeon/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workspace
+         * @description Everything the sync page's shell draws, in one round trip.
+         *
+         *     One endpoint rather than five, for the reason the Tag Manager container page was rebuilt
+         *     (docs/GOOGLE_TAG_MANAGER.md §3a): four reads that each resolve the same account are four
+         *     round trips for one screen. Nothing here calls Timeon, so it is fast and it renders during
+         *     an outage — which is exactly when somebody opens it.
+         */
+        get: operations["workspace_api_v1_timeon_workspace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/hook/{token}": {
         parameters: {
             query?: never;
@@ -15030,6 +15291,18 @@ export interface components {
          * @enum {string}
          */
         ComparePeriod: "year" | "previous";
+        /**
+         * ConflictPolicy
+         * @description What happens when *both* sides changed a paired record since they last agreed.
+         *
+         *     ``manual`` is the default and is the only one that is safe without knowing the tenant: a
+         *     conflict is written down, neither side is touched, and somebody decides. The other two exist
+         *     because plenty of agencies genuinely have an authoritative side and would rather not have a
+         *     queue — but they are a decision to overwrite somebody's edit, so they are chosen, never
+         *     inferred.
+         * @enum {string}
+         */
+        ConflictPolicy: "manual" | "schakl_wins" | "timeon_wins";
         /**
          * ConnectRequest
          * @description "Connect this domain to Cloudflare" — adopt the existing zone, or create one.
@@ -27024,6 +27297,24 @@ export interface components {
             /** Value */
             value: string;
         };
+        /**
+         * SyncDirection
+         * @description What a sync is allowed to do for one kind of record.
+         *
+         *     Four values, and each is a thing an agency actually asks for.
+         *
+         *     ``off`` — do not look. The state a cutover ends in, and the state a tenant starts in.
+         *     ``pull`` — Timeon is authoritative; schakl mirrors it. What the migration branch did nightly.
+         *     ``push`` — schakl is authoritative; Timeon mirrors it. The *reverse* cutover, where people
+         *     have moved to schakl and Timeon is kept alive only because the invoicing runs there.
+         *     ``two_way`` — both write, and the conflict machinery earns its keep.
+         *
+         *     Stated per **kind** rather than once for the connection because the honest answer usually
+         *     differs: an agency mid-migration pulls hours (people still log there) while pushing projects
+         *     (they are set up here now). One global direction forces the wrong answer on one of them.
+         * @enum {string}
+         */
+        SyncDirection: "off" | "pull" | "push" | "two_way";
         /** SystemInfo */
         SystemInfo: {
             build: components["schemas"]["BuildInfo"];
@@ -28444,6 +28735,413 @@ export interface components {
             recent: components["schemas"]["TimeEntryRead"] | null;
             running: components["schemas"]["TimeEntryRead"] | null;
             week: components["schemas"]["Timesheet"];
+        };
+        /** TimeonAccountCreate */
+        TimeonAccountCreate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TimeonAccountRead
+         * @description One connected Timeon organisation, as the settings screen sees it. **Never a key.**
+         */
+        TimeonAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Auto Sync
+             * @default false
+             */
+            auto_sync: boolean;
+            /** Base Url */
+            base_url?: string | null;
+            conflict_policy: components["schemas"]["ConflictPolicy"];
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Create Missing Projects
+             * @default false
+             */
+            create_missing_projects: boolean;
+            /**
+             * Create Missing Users
+             * @default false
+             */
+            create_missing_users: boolean;
+            /** History Floor */
+            history_floor?: string | null;
+            hours_direction: components["schemas"]["SyncDirection"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Pull At */
+            last_pull_at?: string | null;
+            /** Last Push At */
+            last_push_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Open Conflicts
+             * @default 0
+             */
+            open_conflicts: number;
+            /** Organisation Features */
+            organisation_features?: {
+                [key: string]: boolean;
+            };
+            /** Organisation Id */
+            organisation_id?: number | null;
+            /** Organisation Name */
+            organisation_name?: string | null;
+            projects_direction: components["schemas"]["SyncDirection"];
+            /**
+             * Protect Approved
+             * @default false
+             */
+            protect_approved: boolean;
+            /**
+             * Protect Invoiced
+             * @default true
+             */
+            protect_invoiced: boolean;
+            /**
+             * Push Approvals
+             * @default false
+             */
+            push_approvals: boolean;
+            status: components["schemas"]["TimeonAccountStatus"];
+            /** Window Days */
+            window_days: number;
+        };
+        /**
+         * TimeonAccountStatus
+         * @description Whether the stored key still opens the organisation it was connected to.
+         * @enum {string}
+         */
+        TimeonAccountStatus: "pending" | "active" | "error";
+        /**
+         * TimeonAccountUpdate
+         * @description An omitted key keeps the stored one — a rotation is stating a new key, never clearing a
+         *     field by not mentioning it (the wholesale-PUT rule, from the safe end).
+         */
+        TimeonAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Auto Sync */
+            auto_sync?: boolean | null;
+            /** Base Url */
+            base_url?: string | null;
+            conflict_policy?: components["schemas"]["ConflictPolicy"] | null;
+            /** Create Missing Projects */
+            create_missing_projects?: boolean | null;
+            /** Create Missing Users */
+            create_missing_users?: boolean | null;
+            /** History Floor */
+            history_floor?: string | null;
+            hours_direction?: components["schemas"]["SyncDirection"] | null;
+            /** Name */
+            name?: string | null;
+            projects_direction?: components["schemas"]["SyncDirection"] | null;
+            /** Protect Approved */
+            protect_approved?: boolean | null;
+            /** Protect Invoiced */
+            protect_invoiced?: boolean | null;
+            /** Push Approvals */
+            push_approvals?: boolean | null;
+            /** Window Days */
+            window_days?: number | null;
+        };
+        /** TimeonConflictRead */
+        TimeonConflictRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Differences */
+            differences?: {
+                [key: string]: unknown;
+            };
+            /** External Id */
+            external_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["TimeonLinkKind"];
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            /** Local Id */
+            local_id?: string | null;
+            /** Local Snapshot */
+            local_snapshot?: {
+                [key: string]: unknown;
+            };
+            /** Note */
+            note?: string | null;
+            /** Remote Snapshot */
+            remote_snapshot?: {
+                [key: string]: unknown;
+            };
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolved By Name */
+            resolved_by_name?: string | null;
+            /** Resolved By User Id */
+            resolved_by_user_id?: string | null;
+            status: components["schemas"]["TimeonConflictStatus"];
+            /** User Name */
+            user_name?: string | null;
+        };
+        /**
+         * TimeonConflictResolve
+         * @description ``keep_local`` writes schakl's version into Timeon, ``keep_remote`` the reverse, and
+         *     ``dismiss`` writes neither and never asks again — which is a real answer, not an evasion:
+         *     "these two rows are allowed to differ" is a thing an agency decides.
+         */
+        TimeonConflictResolve: {
+            /** Note */
+            note?: string | null;
+            resolution: components["schemas"]["TimeonConflictStatus"];
+        };
+        /**
+         * TimeonConflictStatus
+         * @enum {string}
+         */
+        TimeonConflictStatus: "open" | "kept_local" | "kept_remote" | "dismissed";
+        /**
+         * TimeonLinkKind
+         * @description Which of schakl's records a pairing is about.
+         *
+         *     ``user`` and ``customer`` are pairings too, even though nothing is ever written to either
+         *     side for them: they are *resolution*, and storing them is what stops every run re-deriving
+         *     "which schakl user is Timeon user 2004392" from an e-mail address that somebody may since
+         *     have changed. A resolution that is only ever recomputed is a resolution that silently moves.
+         * @enum {string}
+         */
+        TimeonLinkKind: "hour" | "project" | "customer" | "user";
+        /**
+         * TimeonLinkOrigin
+         * @description Which side created the record this pairing is about.
+         *
+         *     Load-bearing for deletions and for nothing else. A row schakl created and pushed, gone from
+         *     Timeon, means somebody deleted it there; a row Timeon created and we pulled, gone from
+         *     Timeon, means the same. But a row that was never ours and was never pushed carries no claim
+         *     at all, and treating its absence as an instruction would delete work on the strength of a
+         *     window we may simply have narrowed.
+         * @enum {string}
+         */
+        TimeonLinkOrigin: "timeon" | "schakl" | "adopted";
+        /** TimeonLinkRead */
+        TimeonLinkRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** External Date */
+            external_date?: string | null;
+            /** External Id */
+            external_id: string;
+            /** External Name */
+            external_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["TimeonLinkKind"];
+            /** Last Error */
+            last_error?: string | null;
+            /** Local Id */
+            local_id?: string | null;
+            /** Local Label */
+            local_label?: string | null;
+            /** Observed */
+            observed?: {
+                [key: string]: unknown;
+            };
+            /** Observed At */
+            observed_at?: string | null;
+            origin: components["schemas"]["TimeonLinkOrigin"];
+            /** Pulled At */
+            pulled_at?: string | null;
+            /** Pushed At */
+            pushed_at?: string | null;
+            status: components["schemas"]["TimeonLinkStatus"];
+        };
+        /**
+         * TimeonLinkStatus
+         * @description Seven values, and each one needs a different button — the test for whether a status
+         *     column has earned its vocabulary (the ``cloudflare`` redirect rule).
+         *
+         *     ``linked`` — paired and in step. ``pending`` — paired and never yet reconciled.
+         *     ``drift`` — exactly one side moved, and the next run will carry it across (or would, if the
+         *     direction allowed; a drift the direction forbids is drift that stays reported).
+         *     ``conflict`` — both moved. Nothing is written and a :class:`TimeonConflict` names it.
+         *     ``missing`` — the remote row is gone from a window we know we read completely.
+         *     ``error`` — the last attempt to write it was refused.
+         *     ``ignored`` — a human said "these two are not the same thing, stop offering it". Not a
+         *     failure state and never re-derived, for the reason :class:`TimeonConflict` exists at all.
+         * @enum {string}
+         */
+        TimeonLinkStatus: "pending" | "linked" | "drift" | "conflict" | "missing" | "error" | "ignored";
+        /**
+         * TimeonSyncKind
+         * @description What a run set out to do. One vocabulary for the cron, the button and the screen.
+         * @enum {string}
+         */
+        TimeonSyncKind: "verify" | "adopt" | "users" | "projects" | "hours" | "full";
+        /**
+         * TimeonSyncRequest
+         * @description What one manual run should do.
+         *
+         *     ``dry_run`` defaults to **true**. A sync that writes by default is one whose first press is
+         *     irreversible, and the whole argument for building this rather than an importer (§2) rests on
+         *     an agency being able to watch it before trusting it.
+         */
+        TimeonSyncRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** @default hours */
+            kind: components["schemas"]["TimeonSyncKind"];
+            /** Window From */
+            window_from?: string | null;
+            /** Window To */
+            window_to?: string | null;
+        };
+        /** TimeonSyncRunRead */
+        TimeonSyncRunRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Actor Name */
+            actor_name?: string | null;
+            /** Actor User Id */
+            actor_user_id?: string | null;
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["TimeonSyncKind"];
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Warnings */
+            warnings?: {
+                [key: string]: unknown;
+            }[];
+            /** Window From */
+            window_from?: string | null;
+            /** Window To */
+            window_to?: string | null;
+        };
+        /**
+         * TimeonVerifyResult
+         * @description The answer to *"does this key work, and what does it open?"*
+         *
+         *     ``200`` with ``ok=false`` for a refused credential rather than an error status: the probe
+         *     succeeded and its answer was no, and an exception would roll back the very row that records
+         *     what Timeon said (``mollie``'s rule, and ``require_context``'s transaction).
+         */
+        TimeonVerifyResult: {
+            /** Customer Count */
+            customer_count?: number | null;
+            /** Detail */
+            detail?: string | null;
+            /** Error Key */
+            error_key?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Organisation Id */
+            organisation_id?: number | null;
+            /** Organisation Name */
+            organisation_name?: string | null;
+            /** Project Count */
+            project_count?: number | null;
+            /** User Count */
+            user_count?: number | null;
+        };
+        /**
+         * TimeonWorkspaceRead
+         * @description Everything the sync page's shell draws, in one payload.
+         *
+         *     One endpoint rather than five: four reads that each resolve the same account are four round
+         *     trips for one screen (docs/GOOGLE_TAG_MANAGER.md §3a), and this one calls Timeon not at all,
+         *     so the page renders during an outage — which is exactly when somebody opens it.
+         */
+        TimeonWorkspaceRead: {
+            /** Accounts */
+            accounts?: components["schemas"]["TimeonAccountRead"][];
+            /** Open Conflicts */
+            open_conflicts?: components["schemas"]["TimeonConflictRead"][];
+            /** Recent Runs */
+            recent_runs?: components["schemas"]["TimeonSyncRunRead"][];
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
         };
         /**
          * TimerStart
@@ -53924,6 +54622,406 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeWorkspace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_timeon_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_timeon_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeonAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_options_api_v1_timeon_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonAccountRead"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_timeon_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_timeon_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeonAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_sync_api_v1_timeon_accounts__account_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeonSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_timeon_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conflicts_api_v1_timeon_conflicts_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonConflictRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_conflict_api_v1_timeon_conflicts__conflict_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflict_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeonConflictResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonConflictRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_timeon_links_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+                kind?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpair_api_v1_timeon_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_timeon_runs_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonSyncRunRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workspace_api_v1_timeon_workspace_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeonWorkspaceRead"];
                 };
             };
             /** @description Validation Error */
