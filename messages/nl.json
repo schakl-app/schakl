@@ -5605,6 +5605,7 @@
   "settings.timeon.recent_runs": "Laatste runs",
   "settings.timeon.delete_title": "Koppeling verwijderen",
   "settings.timeon.delete_message": "{name} wordt losgekoppeld: de sleutel, de koppelingen en de runs verdwijnen. De uren die al zijn overgenomen blijven staan.",
+  "permissions.group.timeon": "Timeon",
   "timeon.status.pending": "nog niet gecontroleerd",
   "timeon.status.active": "verbonden",
   "timeon.status.error": "fout",

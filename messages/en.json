@@ -5605,6 +5605,7 @@
   "settings.timeon.recent_runs": "Recent runs",
   "settings.timeon.delete_title": "Remove connection",
   "settings.timeon.delete_message": "{name} is disconnected: the key, the pairings and the runs go with it. Hours already taken over stay.",
+  "permissions.group.timeon": "Timeon",
   "timeon.status.pending": "not checked yet",
   "timeon.status.active": "connected",
   "timeon.status.error": "error",

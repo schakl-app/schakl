@@ -212,6 +212,20 @@ the category are **carried across a push** (rule 7) but never authored or read i
    and skip.
 6. Only then **Synchroniseren**, and only then `auto_sync`.
 
+**What has actually been proven against the live organisation, and what has not.** The read half
+has: `verify`, the user/customer/project reads, adoption, a dry run and two real pull runs were
+executed against breik.'s own Timeon account, and it is the *second* of those runs that found the
+sentinel bug in rule 4 — the first looked perfect, because a first run's counters cannot tell an
+idempotent sync from one that will re-decide every row forever. **Run it twice before believing
+it.** The **push** half has only ever run against `tests/timeon_fake.py`. That is deliberate:
+writing into an agency's live time registration is not something to try out, and `hour/save`
+replaces rather than patches (rule 7), so a wrong body is a client's mileage claim deleted rather
+than an error message. Before the first real push, do steps 4–5 with `hours_direction=push` on a
+window containing **one** hour nobody minds, compare the row in Timeon's own UI field by field,
+and only then widen the window. Everything the push path asserts about Timeon's behaviour comes
+from measurement against the live API (§7), not from its documentation — but measurement of
+*reads*.
+
 ### 10. On cutover
 
 Set both directions to `off` (or delete the connection — the pairings and runs go, the *hours*
