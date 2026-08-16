@@ -98,11 +98,23 @@
 </script>
 
 {#if tiles.length > 0}
-  <ul class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+  <!-- **The strip ends where the page ends, whatever it is counting.** A fixed five-column grid
+       fits five tiles and nothing else: a client with no invoices contributes four, and the row
+       stopped 232 px short of the right edge with the empty slot reading as a tile that had
+       failed to load. "Nothing is a number" (above) is exactly what makes the count variable —
+       one to six today, more as modules contribute — so the tiles *share* the row rather than
+       being dealt into slots sized for a count nobody promised.
+
+       It is one row on a desktop and wraps below it, and the two halves need different rules.
+       `nowrap` + `basis-0` is what makes a strip a strip: every tile the same width, however many
+       there are, which is what the five-column grid did correctly for the one count it knew.
+       Wrapping wants a real minimum instead (`basis-36`), or a phone deals two tiles a row and
+       leaves the last one stretched across the screen on its own. -->
+  <ul class="mb-6 flex flex-wrap gap-2 lg:flex-nowrap">
     {#each tiles as tile (tile.key)}
       {@const body = display(tile)}
       {@const hint = hintOf(tile)}
-      <li>
+      <li class="min-w-0 flex-1 basis-36 lg:basis-0">
         <svelte:element
           this={tile.href ? "a" : "div"}
           href={tile.href ?? undefined}

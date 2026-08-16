@@ -1684,9 +1684,7 @@
 
   **A panel declares its own weight, because only the module knows.** `prominence` is a working
   surface (something the reader acts on today) or a **register** (correct, occasionally consulted,
-  never news); `size` is full or half. The page lays out a two-column grid with `items-start`, so
-  a two-row list is no longer stretched to match the tall card beside it — the "every panel is
-  equally important" mistake in CSS form.
+  never news); `size` is full or half. How the page then fits them together is the entry below.
 
   **Vital signs are the panels seam one level up.** `SummarySpec` / `SummaryTile` let a module
   contribute one number, a label, a tone and a link; core lays them out under the header. Not one
@@ -1702,6 +1700,36 @@
   card with one control floating in it. `ownsHeader` + `PanelHeader` puts them on one line; the
   title still comes from the API's `title_key`, so a panel does not get to rename itself by
   drawing its own header.
+
+- **A grid of cards is a *row* layout, and rows are what leave the holes.** #364 read the two
+  declarations above correctly and then drew them the one way that cannot fit: a row is as tall as
+  its tallest card, so a short card leaves the space under it empty, and a full-width panel
+  arriving after an odd number of halves leaves half a row empty beside the one before it. On a
+  real client that measured a **271 px void** under Abonnementen, a whole empty half-row beside
+  Uren, and four ragged bottom edges — a page that reads as unfinished, which is #364's own
+  complaint one layer down. `items-start` is not the fix for that; it is the setting that makes the
+  holes exact. So the ordered panels are cut into **blocks**, and each block gets the layout its
+  own count deserves — every one hole-free by construction rather than by luck:
+
+  - **A card alone on its row takes the row.** A half-width panel with no half-width neighbour is
+    drawn full width; the alternative is a bordered rectangle beside nothing.
+  - **Two cards match.** With two there is nothing to pack, so they sit in a stretching two-column
+    grid: bottoms level, one edge, no gap. This is not "stretch everything" — the old warning
+    against stretching a two-row list to match a tall card still stands, which is exactly why
+    three or more do something else.
+  - **Three or more pack.** CSS multi-column: each card keeps its natural height and the browser
+    balances the lanes. Real masonry with no measuring, no layout jump after hydration, and no
+    second opinion about a height the browser already knows. It costs one thing worth writing
+    down — a multi-column container is a fragmentation context, so a panel that opens a dropdown
+    belongs in the primary lane (pairs and solos) or wants a viewport-anchored popover.
+
+  Every kind collapses to one column below `lg`, so this is a desktop rule and a phone still gets
+  one stack. The same complaint reached the vital-signs strip, where the *count* is what varies: a
+  fixed five-column grid fits five tiles and nothing else, so a client with no invoices contributed
+  four and the strip stopped 232 px short of the right edge, the empty slot reading as a tile that
+  had failed to load. "Nothing is a number" (above) is what makes the count variable in the first
+  place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
+  count nobody promised — one row at `lg` and up, whole rows below it.
 
 - **One edit surface for every size of edit.** Everything about a client — thirty fields, its
   contact people and its logo — was changed in one 512 px `Modal` that rendered **1445 px tall**
