@@ -15818,6 +15818,8 @@ export interface components {
          *     hottest four. This is the same aggregate, sorted and cut server-side.
          */
         DashboardBudgetProject: {
+            /** Company Name */
+            company_name?: string | null;
             hours: components["schemas"]["BudgetHours"];
             /**
              * Id

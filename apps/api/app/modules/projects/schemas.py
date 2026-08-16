@@ -118,4 +118,7 @@ class DashboardBudgetProject(BaseModel):
 
     id: uuid.UUID
     name: str
+    # Whose work this is. "Website redesign" is an indistinguishable row on a tile spanning four
+    # clients, and only opening one told them apart — the same fix the task widgets already carry.
+    company_name: str | None = None
     hours: BudgetHours
