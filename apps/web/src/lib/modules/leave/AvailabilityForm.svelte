@@ -16,11 +16,11 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
-  import { memberLabel, type NamedMember } from "$lib/core/members";
+  import { type PickerMember } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
   import type { AvailabilityEntry } from "./availability";
@@ -43,10 +43,13 @@
     /**
      * Colleagues this viewer may write for (`leave.availability.write:any`) — when non-empty the
      * form asks *whose* week rather than assuming, which is what a cross-person overview needs.
-     * A picker, never a native select (docs/UX.md). Empty on the per-person surfaces, where the
-     * host already answered the question by opening that person's modal.
+     * The shared `MemberPicker`, never a native select and never a flat list of everybody ever
+     * hired (docs/UX.md): booking a day onto a deactivated freelancer's week is exactly the
+     * quiet failure that split exists to prevent, and the page's own filter above it had the
+     * rule while the form that writes did not. Empty on the per-person surfaces, where the host
+     * already answered the question by opening that person's modal.
      */
-    people?: (NamedMember & { user_id: string })[];
+    people?: PickerMember[];
     error?: string | null;
     /** A row landed: the host may close its modal and own the confirmation (#271). */
     ondone?: () => void;
@@ -151,12 +154,12 @@
         <label for="a-person" class="mb-1 block text-xs text-text-muted">
           {t("leave.team.member")}
         </label>
-        <Combobox
+        <MemberPicker
           id="a-person"
           name="user_id"
           formId="availability-form"
           bind:value={person}
-          items={people.map((m) => ({ value: m.user_id, label: memberLabel(m) }))}
+          members={people}
           placeholder={t("leave.availability.person_placeholder")}
         />
       </div>

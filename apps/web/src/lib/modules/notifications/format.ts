@@ -13,18 +13,13 @@ import { fmtDayMonth, fmtLongDay, fmtNumber } from "$lib/core/format";
 import { hasMessage, t } from "$lib/core/i18n";
 import { getTimeZone } from "$lib/core/timezone";
 
-export interface NotificationLike {
-  event_type: string;
-  entity_type: string;
-  entity_id: string;
-  /** Optional because the API gives it a default: an event may carry no parameters at all. */
-  payload?: Record<string, unknown>;
-  /**
-   * Who did it, when a person did — `null` for anything a cron emitted. It decides the
-   * *grammar* of the sentence, not merely whether a name is drawn in front of it (#358).
-   */
-  actor_name?: string | null;
-}
+import type { NotificationLike } from "./href";
+
+// Where a notification *opens* is pure data and lives in `href.ts`, which imports nothing so a
+// unit test can pin every destination without a Vite resolver. Re-exported here because every
+// caller wants the pair, and splitting the import sites would have meant touching the bell, the
+// inbox and the panels for a move that changes no behaviour.
+export { notificationHref, type NotificationLike } from "./href";
 
 /** Each entity type keeps its status vocabulary in its own namespace. */
 const STATUS_NAMESPACE: Record<string, string> = {
@@ -116,46 +111,6 @@ export function notificationText(item: NotificationLike): string {
   const base = `notifications.event.${item.event_type}`;
   const key = !item.actor_name && hasMessage(`${base}.system`) ? `${base}.system` : base;
   return t(key, params);
-}
-
-/** Where the notification opens. Every number opens (docs/UX.md, Principle 7). */
-export function notificationHref(item: NotificationLike): string | null {
-  switch (item.entity_type) {
-    case "task":
-      return `/tasks/${item.entity_id}`;
-    case "project":
-      return `/projects/${item.entity_id}`;
-    case "company":
-      return `/companies/${item.entity_id}`;
-    case "leave_request":
-      // The event decides whose surface answers it: a request waiting on *you* opens the
-      // team review (deep-linked, so approve/deny is one click away), a decision about
-      // *your* request opens it on your own list — never just "the leave page".
-      return item.event_type === "leave.requested"
-        ? `/leave/team?request=${item.entity_id}`
-        : `/leave?request=${item.entity_id}`;
-    case "timesheet":
-      return "/time";
-    case "interaction": {
-      // A pending email opens on the review queue (#156) — the place built for deciding.
-      if (item.event_type === "interactions.email_pending") return "/interactions?status=pending";
-      // Anything else opens where its timeline lives: the most specific host it hangs on
-      // (#151 mentions carry task/project links too).
-      const payload = item.payload ?? {};
-      for (const [key, prefix] of [
-        ["task_id", "/tasks/"],
-        ["project_id", "/projects/"],
-        ["company_id", "/companies/"],
-        ["contact_id", "/contacts/"],
-      ] as const) {
-        const value = payload[key];
-        if (typeof value === "string" && value) return `${prefix}${value}`;
-      }
-      return null;
-    }
-    default:
-      return null;
-  }
 }
 
 /** The record a notification is about, named from the snapshot the event carried. */

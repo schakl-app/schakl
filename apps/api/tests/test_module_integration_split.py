@@ -40,6 +40,29 @@ def test_every_enabled_module_resolves_to_exactly_one_root() -> None:
         assert module_package(name) is not None, f"'{name}' is in neither of {MODULE_ROOTS}"
 
 
+def test_every_enabled_module_actually_registers() -> None:
+    """Resolving to a path is not the same fact as being *there* (#381).
+
+    A directory with no ``__init__.py`` is a PEP 420 namespace package: ``find_spec`` finds it,
+    ``import_module`` succeeds, and nothing registers. #378 moved four integrations out of
+    ``app/modules/``, git does not track empty directories, and every developer checkout that
+    predated the move kept ``app/modules/<name>/__pycache__/`` husks — which shadowed the real
+    packages, because ``app.modules`` is searched first. The app booted with 23 modules instead
+    of 27 and said nothing; the only visible symptom was fifty-one endpoints missing from a
+    regenerated client.
+
+    The test above passed throughout, because a path *was* returned. This is the invariant that
+    was actually broken, so this is the one worth asserting.
+    """
+    import app.main  # noqa: F401 — importing the app is what loads the enabled modules
+
+    missing = [name for name in settings.enabled_modules if registry.get(name) is None]
+    assert not missing, (
+        f"enabled but not registered: {missing}. A leftover directory under one of "
+        f"{MODULE_ROOTS} shadows the real package — remove it, or the module is simply absent."
+    )
+
+
 def test_the_package_a_descriptor_lives_in_matches_the_kind_it_declares() -> None:
     for root, expected in (("app.modules", KIND_MODULE), ("app.integrations", KIND_INTEGRATION)):
         for name in _packages(root):

@@ -109,25 +109,21 @@ def create_app() -> FastAPI:
     # ``/redoc`` and ``/openapi.json`` resolved to the web app's 404 page in every deployment —
     # the docs were not disabled, they were unroutable. Serving them from inside the one prefix
     # that reaches this service is the fix, and it needs no edge change on an existing install.
-    docs_paths = (
-        {
-            "openapi_url": "/api/openapi.json",
-            "docs_url": "/api/docs",
-            "redoc_url": "/api/redoc",
-        }
-        if settings.api_docs_enabled
-        # Only the HTTP surface goes: ``app.openapi()`` builds the document from the route
-        # table and never reads ``openapi_url``, so the MCP tool builder below and
-        # scripts/gen-client.sh keep working on an instance that serves no docs at all.
-        else {"openapi_url": None, "docs_url": None, "redoc_url": None}
-    )
-
+    #
+    # FastAPI's own three are switched off unconditionally, because a route it builds carries no
+    # dependency and so cannot be authenticated: the reference is served by ``core/apidocs.py``
+    # instead, behind the same ``require_context`` as the API it describes. ``app.openapi()``
+    # reads the route table and never ``openapi_url``, so the MCP tool builder below and
+    # scripts/gen-client.sh keep working either way — including on an instance that serves no
+    # docs at all (``SCHAKL_API_DOCS_ENABLED=false``).
     app = FastAPI(
         title="schakl API",
         version=settings.version,
         description="Multi-tenant, modular, white-label agency operations platform.",
         lifespan=lifespan,
-        **docs_paths,
+        openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
     )
     # Needed by the optional OIDC flow (Authlib stores state in the session); harmless otherwise.
     app.add_middleware(
@@ -209,6 +205,14 @@ def create_app() -> FastAPI:
     api.include_router(provisioning_router, dependencies=[license_write_gate(CLOUD_SKU)])
 
     app.include_router(api)
+
+    # The interactive reference (app/core/apidocs.py), behind the same gate as the API it
+    # describes. Mounted after the routers because it renders the finished document, and
+    # outside ``api`` because its paths are ``/api/docs``, not ``/api/v1/docs``.
+    if settings.api_docs_enabled:
+        from app.core.apidocs import build_docs_router
+
+        app.include_router(build_docs_router(app.title))
 
     # MCP (CLAUDE.md §12): the API surface as tools, API-key authenticated. Built after the
     # routers so the OpenAPI spec it derives from is complete.

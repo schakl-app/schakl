@@ -1,0 +1,2105 @@
+---
+title: "Platform"
+description: "Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen."
+sidebar:
+  order: 9
+---
+
+Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
+
+165 endpoints, verdeeld over 14 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `ai`
+
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/ai/assist/write` | `ai.use` |
+| `POST` `/ai/assistant` | `ai.use` |
+| `POST` `/ai/companies/{company_id}/digest` | `ai.use` |
+| `GET` `/ai/reports` | `ai.use` |
+| `POST` `/ai/reports` | `ai.use` |
+| `GET` `/ai/reports/{report_id}` | `ai.use` |
+| `PUT` `/ai/reports/{report_id}` | `ai.use` |
+| `DELETE` `/ai/reports/{report_id}` | `ai.use` |
+| `POST` `/ai/reports/generate` | `ai.use` |
+| `GET` `/ai/settings` | `ai.settings.manage` |
+| `PUT` `/ai/settings` | `ai.settings.manage` |
+| `DELETE` `/ai/settings` | `ai.settings.manage` |
+| `POST` `/ai/settings/models` | `ai.settings.manage` |
+| `POST` `/ai/settings/test` | `ai.settings.manage` |
+| `POST` `/ai/time/parse` | `ai.use` |
+| `POST` `/ai/time/reconstruct` | `ai.use` |
+| `POST` `/ai/time/transcribe` | `ai.use` |
+| `GET` `/ai/usage` | `ai.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `POST /api/v1/ai/assist/write`
+
+**Writing Assist**
+
+Recht: `ai.use`
+
+Request body: `WritingAssistRequest`
+
+Antwoord: `200`
+
+#### `POST /api/v1/ai/assistant`
+
+**Assistant**
+
+Recht: `ai.use`
+
+Request body: `AssistantRequest`
+
+Antwoord: `200`
+
+#### `POST /api/v1/ai/companies/{company_id}/digest`
+
+**Company Digest**
+
+Recht: `ai.use`
+
+Padparameters: `company_id`
+
+Request body: `DigestRequest`
+
+Antwoord: `200`
+
+#### `GET /api/v1/ai/reports`
+
+**List Reports**
+
+Recht: `ai.use`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+
+Antwoord: `200` · `ReportRead[]`
+
+#### `POST /api/v1/ai/reports`
+
+**Create Report**
+
+Recht: `ai.use`
+
+Request body: `ReportCreate`
+
+Antwoord: `201` · `ReportRead`
+
+#### `GET /api/v1/ai/reports/{report_id}`
+
+**Get Report**
+
+Recht: `ai.use`
+
+Padparameters: `report_id`
+
+Antwoord: `200` · `ReportRead`
+
+#### `PUT /api/v1/ai/reports/{report_id}`
+
+**Update Report**
+
+Recht: `ai.use`
+
+Padparameters: `report_id`
+
+Request body: `ReportUpdate`
+
+Antwoord: `200` · `ReportRead`
+
+#### `DELETE /api/v1/ai/reports/{report_id}`
+
+**Delete Report**
+
+Recht: `ai.use`
+
+Padparameters: `report_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/ai/reports/generate`
+
+**Generate Report**
+
+Recht: `ai.use`
+
+Request body: `ReportGenerateRequest`
+
+Antwoord: `200`
+
+#### `GET /api/v1/ai/settings`
+
+**Get Ai Settings**
+
+Recht: `ai.settings.manage`
+
+Antwoord: `200` · `AISettingsRead`
+
+#### `PUT /api/v1/ai/settings`
+
+**Save Ai Settings**
+
+Recht: `ai.settings.manage`
+
+Request body: `AISettingsWrite`
+
+Antwoord: `200` · `AISettingsRead`
+
+#### `DELETE /api/v1/ai/settings`
+
+**Delete Ai Settings**
+
+Recht: `ai.settings.manage`
+
+Antwoord: `204`
+
+#### `POST /api/v1/ai/settings/models`
+
+**List Ai Models** — Live model listing for the settings picker — a settings-page helper like the test button, so a provider failure comes back as data, never a 500.
+
+Recht: `ai.settings.manage`
+
+Request body: `AIModelsRequest`
+
+Antwoord: `200` · `AIModelsResult`
+
+#### `POST /api/v1/ai/settings/test`
+
+**Test Ai Settings**
+
+Recht: `ai.settings.manage`
+
+Antwoord: `200` · `AITestResult`
+
+#### `POST /api/v1/ai/time/parse`
+
+**Time Parse**
+
+Recht: `ai.use`
+
+Request body: `TimeParseRequest`
+
+Antwoord: `200` · `TimeParseResult`
+
+#### `POST /api/v1/ai/time/reconstruct`
+
+**Time Reconstruct**
+
+Recht: `ai.use`
+
+Request body: `TimeReconstructRequest`
+
+Antwoord: `200` · `TimeReconstructResult`
+
+#### `POST /api/v1/ai/time/transcribe`
+
+**Time Transcribe** — Speech to text for the quick-add field (#246).
+
+Recht: `ai.use`
+
+Request body: `TimeTranscribeRequest`
+
+Antwoord: `200` · `TimeTranscribeResult`
+
+#### `GET /api/v1/ai/usage`
+
+**Ai Usage**
+
+Recht: `ai.settings.manage`
+
+Antwoord: `200` · `AIUsageSummary`
+
+</details>
+
+## `automation`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/automation/catalog` | `automation.rule.read` |
+| `POST` `/automation/dry-run` | `automation.rule.write` |
+| `GET` `/automation/rules` | `automation.rule.read` |
+| `POST` `/automation/rules` | `automation.rule.write` |
+| `GET` `/automation/rules/{rule_id}` | `automation.rule.read` |
+| `PATCH` `/automation/rules/{rule_id}` | `automation.rule.write` |
+| `DELETE` `/automation/rules/{rule_id}` | `automation.rule.write` |
+| `GET` `/automation/runs` | `automation.run.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/automation/catalog`
+
+**Get Catalog** — The trigger events and action types the rule editor may offer (code-defined).
+
+Recht: `automation.rule.read`
+
+Antwoord: `200` · `CatalogRead`
+
+#### `POST /api/v1/automation/dry-run`
+
+**Dry Run** — Evaluate a draft rule against a sample entity; executes nothing.
+
+Recht: `automation.rule.write`
+
+Request body: `DryRunRequest`
+
+Antwoord: `200` · `DryRunResult`
+
+#### `GET /api/v1/automation/rules`
+
+**List Rules**
+
+Recht: `automation.rule.read`
+
+Antwoord: `200` · `RuleRead[]`
+
+#### `POST /api/v1/automation/rules`
+
+**Create Rule**
+
+Recht: `automation.rule.write`
+
+Request body: `RuleCreate`
+
+Antwoord: `201` · `RuleRead`
+
+#### `GET /api/v1/automation/rules/{rule_id}`
+
+**Get Rule**
+
+Recht: `automation.rule.read`
+
+Padparameters: `rule_id`
+
+Antwoord: `200` · `RuleRead`
+
+#### `PATCH /api/v1/automation/rules/{rule_id}`
+
+**Update Rule**
+
+Recht: `automation.rule.write`
+
+Padparameters: `rule_id`
+
+Request body: `RuleUpdate`
+
+Antwoord: `200` · `RuleRead`
+
+#### `DELETE /api/v1/automation/rules/{rule_id}`
+
+**Delete Rule**
+
+Recht: `automation.rule.write`
+
+Padparameters: `rule_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/automation/runs`
+
+**List Runs**
+
+Recht: `automation.run.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `rule_id` | string |  |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `Page_RunRead_`
+
+</details>
+
+## `bulk`
+
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/bulk/company/delete` | `companies.company.delete` |
+| `POST` `/bulk/company/update` | `companies.company.write` |
+| `POST` `/bulk/contact/delete` | `contacts.contact.delete` |
+| `POST` `/bulk/contact/update` | `contacts.contact.write` |
+| `POST` `/bulk/domain/delete` | `domains.domain.delete` |
+| `POST` `/bulk/domain/update` | `domains.domain.write` |
+| `POST` `/bulk/interaction/delete` | `interactions.interaction.delete` |
+| `POST` `/bulk/invoice/delete` | `invoicing.invoice.delete` |
+| `POST` `/bulk/project/delete` | `projects.project.delete` |
+| `POST` `/bulk/project/update` | `projects.project.write` |
+| `POST` `/bulk/subscription/delete` | `subscriptions.subscription.delete` |
+| `POST` `/bulk/subscription/update` | `subscriptions.subscription.write` |
+| `POST` `/bulk/task/delete` | `tasks.task.delete` |
+| `POST` `/bulk/task/update` | `tasks.task.write` |
+| `POST` `/bulk/uptime_monitor/delete` | `uptime.monitor.write` |
+| `POST` `/bulk/uptime_monitor/update` | `uptime.monitor.write` |
+| `POST` `/bulk/website/delete` | `websites.website.delete` |
+| `POST` `/bulk/website/update` | `websites.website.write` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `POST /api/v1/bulk/company/delete`
+
+**Bulk Delete Company** — Delete a selection of company records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `companies.company.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/company/update`
+
+**Bulk Update Company** — Set fields on a selection of company records: `status`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `companies.company.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/contact/delete`
+
+**Bulk Delete Contact** — Delete a selection of contact records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `contacts.contact.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/contact/update`
+
+**Bulk Update Contact** — Set fields on a selection of contact records: `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `contacts.contact.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/domain/delete`
+
+**Bulk Delete Domain** — Delete a selection of domain records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `domains.domain.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/domain/update`
+
+**Bulk Update Domain** — Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `domains.domain.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/interaction/delete`
+
+**Bulk Delete Interaction** — Delete a selection of interaction records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `interactions.interaction.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/invoice/delete`
+
+**Bulk Delete Invoice** — Delete a selection of invoice records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `invoicing.invoice.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/project/delete`
+
+**Bulk Delete Project** — Delete a selection of project records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `projects.project.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/project/update`
+
+**Bulk Update Project** — Set fields on a selection of project records: `status`, `company`, `billable_default`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `projects.project.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/subscription/delete`
+
+**Bulk Delete Subscription** — Delete a selection of subscription records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `subscriptions.subscription.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/subscription/update`
+
+**Bulk Update Subscription** — Set fields on a selection of subscription records: `status`, `type`, `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `subscriptions.subscription.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/task/delete`
+
+**Bulk Delete Task** — Delete a selection of task records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `tasks.task.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/task/update`
+
+**Bulk Update Task** — Set fields on a selection of task records: `status`, `assignee`, `priority`, `project`, `company`, `due_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `tasks.task.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/uptime_monitor/delete`
+
+**Bulk Delete Uptime Monitor** — Delete a selection of uptime_monitor records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `uptime.monitor.write`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/uptime_monitor/update`
+
+**Bulk Update Uptime Monitor** — Set fields on a selection of uptime_monitor records: `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `uptime.monitor.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/website/delete`
+
+**Bulk Delete Website** — Delete a selection of website records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `websites.website.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/website/update`
+
+**Bulk Update Website** — Set fields on a selection of website records: `hosting`, `uptime_enabled`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+
+Recht: `websites.website.write`
+
+Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+</details>
+
+## `custom-fields`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/custom-fields/definitions` | `settings.customfields.read` |
+| `POST` `/custom-fields/definitions` | `settings.customfields.write` |
+| `PATCH` `/custom-fields/definitions/{definition_id}` | `settings.customfields.write` |
+| `DELETE` `/custom-fields/definitions/{definition_id}` | `settings.customfields.write` |
+| `GET` `/custom-fields/definitions/batch` | `settings.customfields.read` |
+| `GET` `/custom-fields/entity-types` | `settings.customfields.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/custom-fields/definitions`
+
+**List Definitions**
+
+Recht: `settings.customfields.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string · verplicht |  |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `CustomFieldDefinitionRead[]`
+
+#### `POST /api/v1/custom-fields/definitions`
+
+**Create Definition**
+
+Recht: `settings.customfields.write`
+
+Request body: `CustomFieldDefinitionCreate`
+
+Antwoord: `201` · `CustomFieldDefinitionRead`
+
+#### `PATCH /api/v1/custom-fields/definitions/{definition_id}`
+
+**Update Definition**
+
+Recht: `settings.customfields.write`
+
+Padparameters: `definition_id`
+
+Request body: `CustomFieldDefinitionUpdate`
+
+Antwoord: `200` · `CustomFieldDefinitionRead`
+
+#### `DELETE /api/v1/custom-fields/definitions/{definition_id}`
+
+**Delete Definition**
+
+Recht: `settings.customfields.write`
+
+Padparameters: `definition_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/custom-fields/definitions/batch`
+
+**List Definitions Batch** — Several entity types' definitions in one call, keyed by entity type.
+
+Recht: `settings.customfields.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string[] · verplicht |  |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `object`
+
+#### `GET /api/v1/custom-fields/entity-types`
+
+**List Entity Types**
+
+Recht: `settings.customfields.read`
+
+Antwoord: `200` · `array`
+
+</details>
+
+## `dashboard`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/dashboard/prefs` | `dashboard.prefs.read` |
+| `PUT` `/dashboard/prefs` | `dashboard.prefs.write` |
+| `DELETE` `/dashboard/prefs` | `dashboard.prefs.write` |
+| `PUT` `/dashboard/prefs/default` | `settings.dashboard.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/dashboard/prefs`
+
+**Get Prefs** — The effective layout for the current user: own row → org template → none.
+
+Recht: `dashboard.prefs.read`
+
+Antwoord: `200` · `DashboardPrefs`
+
+#### `PUT /api/v1/dashboard/prefs`
+
+**Set Prefs**
+
+Recht: `dashboard.prefs.write`
+
+Request body: `DashboardPrefsUpdate`
+
+Antwoord: `200` · `DashboardPrefs`
+
+#### `DELETE /api/v1/dashboard/prefs`
+
+**Reset Prefs** — Drop the personal layout; the user falls back to the org template.
+
+Recht: `dashboard.prefs.write`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/dashboard/prefs/default`
+
+**Set Default Prefs** — The org-wide template that members inherit (``settings.dashboard.manage``).
+
+Recht: `settings.dashboard.manage`
+
+Request body: `DashboardPrefsUpdate`
+
+Antwoord: `200` · `DashboardPrefs`
+
+</details>
+
+## `email-settings`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/settings/email` | `settings.email.manage` |
+| `PUT` `/settings/email` | `settings.email.manage` |
+| `DELETE` `/settings/email` | `settings.email.manage` |
+| `GET` `/settings/email/templates` | `settings.email.manage` |
+| `PUT` `/settings/email/templates` | `settings.email.manage` |
+| `POST` `/settings/email/templates/test` | `settings.email.manage` |
+| `POST` `/settings/email/test` | `settings.email.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/settings/email`
+
+**Get Email Settings** — The org's stored transport *and* the one actually sending (epic #199).
+
+Recht: `settings.email.manage`
+
+Antwoord: `200` · `EmailSettingsRead`
+
+#### `PUT /api/v1/settings/email`
+
+**Save Email Settings**
+
+Recht: `settings.email.manage`
+
+Request body: `EmailSettingsWrite`
+
+Antwoord: `200` · `EmailSettingsRead`
+
+#### `DELETE /api/v1/settings/email`
+
+**Delete Email Settings**
+
+Recht: `settings.email.manage`
+
+Antwoord: `204`
+
+#### `GET /api/v1/settings/email/templates`
+
+**List Email Templates**
+
+Recht: `settings.email.manage`
+
+Antwoord: `200` · `EmailTemplatesRead`
+
+#### `PUT /api/v1/settings/email/templates`
+
+**Save Email Template** — Upsert one ``(kind, locale)`` override; blank subject *and* body resets it to default.
+
+Recht: `settings.email.manage`
+
+Request body: `EmailTemplateWrite`
+
+Antwoord: `200` · `EmailTemplateItem`
+
+#### `POST /api/v1/settings/email/templates/test`
+
+**Test Email Template** — Send a preview of the draft (or stored/default) to the acting admin.
+
+Recht: `settings.email.manage`
+
+Request body: `EmailTemplateTest`
+
+Antwoord: `200` · `EmailTestResult`
+
+#### `POST /api/v1/settings/email/test`
+
+**Test Email Settings**
+
+Recht: `settings.email.manage`
+
+Antwoord: `200` · `EmailTestResult`
+
+</details>
+
+## `files`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/files` | _Bewust open_ |
+| `POST` `/files` | `files.file.write` |
+| `GET` `/files/{file_id}` | _Bewust open_ |
+| `DELETE` `/files/{file_id}` | `files.file.write` |
+| `GET` `/files/{file_id}/public` | _Bewust open_ |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/files`
+
+**List Files** — The files attached to one entity (a task's documents, a project's documents).
+
+Recht: _Bewust open_
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string · verplicht |  |
+| `entity_id` | string · verplicht |  |
+| `include_inline` | boolean |  (default `false`) |
+
+Antwoord: `200` · `StoredFileRead[]`
+
+#### `POST /api/v1/files`
+
+**Upload File** — Multipart upload. Size and content type are bounded by instance config.
+
+Recht: `files.file.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string |  |
+| `entity_id` | string |  |
+
+Request body: `Body_upload_file_api_v1_files_post`
+
+Antwoord: `201` · `StoredFileRead`
+
+#### `GET /api/v1/files/{file_id}`
+
+**Serve File** — Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup).
+
+Recht: _Bewust open_
+
+Padparameters: `file_id`
+
+Antwoord: `200`
+
+#### `DELETE /api/v1/files/{file_id}`
+
+**Delete File** — Remove the row and its bytes. Branding/avatar files carry extra guards (service).
+
+Recht: `files.file.write`
+
+Padparameters: `file_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/files/{file_id}/public`
+
+**Serve Public File** — Anonymous serving for branding assets, org resolved strictly from the hostname.
+
+Recht: _Bewust open_
+
+Padparameters: `file_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `size` | integer |  |
+| `maskable` | boolean |  (default `false`) |
+| `bg` | string |  (default `#ffffff`) |
+
+Antwoord: `200`
+
+</details>
+
+## `impex`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/impex/company/columns` | `companies.company.read` |
+| `GET` `/impex/company/export` | `impex.export`, `companies.company.read` |
+| `POST` `/impex/company/import` | `impex.import`, `companies.company.write` |
+| `POST` `/impex/company/inspect` | `impex.import`, `companies.company.write` |
+| `GET` `/impex/contact/columns` | `contacts.contact.read` |
+| `GET` `/impex/contact/export` | `impex.export`, `contacts.contact.read` |
+| `POST` `/impex/contact/import` | `impex.import`, `contacts.contact.write` |
+| `POST` `/impex/contact/inspect` | `impex.import`, `contacts.contact.write` |
+| `GET` `/impex/domain_tld_price/columns` | `domains.tld_price.read` |
+| `GET` `/impex/domain_tld_price/export` | `impex.export`, `domains.tld_price.read` |
+| `POST` `/impex/domain_tld_price/import` | `impex.import`, `domains.tld_price.manage` |
+| `POST` `/impex/domain_tld_price/inspect` | `impex.import`, `domains.tld_price.manage` |
+| `GET` `/impex/domain/columns` | `domains.domain.read` |
+| `GET` `/impex/domain/export` | `impex.export`, `domains.domain.read` |
+| `POST` `/impex/domain/import` | `impex.import`, `domains.domain.write` |
+| `POST` `/impex/domain/inspect` | `impex.import`, `domains.domain.write` |
+| `GET` `/impex/entities` | _Bewust open_ |
+| `GET` `/impex/hosting/columns` | `hosting.hosting.read` |
+| `GET` `/impex/hosting/export` | `impex.export`, `hosting.hosting.read` |
+| `POST` `/impex/hosting/import` | `impex.import`, `hosting.hosting.write` |
+| `POST` `/impex/hosting/inspect` | `impex.import`, `hosting.hosting.write` |
+| `GET` `/impex/project/columns` | `projects.project.read` |
+| `GET` `/impex/project/export` | `impex.export`, `projects.project.read` |
+| `POST` `/impex/project/import` | `impex.import`, `projects.project.write` |
+| `POST` `/impex/project/inspect` | `impex.import`, `projects.project.write` |
+| `GET` `/impex/subscription_template/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription_template/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription_template/import` | `impex.import`, `subscriptions.template.manage` |
+| `POST` `/impex/subscription_template/inspect` | `impex.import`, `subscriptions.template.manage` |
+| `GET` `/impex/subscription_type/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription_type/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription_type/import` | `impex.import`, `subscriptions.type.manage` |
+| `POST` `/impex/subscription_type/inspect` | `impex.import`, `subscriptions.type.manage` |
+| `GET` `/impex/subscription/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription/import` | `impex.import`, `subscriptions.subscription.write` |
+| `POST` `/impex/subscription/inspect` | `impex.import`, `subscriptions.subscription.write` |
+| `GET` `/impex/task/columns` | `tasks.task.read` |
+| `GET` `/impex/task/export` | `impex.export`, `tasks.task.read` |
+| `POST` `/impex/task/import` | `impex.import`, `tasks.task.write` |
+| `POST` `/impex/task/inspect` | `impex.import`, `tasks.task.write` |
+| `GET` `/impex/time_entry/columns` | `time.entry.read` |
+| `GET` `/impex/time_entry/export` | `impex.export`, `time.entry.read` |
+| `POST` `/impex/time_entry/import` | `impex.import`, `time.entry.write` |
+| `POST` `/impex/time_entry/inspect` | `impex.import`, `time.entry.write` |
+| `GET` `/impex/uptime_monitor/columns` | `uptime.monitor.read` |
+| `GET` `/impex/uptime_monitor/export` | `impex.export`, `uptime.monitor.read` |
+| `GET` `/impex/website/columns` | `websites.website.read` |
+| `GET` `/impex/website/export` | `impex.export`, `websites.website.read` |
+| `POST` `/impex/website/import` | `impex.import`, `websites.website.write` |
+| `POST` `/impex/website/inspect` | `impex.import`, `websites.website.write` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/impex/company/columns`
+
+**Impex Columns Company** — Every column a company import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `companies.company.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/company/export`
+
+**Impex Export Company** — Export the current filtered company list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `companies.company.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `status` | string | Status, as on the list |
+| `mine` | boolean | Only rows assigned to me (default `false`) |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/company/import`
+
+**Impex Import Company** — Import company rows from a spreadsheet, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `companies.company.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_company_api_v1_impex_company_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/company/inspect`
+
+**Impex Inspect Company** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `companies.company.write`
+
+Request body: `Body_impex_inspect_company_api_v1_impex_company_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/contact/columns`
+
+**Impex Columns Contact** — Every column a contact import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `contacts.contact.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/contact/export`
+
+**Impex Export Contact** — Export the current filtered contact list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `contacts.contact.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `company_id` | string |  |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/contact/import`
+
+**Impex Import Contact** — Import contact rows from a spreadsheet, upserting on the first of `email` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `contacts.contact.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_contact_api_v1_impex_contact_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/contact/inspect`
+
+**Impex Inspect Contact** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `contacts.contact.write`
+
+Request body: `Body_impex_inspect_contact_api_v1_impex_contact_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/domain_tld_price/columns`
+
+**Impex Columns Domain Tld Price** — Every column a domain_tld_price import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `domains.tld_price.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/domain_tld_price/export`
+
+**Impex Export Domain Tld Price** — Export the current filtered domain_tld_price list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `domains.tld_price.read`
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/domain_tld_price/import`
+
+**Impex Import Domain Tld Price** — Import domain_tld_price rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `domains.tld_price.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/domain_tld_price/inspect`
+
+**Impex Inspect Domain Tld Price** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `domains.tld_price.manage`
+
+Request body: `Body_impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/domain/columns`
+
+**Impex Columns Domain** — Every column a domain import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `domains.domain.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/domain/export`
+
+**Impex Export Domain** — Export the current filtered domain list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `domains.domain.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `company_id` | string |  |
+| `status` | string | Status, as on the list |
+| `registrar_provider_id` | string |  |
+| `dns_provider_id` | string |  |
+| `invoiceable` | boolean |  |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/domain/import`
+
+**Impex Import Domain** — Import domain rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `domains.domain.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_domain_api_v1_impex_domain_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/domain/inspect`
+
+**Impex Inspect Domain** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `domains.domain.write`
+
+Request body: `Body_impex_inspect_domain_api_v1_impex_domain_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/entities`
+
+**List Impex Entities** — The entity types with CSV support, for the Instellingen → Import & export screen.
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `ImpexEntityInfo[]`
+
+#### `GET /api/v1/impex/hosting/columns`
+
+**Impex Columns Hosting** — Every column a hosting import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `hosting.hosting.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/hosting/export`
+
+**Impex Export Hosting** — Export the current filtered hosting list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `hosting.hosting.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `company_id` | string |  |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/hosting/import`
+
+**Impex Import Hosting** — Import hosting rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `hosting.hosting.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_hosting_api_v1_impex_hosting_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/hosting/inspect`
+
+**Impex Inspect Hosting** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `hosting.hosting.write`
+
+Request body: `Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/project/columns`
+
+**Impex Columns Project** — Every column a project import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `projects.project.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/project/export`
+
+**Impex Export Project** — Export the current filtered project list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `projects.project.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `status` | string | Status, as on the list |
+| `company_id` | string |  |
+| `mine` | boolean | Only rows assigned to me (default `false`) |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/project/import`
+
+**Impex Import Project** — Import project rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `projects.project.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_project_api_v1_impex_project_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/project/inspect`
+
+**Impex Inspect Project** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `projects.project.write`
+
+Request body: `Body_impex_inspect_project_api_v1_impex_project_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/subscription_template/columns`
+
+**Impex Columns Subscription Template** — Every column a subscription_template import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `subscriptions.subscription.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/subscription_template/export`
+
+**Impex Export Subscription Template** — Export the current filtered subscription_template list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `subscriptions.subscription.read`
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/subscription_template/import`
+
+**Impex Import Subscription Template** — Import subscription_template rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `subscriptions.template.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_subscription_template_api_v1_impex_subscription_template_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/subscription_template/inspect`
+
+**Impex Inspect Subscription Template** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `subscriptions.template.manage`
+
+Request body: `Body_impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/subscription_type/columns`
+
+**Impex Columns Subscription Type** — Every column a subscription_type import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `subscriptions.subscription.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/subscription_type/export`
+
+**Impex Export Subscription Type** — Export the current filtered subscription_type list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `subscriptions.subscription.read`
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/subscription_type/import`
+
+**Impex Import Subscription Type** — Import subscription_type rows from a spreadsheet, upserting on the first of `key` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `subscriptions.type.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_subscription_type_api_v1_impex_subscription_type_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/subscription_type/inspect`
+
+**Impex Inspect Subscription Type** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `subscriptions.type.manage`
+
+Request body: `Body_impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/subscription/columns`
+
+**Impex Columns Subscription** — Every column a subscription import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `subscriptions.subscription.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/subscription/export`
+
+**Impex Export Subscription** — Export the current filtered subscription list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `subscriptions.subscription.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `status` | string | Status, as on the list |
+| `company_id` | string |  |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/subscription/import`
+
+**Impex Import Subscription** — Import subscription rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `subscriptions.subscription.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_subscription_api_v1_impex_subscription_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/subscription/inspect`
+
+**Impex Inspect Subscription** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `subscriptions.subscription.write`
+
+Request body: `Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/task/columns`
+
+**Impex Columns Task** — Every column a task import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `tasks.task.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/task/export`
+
+**Impex Export Task** — Export the current filtered task list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `tasks.task.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `status` | string | Status, as on the list |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `mine` | boolean | Only rows assigned to me (default `false`) |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/task/import`
+
+**Impex Import Task** — Import task rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `tasks.task.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_task_api_v1_impex_task_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/task/inspect`
+
+**Impex Inspect Task** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `tasks.task.write`
+
+Request body: `Body_impex_inspect_task_api_v1_impex_task_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/time_entry/columns`
+
+**Impex Columns Time Entry** — Every column a time_entry import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `time.entry.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/time_entry/export`
+
+**Impex Export Time Entry** — Export the current filtered time_entry list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `mine` | boolean | Only rows assigned to me (default `false`) |
+| `user_id` | string |  |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `date_from` | string | Rows on/after this day |
+| `date_to` | string | Rows on/before this day |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/time_entry/import`
+
+**Impex Import Time Entry** — Import time_entry rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `time.entry.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_time_entry_api_v1_impex_time_entry_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/time_entry/inspect`
+
+**Impex Inspect Time Entry** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `time.entry.write`
+
+Request body: `Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/uptime_monitor/columns`
+
+**Impex Columns Uptime Monitor** — Every column a uptime_monitor import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `uptime.monitor.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/uptime_monitor/export`
+
+**Impex Export Uptime Monitor** — Export the current filtered uptime_monitor list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `uptime.monitor.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `company_id` | string |  |
+
+Antwoord: `200`
+
+#### `GET /api/v1/impex/website/columns`
+
+**Impex Columns Website** — Every column a website import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `websites.website.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/website/export`
+
+**Impex Export Website** — Export the current filtered website list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `websites.website.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `company_id` | string |  |
+| `hosting_id` | string |  |
+| `uptime_enabled` | boolean |  |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/website/import`
+
+**Impex Import Website** — Import website rows from a spreadsheet, upserting on the first of `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `websites.website.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_website_api_v1_impex_website_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/website/inspect`
+
+**Impex Inspect Website** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `websites.website.write`
+
+Request body: `Body_impex_inspect_website_api_v1_impex_website_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+</details>
+
+## `meta`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/meta/domain-probe` | _Bewust open_ |
+| `GET` `/meta/instance` | _Bewust open_ |
+| `GET` `/meta/mcp` | _Bewust open_ |
+| `GET` `/meta/me` | _Bewust open_ |
+| `PATCH` `/meta/me` | _Bewust open_ |
+| `GET` `/meta/modules` | _Bewust open_ |
+| `GET` `/meta/tenant` | _Bewust open_ |
+| `PATCH` `/meta/tenant` | `settings.branding.write` |
+| `GET` `/meta/tenant/domain` | `settings.domain.read` |
+| `POST` `/meta/tenant/domain` | `settings.domain.write` |
+| `DELETE` `/meta/tenant/domain` | `settings.domain.write` |
+| `POST` `/meta/tenant/domain/check` | `settings.domain.write` |
+| `GET` `/health` | _Geen recht vereist_ |
+| `GET` `/health/ready` | _Geen recht vereist_ |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/meta/domain-probe`
+
+**Domain Probe** — Answer, to whoever can reach this hostname, that *this* instance serves *that* org.
+
+Recht: _Bewust open_
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `nonce` | string · verplicht |  |
+
+Antwoord: `200` · `DomainProbe`
+
+#### `GET /api/v1/meta/instance`
+
+**Deployment Meta**
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `InstanceMeta`
+
+#### `GET /api/v1/meta/mcp`
+
+**Mcp Meta** — The section catalog, read off the mounted server rather than rebuilt.
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `McpMeta`
+
+#### `GET /api/v1/meta/me`
+
+**Me**
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `MeInfo`
+
+#### `PATCH /api/v1/meta/me`
+
+**Update Me** — Update the current user's own profile/preferences.
+
+Recht: _Bewust open_
+
+Request body: `MeUpdate`
+
+Antwoord: `200` · `MeInfo`
+
+#### `GET /api/v1/meta/modules`
+
+**Modules**
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `ModulesMeta`
+
+#### `GET /api/v1/meta/tenant`
+
+**Tenant Branding**
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `TenantBranding`
+
+#### `PATCH /api/v1/meta/tenant`
+
+**Update Tenant Branding** — Update the org's white-label settings. Applied on next render.
+
+Recht: `settings.branding.write`
+
+Request body: `TenantBrandingUpdate`
+
+Antwoord: `200` · `TenantBranding`
+
+#### `GET /api/v1/meta/tenant/domain`
+
+**Domain Status**
+
+Recht: `settings.domain.read`
+
+Antwoord: `200` · `app__core__domainflow__DomainStatus`
+
+#### `POST /api/v1/meta/tenant/domain`
+
+**Claim Domain**
+
+Recht: `settings.domain.write`
+
+Request body: `DomainClaim`
+
+Antwoord: `200` · `app__core__domainflow__DomainStatus`
+
+#### `DELETE /api/v1/meta/tenant/domain`
+
+**Clear Domain** — Remove the custom domain (and any pending claim). The org keeps resolving via ``&lt;slug>.&lt;base_domain>`` — the UI warns that this changes the org's address.
+
+Recht: `settings.domain.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `pending_only` | boolean |  (default `false`) |
+
+Antwoord: `200` · `app__core__domainflow__DomainStatus`
+
+#### `POST /api/v1/meta/tenant/domain/check`
+
+**Check Domain** — Probe the current stage's DNS/edge conditions, advance whatever they satisfy, and report each layer separately (ownership TXT, traffic DNS, hostname, certificate).
+
+Recht: `settings.domain.write`
+
+Antwoord: `200` · `DomainCheckReport`
+
+#### `GET /health`
+
+**Health** — Liveness. Must stay cheap, dependency-free and unauthenticated: orchestrators poll it, and a probe that touches Postgres would restart a healthy API when the database blips. Readiness is a different question — see ``/health/ready``.
+
+Recht: _Geen recht vereist_
+
+Antwoord: `200` · `object`
+
+#### `GET /health/ready`
+
+**Health Ready** — Readiness: can this instance actually serve? Checks Postgres, Redis and Alembic.
+
+Recht: _Geen recht vereist_
+
+Antwoord: `200`
+
+</details>
+
+## `nav`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/nav/prefs` | `nav.prefs.read` |
+| `PUT` `/nav/prefs` | `nav.prefs.write` |
+| `DELETE` `/nav/prefs` | `nav.prefs.write` |
+| `PUT` `/nav/prefs/default` | `settings.nav.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/nav/prefs`
+
+**Get Prefs** — The effective layout for the current user: own row → org default → none.
+
+Recht: `nav.prefs.read`
+
+Antwoord: `200` · `NavPrefs`
+
+#### `PUT /api/v1/nav/prefs`
+
+**Set Prefs** — A member's personal order/visibility. Labels/groups are org config — stripped here.
+
+Recht: `nav.prefs.write`
+
+Request body: `NavPrefsUpdate`
+
+Antwoord: `200` · `NavPrefs`
+
+#### `DELETE /api/v1/nav/prefs`
+
+**Reset Prefs** — Drop the personal layout; the user falls back to the org default.
+
+Recht: `nav.prefs.write`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/nav/prefs/default`
+
+**Set Default Prefs** — The org-wide default that members inherit, plus tenant item/group labels (``settings.nav.manage``).
+
+Recht: `settings.nav.manage`
+
+Request body: `NavPrefsUpdate`
+
+Antwoord: `200` · `NavPrefs`
+
+</details>
+
+## `notifications`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/notifications` | `notifications.notification.read` |
+| `PATCH` `/notifications/{notification_id}` | `notifications.notification.write` |
+| `GET` `/notifications/activity` | `notifications.notification.read` |
+| `GET` `/notifications/channels` | `notifications.channels.manage_own` |
+| `POST` `/notifications/channels` | `notifications.channels.manage_own` |
+| `PATCH` `/notifications/channels/{channel_id}` | `notifications.channels.manage_own` |
+| `DELETE` `/notifications/channels/{channel_id}` | `notifications.channels.manage_own` |
+| `POST` `/notifications/channels/{channel_id}/test` | `notifications.channels.manage_own` |
+| `POST` `/notifications/mark-all-read` | `notifications.notification.write` |
+| `GET` `/notifications/preferences` | `notifications.notification.read` |
+| `PUT` `/notifications/preferences` | `notifications.notification.write` |
+| `GET` `/notifications/preferences/defaults` | `notifications.defaults.manage` |
+| `PUT` `/notifications/preferences/defaults` | `notifications.defaults.manage` |
+| `GET` `/notifications/push/config` | `notifications.notification.read` |
+| `GET` `/notifications/push/subscriptions` | `notifications.notification.read` |
+| `POST` `/notifications/push/subscriptions` | `notifications.notification.write` |
+| `DELETE` `/notifications/push/subscriptions/{subscription_id}` | `notifications.notification.write` |
+| `POST` `/notifications/push/test` | `notifications.notification.write` |
+| `POST` `/notifications/push/unsubscribe` | `notifications.notification.write` |
+| `GET` `/notifications/unread-count` | `notifications.notification.read` |
+| `GET` `/notifications/watch` | `notifications.notification.read` |
+| `PUT` `/notifications/watch` | `notifications.notification.write` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/notifications`
+
+**List Notifications**
+
+Recht: `notifications.notification.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `unread` | boolean | true = unread only, false = read only |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` |  |
+| `sort` | string | created_at, '-' desc |
+| `count` | boolean | false skips the count query (docs/PERFORMANCE.md) (default `true`) |
+
+Antwoord: `200` · `Page_NotificationRead_`
+
+#### `PATCH /api/v1/notifications/{notification_id}`
+
+**Set Read** — Reversible: read and unread are the same non-destructive toggle (docs/UX.md).
+
+Recht: `notifications.notification.write`
+
+Padparameters: `notification_id`
+
+Request body: `ReadUpdate`
+
+Antwoord: `200` · `NotificationRead`
+
+#### `GET /api/v1/notifications/activity`
+
+**Activity**
+
+Recht: `notifications.notification.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · verplicht |  |
+| `entity_id` | string · verplicht |  |
+| `limit` | integer |  (default `20`) |
+
+Antwoord: `200` · `app__modules__notifications__schemas__ActivityItem[]`
+
+#### `GET /api/v1/notifications/channels`
+
+**List Channels**
+
+Recht: `notifications.channels.manage_own`
+
+Antwoord: `200` · `ChannelRead[]`
+
+#### `POST /api/v1/notifications/channels`
+
+**Create Channel**
+
+Recht: `notifications.channels.manage_own`
+
+Request body: `ChannelCreate`
+
+Antwoord: `201` · `ChannelRead`
+
+#### `PATCH /api/v1/notifications/channels/{channel_id}`
+
+**Update Channel**
+
+Recht: `notifications.channels.manage_own`
+
+Padparameters: `channel_id`
+
+Request body: `ChannelUpdate`
+
+Antwoord: `200` · `ChannelRead`
+
+#### `DELETE /api/v1/notifications/channels/{channel_id}`
+
+**Delete Channel**
+
+Recht: `notifications.channels.manage_own`
+
+Padparameters: `channel_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/notifications/channels/{channel_id}/test`
+
+**Test Channel** — Send a test message and report the provider's real error (#17).
+
+Recht: `notifications.channels.manage_own`
+
+Padparameters: `channel_id`
+
+Antwoord: `200` · `ChannelTestResult`
+
+#### `POST /api/v1/notifications/mark-all-read`
+
+**Mark All Read**
+
+Recht: `notifications.notification.write`
+
+Antwoord: `200` · `MarkAllResult`
+
+#### `GET /api/v1/notifications/preferences`
+
+**Get Preferences** — My effective matrix: what will actually happen on both channels, and who decided it.
+
+Recht: `notifications.notification.read`
+
+Antwoord: `200` · `PreferenceMatrix`
+
+#### `PUT /api/v1/notifications/preferences`
+
+**Set Preferences**
+
+Recht: `notifications.notification.write`
+
+Request body: `PreferenceUpdate`
+
+Antwoord: `200` · `PreferenceMatrix`
+
+#### `GET /api/v1/notifications/preferences/defaults`
+
+**Get Default Preferences** — What a member inherits before they override anything (org-wide), plus the shared rooms.
+
+Recht: `notifications.defaults.manage`
+
+Antwoord: `200` · `PreferenceMatrix`
+
+#### `PUT /api/v1/notifications/preferences/defaults`
+
+**Set Default Preferences**
+
+Recht: `notifications.defaults.manage`
+
+Request body: `PreferenceUpdate`
+
+Antwoord: `200` · `PreferenceMatrix`
+
+#### `GET /api/v1/notifications/push/config`
+
+**Push Config** — The org's VAPID public key, minting the keypair on first use.
+
+Recht: `notifications.notification.read`
+
+Antwoord: `200` · `PushConfig`
+
+#### `GET /api/v1/notifications/push/subscriptions`
+
+**List Push Subscriptions** — This person's registered devices. The endpoint and key material never come back — the row exists to be recognised and revoked, and returning it would hand any XSS a push target.
+
+Recht: `notifications.notification.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `endpoint` | string | the calling browser's own endpoint, so its row can be marked `current` |
+
+Antwoord: `200` · `PushSubscriptionRead[]`
+
+#### `POST /api/v1/notifications/push/subscriptions`
+
+**Register Push Subscription** — Register (or refresh) the calling browser. Idempotent on the endpoint: the client re-presents it every session because endpoints rotate silently, and a rotated endpoint that nobody re-registered is a device that has stopped receiving without saying so.
+
+Recht: `notifications.notification.write`
+
+Request body: `PushSubscriptionCreate`
+
+Antwoord: `201` · `PushSubscriptionRead`
+
+#### `DELETE /api/v1/notifications/push/subscriptions/{subscription_id}`
+
+**Revoke Push Subscription**
+
+Recht: `notifications.notification.write`
+
+Padparameters: `subscription_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/notifications/push/test`
+
+**Test Push** — Push a test notification to every device this person has registered.
+
+Recht: `notifications.notification.write`
+
+Antwoord: `200` · `PushTestResult`
+
+#### `POST /api/v1/notifications/push/unsubscribe`
+
+**Unsubscribe Push** — Drop the device by the endpoint the browser itself holds — the only identifier it has after ``PushSubscription.unsubscribe()``. Scoped to the caller, and silent on a miss: unsubscribing twice is not an error.
+
+Recht: `notifications.notification.write`
+
+Request body: `PushUnsubscribe`
+
+Antwoord: `204`
+
+#### `GET /api/v1/notifications/unread-count`
+
+**Unread Count** — The bell's badge. Comes from the API, never from counting the loaded page.
+
+Recht: `notifications.notification.read`
+
+Antwoord: `200` · `UnreadCount`
+
+#### `GET /api/v1/notifications/watch`
+
+**Get Watch**
+
+Recht: `notifications.notification.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · verplicht |  |
+| `entity_id` | string · verplicht |  |
+
+Antwoord: `200` · `WatchRead`
+
+#### `PUT /api/v1/notifications/watch`
+
+**Set Watch**
+
+Recht: `notifications.notification.write`
+
+Request body: `WatchUpdate`
+
+Antwoord: `200` · `WatchRead`
+
+</details>
+
+## `prefs`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/prefs` | _Bewust open_ |
+| `PUT` `/prefs` | _Bewust open_ |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/prefs`
+
+**Get Prefs**
+
+Recht: _Bewust open_
+
+Antwoord: `200` · `UserPrefs`
+
+#### `PUT /api/v1/prefs`
+
+**Set Prefs**
+
+Recht: _Bewust open_
+
+Request body: `UserPrefsUpdate`
+
+Antwoord: `200` · `UserPrefs`
+
+</details>
+
+## `providers`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/providers` | `settings.providers.read` |
+| `POST` `/providers` | `settings.providers.manage` |
+| `GET` `/providers/{provider_id}` | `settings.providers.read` |
+| `PATCH` `/providers/{provider_id}` | `settings.providers.manage` |
+| `DELETE` `/providers/{provider_id}` | `settings.providers.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/providers`
+
+**List Providers**
+
+Recht: `settings.providers.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `kind` | ProviderKind |  |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `ProviderRead[]`
+
+#### `POST /api/v1/providers`
+
+**Create Provider**
+
+Recht: `settings.providers.manage`
+
+Request body: `ProviderCreate`
+
+Antwoord: `201` · `ProviderRead`
+
+#### `GET /api/v1/providers/{provider_id}`
+
+**Get Provider**
+
+Recht: `settings.providers.read`
+
+Padparameters: `provider_id`
+
+Antwoord: `200` · `ProviderRead`
+
+#### `PATCH /api/v1/providers/{provider_id}`
+
+**Update Provider**
+
+Recht: `settings.providers.manage`
+
+Padparameters: `provider_id`
+
+Request body: `ProviderUpdate`
+
+Antwoord: `200` · `ProviderRead`
+
+#### `DELETE /api/v1/providers/{provider_id}`
+
+**Delete Provider**
+
+Recht: `settings.providers.manage`
+
+Padparameters: `provider_id`
+
+Antwoord: `204`
+
+</details>
+
+## `system`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/system/info` | `settings.system.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/system/info`
+
+**System Info** — Diagnostics for the Settings → System screen (``settings.system.read``).
+
+Recht: `settings.system.read`
+
+Antwoord: `200` · `SystemInfo`
+
+</details>
+

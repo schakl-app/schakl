@@ -15,7 +15,15 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.modules.notifications.events import DIGEST_CADENCES, ENTITY_TYPES, EVENT_TYPES
 
-EntityType = Literal["task", "project", "company", "leave_request", "timesheet"]
+#: The entity types a caller may *name* — the inbox filter, the activity feed, the watch toggle.
+#:
+#: Deliberately not ``events.ENTITY_TYPES``: that is the vocabulary the fan-out **writes**, and
+#: it holds one more (``snelstart_account``) that nobody opens, watches or filters by. Every
+#: member gets contactmoment notifications, though, so leaving ``interaction`` out meant the one
+#: filter row the inbox drew for it answered 422 — and the tab was quietly never offered.
+#: Widening it widens ``/activity`` and ``/watch`` too, which is why the entity's own read
+#: permission is mapped in the router: this list is a vocabulary, never a grant.
+EntityType = Literal["task", "project", "company", "leave_request", "timesheet", "interaction"]
 PrefSource = Literal["default", "org", "user"]
 
 

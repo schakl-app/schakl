@@ -84,6 +84,12 @@ _DELTA_AS_FACTOR = 1000.0
 #: columns narrowed for a client, because only these have a tail worth folding.
 _SOURCE_KINDS = {"organic_sources", "social_sources", "referral_sources"}
 
+#: What a section's *name* column is called, by kind. Anything unlisted is a source, which is
+#: what every table on the document was before there was one whose rows are search engines —
+#: including ``ai_search``, whose column is arguably misnamed too and is not this change's to
+#: rename: a heading a client has read for three months is not collateral on a different fix.
+_NAME_LABELS = {"engines": "search_engine"}
+
 #: Columns a **client** document drops from a traffic-split table. The provider returns the
 #: marketeer's seven (`report_sections._split_section`), which is the right answer for the
 #: internal analysis and a data dump on a client's desk: nobody reading a monthly report needs
@@ -393,61 +399,38 @@ def build_context(
         data = (snapshot.get("sections") or {}).get(key)
         if not data:
             continue
-        data = shape_section(data, locale, internal=internal)
-        colors = _row_colors(data, style, locale)
-        currency = data.get("currency")
-        keys = list(data.get("columns") or [])
-        name_width, metric_width = column_widths(len(keys))
+        kind = data.get("kind") or "table"
+        # One block per website, or one block full stop (#381). A payload written before parts
+        # existed — every report already in the database — has no ``parts``, and is its own
+        # single block: a stored report must render next December exactly as it rendered today,
+        # which is the whole reason `data_snapshot` is frozen in the first place.
+        raw_parts = [
+            part for part in (data.get("parts") or [data]) if isinstance(part, dict)
+        ] or [data]
+        parts = [
+            _shaped_part({**part, "kind": kind}, style, locale, internal=internal)
+            for part in raw_parts
+        ]
         sections.append(
             {
                 "key": key,
                 "title": section_titles.get(key, key),
-                "kind": data.get("kind") or "table",
-                "columns": [
-                    {
-                        "key": column,
-                        "label": metric_short(column, locale),
-                        # The full name travels too: a design that has the room (a tile, a
-                        # legend, a title attribute on the preview) should never have to guess
-                        # what the short one stands for.
-                        "full_label": metric_label(column, locale),
-                        "icon": metric_icon(column),
-                        "width": metric_width,
-                    }
-                    for column in keys
-                ],
-                # The table's own geometry, decided here rather than negotiated by the widest
-                # heading at layout time — see `column_widths`.
-                "name_width": name_width,
-                "rows": _coloured(_ranked(data.get("rows") or []), colors),
-                # Whether this section's *column* carries the mark. A design needs it as well
-                # as the per-row colour, because the rows past the chart's segment cap have no
-                # segment and must still line up with the ones that do.
-                "dots": bool(colors),
-                "groups": [
-                    {**group, "rows": _ranked(group.get("rows") or [])}
-                    for group in (data.get("groups") or [])
-                    if isinstance(group, dict)
-                ],
-                # Resolved to labelled tiles here rather than in the template: a design should
-                # never have to know that "keyEvents" is called something else on screen.
-                #
-                # A metric that is zero now and was zero then is dropped, on the same argument
-                # that stops an empty section printing: a client who sells nothing online got
-                # an "OMZET 0" tile every month for ever, which is not a fact about their July.
-                # A zero that follows a non-zero is a real and often unwelcome fact, and stays.
-                "totals": _tiles(data, locale, currency),
-                "compare": data.get("compare"),
-                # Whether the rankings table draws a landing-page column, and what that leaves
-                # for the keyword. A Search Console-sourced table knows the query and not which
-                # page answered it, and a column of dashes is worse than no column.
-                "show_landing_page": _has_landing_pages(data),
-                "rank_name_width": 39.0 if _has_landing_pages(data) else 65.0,
+                "kind": kind,
+                # What the *name* column holds. It was hardcoded to "Bron", which is right for
+                # a table of referring domains and wrong for one of search engines — and the
+                # `reporting.doc.engine` label existed for exactly this and was never wired to
+                # anything. Decided from the kind, so a design never has to know which sections
+                # count as sources (#381).
+                "name_label": translate(
+                    f"reporting.doc.{_NAME_LABELS.get(kind, 'source')}", locale
+                ),
+                # The blocks, and — flattened onto the section — the first of them. The flat
+                # keys are what every design rendered before this existed, including a tenant's
+                # own Jinja (docs/INVOICING.md), so they stay: a design that has never heard of
+                # `parts` prints the first website rather than breaking.
+                "parts": parts,
+                **parts[0],
                 "narrative": (narrative.get(key) or "").strip(),
-                "chart": _chart(data.get("chart"), style, locale),
-                # How many things the chart draws, so a design can decide whether it will fit
-                # beside a table without parsing the SVG it was handed.
-                "chart_categories": _chart_categories(data.get("chart")),
                 "audited_at": data.get("audited_at"),
             }
         )
@@ -478,7 +461,8 @@ def build_context(
                 "summary", "period", "compared_with", "actions", "questions",
                 "internal_banner", "generated", "no_data", "keyword", "landing_page",
                 "start_position", "end_position", "score", "errors", "warnings", "pages",
-                "audited_at", "source", "engine", "new_keyword", "at_a_glance", "move",
+                "audited_at", "source", "engine", "search_engine", "new_keyword",
+                "at_a_glance", "move",
             )
         },
         # Helpers a tenant's own template gets too, so "print this number properly" does not
@@ -490,6 +474,76 @@ def build_context(
         "delta_class": delta_class,
         "tile_rows": tile_rows,
         "icon": metric_icon,
+    }
+
+
+def _shaped_part(
+    data: dict[str, Any], style: ChartStyle, locale: str, *, internal: bool
+) -> dict[str, Any]:
+    """One block of a section, ready to draw: its table, its tiles, its chart, its geometry.
+
+    Everything here used to be inlined in :func:`build`, computed once per section. It is
+    computed once per *block* now, which is the whole of what "report per website" costs the
+    renderer — a client with two GA4 properties gets two tables with their own column widths,
+    their own folded tails and their own charts, rather than two websites' numbers interleaved
+    under one heading.
+
+    ``label`` is the website's name, or empty. Empty is not a missing value: it is what a client
+    with one property has, and what a deliberately combined report has, and in both cases a
+    heading naming the property would be noise arguing with the figures under it.
+    """
+    data = shape_section(data, locale, internal=internal)
+    colors = _row_colors(data, style, locale)
+    currency = data.get("currency")
+    keys = list(data.get("columns") or [])
+    name_width, metric_width = column_widths(len(keys))
+    return {
+        "label": str(data.get("label") or ""),
+        "columns": [
+            {
+                "key": column,
+                "label": metric_short(column, locale),
+                # The full name travels too: a design that has the room (a tile, a legend, a
+                # title attribute on the preview) should never have to guess what the short one
+                # stands for.
+                "full_label": metric_label(column, locale),
+                "icon": metric_icon(column),
+                "width": metric_width,
+            }
+            for column in keys
+        ],
+        # The table's own geometry, decided here rather than negotiated by the widest heading at
+        # layout time — see `column_widths`.
+        "name_width": name_width,
+        "rows": _coloured(_ranked(data.get("rows") or []), colors),
+        # Whether this block's *column* carries the mark. A design needs it as well as the
+        # per-row colour, because the rows past the chart's segment cap have no segment and must
+        # still line up with the ones that do.
+        "dots": bool(colors),
+        "groups": [
+            {**group, "rows": _ranked(group.get("rows") or [])}
+            for group in (data.get("groups") or [])
+            if isinstance(group, dict)
+        ],
+        # Resolved to labelled tiles here rather than in the template: a design should never
+        # have to know that "keyEvents" is called something else on screen.
+        #
+        # A metric that is zero now and was zero then is dropped, on the same argument that
+        # stops an empty section printing: a client who sells nothing online got an "OMZET 0"
+        # tile every month for ever, which is not a fact about their July. A zero that follows a
+        # non-zero is a real and often unwelcome fact, and stays.
+        "totals": _tiles(data, locale, currency),
+        "compare": data.get("compare"),
+        "currency": currency,
+        # Whether the rankings table draws a landing-page column, and what that leaves for the
+        # keyword. A Search Console-sourced table knows the query and not which page answered
+        # it, and a column of dashes is worse than no column.
+        "show_landing_page": _has_landing_pages(data),
+        "rank_name_width": 39.0 if _has_landing_pages(data) else 65.0,
+        "chart": _chart(data.get("chart"), style, locale),
+        # How many things the chart draws, so a design can decide whether it will fit beside a
+        # table without parsing the SVG it was handed.
+        "chart_categories": _chart_categories(data.get("chart")),
     }
 
 

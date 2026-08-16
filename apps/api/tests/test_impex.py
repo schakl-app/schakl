@@ -14,7 +14,9 @@ from tests.conftest import auth_cookie, make_tenant
 
 COMPANY_HEADER = [
     "name", "client_number", "website", "phone", "invoice_email", "status",
-    # Billing identity (issue #11, shipped with invoicing #207).
+    # Billing identity (issue #11, shipped with invoicing #207) — including the name a
+    # document is addressed to, which belongs to this block and not beside "name".
+    "legal_name",
     "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
     "postal_code", "city", "country",
     "notes",

@@ -341,6 +341,20 @@ done: `pnpm run check` clean, lint no worse than baseline, `i18n:check` passing,
 commented, and the label applied. If the change touches the schema, the upgrade plan for
 existing releases is written down and the migration was run against a populated database.
 
+**A route added, removed or re-permissioned means regenerating the public API reference.** It
+is committed output (`apps/site/src/content/docs/{en,nl}/docs/api/`), like `brand-marks.ts`,
+so the site build never needs a Python toolchain — and like any committed generated file it
+goes stale silently:
+
+```bash
+uv run --directory apps/api python -m app.openapi_docs_export > /tmp/api-doc.json
+node scripts/site-api-reference.mjs /tmp/api-doc.json
+```
+
+Nothing in CI catches a stale one yet. The exporter does refuse to print a document where any
+operation matched no route, so the half that *would* be silent — a missing permission — is
+loud.
+
 **Build the images and boot the stack before you call it done.** `pnpm run check`, `pnpm web
 build` and the dev server all pass on bugs that only surface in the real image — an adapter-node
 runtime that can't resolve a server-imported dependency (`docs/WEB.md`), or a migration graph that

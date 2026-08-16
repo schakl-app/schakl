@@ -3,7 +3,7 @@
   "name": "Mollie",
   "order": 10,
   "category": "payments",
-  "status": "beta",
+  "status": "live",
   "lucide": "creditCard",
   "mark": {
     "monogram": "M",
@@ -120,12 +120,12 @@
       },
       {
         "heading": {
-          "nl": "Bèta: wat je zelf eerst naloopt",
-          "en": "Beta: what to check yourself first"
+          "nl": "Begin met de testsleutel",
+          "en": "Start on the test key"
         },
         "body": {
-          "nl": "Deze koppeling is geschreven op de officiële API-documentatie van Mollie en getest tegen een nabootsing die uit datzelfde document is geknipt. Dat bewijst dat de code het met de documentatie eens is, niet met Mollie. Een groen instellingenscherm zegt dus dat je sleutel geldig is en verder niets. Draai een proefrun met de testsleutel voordat je er een klant op zet: Mollie heeft daarvoor testkaarten en bedragen die een specifieke fout afdwingen, en in testmodus werkt alleen euro.",
-          "en": "This integration is written from Mollie's official API reference and tested against a stand-in cut from that same document. That proves the code agrees with the documentation, not with Mollie. A green settings screen therefore tells you your key is valid and nothing more. Do a rehearsal on the test key before pointing a client at it: Mollie provides test cards and magic amounts that force a specific failure, and test mode supports euro only."
+          "nl": "Een groen instellingenscherm zegt dat je sleutel geldig is en verder niets: of iDEAL aanstaat, of het meldingsadres bereikbaar is en of het bedrag klopt, blijkt pas uit een echte betaling. Loop daarom eerst één keer de hele route met de testsleutel: maak een betaallink op een openstaande factuur, betaal hem, en kijk of de betaalregel op de factuur verschijnt. Mollie levert daarvoor testkaarten en bedragen die met opzet een specifieke fout afdwingen, zodat je ook ziet wat er gebeurt als het misgaat. Let op twee dingen: in testmodus werkt alleen euro, en een testbetaling boekt bewust nooit iets op de factuur.",
+          "en": "A green settings screen tells you your key is valid and nothing more: whether iDEAL is switched on, whether the notification address is reachable and whether the amount is right only shows up on a real payment. So walk the whole route once on the test key first: make a payment link on an open invoice, pay it, and watch the payment line appear on the invoice. Mollie supplies test cards and magic amounts that deliberately force a specific failure, so you also see what happens when it goes wrong. Two things to note: test mode supports euro only, and a test payment deliberately never settles anything on the invoice."
         }
       }
     ],

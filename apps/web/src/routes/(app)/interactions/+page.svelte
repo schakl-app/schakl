@@ -10,7 +10,10 @@
   import {
     ArrowRightLeft,
     Check,
+    CheckCheck,
+    Inbox,
     Link2,
+    List as ListIcon,
     Mail,
     Pencil,
     Plus,
@@ -28,7 +31,7 @@
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberLabel, type PickerMember } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -41,6 +44,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
@@ -79,6 +83,17 @@
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
+  // Naming a *colleague* is the read_all grant (#168); "mijn" and "iedereen" are nobody's, so
+  // without it the picker offers those two and no roster at all. The API enforces it harder.
+  const ownerMembers = $derived(data.canReadAll ? (data.members as PickerMember[]) : []);
+  // Two words that are not a person, and they lead: you land on your own moments (#263) and
+  // widen from there. Every choice is written out, "mijn" included — a record-scoped view
+  // defaults to iedereen (#323), so deleting the param to mean "me" would make that option
+  // do nothing.
+  const ownerExtra = $derived([
+    { value: "me", label: t("interactions.filter.mine") },
+    { value: "all", label: t("interactions.filter.everyone") },
+  ]);
 
   const table = createTableLayout<InteractionItem>({
     all: () => INTERACTION_COLUMNS,
@@ -120,9 +135,37 @@
   function applyFilter(patch: Record<string, string | null>): void {
     void goto(filterHref(patch), { keepFocus: true, noScroll: true });
   }
+  /**
+   * A pressed control has to look pressed, and `bg-surface` **is the page** (`app.css`:
+   * `--surface` is the page background, `--surface-raised` is a card on it). Every tab here
+   * therefore marked itself active by painting itself the colour it was already sitting on:
+   * "Deze week" selected and "Deze week" not selected differed by a font weight nobody reads at
+   * a glance. Raised + ringed is the same trick a card uses to sit above the page, which is
+   * exactly the relationship a chosen tab has to the row it is in.
+   */
   const tabClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm ${
-      active ? "bg-surface font-medium text-text" : "text-text-muted hover:text-text"
+      active
+        ? "bg-surface-raised font-medium text-text shadow-sm ring-1 ring-inset ring-border"
+        : "text-text-muted hover:text-text"
+    }`;
+
+  // --- the two views (#…): the review queue, and everything -------------------- //
+  /**
+   * The page opens on **Te beoordelen** and `?status=all` is the whole timeline. Both tabs write
+   * their value out loud rather than one of them clearing the parameter, because "absent" means
+   * two different things here — the queue on the plain list, everything under a record chip
+   * (`+page.server.ts`) — and a tab whose href depends on which of those you are looking at is a
+   * control that can point at itself.
+   */
+  const reviewing = $derived(data.filters.pending as boolean);
+  /** The viewer's own unreviewed moments, whatever this list is currently narrowed to. */
+  const pendingTotal = $derived((data.pendingTotal as number | undefined) ?? 0);
+  const viewTabClass = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+      active
+        ? "bg-brand font-semibold text-white shadow-sm"
+        : "text-text-muted hover:bg-surface hover:text-text"
     }`;
 
   // What this list is narrowed to (#323). A panel's truncation notice links here, so the page
@@ -341,10 +384,15 @@
   // Deep link from the dashboard tile (issue #15) and anything else naming one moment:
   // `?interaction=<id>` opens that row's detail modal on arrival, the same shape the leave
   // calendar's `?request=` uses. A `$state` initializer rather than a `$derived`, so closing the
-  // modal does not reopen it while the param is still in the URL; an id the current page does
-  // not hold simply lands on the list.
+  // modal does not reopen it while the param is still in the URL. An id this page does not hold
+  // is the load's own by-id read (`data.deepLinked`) — a notification names a note that is
+  // weeks old and behind somebody else's owner filter, so "not on page 1" is the normal case
+  // rather than the exception. The row wins where there is one, so the modal and the list stay
+  // one object.
   const deepLinked = () =>
-    items.find((item) => item.id === page.url.searchParams.get("interaction")) ?? null;
+    items.find((item) => item.id === page.url.searchParams.get("interaction")) ??
+    (data.deepLinked as InteractionItem | null) ??
+    null;
   const initialDetail = deepLinked();
   let showDetail = $state(initialDetail !== null);
   let detailItem = $state<InteractionItem | null>(initialDetail);
@@ -541,46 +589,80 @@
 {/if}
 
 <div class="mb-3 flex flex-wrap items-center gap-3">
-  <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
-    <a href={filterHref({ status: null })} class={tabClass(!data.filters.pending)}>
+  <!-- The two views, as one segmented control rather than two words. What it replaced was a pair
+       of borderless links whose selected half painted itself `bg-surface` — the page's own colour
+       — so the primary switch on the busiest screen in the app was invisible until you compared
+       font weights. It leads the row because it decides what everything to its right narrows. -->
+  <div
+    class="inline-flex items-center gap-1 rounded-xl bg-surface-raised p-1 ring-1 ring-inset ring-border"
+    data-sveltekit-preload-data="hover"
+  >
+    <a href={filterHref({ status: "pending" })} class={viewTabClass(reviewing)}>
+      <Inbox size={15} aria-hidden="true" />
+      {t("interactions.filter.pending")}
+      {#if pendingTotal > 0}
+        <!-- The number is the whole point of leading with this tab: an empty queue and a
+             filtered one look identical without it, and a queue you cannot see the size of is
+             one nobody opens. Amber where it is unselected — the same amber the rows wear —
+             and carried on the brand where it is, because a brand-on-brand badge disappears. -->
+        <span
+          class="rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums {reviewing
+            ? 'bg-white/25 text-white'
+            : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}"
+        >
+          {pendingTotal}
+        </span>
+        <span class="sr-only"
+          >{t("interactions.filter.pending_count", { count: pendingTotal })}</span
+        >
+      {/if}
+    </a>
+    <a href={filterHref({ status: "all" })} class={viewTabClass(!reviewing)}>
+      <ListIcon size={15} aria-hidden="true" />
       {t("interactions.filter.all")}
     </a>
-    <a href={filterHref({ status: "pending" })} class={tabClass(data.filters.pending)}>
-      {t("interactions.filter.pending")}
-    </a>
   </div>
-  <select
-    value={data.filters.kind ?? ""}
-    onchange={(e) => applyFilter({ kind: e.currentTarget.value || null })}
-    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-    aria-label={t("interactions.column.kind")}
-  >
-    <option value="">{t("interactions.filter.all_kinds")}</option>
-    {#each kinds as kind (kind.key)}
-      <option value={kind.key}>{kindLabel(kind, data.locale)}</option>
-    {/each}
-  </select>
-  <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
-       nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
-       list is gated — the API enforces it harder either way.
-       Every choice is written out, "mijn" included: a record-scoped view defaults to iedereen
-       (#323), so deleting the param to mean "me" would have made that option do nothing. -->
-  <select
-    value={data.filters.ownerValue}
-    onchange={(e) => applyFilter({ owner: e.currentTarget.value, mine: null })}
-    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-    aria-label={t("interactions.filter.owner")}
-  >
-    <option value="me">{t("interactions.filter.mine")}</option>
-    <option value="all">{t("interactions.filter.everyone")}</option>
-    {#if data.canReadAll}
-      {#each data.members as member (member.user_id)}
-        {#if member.user_id !== me}
-          <option value={member.user_id}>{memberLabel(member)}</option>
-        {/if}
+  <!-- Every row in the review queue is an e-mail — `record_email` is the one writer that ever
+       sets `pending`, and it writes `kind=email` (`interactions/system.py`) — so over the queue
+       this control can only pick the kind that is already showing, or one that answers nothing.
+       Drawn there only when a link arrives with it set, for the same reason the date row is. -->
+  {#if !reviewing || data.filters.kind}
+    <select
+      value={data.filters.kind ?? ""}
+      onchange={(e) => applyFilter({ kind: e.currentTarget.value || null })}
+      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+      aria-label={t("interactions.column.kind")}
+    >
+      <option value="">{t("interactions.filter.all_kinds")}</option>
+      {#each kinds as kind (kind.key)}
+        <option value={kind.key}>{kindLabel(kind, data.locale)}</option>
       {/each}
-    {/if}
-  </select>
+    </select>
+  {/if}
+  <!-- The colleague half is a `MemberPicker` like every other "which colleague" control: a
+       deactivated account is behind the search wearing "Gedeactiveerd", never beside the people
+       still here. Filtering by somebody who has left is a real question — this is their mail —
+       so they are found by typing rather than dropped. The signed-in user is excluded because
+       "mijn" already names them.
+       Not drawn over the review queue at all: an unreviewed e-mail is private to its mailbox
+       owner, so every option but "mijn" would return nothing there — a control whose only
+       possible answer is an empty list is #253's control that always refuses. -->
+  {#if !reviewing}
+    <div class="w-full sm:w-44">
+      <MemberPicker
+        members={ownerMembers}
+        extra={ownerExtra}
+        exclude={me ? [me] : []}
+        name="_filter_owner"
+        id="filter-owner"
+        value={data.filters.ownerValue}
+        allowEmpty={false}
+        placeholder={t("interactions.filter.owner")}
+        ariaLabel={t("interactions.filter.owner")}
+        onselect={(v) => applyFilter({ owner: v, mine: null })}
+      />
+    </div>
+  {/if}
   <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of
        a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->
   <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -600,70 +682,80 @@
 </div>
 
 <!-- Date navigation (#238): jump to a week, filter a month, or type any range — three ways of
-     writing the same `from`/`to` params. Wraps on its own line so a phone never scrolls (#36). -->
-<div class="mb-3 flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
-  <div class="flex items-center gap-1">
-    <a
-      href={weekHref(-1)}
-      aria-label={t("interactions.filter.prev_week")}
-      class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+     writing the same `from`/`to` params. Wraps on its own line so a phone never scrolls (#36).
+     Four controls, and over the review queue they answer a question nobody asks: a queue is
+     "what is still waiting", not "what came in last week", and the row is a third of the chrome
+     above the one list on this screen that is a to-do list. So it stands down there — **unless a
+     range is actually set**, because a link that arrives with `from`/`to` on it must still show
+     what is narrowing the list, or the queue reads as short when it is only filtered (the same
+     rule `FilterBar` states by opening itself when a filter is already on). -->
+{#if !reviewing || dateFrom || dateTo}
+  <div class="mb-3 flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
+    <div class="flex items-center gap-1">
+      <a
+        href={weekHref(-1)}
+        aria-label={t("interactions.filter.prev_week")}
+        class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+      >
+        ←
+      </a>
+      <a href={weekHref(0)} class={tabClass(weekActive)}>
+        {weekActive ? fmtPeriod(dateFrom, dateTo) : t("interactions.filter.this_week")}
+      </a>
+      <a
+        href={weekHref(1)}
+        aria-label={t("interactions.filter.next_week")}
+        class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+      >
+        →
+      </a>
+    </div>
+    <select
+      value={monthActive}
+      onchange={(e) => {
+        const month = e.currentTarget.value;
+        applyFilter(
+          month ? { from: `${month}-01`, to: lastDayOf(month) } : { from: null, to: null },
+        );
+      }}
+      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+      aria-label={t("interactions.filter.month")}
     >
-      ←
-    </a>
-    <a href={weekHref(0)} class={tabClass(weekActive)}>
-      {weekActive ? fmtPeriod(dateFrom, dateTo) : t("interactions.filter.this_week")}
-    </a>
-    <a
-      href={weekHref(1)}
-      aria-label={t("interactions.filter.next_week")}
-      class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
-    >
-      →
-    </a>
+      <option value="">{t("interactions.filter.all_months")}</option>
+      {#each monthOptions as month (month)}
+        <option value={month}>{fmtMonthYear(month)}</option>
+      {/each}
+    </select>
+    <label for="int-date-from" class="sr-only">{t("interactions.filter.date_from")}</label>
+    <div class="w-36">
+      <DateInput
+        name="_f_from"
+        id="int-date-from"
+        value={dateFrom}
+        onchange={(v) => applyFilter({ from: v || null })}
+      />
+    </div>
+    <span class="text-xs text-text-muted">–</span>
+    <label for="int-date-to" class="sr-only">{t("interactions.filter.date_to")}</label>
+    <div class="w-36">
+      <DateInput
+        name="_f_to"
+        id="int-date-to"
+        value={dateTo}
+        onchange={(v) => applyFilter({ to: v || null })}
+      />
+    </div>
+    {#if dateFrom || dateTo}
+      <a
+        href={filterHref({ from: null, to: null })}
+        class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-text-muted hover:text-text"
+      >
+        <X size={14} aria-hidden="true" />
+        {t("interactions.filter.clear_dates")}
+      </a>
+    {/if}
   </div>
-  <select
-    value={monthActive}
-    onchange={(e) => {
-      const month = e.currentTarget.value;
-      applyFilter(month ? { from: `${month}-01`, to: lastDayOf(month) } : { from: null, to: null });
-    }}
-    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-    aria-label={t("interactions.filter.month")}
-  >
-    <option value="">{t("interactions.filter.all_months")}</option>
-    {#each monthOptions as month (month)}
-      <option value={month}>{fmtMonthYear(month)}</option>
-    {/each}
-  </select>
-  <label for="int-date-from" class="sr-only">{t("interactions.filter.date_from")}</label>
-  <div class="w-36">
-    <DateInput
-      name="_f_from"
-      id="int-date-from"
-      value={dateFrom}
-      onchange={(v) => applyFilter({ from: v || null })}
-    />
-  </div>
-  <span class="text-xs text-text-muted">–</span>
-  <label for="int-date-to" class="sr-only">{t("interactions.filter.date_to")}</label>
-  <div class="w-36">
-    <DateInput
-      name="_f_to"
-      id="int-date-to"
-      value={dateTo}
-      onchange={(v) => applyFilter({ to: v || null })}
-    />
-  </div>
-  {#if dateFrom || dateTo}
-    <a
-      href={filterHref({ from: null, to: null })}
-      class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-text-muted hover:text-text"
-    >
-      <X size={14} aria-hidden="true" />
-      {t("interactions.filter.clear_dates")}
-    </a>
-  {/if}
-</div>
+{/if}
 
 {#snippet subjectCell(item: InteractionItem)}
   <span class="block min-w-0">
@@ -684,7 +776,11 @@
           >
         </span>
       {/if}
-      {#if item.status === "pending"}
+      {#if item.status === "pending" && !reviewing}
+        <!-- Only where it distinguishes something. In the mixed timeline the amber pill is what
+             picks an unreviewed row out of forty; on the queue, where every row is pending by
+             definition, it is the filter printed forty times — and a badge that never varies is
+             read as decoration, which is how the one on a genuinely mixed list loses its force. -->
         <span
           class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
         >
@@ -792,7 +888,7 @@
             >
           </span>
         {/if}
-        {#if item.status === "pending"}
+        {#if item.status === "pending" && !reviewing}
           <span
             class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
           >
@@ -809,9 +905,47 @@
 {/snippet}
 
 {#snippet empty()}
-  <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
-    {t("interactions.list_empty")}
-  </p>
+  <!--
+    Three empty lists, three different facts, and the old screen had one sentence for all of them.
+    That was survivable while the page opened on everything; it is not now that it opens on a
+    queue, because the commonest good day at an agency is a queue with nothing in it — and
+    "Geen interacties in deze weergave" over an empty review tab reads as a page that failed to
+    load, on the screen a user now lands on first.
+
+    So: a filtered list says `common.no_results` (docs/UX.md — an empty list under a filter must
+    not send the reader hunting for the wrong problem), an empty queue says it is *done* and
+    offers the one place the rest of the moments are, and everything else keeps the old line.
+    The way out is a real button, not a sentence mentioning a tab: the whole point of the empty
+    state is that the reader is one click from the list they may actually have wanted.
+  -->
+  {#if data.filters.narrowed}
+    <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
+      {t("common.no_results")}
+    </p>
+  {:else if reviewing}
+    <div class="rounded-xl border border-border bg-surface-raised p-8 text-center">
+      <span
+        class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+      >
+        <CheckCheck size={22} aria-hidden="true" />
+      </span>
+      <p class="mt-3 text-sm font-medium text-text">{t("interactions.review_empty")}</p>
+      <p class="mx-auto mt-1 max-w-md text-sm text-text-muted">
+        {t("interactions.review_empty_hint")}
+      </p>
+      <a
+        href={filterHref({ status: "all" })}
+        class="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      >
+        <ListIcon size={15} aria-hidden="true" />
+        {t("interactions.review_empty_action")}
+      </a>
+    </div>
+  {:else}
+    <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
+      {t("interactions.list_empty")}
+    </p>
+  {/if}
 {/snippet}
 
 <BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />

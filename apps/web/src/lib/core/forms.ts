@@ -34,3 +34,28 @@ export function triflag(form: FormData, name: string): boolean | null {
   const raw = String(form.get(name) ?? "").trim();
   return raw === "" ? null : raw === "true";
 }
+
+/**
+ * The rows a checkbox list leaves **out**, from the rows it was rendered with.
+ *
+ * The obvious version — take the ticked boxes and store those — is wrong twice over, and both
+ * failures are silent. A checkbox list only posts what was rendered, so a row filtered out of
+ * the loop (a permission, a `{#if}`, a page of results) reads as *unticked* and is quietly
+ * dropped: the `bind:group` trap, one layer out. And storing the ticked set makes a row added
+ * later default to *excluded*, which is backwards — somebody who links a new property to a
+ * client means it to appear in their report.
+ *
+ * So the caller renders every candidate id into a hidden field, and this answers the diff. Two
+ * consequences worth stating: an empty `all` means "this form had nothing to say about it" and
+ * the caller must leave the stored value alone rather than clearing it, and an id in `ticked`
+ * that is not in `all` is ignored, because the authority on what existed is the field the
+ * server wrote, not one the client can post.
+ */
+export function excludedFrom(all: string, ticked: FormDataEntryValue[]): string[] {
+  const kept = new Set(ticked.map(String));
+  return all
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .filter((id) => !kept.has(id));
+}

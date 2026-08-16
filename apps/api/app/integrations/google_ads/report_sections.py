@@ -118,9 +118,23 @@ async def _performance(ctx: RequestContext, window: ReportWindow) -> dict[str, A
             for point in trend.series
         )
 
-    if not rows and not totals:
-        # Linked but nothing stored yet — a first sync that has not run. Better no section than
-        # a table of zeros a client would read as a month of doing nothing.
+    if not rows and not series:
+        # Linked but nothing stored for this window — a first sync that has not run, or a month
+        # older than the mirror reaches. Better no section than a table of zeros a client would
+        # read as a month of doing nothing.
+        #
+        # The guard used to be ``not rows and not totals`` and could never fire (#381):
+        # ``totals`` is assembled key by key from ``trend.totals``, which answers ``0.0`` for
+        # every metric it knows rather than omitting it, so a window with no stored day produced
+        # a *populated* dict of zeros — truthy, and printed. A client whose account was linked in
+        # August duly received a July report reading `cost 0 · clicks 0 · conversions 0`.
+        #
+        # ``series`` replaces it because it is built from the stored rows themselves, which is
+        # what tells "we spent nothing" from "we have not looked": an account that genuinely ran
+        # no ads in a month it *was* synced for still has its daily rows, so its zero is a fact
+        # and still prints. ``rows`` stays in the test beside it because the two dimensions are
+        # synced together but need not both be present — campaign rows and no account row is a
+        # half-filled window, and answering "no section" there would withhold a table we hold.
         return None
 
     rows.sort(key=lambda row: float(row.get("cost") or 0), reverse=True)

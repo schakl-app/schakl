@@ -141,7 +141,7 @@ class Settings(BaseSettings):
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
             "interactions", "google", "marketing", "google_ads", "google_tag_manager", "hr",
             "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
-            "snelstart",
+            "snelstart", "timeon",
         ]
     )
     default_locale: str = "nl"

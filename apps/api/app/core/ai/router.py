@@ -45,6 +45,9 @@ from app.core.ai.schemas import (
     ReportGenerateRequest,
     ReportRead,
     ReportUpdate,
+    TaskParseRequest,
+    TaskParseResult,
+    TaskTranscribeRequest,
     TimeParseRequest,
     TimeParseResult,
     TimeReconstructRequest,
@@ -54,6 +57,7 @@ from app.core.ai.schemas import (
     WritingAssistRequest,
 )
 from app.core.ai.service import AIService, AISettingsService
+from app.core.ai.taskdraft import parse_task, transcribe_task
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
@@ -232,6 +236,40 @@ async def time_reconstruct(
     service = AIService(ctx)
     await _preflight(service, "time_assist", override_budget=payload.override_budget)
     return await reconstruct_day(service, payload)
+
+
+# --------------------------------------------------------------------------- #
+# Task assist (#382) — dictate a whole task
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/tasks/transcribe",
+    response_model=TimeTranscribeResult,
+    dependencies=[require_permission("ai.use")],
+)
+async def task_transcribe(
+    payload: TaskTranscribeRequest, ctx: RequestContext = Depends(require_context)
+) -> TimeTranscribeResult:
+    """Speech to text for the dictated-task field (#382).
+
+    ``ai.use`` is the enumerable route permission; the service additionally requires
+    ``tasks.task.create``, because the transcript exists to become a task — #246's rule, one
+    record over.
+    """
+    return await transcribe_task(AIService(ctx), payload)
+
+
+@router.post(
+    "/tasks/parse",
+    response_model=TaskParseResult,
+    dependencies=[require_permission("ai.use")],
+)
+async def task_parse(
+    payload: TaskParseRequest, ctx: RequestContext = Depends(require_context)
+) -> TaskParseResult:
+    """One dictation into a *draft* task. Creates nothing (#129's rule)."""
+    service = AIService(ctx)
+    config = await _preflight(service, "task_assist", override_budget=payload.override_budget)
+    return await parse_task(service, payload, config=config)
 
 
 # --------------------------------------------------------------------------- #

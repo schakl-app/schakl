@@ -14,3 +14,30 @@
   --sl-color-accent: var(--brand-accent);
   --sl-color-accent-high: color-mix(in srgb, var(--brand-accent) 65%, #000000);
 }
+
+/* Tables in the docs carry single tokens that must not break mid-word: an endpoint path, and a
+   permission key like `companies.company.write`. Starlight's `overflow-wrap: anywhere` on inline
+   code is right for prose and wrong here — it drops a cell's minimum width to one character, so
+   the table never needs to scroll and instead renders `companies.company.w` above `rite`, which
+   reads as two different keys. (Same failure the reporting PDF had, one medium over.)
+
+   Starlight already makes the table a block, so `overflow-x` on it is all the scroller needs. */
+.sl-markdown-content table code {
+  white-space: nowrap;
+}
+
+.sl-markdown-content table {
+  overflow-x: auto;
+}
+
+/* Screenshots in the manual are 1280px wide captures of a real screen. A border and a radius
+   stop a light UI from bleeding into a light page, and the block spacing keeps a figure from
+   sitting flush against the sentence that introduces it. */
+.sl-markdown-content img[src^='/img/docs/'] {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-block: 1.25rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}

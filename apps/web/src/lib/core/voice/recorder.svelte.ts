@@ -15,6 +15,14 @@ export type RecorderState = "idle" | "recording" | "working";
 /** A clip longer than this is a monologue, not a time entry. Also a cost ceiling. */
 export const MAX_RECORD_MS = 60_000;
 
+/**
+ * What a dictated *task* gets (#382). A time entry is one clause; a task carries its steps,
+ * and 60 s cut people off mid-checklist. Still a hard cap for #246's other reason, which has
+ * nothing to do with cost: a forgotten microphone keeps the browser's recording indicator lit,
+ * which reads as being spied on.
+ */
+export const MAX_TASK_RECORD_MS = 120_000;
+
 /** MIME types worth asking for, best first. The API sniffs the container either way. */
 const PREFERRED_TYPES = [
   "audio/webm;codecs=opus",
@@ -49,6 +57,15 @@ export function micErrorKey(error: unknown): string {
 }
 
 export class Recorder {
+  /** The hard stop for one capture. A constructor argument rather than a module constant
+   *  because the right length is a property of what is being dictated (#382), and a host that
+   *  needs longer must not be able to get it by editing a number every other host shares. */
+  readonly maxMs: number;
+
+  constructor(maxMs: number = MAX_RECORD_MS) {
+    this.maxMs = maxMs;
+  }
+
   state = $state<RecorderState>("idle");
   error = $state<string | null>(null);
   /** Seconds elapsed, so the control can show that it is still listening. */
@@ -128,7 +145,7 @@ export class Recorder {
     this.#timer = setInterval(() => (this.elapsed += 1), 1000);
     // A forgotten microphone is both a privacy problem and a bill, so the cap is enforced
     // here rather than trusted to the user noticing.
-    this.#stopTimer = setTimeout(() => this.stop(), MAX_RECORD_MS);
+    this.#stopTimer = setTimeout(() => this.stop(), this.maxMs);
     return finished;
   }
 

@@ -13,17 +13,20 @@ kaart, SEPA-incasso of PayPal, precies wat in jouw Mollie-profiel aanstaat. De k
 betaalpagina van Mollie; wat hier terugkomt is alleen een id, dus schakl. ziet nooit kaartgegevens.
 Zodra Mollie bevestigt, staat er een gewone betaalregel op de factuur zonder dat iemand hem overtypt.
 
-<Aside type="caution" title="Deze koppeling is nog nooit tegen een echte Mollie-account gedraaid">
-Mollie is gebouwd op de officiële API-documentatie van Mollie en getest tegen een nabootsing
-daarvan. Dat bewijst dat onze code klopt met dat document, niet dat hij het eens is met de servers
-van Mollie. Reken hem daarom als **bèta**: doe eerst een proefronde met een testsleutel voordat je
-er klanten doorheen stuurt, en houd de eerste echte betalingen in de gaten.
+<Aside type="tip" title="Oefen eerst met de testsleutel">
+Een groen instellingenscherm zegt dat je sleutel geldig is, en verder niets. Of iDEAL bij Mollie
+werkelijk aanstaat, of je edge het meldingsadres doorlaat en of het bedrag klopt, blijkt pas uit
+een echte betaling. Loop daarom één keer de hele route met de **testsleutel**: maak een betaallink
+op een openstaande factuur, betaal hem, en kijk of de betaalregel verschijnt. Mollie levert
+daarvoor testkaarten en bedragen die met opzet een specifieke fout afdwingen, zodat je ook ziet wat
+er gebeurt als het misgaat. Let op twee dingen: in testmodus werkt alleen euro, en een testbetaling
+boekt bewust nooit iets op de factuur.
 </Aside>
 
 ## Waar je het vindt
 
 Twee plekken, meer niet. Het account koppel je onder *Instellingen → Mollie* (in de groep
-**Communicatie & koppelingen**, ook te vinden door "ideal", "creditcard", "betaallink" of
+**Integraties**, ook te vinden door "ideal", "creditcard", "betaallink" of
 "webhook" te zoeken). Het werk zelf gebeurt op de factuur: *Facturatie → Facturen* → de factuur →
 de kaart **Online betalingen**. Mollie draagt bewust geen menu-item en geen klantpaneel bij; een
 betaalprovider is geen plek waar je naartoe gaat.
@@ -172,6 +175,6 @@ hem laten verklaren dát er betaald is.
   <LinkCard
     title="Alle koppelingen"
     href="/nl/docs/integrations/"
-    description="Wat er verder te koppelen valt, en wat beschikbaar of bèta is."
+    description="Wat er verder te koppelen valt, en wat er vandaag beschikbaar is."
   />
 </CardGrid>

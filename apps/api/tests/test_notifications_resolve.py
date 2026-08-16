@@ -9,7 +9,7 @@ unread.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -19,6 +19,7 @@ from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
 from app.modules.notifications.models import Notification, NotificationEvent
 from app.modules.notifications.service import NotificationService
+from app.modules.tasks.reminders import remind_for_org as remind_tasks
 from tests.conftest import auth_cookie, leave_workday, make_tenant
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
@@ -92,6 +93,61 @@ async def test_deciding_leave_resolves_every_approvers_notification(client_for) 
         # ...while the requester's outcome notification is new and stays unread.
         outcome = await _inbox(t, member.id, "leave.approved")
         assert len(outcome) == 1 and outcome[0].read_at is None
+
+
+async def test_finishing_a_task_retires_its_overdue_reminder(client_for) -> None:
+    """A reminder describes a state, so it stops being information when the state stops.
+
+    ``task.overdue`` deduplicates on the deadline it first fired for, so nothing else was ever
+    going to clear it: an inbox kept "X is te laat" for the rest of the year about a task
+    finished the same afternoon. Finishing it now resolves the reminder for **every** recipient,
+    exactly as a decided leave request already did.
+    """
+    t = await make_tenant("resolve-task")
+    owner_headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        member = await _invite(c, owner_headers, "assignee@example.com", "member")
+        res = await c.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Offerte nabellen",
+                "assignee_user_id": str(member.id),
+                "due_date": (_NOW.date() - timedelta(days=3)).isoformat(),
+            },
+            headers=owner_headers,
+        )
+        assert res.status_code == 201, res.text
+        task_id = res.json()["id"]
+
+        # The nightly cron announces it as late; the assignee has not opened it.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await remind_tasks(t.org, session, today=_NOW.date())
+            await session.commit()
+
+        rows = await _inbox(t, member.id, "task.overdue")
+        assert len(rows) == 1 and rows[0].read_at is None
+
+        # A status change that is *not* finishing leaves it exactly where it was: half the
+        # point of the predicate is that a task moving across the board still nags.
+        res = await c.patch(
+            f"/api/v1/tasks/{task_id}", json={"status": "in_progress"}, headers=owner_headers
+        )
+        assert res.status_code == 200, res.text
+        rows = await _inbox(t, member.id, "task.overdue")
+        assert len(rows) == 1 and rows[0].read_at is None
+
+        res = await c.patch(
+            f"/api/v1/tasks/{task_id}", json={"status": "done"}, headers=owner_headers
+        )
+        assert res.status_code == 200, res.text
+
+    rows = await _inbox(t, member.id, "task.overdue")
+    assert len(rows) == 1 and rows[0].read_at is not None
+    # ...while "de taak is afgerond" is news and stays unread.
+    told = await _inbox(t, member.id, "task.status_changed")
+    assert told and all(row.read_at is None for row in told)
 
 
 async def test_reviewing_email_resolves_pending_notification(client_for) -> None:

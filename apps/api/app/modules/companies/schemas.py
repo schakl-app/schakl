@@ -21,7 +21,12 @@ def _blank_to_none(value: Any) -> Any:
 
 
 class CompanyBase(BaseModel):
+    #: What this client is called — the label every screen prints.
     name: str = Field(min_length=1, max_length=255)
+    #: The entity a document is addressed to (issue #11 follow-up). Blank/``None`` means *the
+    #: label is also the legal name*, which is why nothing here is required and why no read ever
+    #: touches it directly — ``app.core.naming.document_name`` resolves the pair.
+    legal_name: str | None = Field(default=None, max_length=255)
     # Klantnummer. Omit it and the org's numbering allocates one (when ``client_number_auto``);
     # send one and it is taken as given, subject to org-scoped uniqueness.
     client_number: str | None = Field(default=None, max_length=40)
@@ -50,7 +55,7 @@ class CompanyBase(BaseModel):
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
         "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
-        "postal_code", "city", "country", "phone", "client_number",
+        "postal_code", "city", "country", "phone", "client_number", "legal_name",
         mode="before",
     )(_blank_to_none)
 
@@ -63,6 +68,7 @@ class CompanyCreate(CompanyBase):
 
 class CompanyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    legal_name: str | None = Field(default=None, max_length=255)
     client_number: str | None = Field(default=None, max_length=40)
     website: str | None = Field(default=None, max_length=512)
     phone: str | None = Field(default=None, max_length=32)
@@ -84,7 +90,7 @@ class CompanyUpdate(BaseModel):
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
         "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
-        "postal_code", "city", "country", "phone", "client_number",
+        "postal_code", "city", "country", "phone", "client_number", "legal_name",
         mode="before",
     )(_blank_to_none)
 

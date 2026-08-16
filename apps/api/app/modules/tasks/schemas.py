@@ -138,6 +138,23 @@ class TaskCreate(TaskBase):
     #: client makes it optional: every existing caller creating a *named* task must keep
     #: compiling without saying so.
     unnamed: bool | None = None
+    #: What the task arrives *with* (#382): its steps, its links, its labels. All optional, and
+    #: all written through this service's own ``add_checklist`` / ``add_link`` /
+    #: ``set_task_labels`` inside the create's transaction — a composite create, never a second
+    #: write path.
+    #:
+    #: They exist because a dictated task is **one** utterance, and posting it as 1 + 1 + N + M
+    #: round trips is the shape docs/PERFORMANCE.md rejects on every other screen. They pay for
+    #: themselves outside voice too: §12 makes every operation an MCP tool, so an agent can now
+    #: create a task *with its steps* in one call instead of four.
+    #:
+    #: Forward-referenced because ``ChecklistItemCreate`` and ``LinkCreate`` are defined further
+    #: down with the surfaces they belong to; ``model_rebuild()`` at the foot of this module is
+    #: what resolves them. Moving those two up here would file them under "the create shape",
+    #: which is not what they are.
+    checklist: TaskCreateChecklist | None = None
+    links: list[LinkCreate] = Field(default_factory=list, max_length=10)
+    label_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
 
 
 class TaskLogTime(BaseModel):
@@ -363,6 +380,18 @@ class ChecklistItemCreate(BaseModel):
     description: str | None = None
 
 
+class TaskCreateChecklist(BaseModel):
+    """A checklist a task is born with (#382).
+
+    Its own shape rather than ``ChecklistCreate`` because the two answer different questions:
+    that one may name a *template* to copy, which is a second lookup a create has no business
+    doing, and this one carries its items inline, which that one cannot.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    items: list[ChecklistItemCreate] = Field(default_factory=list, max_length=100)
+
+
 class ChecklistItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=512)
     # ``exclude_unset`` distinguishes "not touched" from an explicit ``null`` that clears it.
@@ -570,6 +599,11 @@ class TaskDetail(TaskRead):
     labels: list[LabelRead] = Field(default_factory=list)
     checklists: list[ChecklistRead] = Field(default_factory=list)
     comments: list[CommentRead] = Field(default_factory=list)
+    #: The conversation is longer than the cap and what is above is missing. A capped read that
+    #: says nothing reads as "that is all of them" (CLAUDE.md §17, docs/PERFORMANCE.md), and the
+    #: card had no way to tell a task with exactly 200 comments from one with nine hundred.
+    #: Answered without a second query: the read asks for one row more than it keeps.
+    comments_truncated: bool = False
     activities: list[ActivityRead] = Field(default_factory=list)
     links: list[LinkRead] = Field(default_factory=list)
     # ``logged_minutes``/``remaining_minutes`` are inherited from ``TaskRead``. The card always
@@ -705,3 +739,10 @@ class ScheduleLogTime(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     billable: bool = True
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+
+
+# ``TaskCreate`` forward-references ``TaskCreateChecklist`` and ``LinkCreate``, both defined
+# below it with the surfaces they belong to. Pydantic leaves such a model incomplete until the
+# names resolve, and an incomplete model raises on its first validation — which would be the
+# first ``POST /tasks`` in production and not the import here.
+TaskCreate.model_rebuild()

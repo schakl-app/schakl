@@ -17,7 +17,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai import providers
-from app.core.ai.models import AI_FEATURES, AI_PROVIDERS, AISettings, AIUsage
+from app.core.ai.models import (
+    AI_FEATURES,
+    AI_PROVIDERS,
+    SPEECH_FEATURES,
+    AISettings,
+    AIUsage,
+)
 from app.core.ai.providers import (
     AIEvent,
     AIProviderError,
@@ -78,6 +84,11 @@ async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str
     ``speech`` rides along as a capability rather than a toggle: without it the web app would
     draw a microphone on every Anthropic-configured org and 409 on the first click, which is
     the opposite of "off means invisible".
+
+    It needs a host as well as a provider, and the host is now a *set* (``SPEECH_FEATURES``,
+    #382). Written as one name it coupled the task microphone to the time quick-add's toggle:
+    an org that wanted dictated tasks and no AI time entries got no microphone anywhere, with
+    nothing on any screen able to say why.
     """
     now = time.monotonic()
     cached = _features_cache.get(org_id)
@@ -87,7 +98,7 @@ async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str
     features = (
         [f for f in AI_FEATURES if _feature_config(row, f).enabled] if row is not None else []
     )
-    if row is not None and "time_assist" in features and _speech_ready(row):
+    if row is not None and any(f in features for f in SPEECH_FEATURES) and _speech_ready(row):
         features.append(SPEECH_CAPABILITY)
     _features_cache[org_id] = (now, features)
     return features

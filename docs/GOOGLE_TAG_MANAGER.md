@@ -11,7 +11,21 @@ weeks ago was ever published: none of that had an answer here.
 
 ## 0. The checklist for the day a live credential arrives
 
-**Nothing in this integration has been exercised against a live Tag Manager account.** It is
+> **The read half has now met a live grant** (2026-08-16, breik's own Google account, four scopes
+> granted, 44 Tag Manager accounts). Steps 1 and 2 below are **done and passed**: the consent
+> screen offers the four scopes and returns all four, `accounts/containers:lookup` resolves, and
+> `accounts`, `containers`, `workspaces`, `versions`, `version_headers`, `:snippet` and
+> `versions:live` all answer in the shapes the discovery document describes. `GTM-PVRNJ4Q`
+> (account `6002720415`, container `36613666`) is linked and observed — 18 tags, 16 triggers,
+> 2 variables, 44 staged changes, live version 24. **Steps 3–10 are still unwalked**, because
+> every one of them is a *write*, and the first write on a client's live container is not
+> something to do while checking a checklist.
+>
+> The live run also found the one thing no fake could have: **the picker did not survive the
+> quota**. See §3a — it is now a search, and that is the shape to copy for any provider whose
+> rate limit is per user rather than per project.
+
+**No *write* in this integration has been exercised against a live Tag Manager account.** It is
 written from the API's own **discovery document**
 (`https://tagmanager.googleapis.com/$discovery/rest?version=v2`, revision 20260812) rather than
 from memory — CLAUDE.md §11 bans the second, not the first — and driven end to end in tests through
@@ -120,6 +134,89 @@ not to act. It carries both halves for the reason `cloudflare_zones` does: `conf
 asked for, `tag_id`/`trigger_id`/`status` are what was last observed, so a conversion whose tag
 somebody deleted in Tag Manager is an expressible state rather than a row that silently claims to
 be working.
+
+## 3a. Finding a container is a search, and the quota is why
+
+`GET /gtm/containers/available` is the one read that calls Google on every request, and the first
+version of it listed every Tag Manager account and then every account's containers. That is
+`1 + n` requests where **n belongs to the agency**, and the first live grant it met held **44
+accounts**: request 45 came back
+
+```
+Quota exceeded for quota metric 'Queries' and limit 'Queries per minute per user'
+of service 'tagmanager.googleapis.com'
+```
+
+so the control whose whole job is finding a container could not find one. Nothing about that is
+specific to GTM — it is what happens to any picker over a provider whose rate limit is **per user
+per minute** rather than per project. Four rules came out of fixing it.
+
+**The cheap half is read always and the expensive half only on demand.** `accounts` is one call
+whatever the agency's size; containers are one call per account. So the account list is always
+read and a search decides which accounts to open — at most `MAX_SEARCH_ACCOUNTS` (8), which puts
+the worst case at nine requests.
+
+**An id short-circuits the sweep.** `accounts/containers:lookup?tagId=GTM-…` answers in one
+request and is exactly what somebody pasting the id off a client's website wants. A query matching
+`GTM-[A-Z0-9]{4,12}` takes that path and never opens an account. An id that resolves to nothing is
+an **empty result, not a refusal**: on a search box "no match" is an ordinary outcome, and an error
+envelope would be the wrong sentence about it. (`POST /gtm/containers` still 422s on the same id,
+because *there* it is an instruction.)
+
+**What was not opened is named.** `accounts_read` / `accounts_total` ride the payload and the
+screen prints "8 van 44 Tag Manager-accounts doorzocht", because a short list that looks complete
+reads as *"we are not in that account"* — a different and wrong fact, and the failure §17 exists to
+prevent. The API also states `gtm.warning.narrow_search` for callers with no screen; the web drops
+that one and prints the numbers instead, since two sentences about one fact is one too many.
+
+**A quota refusal mid-loop keeps what was read.** It is a rate, not a verdict (CLAUDE.md §10,
+learned from Cloudflare's probes): the loop breaks, `gtm.warning.quota` is reported, and the
+accounts that answered are still offered. Emptying the picker because the sixth account refused
+would hide the five that worked.
+
+The search matches on the **account name**, which at an agency is already the client's name
+("Briellaerd", "campings Zeeland") — matching container names would mean listing every container
+first, which is the cost this shape exists to avoid. The box says so, and the id path covers the
+other way anybody identifies a container.
+
+Three surfaces render it (`GtmContainerSearch.svelte`): Instellingen → Tag Manager, the
+`/marketing/tag-manager` connect dialog, and — new — the **client's own page**, where the Tag
+Manager panel now carries a `＋ Container koppelen` that keeps the client from the route the way
+every other panel's ＋ does (#338's argument, one integration over). It posts to the company
+page's own `?/gtmLink`, mounted by `gtmActions`, and mirrors `google_tag_manager.settings.manage`
+— the key the *call* makes, not the one the panel is about (#310).
+
+## 3b. The container page: five requests, and a shell that does not wait for them
+
+The same quota is the reason the container's own page was rebuilt, and the fix has two halves
+that are easy to confuse.
+
+**The call count came first.** The page wanted tags, triggers, variables, the staged count and the
+version history — six HTTP round trips to our API, and behind them **nine** Google requests,
+because each of the first four resolves the workspace for itself and resolving means *listing the
+container's workspaces*. `GET /gtm/containers/{id}/workspace` resolves once and gathers the four,
+so the page is now two round trips and **six** Google requests. Against the sleep-injected harness
+that is 1.8 s where the four separate calls were 1.8 s *each*. The per-resource routes stay, for
+the agent that wants only tags — this is the shape the *screen* reads, not a replacement.
+
+**Streaming came second, and only after the count.** Hiding a nine-request page behind a spinner
+would have left it nine requests, and on a per-user-per-minute quota that is not a cosmetic
+detail. With the count fixed, the shell — the heading, the client's name, the conversions schakl
+set up, every write control — is served from the container row and the database, and the two live
+halves stream behind it (docs/PERFORMANCE.md). Measured on the harness: **first byte at 145 ms**,
+live data at 1.86 s, where before nothing was sent until everything had answered.
+
+Three details are the usual ones and all three are load-bearing. The promises resolve into
+`$state`, never a raw `{#await}` — a form post re-runs the load, and an `{#await}` would drop back
+to its pending branch and blank the lists behind the dialog somebody is typing in. **A stale
+resolution loses** (the `.then` compares `data.workspace` against the promise it captured), because
+a form post leaves two loads in flight. And the pending copy is a **state, not an absence**:
+"Tag Manager lezen…", never "geen tags", which is a different answer to a different question — the
+staged-count tile has three states for exactly that reason.
+
+The error moved with them. `liveError` used to be a top-level key, which by definition cannot be
+computed until the reads have answered — it would have held the shell back on its own. It now
+travels *inside* each streamed half.
 
 ## 4. Workspaces, and the trap in them
 

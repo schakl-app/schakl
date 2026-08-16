@@ -12,18 +12,28 @@ the same REST API. That API is open to you too. Mint a key, tick what the key ma
 script, your n8n flow or your integration with another package can get to work, under the same
 permissions and the same tenant isolation as an employee on screen.
 
+![Settings → API and MCP: where you mint a personal key and tick what it may do.](/img/docs/en-settings-api.png)
+
 ## Where to find it
 
+- **The endpoint list**: [API reference](/en/docs/api/) — every endpoint on this site, grouped by
+  area, each with the permission it requires. Readable without an instance.
 - **The interactive reference**: `https://<your-host>/api/docs` (Swagger UI), plus
   `https://<your-host>/api/redoc` and the document itself at
   `https://<your-host>/api/openapi.json`.
-- **Personal keys**: *Instellingen → Mijn account* (Settings → My account), the **API-sleutels**
-  (API keys) block.
+- **Personal keys**: *Instellingen → Mijn account* (Settings → My account), the **API en MCP**
+  block.
 - **Keys for automation**: *Instellingen → Service-accounts* (Settings → Service accounts), in the
   "Team & toegang" (Team & access) group.
 
-The reference sits under `/api/` on purpose: the reverse proxy routes only `/api/` and `/mcp` to
-the API container and everything else to the web app. At `/docs` you land on the app's 404 page.
+Use both, for different questions. The reference here is the **map** — what exists, and what your
+key has to hold to call it — and it never needs a running server. The one on your instance is the
+**authority**: it is generated from the code that is actually running, it knows which modules you
+switched on, and you can call an endpoint straight from the page.
+
+The instance reference sits under `/api/` on purpose: the reverse proxy routes only `/api/` and
+`/mcp` to the API container and everything else to the web app. At `/docs` you land on the app's
+404 page.
 
 ## Two kinds of key
 

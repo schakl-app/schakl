@@ -116,6 +116,14 @@ class GtmPickerRead(BaseModel):
     containers: list[GtmAvailableContainer]
     #: i18n keys for anything that limited the answer — a cap hit, an account that refused.
     warnings: list[str] = Field(default_factory=list)
+    #: What the search was, echoed so a late answer can be discarded against a newer keystroke.
+    query: str = ""
+    #: Every Tag Manager account this grant reaches. Tag Manager's quota is per user per minute,
+    #: so opening all of them is not affordable past a handful — and a result that cannot say
+    #: "8 of 44" reads as "you are not in those accounts", which is a different and wrong fact.
+    accounts_total: int = 0
+    #: How many of them this search actually opened.
+    accounts_read: int = 0
 
 
 # --------------------------------------------------------------------------- workspaces
@@ -232,6 +240,24 @@ class GtmVariableRead(BaseModel):
     parameter: list[dict[str, Any]] = Field(default_factory=list)
     fingerprint: str | None = None
     path: str = ""
+
+
+class GtmWorkspaceContentsRead(BaseModel):
+    """One workspace, whole: what is in it and what of that is staged.
+
+    The shape a *screen* reads. Its four per-resource siblings each resolve the workspace for
+    themselves — which means listing the container's workspaces — so asking for all four cost
+    eight Google requests where this costs five, on a provider whose quota is per user per minute.
+    The siblings stay for the caller who wants one of them (an agent asking only for tags).
+    """
+
+    #: Empty when the container has no workspace at all — an empty page, never an error, and
+    #: never a workspace brought into existence by somebody opening a screen.
+    workspace_id: str
+    status: GtmWorkspaceStatusRead | None = None
+    tags: list[GtmTagRead] = Field(default_factory=list)
+    triggers: list[GtmTriggerRead] = Field(default_factory=list)
+    variables: list[GtmVariableRead] = Field(default_factory=list)
 
 
 class GtmVariableWrite(BaseModel):

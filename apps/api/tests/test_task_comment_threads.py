@@ -259,3 +259,88 @@ async def test_a_mention_in_a_reply_still_wins(client_for) -> None:
     assert "task.mentioned" in events
     assert "task.replied" not in events
     assert "task.commented" not in events
+
+
+async def test_every_comment_notification_names_the_comment(client_for) -> None:
+    """A sentence about a comment carries the comment (#312 follow-up).
+
+    "Jan reageerde op Productfeed opschonen" used to open the task and nothing more, so on a task
+    people have been talking on for a year the reader arrived at the top of fifty messages and had
+    to find the new ones. Both destinations read this: the web inbox through
+    ``notifications/href.ts`` and the mail's button through ``notifications/render.event_path``.
+    ``thread_id`` rides along because the answer is not the thread — the card has to unfold the
+    right conversation before it can scroll to the message inside it.
+    """
+    t = await make_tenant("thread-deeplink")
+    opener = await _member(t, "opener@example.com")
+    watcher = await _member(t, "watcher@example.com")
+    owner_headers = await auth_cookie(t.user)
+    opener_headers = await auth_cookie(opener)
+
+    async with client_for(t.host) as c:
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Brief", "assignee_user_id": str(watcher.id)},
+                headers=owner_headers,
+            )
+        ).json()
+        root = (
+            await c.post(
+                f"/api/v1/tasks/{task['id']}/comments",
+                json={"body": "A question"},
+                headers=opener_headers,
+            )
+        ).json()
+        reply = (
+            await c.post(
+                f"/api/v1/tasks/{task['id']}/comments",
+                json={"body": "The answer", "parent_id": root["id"]},
+                headers=owner_headers,
+            )
+        ).json()
+
+    # The person being answered, and the assignee merely told the task was commented on, are
+    # both sent to the *answer* — and both are told which conversation it landed in.
+    for user_id, expected in ((opener.id, "task.replied"), (watcher.id, "task.commented")):
+        rows = [(et, p) for et, p in await _inbox(t, user_id) if et == expected]
+        assert rows, f"{expected} never reached {user_id}"
+        payload = rows[-1][1]
+        assert payload["comment_id"] == reply["id"]
+        assert payload["thread_id"] == root["id"]
+
+
+async def test_a_capped_conversation_says_that_it_is_capped(client_for) -> None:
+    """A short answer that looks complete is the failure this flag exists to prevent.
+
+    The card takes the newest 200 comments and said nothing about the rest, so a task with two
+    hundred messages and one with nine hundred rendered identically (CLAUDE.md §17). It costs no
+    second query: the read asks for one row more than it keeps.
+    """
+    t = await make_tenant("thread-cap")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "Brief"}, headers=headers)).json()
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        assert detail["comments_truncated"] is False
+
+        from app.modules.tasks import service as task_service
+
+        original = task_service._COMMENT_CAP
+        task_service._COMMENT_CAP = 3
+        try:
+            for n in range(4):
+                await c.post(
+                    f"/api/v1/tasks/{task['id']}/comments",
+                    json={"body": f"Message {n}"},
+                    headers=headers,
+                )
+            detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        finally:
+            task_service._COMMENT_CAP = original
+
+        assert detail["comments_truncated"] is True
+        # The *newest* three survive, and the surplus row read to answer the question is dropped
+        # from the front rather than served as a 201st comment.
+        assert [x["body"] for x in detail["comments"]] == ["Message 1", "Message 2", "Message 3"]

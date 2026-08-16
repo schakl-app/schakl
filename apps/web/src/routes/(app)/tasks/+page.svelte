@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Trash2 } from "@lucide/svelte";
+  import { Mic, Trash2 } from "@lucide/svelte";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import type { components } from "$lib/core/api/schema";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
@@ -14,7 +15,7 @@
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
-  import { memberLabel } from "$lib/core/members";
+  import { splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -25,6 +26,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
@@ -39,6 +41,7 @@
     terminalStatusKey,
   } from "$lib/modules/tasks/statuses";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
+  import TaskDictateSheet from "$lib/modules/tasks/TaskDictateSheet.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -58,6 +61,15 @@
   // per *row* (`canWriteTask`, below in `titleCell`), because `:own` means assignee: the seeded
   // `member` role would otherwise get a live checkbox on all forty of their colleagues' tasks.
   const canCreate = $derived(can(page.data.user, "tasks.task.create"));
+
+  // Dictating a task (#382). The sheet gates itself on all three conditions — the org can
+  // transcribe, this browser can record, the caller may create — and resolves the middle one
+  // after mount; the opener mirrors the two the page already knows, so it is never drawn on a
+  // tenant with no speech provider. `micSupported` is the sheet's to answer.
+  let dictating = $state(false);
+  const canDictate = $derived(
+    canCreate && aiEnabled(page.data.user, "task_assist") && aiEnabled(page.data.user, "speech"),
+  );
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
 
   const dueOptions = ["overdue", "today", "week"] as const;
@@ -124,9 +136,13 @@
   );
   const companyItems = $derived(companyPicker.live);
   const projectItems = $derived(projectPicker.live);
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
-  );
+  // Deactivated colleagues sit behind the search, exactly as archived clients and finished
+  // projects do two lines up — the filter is a `MemberPicker`, which keeps the retired bucket
+  // because "what was she holding when she left" is a question a filter exists to answer. The
+  // bulk dialog below is a list of options rather than a picker, and is handed `live` only,
+  // which is how its client and project fields already behave: a batch hands out new work, and
+  // an account that cannot sign in is never the right end of it.
+  const memberItems = $derived(splitMemberOptions(data.members).live);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Triage is a bulk gesture: hand a sprint to a colleague, move a run of tickets onto the
@@ -233,15 +249,46 @@
     {/if}
   </div>
   <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
-       page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->
+       page in edit mode — creating and editing share one surface (docs/UX.md Principle 3).
+       Beside it, the other way in (#382): a task spoken in one breath, reviewed whole. Not a
+       menu item — this is a primary create path, not a variant of one — and on a phone it is
+       the reachable pair the FAB rule asks for. -->
   {#if canCreate}
-    <form method="POST" action="?/create" use:enhance>
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        {t("tasks.new")}
-      </button>
-    </form>
+    <div class="flex items-center gap-2">
+      {#if canDictate}
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+          onclick={() => (dictating = true)}
+          title={t("tasks.dictate.title")}
+        >
+          <Mic size={15} />
+          <span class="hidden sm:inline">{t("tasks.dictate.open")}</span>
+        </button>
+      {/if}
+      <form method="POST" action="?/create" use:enhance>
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("tasks.new")}
+        </button>
+      </form>
+    </div>
   {/if}
 </div>
+
+{#if canDictate}
+  <TaskDictateSheet
+    bind:open={dictating}
+    companies={data.companies}
+    projects={data.projects}
+    labels={data.labels}
+    statuses={data.statuses}
+    members={data.members}
+    companyId={data.filters.company_id ?? null}
+    projectId={data.filters.project_id ?? null}
+  />
+{/if}
 
 {#if form?.error}
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
@@ -292,8 +339,8 @@
   </div>
   {#if !isPortal}
     <div class="w-full sm:w-44">
-      <Combobox
-        items={memberItems}
+      <MemberPicker
+        members={data.members}
         name="_filter_assignee"
         value={assigneeFilterValue}
         placeholder={t("tasks.field.assignee")}
@@ -382,8 +429,7 @@
       href="/tasks/{task.id}"
       class="truncate font-medium {done
         ? 'text-text-muted line-through'
-        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}"
-      >{taskTitle(task)}</a
+        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}">{taskTitle(task)}</a
     >
     <!-- Client-portal visibility rides the title cell rather than becoming a column the user can
          turn off (#41's rule): "a client is reading this" is the one piece of task metadata you

@@ -1,8 +1,9 @@
 # Dictated input
 
-Speaking a time entry instead of typing it (#246). The browser records, the tenant's own speech
-provider transcribes, and the transcript lands in the quick-add field on `/time` for the user to
-read and correct before it is parsed.
+Speaking a record instead of typing it. The browser records, the tenant's own speech provider
+transcribes, and the transcript lands in a field the user can read and correct before it is
+parsed. Two hosts: a **time entry** (#246, the quick-add field on `/time`) and a whole
+**task** (#382, the sheet behind Taken → Inspreken).
 
 ## Why the transcription is server-side
 
@@ -38,7 +39,13 @@ transcribe — so `aiEnabled(user, "speech")` gates the button and an Anthropic-
 is never shown a microphone that would 409 on the first click. It is a **capability, not a
 toggle**: there is nothing to switch, and putting it in `AI_FEATURES` would have grown the
 settings form, the per-feature model override and the web's `AIFeature` union for a non-choice.
-It rides on `time_assist`, so switching that off takes dictation with it.
+
+**A capability still needs a host, and since #382 there are two of them.** `speech` is reported
+when a provider can transcribe **and** at least one feature that dictates is enabled —
+`SPEECH_FEATURES`, today `time_assist` and `task_assist`. Written as the single name it started
+as, it coupled the *task* microphone to the *time* quick-add's toggle: an org that wanted
+dictated tasks and no AI time entries got no microphone anywhere, with nothing on either screen
+able to explain why.
 
 The settings page reads the same answer as `AISettingsRead.speech_available`, resolved from the
 same helper, so the admin screen and the mic can never disagree.
@@ -49,23 +56,31 @@ save a setting that can never work.
 ## The flow
 
 ```
-MediaRecorder ──base64 in JSON──▶ /ai/[...path] proxy ──▶ POST /api/v1/ai/time/transcribe
+MediaRecorder ──base64 in JSON──▶ /ai/[...path] proxy ──▶ POST /api/v1/ai/{time,tasks}/transcribe
                                                               │
                                           ctx.release_db() ───┤ multipart → speech provider
                                                               ▼
-                                     transcript ──▶ quick-add field (editable)
+                                     transcript ──▶ an editable field
                                                               │
-                                                    user presses Quick add
+                                        /time: the user presses Quick add
+                                        /tasks: the parse runs on its own
                                                               ▼
-                                                    POST /ai/time/parse  (unchanged)
+                                            POST /ai/time/parse · /ai/tasks/parse
 ```
 
-**The transcript goes into the field, not straight into a parse.** Dutch proper nouns are the
+**The transcript goes into a field, not straight into a parse.** Dutch proper nouns are the
 weak link — "Jansen" comes back as "Janssen" often enough to matter — and `companies.find` is a
 bare ILIKE with no fuzzy fallback, so a misheard client name yields a silent `null` id. That is
 indistinguishable from the parse being broken, and it is only correctable while the words are
 still visible. Seeing the transcript is the cheap fix; a speech-straight-to-form design removes
 the only place to make it.
+
+**And that is a rule about the textarea, not about the click** (#382). The task sheet parses
+automatically, keeps the transcript above the draft, and offers *Opnieuw verwerken* after an
+edit — the correction surface is what the rule asked for, and the second button was never the
+point. Its sibling: **speaking again appends.** People dictate in breaths ("…en zet hem op
+vrijdag"), so a second press adds to the first rather than replacing it, which `/time` already
+did and the task sheet copies.
 
 **Base64 in JSON, not multipart.** The web app reaches the API through one same-origin proxy
 that forwards JSON (`routes/(app)/ai/[...path]/+server.ts`). A clip is tens of kilobytes, so the
@@ -75,7 +90,7 @@ that forwards JSON (`routes/(app)/ai/[...path]/+server.ts`). A clip is tens of k
 
 | Limit | Value | Where |
 |---|---|---|
-| Recording length | 60 s | `MAX_RECORD_MS`, browser side |
+| Recording length | 60 s (a time entry) · 120 s (a task) | `MAX_RECORD_MS` / `MAX_TASK_RECORD_MS`, browser side |
 | Upload size | 8 MB decoded | `MAX_AUDIO_BYTES`, `core/ai/audio.py` |
 | Monthly audio | tenant-set, in **seconds** | `monthly_audio_seconds_budget` |
 
@@ -85,20 +100,31 @@ decoded), the container is identified by **magic number** rather than a client-s
 and over a limit is an **error, never a truncation**. Silently transcribing the first ten
 seconds of a forty-second entry is the worst outcome available, because it looks like it worked.
 
-The 60 s browser cap is not only cost: a forgotten microphone keeps the browser's recording
+The browser cap is not only cost: a forgotten microphone keeps the browser's recording
 indicator lit, which reads as being spied on. For the same reason the recorder stops its tracks
-on unmount.
+on unmount. The length is a **constructor argument** rather than a module constant, because how
+long is right depends on what is being dictated — a time entry is one clause, a task carries its
+steps — and a host that needs longer must not be able to get it by editing a number every other
+host shares.
+
+**Every way out of a dictating surface has to release the microphone, not only the one you
+wrote a handler for.** Found in a browser, not in review: `SlideOver` owns three of its four
+exits (the ✕, the backdrop and Escape) and closes by writing `open` itself, so the task sheet's
+own Annuleren covered exactly one of them — dismissing it mid-sentence left the capture running,
+the counter climbing behind a closed panel and the recording indicator lit. The fix watches
+`open`, because that is the only thing all four exits agree on.
 
 ## Permissions
 
 The route declares `ai.use` — that is what makes the surface enumerable (§15,
-`tests/test_rbac_deny_by_default.py`). The **service** additionally requires
-`time.entry.write`, because the transcript exists to become a time entry and AI access alone
-must not reach it.
+`tests/test_rbac_deny_by_default.py`). The **service** additionally requires the permission the
+transcript exists to exercise: `time.entry.write` for `/ai/time/transcribe`, `tasks.task.create`
+for `/ai/tasks/transcribe`. AI access alone must not reach a microphone that bills the tenant's
+audio budget.
 
-The browser control mirrors both. `/time` is client-reachable, so a write control there
-self-gates on the API's own key (`can(user, "time.entry.write")`) — **not** on `!isPortal`
-(`docs/UX.md`, client-portal rule).
+The browser control mirrors both. `/time` and `/tasks` are client-reachable, so a write control
+there self-gates on the API's own key — **not** on `!isPortal` (`docs/UX.md`, client-portal
+rule).
 
 ## Browser support
 
@@ -119,8 +145,41 @@ header added later without `microphone=(self)` will kill dictation silently: `ge
 rejects with `NotAllowedError`, which the UI reports as "microphone access was refused", and
 the user will go looking in their browser settings for a permission they already granted.
 
+## Dictating a whole task (#382)
+
+`POST /ai/tasks/transcribe` then `POST /ai/tasks/parse` → a draft the speaker reviews in a
+`SlideOver` and confirms; `POST /api/v1/tasks` writes it in one call, carrying the checklist,
+the links and the labels. `app/core/ai/taskdraft.py` holds the prompt, the tool schema and the
+grounding; the module docstring holds the argument.
+
+The decision worth repeating here: **the vocabulary is the whole task form, and that follows
+from who spoke and who is watching.** #327 (email → task) narrows what a model may write to six
+fields because its input is written by an outsider and applied by an ARQ worker with nobody in
+front of a screen. Both halves are inverted here — the words are a colleague's own voice on a
+session holding `tasks.task.create`, and nothing is written until they press a button beside
+every field it filled in. Copying the narrow schema would have kept the shape and dropped the
+reason, and the only effect would be the speaker retyping the half it refused to carry.
+
+What does *not* change is grounding, and here it is **per type**: `assignee_user_id` and
+`label_ids` are checked against their own evidence sets rather than the single pool the time
+parse uses. A project id offered as a company fails the write anyway; another entity's id in
+`assignee_user_id` is a real user id from the same space. A misheard name comes back as *no
+client selected* — one click to fix — never as somebody else's client, which nobody notices.
+
+Two smaller ones, both from running it rather than reading it. **A parse that yields nothing
+must not throw the words away**: the review still opens, with the transcript as the title and a
+line saying which of the two happened. And **a field the model filled is marked as such** (a ✦
+beside the label), so "schakl picked this client" and "I picked this client" are not the
+same-looking cell.
+
 ## Where this goes next
 
-`lib/core/voice/` is in `core/`, not in the time module, because the assistant panel and the
-rich-text editor are the obvious next hosts. `VoiceButton` takes a `Recorder` and two callbacks;
-nothing in it is time-specific.
+`lib/core/voice/` is in `core/`, not in the time module — which is what let #382 reuse all of
+it. `VoiceButton` takes a `Recorder` and two callbacks; nothing in it is time- or task-specific.
+
+The ordering worth keeping, by how much typing it removes: **contact moments** (a client call
+logged in the ten seconds after it ends — same parse shape, different schema, and the highest
+value left), then **dictating into a task that already exists** and a **task comment**, then the
+**rich-text editor** wherever it appears, then the **assistant panel**. The line: a
+transcript-into-a-field is nearly free and should be the default offer; a *parse* is only worth
+building where the record has more than three fields.

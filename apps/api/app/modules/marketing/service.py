@@ -77,6 +77,12 @@ from app.modules.marketing.rankings import (
 from app.modules.marketing.rankings import (
     resolve as resolve_rankings,
 )
+from app.modules.marketing.reportsplit import (
+    parse as parse_report,
+)
+from app.modules.marketing.reportsplit import (
+    resolve as resolve_report,
+)
 from app.modules.marketing.schemas import (
     AccountsResponse,
     AvailableAccount,
@@ -86,6 +92,7 @@ from app.modules.marketing.schemas import (
     DrilldownResponse,
     DrilldownRowOut,
     KpiValue,
+    LinkBrief,
     LinkCreate,
     LinkRead,
     MarketingClientList,
@@ -99,6 +106,7 @@ from app.modules.marketing.schemas import (
     OverviewResponse,
     OverviewRow,
     RankingSettingsRead,
+    ReportSplitSettingsRead,
     SeriesData,
     SourceMetrics,
     WebsiteRef,
@@ -921,6 +929,8 @@ class MarketingService:
         compare_set: bool = False,
         rankings: dict | None = None,
         rankings_set: bool = False,
+        report: dict | None = None,
+        report_set: bool = False,
     ) -> CompanySettingsRead:
         """Per-client marketing preferences (upsert, one row per org+company).
 
@@ -960,6 +970,7 @@ class MarketingService:
         previous_layout = row.layout
         previous_compare = row.compare
         previous_rankings = row.rankings
+        previous_report = row.report
 
         if compare_set:
             row.compare = compare.value if compare is not None else None
@@ -967,6 +978,9 @@ class MarketingService:
             # Same absent/`null` rule as `compare` (#373): an explicit null is how a screen says
             # "volg de standaard", which is a choice, not the absence of one.
             row.rankings = rankings or None
+        if report_set:
+            # …and once more for the per-website rule (#381).
+            row.report = report or None
 
         if layout is not None:
             parsed = CompanyLayout.model_validate(layout)
@@ -1028,16 +1042,21 @@ class MarketingService:
             )
         if rankings_set and previous_rankings != row.rankings:
             await activity.record("company", company_id, "marketing.rankings_changed", {})
+        if report_set and previous_report != row.report:
+            await activity.record("company", company_id, "marketing.report_changed", {})
         return await self._company_settings_read(company_id, row)
 
     async def _company_settings_read(
         self, company_id: uuid.UUID, row: MarketingCompanySettings | None
     ) -> CompanySettingsRead:
-        org_rankings = await self.ctx.session.scalar(
-            select(MarketingSettings.rankings).where(
-                MarketingSettings.org_id == self.ctx.org.id
+        org_row = (
+            await self.ctx.session.execute(
+                select(MarketingSettings.rankings, MarketingSettings.report).where(
+                    MarketingSettings.org_id == self.ctx.org.id
+                )
             )
-        )
+        ).first()
+        org_rankings, org_report = org_row if org_row else (None, None)
         # Through the repo, so the company horizon applies (§15, #285) — a restricted member
         # must not learn which sources a client they cannot see is linked to.
         stmt = (
@@ -1048,8 +1067,10 @@ class MarketingService:
                 MarketingLink.active.is_(True),
             )
         )
-        linked = [link.source for link in (await self.ctx.session.execute(stmt)).scalars()]
+        links = list((await self.ctx.session.execute(stmt)).scalars())
+        linked = [link.source for link in links]
         resolved = resolve_rankings(org_rankings, row.rankings if row else None)
+        report_resolved = resolve_report(org_report, row.report if row else None)
         return CompanySettingsRead(
             company_id=company_id,
             show_key_events=bool(row.show_key_events) if row else True,
@@ -1068,6 +1089,9 @@ class MarketingService:
                 has_seranking=MarketingSource.SERANKING.value in linked,
                 has_search_console=MarketingSource.GSC.value in linked,
             ),
+            report=row.report if row else None,
+            report_resolved=ReportSplitSettingsRead(**report_resolved.as_dict()),
+            links=[LinkBrief.model_validate(link) for link in links],
         )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
@@ -1943,6 +1967,9 @@ class MarketingSettingsService:
             rankings=RankingSettingsRead(
                 **parse_rankings(row.rankings if row else None).as_dict()
             ),
+            report=ReportSplitSettingsRead(
+                **parse_report(row.report if row else None).as_dict()
+            ),
         )
 
     async def get(self) -> MarketingSettingsRead:
@@ -1998,6 +2025,15 @@ class MarketingSettingsService:
                 data.rankings.model_dump(exclude_none=True),
                 base=parse_rankings(row.rankings),
             ).as_dict()
+        if data.report is not None:
+            # Merged for the same reason, and with ``exclude`` deliberately dropped at org level:
+            # a link id belongs to one client, so a house rule that could carry one would be a
+            # setting that means nothing for every other client on the instance (#381).
+            row.report = parse_report(
+                {"split": data.report.split.value} if data.report.split else {},
+                base=parse_report(row.report),
+            ).as_dict()
+            row.report.pop("exclude", None)
         await self.ctx.session.flush()
         return self._read(row)
 

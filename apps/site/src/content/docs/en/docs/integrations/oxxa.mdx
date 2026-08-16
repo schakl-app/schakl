@@ -12,19 +12,18 @@ transfer lock is on, what the registry has actually delegated, or who the regist
 integration asks OXXA for those four facts. It also performs exactly one write: moving a domain's
 nameservers, which is what finishes the hand-off to Cloudflare.
 
-<Aside type="caution">
-This integration has never been exercised against a live OXXA account. It is written from OXXA's
-official API documentation (v1.2) and every field is parsed defensively, but no credential was
-available to test it against. Treat a green settings screen as evidence that the credentials are
-right and nothing more, and check for yourself at the first sync that the expiry dates and
-nameservers match what you see in the OXXA portal.
+<Aside type="tip" title="Walk the first sync">
+A green settings screen is evidence that your reseller login is right, and nothing more. Give the
+first **Register ophalen** (Fetch register) half an hour: check that the expiry dates and
+nameservers match what you see in the OXXA portal, and read what comes back as OXXA's register
+rather than as yours. At nearly every agency the two lists differ, and the difference is the point
+— it is what you are paying to renew without a record of it here.
 </Aside>
 
 ## Where to find it
 
 The reseller logins live under *Instellingen → OXXA* (Settings → OXXA, "Resellerlogins, het
-domeinregister en nameservers"), in the **Communicatie & koppelingen** (Communication &
-integrations) group. The per-domain work is on the domain page: *Domeinen & websites → Domeinen*
+domeinregister en nameservers"), in the **Integraties** (Integrations) group. The per-domain work is on the domain page: *Domeinen & websites → Domeinen*
 (Domains & websites → Domains), open a domain, and there is the **Registrar (OXXA)** panel,
 directly below the Cloudflare panel. The module deliberately adds no menu item: a registrar is not
 a place you go, it is something a domain has.

@@ -45,6 +45,11 @@ ENTITY_TYPE = "company"
 _AUDITED_FIELDS = (
     "name", "client_number", "website", "phone", "invoice_email", "status",
     "responsible_user_id",
+    # The name a document is addressed to. Audit-worthy for the same reason the address below
+    # is: changing it changes what the *next* invoice says this client is called, and an issued
+    # one froze the old value — so "why does March say B.V. and April say Holding B.V.?" has to
+    # be answerable without asking around.
+    "legal_name",
     # Billing identity (issue #11): what an issued invoice snapshots (#207), so a change
     # here is exactly the kind of definition edit the trail exists to answer for.
     "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
@@ -189,6 +194,11 @@ class CompanyService:
             conditions.append(
                 or_(
                     Company.name.ilike(pattern),
+                    # Both names are searchable, and they have to be: the label is what a
+                    # colleague types and the legal name is what arrives on a bank statement, a
+                    # bookkeeper's e-mail or a KvK extract. A register you can only search by
+                    # the half you already know is half a register.
+                    Company.legal_name.ilike(pattern),
                     # Looking a client up by their klantnummer is the point of having one.
                     Company.client_number.ilike(pattern),
                     Company.website.ilike(pattern),

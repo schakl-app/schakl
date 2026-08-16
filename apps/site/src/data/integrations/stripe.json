@@ -68,8 +68,8 @@
           "en": "What you cannot do today"
         },
         "body": {
-          "nl": "Er is geen Stripe-scherm, geen sleutelveld en geen meldingsadres. Wil je nu online laten betalen, dan is Mollie de enige koppeling die er staat, en die is zelf nog bèta. Voor een bureau dat vandaag klanten buiten de eurozone factureert, verandert deze kaart dus nog niets aan de praktijk.",
-          "en": "There is no Stripe screen, no key field and no callback address. If you want to collect online today, Mollie is the only connection that exists, and that one is itself still in beta. For an agency invoicing clients outside the eurozone right now, this card changes nothing in practice yet."
+          "nl": "Er is geen Stripe-scherm, geen sleutelveld en geen meldingsadres. Wil je vandaag online laten betalen, dan is Mollie de enige koppeling die er staat, en die rekent in euro's af. Voor een bureau dat nu klanten buiten de eurozone factureert, verandert deze kaart dus nog niets aan de praktijk.",
+          "en": "There is no Stripe screen, no key field and no callback address. If you want to collect online today, Mollie is the only connection that exists, and it settles in euros. For an agency invoicing clients outside the eurozone right now, this card changes nothing in practice yet."
         }
       }
     ],

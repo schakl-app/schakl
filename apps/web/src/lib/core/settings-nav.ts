@@ -605,6 +605,28 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "snelstart",
   },
 
+  {
+    // An integration, not a section of Uren. `time` owns what an hour *is* and never learns
+    // which other system a copy of it lives in.
+    //
+    // **Two permissions**, the same split `snelstart` names: `timeon.settings.manage` holds the
+    // credential and decides what tonight's run does; `timeon.sync.run` acts through it — running
+    // a sync, reading the runs, seeing what needs deciding. The second is an ordinary operational
+    // job an agency hands to somebody who has no business rotating an API key, and the card is
+    // where they set the window for a repair run, so hiding it from them would hide the work.
+    key: "timeon",
+    href: "/settings/timeon",
+    titleKey: "settings.timeon.title",
+    subtitleKey: "settings.timeon.subtitle",
+    // Without these the screen could not be found by searching "urenregistratie", "synchronisatie"
+    // or "conflict" — the words somebody types when a timesheet disagrees with itself, and none of
+    // which the card's own title and subtitle contain.
+    keywordsKey: "settings.search.timeon",
+    group: "integrations",
+    permissions: ["timeon.settings.manage", "timeon.sync.run"],
+    module: "timeon",
+  },
+
   // --- Systeem ----------------------------------------------------------- //
   {
     key: "system",

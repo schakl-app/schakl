@@ -18,6 +18,9 @@ export interface PickerTask {
   id: string;
   title?: string;
   project_id?: string | null;
+  /** The task's own client, when it has one. A task hanging off a project carries none — see
+   *  `companyOf` below, which is what resolves that. */
+  company_id?: string | null;
   allocated_minutes?: number | null;
   /** The task's status key, matched against the org's vocabulary. */
   status?: string | null;
@@ -46,6 +49,19 @@ export interface PickerLabels {
 export interface SplitOptions {
   /** The picked project, if any: narrows the list the way the form's cascade does. */
   projectId?: string;
+  /**
+   * The picked client, if any — the third leg of that cascade. Without it, naming a client left
+   * the task dropdown listing the whole agency's work, which is the one list where "Nieuwsbrief"
+   * appears four times and none of them says whose.
+   */
+  companyId?: string;
+  /**
+   * Whose task this is. A task attached to a project carries no client of its own, so the answer
+   * comes from the project — `scope.ts`'s `scopeIndex` holds that coalesce, and injecting it
+   * keeps this module from growing a second copy of it. Absent: the task's own client, and a
+   * project-attached task is then narrowed by `projectId` alone, exactly as it was before.
+   */
+  companyOf?: (task: PickerTask) => string;
   /** The task this entry is already on. Always offered, whatever status it ended up in. */
   selectedId?: string;
   statuses: PickerStatus[];
@@ -60,7 +76,14 @@ export interface SplitOptions {
  */
 export function splitTaskOptions(
   tasks: PickerTask[],
-  { projectId = "", selectedId = "", statuses, labels }: SplitOptions,
+  {
+    projectId = "",
+    companyId = "",
+    companyOf = (task) => task.company_id ?? "",
+    selectedId = "",
+    statuses,
+    labels,
+  }: SplitOptions,
 ): { open: PickerOption[]; closed: PickerOption[] } {
   const terminal = new Set(
     statuses.filter((status) => status.is_terminal).map((status) => status.key),
@@ -85,9 +108,17 @@ export function splitTaskOptions(
   const open: PickerOption[] = [];
   const closed: PickerOption[] = [];
   for (const task of tasks) {
+    // The task this entry is already booked on is never narrowed away — a field that cannot show
+    // what is in it reads as an empty box, not as "this one is from another client"
+    // (`core/picker.ts`, rule 1). It is the one row the cascade below cannot have vetted, because
+    // an entry saved before there was a cascade may hold any combination at all.
+    const picked = task.id === selectedId;
     // A task with no project belongs to no project in particular, so it stays offered under
     // every one of them — the same rule the client/project pickers above it follow.
-    if (projectId && task.project_id && task.project_id !== projectId) continue;
+    if (!picked && projectId && task.project_id && task.project_id !== projectId) continue;
+    // …and the same rule one level up, for a task whose client is known one way or the other.
+    const taskCompany = companyOf(task);
+    if (!picked && companyId && taskCompany && taskCompany !== companyId) continue;
     const option = { value: task.id, label: task.title ?? "", hint: hint(task) };
     // Closing a task after logging against it is the normal order of events, not a mistake to
     // hide: the entry being edited must be able to show what it is booked on.

@@ -77,6 +77,15 @@ GADS_METRICS = ["cost", "clicks", "impressions", "conversions", "conversionsValu
 #: SE Ranking (#300). ``avg_position`` leads because it is the number a client asks about, and
 #: it is both *averaged* and *lower-is-better* — registered in both sets below, or a month of
 #: daily averages would be summed into a four-figure "position".
+#:
+#: **Every one of these is a level, and the other five did not say so** (#381). ``avg_position``
+#: was registered in :data:`AVERAGED_METRICS` and its four siblings were not, so a thirty-one
+#: day period summed them: a client's July report printed *4.495 gevolgde zoekwoorden · 2.782
+#: scorend · 639 in top 3* over a project tracking 145 terms, of which about 21 were in the top
+#: three. "How many keywords do I track" is not a quantity that accumulates over a month, and
+#: neither is "how many of them rank" — they are the Rank Math trap one integration over
+#: (``mentions`` / ``citations``, below), and the docstring warning about it was written on the
+#: one metric that had already been fixed.
 SERANKING_METRICS = [
     "avg_position",
     "top3",
@@ -121,11 +130,22 @@ METRICS_BY_SOURCE: dict[str, list[str]] = {
 #: counts and are not: Rank Math reports a brand's running totals as of its last analysis, so
 #: two consecutive daily snapshots of "18 mentions" mean eighteen mentions, not thirty-six.
 #: They are counts of a thing, stored as a level.
+#:
+#: So are SE Ranking's four position counters, for the same reason and with the same symptom
+#: (#381) — the rule generalises past any one vendor: **a metric whose daily row answers "how
+#: many, right now" belongs here, however much its name reads like a total.** A source's own
+#: dashboard is the tell: if it shows the number without asking for a date range, adding thirty
+#: one of them is not a period figure, it is thirty one.
 AVERAGED_METRICS = {
     "ctr",
     "position",
     "engagementRate",
     "avg_position",
+    "top3",
+    "top10",
+    "top30",
+    "keywords_ranking",
+    "keywords_tracked",
     "ai_visibility_score",
     "mentions",
     "citations",

@@ -19,6 +19,15 @@ import { can, type PermissionHolder } from "../../core/permissions.ts";
 
 /** All a write check needs from a task. Every task shape the web holds carries this. */
 export interface TaskOwnership {
+  /**
+   * The whole roster (#375). `:own` means **any** assignee, not the starred one —
+   * `caller_may_write_task` says so in as many words, and a second assignee's PATCH of the
+   * task succeeds — so a mirror that reads only the primary hides controls the API would
+   * have allowed. Optional because a row loaded before the roster existed carries only the
+   * mirror below; absent here falls back to it rather than refusing.
+   */
+  assignees?: { user_id: string }[] | null;
+  /** The primary, mirrored by the API. The compatibility half of the pair. */
   assignee_user_id?: string | null;
 }
 
@@ -36,6 +45,11 @@ export function canWriteTask(
   task: TaskOwnership | null | undefined,
 ): boolean {
   if (can(user, "tasks.task.write", "any")) return true;
-  if (!user?.id || !task?.assignee_user_id) return false;
-  return task.assignee_user_id === user.id && can(user, "tasks.task.write", "own");
+  if (!user?.id || !task) return false;
+  const roster = task.assignees?.length
+    ? task.assignees.map((entry) => entry.user_id)
+    : task.assignee_user_id
+      ? [task.assignee_user_id]
+      : [];
+  return roster.includes(user.id) && can(user, "tasks.task.write", "own");
 }

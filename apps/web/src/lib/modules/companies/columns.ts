@@ -32,6 +32,11 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     width: 120,
   },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
+  // Opt-in, and not sortable: the API orders clients by their label, which is what the list is
+  // read as. It earns a column because there is one job — reconciling a bank statement, a
+  // bookkeeper's list, a KvK export — where the *other* name is the only one you have, and for
+  // that job a column you can switch on and export beats searching one client at a time.
+  { key: "legal_name", labelKey: "companies.legal_name", width: 220 },
   { key: "website", labelKey: "companies.website", defaultVisible: true, width: 180 },
   // 150, not 120 (#347). A status is a short closed vocabulary and is exactly the value that
   // must never be cut, and 120 left an 88 px content box for a chip needing 89: `Onboardi…`,

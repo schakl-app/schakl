@@ -28,10 +28,10 @@ the seam issue #17 plugs external transports into).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import exists, func, select, update
 
@@ -45,6 +45,7 @@ from app.modules.notifications.events import (
     ENTITY_FOR_EVENT,
     ENTITY_INTERACTION,
     ENTITY_LEAVE,
+    ENTITY_TASK,
     ENTITY_TYPES,
     EXCLUDE_KEY,
     INTERACTION_EMAIL_PENDING,
@@ -103,18 +104,57 @@ ENTITY_ID_KEY: dict[str, str] = {
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}
 
+class Resolution(NamedTuple):
+    """What one trigger event retires, and when.
+
+    ``when`` exists because a trigger is not always the whole answer. Deciding a leave request
+    is unconditional — there is no such thing as a half-decided one — while a task's status
+    changes constantly and only *finishing* it retires "this is overdue". A predicate over the
+    trigger's own payload keeps that judgement where the emitting module already published it,
+    rather than making this module ask the tasks module what "done" means (Golden Rule 3).
+    """
+
+    entity_type: str
+    id_key: str
+    event_types: tuple[str, ...]
+    when: Callable[[dict[str, Any]], bool] | None = None
+
+
 #: Acting on the underlying item resolves the "pending your action" notifications about it
-#: (#170): trigger event → (entity_type, payload id key, event types to mark read). Scoped to
-#: the *actionable* event types only — the outcome events (``leave.approved`` etc.) that tell
-#: the requester are new, unread, and deliberately untouched. The interaction triggers are the
-#: bus names ``InteractionService`` emits — strings on the bus, never a cross-module import.
-RESOLVING_EVENTS: dict[str, tuple[str, str, tuple[str, ...]]] = {
-    "leave.approved": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
-    "leave.rejected": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
-    "leave.cancelled": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
-    "interaction.approved": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
-    "interaction.rejected": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
-    "interaction.remapped": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
+#: (#170): trigger event → what it retires. Scoped to the *actionable* event types only — the
+#: outcome events (``leave.approved`` etc.) that tell the requester are new, unread, and
+#: deliberately untouched. The triggers are the bus names the owning services emit — strings on
+#: the bus, never a cross-module import.
+#:
+#: ``task.status_changed`` is the one trigger that is also a notifiable event of its own, and
+#: that is the point: a reminder describes a *state* ("this is due tomorrow", "this is late"),
+#: so the moment the state stops being true the reminder stops being information. It used to
+#: nag from the inbox for the rest of the year — the nightly cron dedups on the day it first
+#: fired, so nothing else was ever going to clear it. Finishing the task does now, for every
+#: recipient, exactly as a decided leave request already did.
+RESOLVING_EVENTS: dict[str, Resolution] = {
+    "leave.approved": Resolution(ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "leave.rejected": Resolution(ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "leave.cancelled": Resolution(ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "interaction.approved": Resolution(
+        ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)
+    ),
+    "interaction.rejected": Resolution(
+        ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)
+    ),
+    "interaction.remapped": Resolution(
+        ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)
+    ),
+    "task.status_changed": Resolution(
+        ENTITY_TASK,
+        "task_id",
+        (TASK_DUE_SOON, TASK_OVERDUE),
+        # ``finished`` is the tasks module's own answer to "did this reach a terminal status",
+        # published on the event since a status list is tenant-defined and ``"done"`` is a key
+        # a tenant may never have created. Absent (an older emitter, a replayed event) reads as
+        # "no" — the failure direction is a reminder that stays, not one that vanishes early.
+        when=lambda payload: payload.get("finished") is True,
+    ),
 }
 
 
@@ -643,13 +683,17 @@ def make_resolver(trigger: str):  # noqa: ANN201 - returns an EventHandler
     """One resolver per trigger event (#170): the underlying item was acted on, so the
     "pending your action" notifications about it stop asking. Runs in the emitter's
     transaction, like the fan-out — the decision and the clearing commit together."""
-    entity_type, id_key, event_types = RESOLVING_EVENTS[trigger]
+    rule = RESOLVING_EVENTS[trigger]
 
     async def handler(ctx: EmitContext, payload: dict[str, Any]) -> None:
-        entity_id = _as_uuid(payload.get(id_key))
+        if rule.when is not None and not rule.when(payload):
+            return
+        entity_id = _as_uuid(payload.get(rule.id_key))
         if entity_id is None:
             return
-        await NotificationService(ctx).resolve(entity_type, entity_id, event_types=event_types)
+        await NotificationService(ctx).resolve(
+            rule.entity_type, entity_id, event_types=rule.event_types
+        )
 
     handler.__name__ = f"resolve_on_{trigger.replace('.', '_')}"
     return handler

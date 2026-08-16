@@ -14,7 +14,7 @@
    */
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import type { PartyType } from "$lib/core/party";
   import { splitLifecycle, type LifecycleVocabulary } from "$lib/core/picker";
 
@@ -28,6 +28,8 @@
     user_id: string;
     full_name: string | null;
     email: string | null;
+    /** Deactivated accounts move behind the search, like an archived client below. */
+    is_active?: boolean;
   }
   interface Contact {
     id: string;
@@ -131,11 +133,15 @@
         )
       : { live: companies.map((c) => ({ value: c.id, label: c.name })), retired: [] },
   );
+  // The same rule for employees, and it needs no vocabulary from the host: an account has one
+  // bit, not a status list, so `$lib/core/members` owns the whole answer where the company side
+  // has to be handed one. A party set to somebody who has since left keeps naming them.
+  const employeeSplit = $derived(splitMemberOptions(employees, { selectedId: entityId }));
   const items = $derived(
     type === "company"
       ? companySplit.live
       : type === "employee"
-        ? employees.map((e) => ({ value: e.user_id, label: memberLabel(e) }))
+        ? employeeSplit.live
         : type === "contact"
           ? contacts.map((c) => ({ value: c.id, label: c.name }))
           : [],
@@ -182,8 +188,12 @@
   {:else}
     <Combobox
       {items}
-      archived={type === "company" ? companySplit.retired : []}
-      archivedLabel={companyLifecycle?.archivedLabel}
+      archived={type === "company"
+        ? companySplit.retired
+        : type === "employee"
+          ? employeeSplit.retired
+          : []}
+      archivedLabel={type === "employee" ? memberArchivedLabel() : companyLifecycle?.archivedLabel}
       name="{id}__entity"
       bind:value={entityId}
       {allowEmpty}

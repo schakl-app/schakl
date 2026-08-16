@@ -67,8 +67,20 @@
   const notes = $derived(data.notes as string | null);
   const custom = $derived((data.custom ?? {}) as Record<string, unknown>);
 
+  /**
+   * The name a document is addressed to, and only when it is *news*: `null` on the API means
+   * "the label is also the legal name", so drawing it would print the H1 again under a heading
+   * that promises something different. A value equal to the label is treated the same way — it
+   * arrives from an import or from somebody typing it out of caution, and it is still not a
+   * second fact.
+   */
+  const legalName = $derived.by(() => {
+    const value = ((data.legal_name as string | null) ?? "").trim();
+    return value && value !== (data.name as string) ? value : null;
+  });
+
   const hasBilling = $derived(
-    Boolean(data.address_line1 || data.city || data.vat_number || data.coc_number),
+    Boolean(legalName || data.address_line1 || data.city || data.vat_number || data.coc_number),
   );
 
   /** Which group is open for editing — one at a time, so the card never becomes the dialog. */
@@ -79,6 +91,7 @@
   const values = $derived({
     id: companyId,
     name: data.name as string,
+    legal_name: data.legal_name as string | null,
     client_number: clientNumber,
     website,
     phone,
@@ -271,6 +284,11 @@
     </div>
     <div class="mt-1 text-sm text-text">
       {#if hasBilling}
+        <!-- First, because it is what the rest of this block is *for*: an address under a name
+             nobody recognises is the failure the split exists to prevent. -->
+        {#if legalName}
+          <span class="block font-medium">{legalName}</span>
+        {/if}
         <!-- Street and house number are separate columns (#241); display recomposes the line,
              so a pre-split record (number still inside the street field) reads unchanged. -->
         {#if data.address_line1}

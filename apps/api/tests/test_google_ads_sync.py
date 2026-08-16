@@ -499,3 +499,141 @@ async def test_the_report_section_costs_one_read_per_account_not_per_campaign(
     assert many == few, (
         f"the section fanned out: {few} statements at two campaigns, {many} at twenty"
     )
+
+
+# --------------------------------------------------------------------------------------- #
+# The backfill is a job that is known to have run, not one that was queued once (#381)
+# --------------------------------------------------------------------------------------- #
+async def test_the_nightly_run_queues_a_fill_that_never_finished(fake, monkeypatch) -> None:  # noqa: F811
+    """The promise the link route's own comment already made, finally kept.
+
+    Linking an account queues a thirteen-month fill best-effort, on the stated grounds that "a
+    queue miss is not fatal — the nightly run catches up". The nightly run re-pulls a trailing
+    week and had no opinion about the year behind it, so a miss was permanent: on the live
+    instance not one of thirteen accounts held more than eleven days, and every report for a
+    past month printed a Google Ads section of zeros.
+    """
+    from app.integrations.google_ads import jobs
+
+    t, account_id = await _org_and_account("gads-backfill-queue")
+    _script_week(fake, date.today() - timedelta(days=1))
+    queued: list[tuple] = []
+
+    async def _capture(function: str, *args, **kwargs):
+        queued.append((function, args))
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _capture)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await jobs._sync_org(t.org, session)
+        await session.commit()
+
+    assert queued == [("google_ads_backfill_account", (str(t.org.id), str(account_id)))]
+
+
+async def test_an_account_already_filled_is_not_asked_again(fake, monkeypatch) -> None:  # noqa: F811
+    """Otherwise every nightly run re-reads thirteen months for every account, for ever,
+    against a shared daily quota."""
+    from datetime import UTC, datetime
+
+    from app.integrations.google_ads import jobs
+
+    t, account_id = await _org_and_account("gads-backfill-done")
+    _script_week(fake, date.today() - timedelta(days=1))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        account = await session.get(GoogleAdsAccount, account_id)
+        account.backfilled_at = datetime.now(UTC)
+        await session.commit()
+
+    queued: list[tuple] = []
+
+    async def _capture(function: str, *args, **kwargs):
+        queued.append((function, args))
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _capture)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await jobs._sync_org(t.org, session)
+        await session.commit()
+
+    assert queued == []
+
+
+async def test_only_a_complete_backfill_stamps_itself(fake, monkeypatch) -> None:  # noqa: F811
+    """A halt leaves the column NULL, which is what makes the retry automatic.
+
+    Stamping on entry, or in a `finally`, would turn a backfill that died on a revoked grant
+    into an account that is permanently and invisibly short of history — the exact state this
+    column exists to end.
+    """
+    from app.integrations.google_ads import jobs
+
+    t, account_id = await _org_and_account("gads-backfill-halt")
+    monkeypatch.setattr(jobs, "_licensed", lambda: _true())
+    _script_week(fake, date.today() - timedelta(days=1))
+
+    await jobs.google_ads_backfill_account({}, str(t.org.id), str(account_id))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.get(GoogleAdsAccount, account_id)).backfilled_at is not None
+
+    # Now the same account, refusing on its first chunk.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        account = await session.get(GoogleAdsAccount, account_id)
+        account.backfilled_at = None
+        await session.commit()
+    fake._scripts.insert(
+        0, ("FROM customer", failure("authorizationError", "USER_PERMISSION_DENIED", status=403))
+    )
+
+    await jobs.google_ads_backfill_account({}, str(t.org.id), str(account_id))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.get(GoogleAdsAccount, account_id)).backfilled_at is None
+
+
+async def _true() -> bool:
+    return True
+
+
+async def test_a_backfill_chunk_older_than_the_change_log_still_mirrors_its_metrics(  # noqa: F811
+    fake,  # noqa: F811
+) -> None:
+    """The bug that stopped every thirteen-month backfill this feature has ever run (#381).
+
+    `change_event` reaches back thirty days; the metrics reach back four hundred. `read_changes`
+    clamped its *start* forward to the earliest Google answers for and left its end where it
+    was, so a chunk covering 17 Jun – 16 Jul sent an inverted range and was refused with
+    `changeEventError.CHANGE_DATE_RANGE_...`. Sharing one `try` with the three metric reads,
+    that refusal discarded them and returned False — and the chunked backfill halts on a False.
+
+    Which is why thirteen accounts on the live instance held exactly thirty days of history each
+    while `sync_account` had been reporting success on the first chunk and nothing after it.
+    """
+    t, account_id = await _org_and_account("gads-backfill-old-chunk")
+    old_end = date.today() - timedelta(days=60)
+    _script_week(fake, old_end)
+    # …and the change log refuses for that window, exactly as Google does.
+    fake.script("FROM change_event", failure("changeEventError", "CHANGE_DATE_RANGE_INFINITE"))
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        account = await session.scalar(
+            select(GoogleAdsAccount).where(GoogleAdsAccount.id == account_id)
+        )
+        ok = await sync_account(session, t.org, account, days=30, ends_days_ago=59)
+        await session.commit()
+
+    assert ok, "a refused change log must not fail the account it rode in on"
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        stored = await session.scalar(
+            select(func.count()).select_from(GoogleAdsMetricDaily)
+        )
+    assert stored > 0, "the metrics were read successfully and must still have been written"

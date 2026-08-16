@@ -1,0 +1,190 @@
+---
+title: Google Ads
+description: "Lees de campagnes, kosten en zoektermen van een klant, en verander met een beleid als vangrail de budgetten, zoekwoorden en uitsluitingen, vanaf hier of vanuit een AI-assistent."
+sidebar:
+  order: 9
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Google Ads begon hier als nóg een getal op het marketingdashboard. Inmiddels is het een eigen
+module, want een bureau doet meer met een advertentieaccount dan ernaar kijken: campagnes worden
+gepauzeerd, zoektermen uitgesloten, budgetten voor twee weken in december opgehoogd. Dat zit hier
+allemaal in, opgesplitst in rechten die fijn genoeg zijn om *"ruim 's nachts de zoektermen op"* uit
+te delen zonder ook *"verander wat deze klant uitgeeft"* mee te geven.
+
+## Waar je het vindt
+
+- **Instellingen → Google Ads**: het ontwikkelaarstoken, je beheerdersaccount, en de
+  adverteerdersaccounts die je per klant koppelt.
+- **Marketing → Google Ads**: het werkscherm, met campagnes, advertentiegroepen, advertenties,
+  zoekwoorden, zoektermen, uitsluitingen, apparaten, locaties en aanbevelingen.
+- Het tabblad **Marketing** op een klant, en het marketingdashboard, voor de cijfers.
+
+## Voordat je begint
+
+<Steps>
+1. Een **Google Ads-beheerdersaccount** (MCC), de gewone vorm voor een bureau: de accounts van je
+   klanten hangen eronder.
+2. Een **ontwikkelaarstoken** uit het **API-center** van dat beheerdersaccount. Vraag het vroeg
+   aan: Google beoordeelt zo'n aanvraag zelf, en een pas uitgegeven token begint met alleen
+   testtoegang.
+3. De koppeling **Google Workspace** actief, met een Google-account dat toegang heeft tot het
+   beheerdersaccount. Google Ads rijdt op die koppeling mee; er is geen tweede inlog.
+4. De **Google Ads API** aangezet in hetzelfde Google Cloud-project als de rest van je
+   Google-koppeling.
+</Steps>
+
+<Aside type="tip" title="Je beheerdersaccount is de regel, geen uitzondering">
+De vraag "bij welke accounts kan ik" beantwoordt Google alleen met *directe* toekenningen, en jouw
+gebruiker heeft toegang tot het **beheerdersaccount**, niet tot de twintig klanten eronder. Een
+naïeve koppeling laat je dus één account zien en geen enkele klant. schakl. klapt elk
+beheerdersaccount uit en merkt elk kind met het beheerdersaccount waar het langs bereikt moet
+worden. Daarom kies je bij het koppelen uit een lijst in plaats van een nummer over te typen.
+</Aside>
+
+## Een account aan een klant koppelen
+
+<Steps>
+1. Ga naar *Instellingen → Google Ads*, plak het ontwikkelaarstoken en sla op. Het wordt
+   versleuteld bewaard en nooit aan de browser teruggegeven.
+2. Kies het adverteerdersaccount uit de lijst en hang er de klant aan.
+3. Druk op **Controleren** om te bevestigen dat de toegang er werkelijk bij kan.
+</Steps>
+
+De koppeling is de waarheid; de marketingmodule houdt er een kopie van het accountnummer naast,
+puur zodat een klantpagina zijn tegel kan tekenen zonder tweede opzoekactie. Ontkoppelen raakt
+nooit iets bij Google.
+
+## Wat je kunt lezen
+
+| Scherm | Welke vraag het beantwoordt |
+| --- | --- |
+| Campagnes, advertentiegroepen, advertenties | Wat er loopt, en wat het kost |
+| Zoekwoorden en zoektermen | Wat mensen werkelijk typten, tegenover waar je op biedt |
+| Uitsluitingen en gedeelde lijsten | Wat er uitgesloten is, en waar |
+| Apparaten en locaties | Waar de kosten heen gaan |
+| Aanbevelingen | Wat Google voorstelt, zonder dat er iets van toegepast wordt |
+| Wijzigingsgeschiedenis | Wat er in het account veranderd is, en wanneer |
+| Conversiegezondheid | Of de conversies die geteld worden ook echt binnenkomen |
+
+Er is daarnaast een **doorgeefluik voor eigen queries**, voor alles wat de schermen niet dekken.
+Het heeft een eigen recht, is begrensd tot een lijst met toegestane bronnen en een kostenplafond,
+en het is bouwtechnisch alleen-lezen: de querytaal kent geen schrijfsyntaxis, en het accountnummer
+komt uit je eigen gekoppelde regel en niet van de aanroeper.
+
+## Wat je kunt wijzigen, en de vier sleutels
+
+Het voor de hand liggende ontwerp is één `google_ads.write`, en dat is fout om precies de reden dat
+deze module bestaat: dit oppervlak wordt via MCP benaderd door een assistent met een API-sleutel,
+en een sleutel draagt rechten. Eén schrijfrecht betekent dat de enige sleutel die je kunt maken
+alles mag.
+
+| Recht | Wat het afschermt | Standaard |
+| --- | --- | --- |
+| `google_ads.settings.manage` | Ontwikkelaarstoken, koppelen, controleren | Beheerder |
+| `google_ads.account.read` | Alles wat leest | Beheerder, Medewerker |
+| `google_ads.policy.manage` | Het beleid per klant en het beslissingenlogboek | Beheerder |
+| `google_ads.query.run` | Het doorgeefluik hierboven | Beheerder |
+| `google_ads.campaign.write` | Campagnes, advertentiegroepen, advertenties | Beheerder |
+| `google_ads.budget.write` | Budgetten, apart, want dit is het geld | Beheerder |
+| `google_ads.keyword.write` | Zoekwoorden | Beheerder |
+| `google_ads.negative.write` | Uitsluitingen en gedeelde lijsten | Beheerder |
+
+Geen enkel recht gaat ooit naar de rol **Klant**: alleen al lezen dekt de kosten per klik en jouw
+eigen uitgaven, en geen klantselectie versmalt dat tot iets wat je een klant kunt laten zien.
+
+Naast de rechten staat een **noodstop** voor schrijfacties op de hele installatie. Het recht
+bepaalt *wie*; de noodstop bepaalt *of*, op één plek die een eigenaar snel kan vinden zonder acht
+rolinstellingen te bewerken.
+
+<Aside type="note" title="Alles wordt gepauzeerd aangemaakt">
+Een nieuwe campagne, advertentiegroep of advertentie komt **gepauzeerd** binnen. Niets wat deze
+koppeling aanmaakt begint geld uit te geven voordat er een mens naar gekeken heeft en hem heeft
+gestart.
+</Aside>
+
+## Het beleid: vangrails waar een assistent niet omheen praat
+
+Een beleid per adverteerdersaccount, met dat van je eigen bureau als huisstandaard, legt vast wat
+er nooit mag gebeuren, wat iemand ook vraagt.
+
+- **Beschermde termen**: merkwoorden die nooit uitgesloten mogen worden.
+- **Verboden zinnen**: bewoordingen die niet in een advertentie mogen staan.
+- Een **dagbudgetplafond** en een **maximale kosten per klik**.
+- Een **maximale budgetverhoging**, ingebouwd op 100%: een budget mag in één wijziging hoogstens
+  verdubbelen.
+- **Sturing**: je vaste huisregels, en wat er waar is over déze ene adverteerder, als twee losse
+  alinea's bewaard.
+
+Drie lagen, en ze mogen niet versmelten: productgrenzen staan in de code, de vaste regels van je
+bureau in het huisbeleid, en wat er waar is over één adverteerder in het beleid van dat account.
+Lijsten worden **samengevoegd**, getallen **geërfd**, en de twee sturingsteksten blijven apart. Een
+huisregel als *"wij bieden nooit op namen van concurrenten"* vastgeplakt aan *"deze klant verkoopt
+onderdelen van concurrenten"* is één tegenstrijdige instructie die niemand geschreven heeft.
+
+<Aside type="tip" title="Waarom de enige ingebouwde grens relatief is">
+Een *relatieve* grens heeft geen kennis van jouw accounts nodig en kan dus eerlijk een standaard
+krijgen: verdubbelen is een gewone seizoenswijziging en tien keer zoveel is de extra nul die iemand
+intypte. Elk absoluut getal dat software zou verzinnen, weigert een legitiem budget op het ene
+account en laat een vergissing door op het andere. Het gevolg is het waard om te weten: een budget
+**aanmaken** heeft geen vorig bedrag, dus niets relatiefs kan het begrenzen. Zet daarom een
+dagbudgetplafond op accounts waar dat uitmaakt.
+</Aside>
+
+### Een weigering die te vaak wolf roept, wordt uitgezet
+
+Een beschermde term wordt alleen afgedwongen waar de uitsluiting hem **werkelijk zou blokkeren**.
+De naïeve versie weigert elke uitsluiting waar een beschermd woord in voorkomt, en die zit fout in
+de richting die ertoe doet: een uitsluiting op exact "beugel kosten" kan niet voorkomen dat
+"beugel" vertoond wordt, dus hem weigeren leert een bureau dat de vangrail ruis is, en het
+eerstvolgende wat ze doen is hem uitzetten. Daarom worden de eigen matchingregels van Google
+nagebootst, en wordt een onbekend matchtype als het breedste gelezen: de fout valt dan de kant op
+van "iets onschuldigs geweigerd" in plaats van "het merk van een klant onvindbaar gemaakt".
+
+### Een verkeerde aanroep wordt geweigerd, een verkeerde regel gemeld
+
+Een budget boven het plafond **ís** de aanroep, één budget en één antwoord, dus die wordt regelrecht
+geweigerd, met het veld en de grens erbij. Eén beschermde term tussen twaalf uitsluitingen is één
+regel: alle twaalf weigeren omdat de vangrail bij één ervan zijn werk deed, straft je voor iets wat
+wél goed ging. Die regel wordt dus overgeslagen, gemeld, en **benoemd**: "geweigerd" nodigt uit tot
+ruzie met de software, "zou ook *beugel* blokkeren" nodigt uit tot een oplossing.
+
+### Het beslissingenlogboek
+
+`kept` is de regel die nergens anders bestaat. Google legt vast dat je een term hebt uitgesloten;
+het legt helemaal niets vast over de termen waar je naar gekeken hebt en die je bewust hebt laten
+staan. Precies daarom komt hetzelfde lijstje elke maand terug tot niemand het meer leest. Eén
+beoordelingsronde legt dus allebei de helften vast: wat je hebt uitgesloten, en wat je hebt
+besloten te houden, met de reden erbij.
+
+## Goed om te weten
+
+- **Opnieuw proberen is veilig bij lezen en nooit bij schrijven.** Een herhaalde campagne-aanmaak is
+  een tweede campagne die een tweede budget uitgeeft, dus alleen leesacties worden herhaald, en de
+  wachttijd die Google zelf voorstelt weegt zwaarder dan welk schema wij ook zouden verzinnen.
+- **Elke schrijfactie kan als proef.** Google valideert dan tegen de *werkelijke* opbouw van het
+  account en past niets toe. Dat is beter dan een testaccount, want daar draait geen advertentie
+  en valt dus niets te valideren.
+- **Verwijderen is een eigen handeling.** In de API van Google is "verwijderd" een toestand die je
+  kunt lezen en niet een die je kunt zetten, dus verwijderen is een aparte aanroep. Een campagne
+  verwijderen werkt niet door naar de advertentiegroepen, en daarna zijn die helemaal niet meer te
+  verwijderen; ruim dus van onder naar boven op.
+- **Een campagne aanmaken vraagt om een bestaand budget.** Een campagneroute die zelf een budget
+  kon toveren, zou van `campaign.write` een budgetsleutel met extra stappen maken.
+- **Een weigering is een diagnose, geen statuscode.** "Deze inlog heeft geen toegang", "de aanvraag
+  bij het API-center is nooit afgerond" en "het account van de klant is geschorst" komen alle drie
+  als 403 van Google binnen, met drie verschillende mensen die het kunnen oplossen. Ze worden uit
+  elkaar gehouden en apart gemeld.
+- **De browser doet wat een mens doet, de assistent de rest.** Een lijst zoektermen beoordelen en
+  een campagne pauzeren of hervatten staan op het scherm. Een campagne vanaf nul opbouwen is vier
+  afhankelijke aanroepen met een budgetbeslissing in het midden, en dat hoort bij de API en het
+  MCP-oppervlak.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Google Tag Manager" href="/nl/docs/integrations/google-tag-manager/" description="Waar de conversies waartegen deze campagnes worden afgemeten worden opgezet." />
+  <LinkCard title="Marketingbronnen" href="/nl/docs/integrations/marketing-sources/" description="Google Ads als een van de vijf bronnen van klantcijfers." />
+  <LinkCard title="MCP-server" href="/nl/docs/integrations/mcp/" description="Hoe een assistent bij dit oppervlak komt, en met welke rechten." />
+</CardGrid>

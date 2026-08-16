@@ -345,6 +345,7 @@ _ENTITY_READ_PERMISSION: dict[str, str] = {
     "company": "companies.company.read",
     "leave_request": "leave.request.read",
     "timesheet": "time.entry.read",
+    "interaction": "interactions.interaction.read",
 }
 
 

@@ -1,7 +1,12 @@
 <script lang="ts" module>
   /** Shapes shared with the settings routes (derived from the API's generated types there). */
   export type CatalogTrigger = { event: string; entity_type: string };
-  export type Member = { user_id: string; full_name: string | null; email: string | null };
+  export type Member = {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    is_active?: boolean;
+  };
   export type Template = { id: string; name: string };
   export type RuleActionValue = { action_type: string; config: Record<string, unknown> };
   export type RuleValue = {
@@ -27,6 +32,7 @@
   import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
 
   let {
     rule = null,
@@ -48,6 +54,14 @@
     error?: string | null;
     dryRun?: DryRunOutcome | null;
   } = $props();
+
+  // A rule is a decision executed later, over and over, so pointing one at an account that
+  // cannot sign in is the quietest failure available: the rule keeps firing and the work lands
+  // nowhere. `MemberPicker` puts a deactivated colleague behind the search wearing the word —
+  // still selectable, because a rule written before somebody left has to keep saying who it
+  // names, and still not a suggestion. The recipient checkboxes below are the other half of the
+  // same rule, spelled the way a checkbox list has to spell it.
+  const liveStaff = $derived(members.filter((m) => m.is_active !== false));
 
   const OPS = ["eq", "ne", "in", "contains", "gt", "lt"] as const;
   const TASK_STATUSES = ["open", "in_progress", "done"] as const;
@@ -351,17 +365,15 @@
                 </div>
                 <div>
                   <span class={labelClass}>{t("automation.config.assignee")}</span>
-                  <select
+                  <!-- The whole rule posts as one JSON field, so the picker's own hidden input
+                       is a `_`-name nothing reads. -->
+                  <MemberPicker
+                    {members}
+                    name="_action_assignee_{index}"
+                    id="action-assignee-{index}"
                     value={String(entry.config.assignee_user_id ?? "")}
-                    class={inputClass}
-                    onchange={(event) =>
-                      setConfig(index, "assignee_user_id", event.currentTarget.value)}
-                  >
-                    <option value="">—</option>
-                    {#each members as member (member.user_id)}
-                      <option value={member.user_id}>{memberLabel(member)}</option>
-                    {/each}
-                  </select>
+                    onselect={(v) => setConfig(index, "assignee_user_id", v)}
+                  />
                 </div>
               {/if}
               <p class="text-xs text-text-muted sm:col-span-2">
@@ -383,16 +395,13 @@
             {:else if entry.action_type === "task.assign"}
               <div>
                 <span class={labelClass}>{t("automation.config.assignee")}</span>
-                <select
+                <MemberPicker
+                  {members}
+                  name="_action_user_{index}"
+                  id="action-user-{index}"
                   value={String(entry.config.user_id ?? "")}
-                  class={inputClass}
-                  onchange={(event) => setConfig(index, "user_id", event.currentTarget.value)}
-                >
-                  <option value="">—</option>
-                  {#each members as member (member.user_id)}
-                    <option value={member.user_id}>{memberLabel(member)}</option>
-                  {/each}
-                </select>
+                  onselect={(v) => setConfig(index, "user_id", v)}
+                />
               </div>
             {:else if entry.action_type === "notification.send"}
               <div class="sm:col-span-2">
@@ -407,7 +416,10 @@
               <div class="sm:col-span-2">
                 <span class={labelClass}>{t("automation.config.recipients")}</span>
                 <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  {#each members as member (member.user_id)}
+                  <!-- Deactivated colleagues are offered here only where a rule already names
+                       them, so an existing recipient list stays readable and editable without
+                       inviting anyone to add a mailbox nobody reads. -->
+                  {#each [...liveStaff, ...members.filter((m) => m.is_active === false && recipientIds(entry.config).includes(m.user_id))] as member (member.user_id)}
                     <label class="flex items-center gap-2 text-sm text-text">
                       <input
                         type="checkbox"
@@ -416,7 +428,9 @@
                         onchange={(event) =>
                           toggleRecipient(index, member.user_id, event.currentTarget.checked)}
                       />
-                      {memberLabel(member)}
+                      {memberLabel(member)}{member.is_active === false
+                        ? ` (${t("members.status.inactive")})`
+                        : ""}
                     </label>
                   {/each}
                 </div>

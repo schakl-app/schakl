@@ -9,8 +9,8 @@
     "en": "Employee records"
   },
   "description": {
-    "nl": "Arbeidscontracten met hun eigen werkweek, en per medewerker een dossier met contract, groeiplannen en CAO op één persoonlijke pagina.",
-    "en": "Employment contracts carrying their own working week, and a record per employee holding the contract, growth plans and CAO on one personal page."
+    "nl": "Dienstverbanden met hun eigen werkweek, per periode als medewerker of als freelancer, en een dossier per persoon met contract, groeiplannen en cao op één pagina.",
+    "en": "Employment periods carrying their own working week, each as employee or as freelance, and a record per person holding the contract, growth plans and collective agreement on one page."
   },
   "page": {
     "eyebrow": {
@@ -114,6 +114,28 @@
         "body": {
           "nl": "Een contract aanmaken, corrigeren of beëindigen herberekent in dezelfde transactie de automatisch afgeleide jaarsaldi van die medewerker: de wijziging en het nieuwe saldo staan samen vast, of geen van beide. Wie halverwege het jaar uit dienst gaat houdt dus een naar rato verlaagd saldo in plaats van een vol jaar, en een opslag via 'oude contract beëindigen, nieuw contract erbij' telt beide perioden mee. Handmatige correcties blijven daarbij ongemoeid en het verleden blijft bevroren: een afgesloten jaar wordt niet opnieuw geprijsd en goedgekeurd verlof wordt nooit met terugwerkende kracht herrekend. Passen er na de wijziging al ingeplande vrije dagen niet meer in het saldo, dan zet het scherm ze op een rij met een knop om ze terug te nemen; stilletjes annuleren gebeurt nooit.",
           "en": "Creating, correcting or terminating a contract re-derives that employee's generated yearly entitlements in the same transaction: the change and the new balance commit together, or neither does. Someone leaving mid-year therefore keeps a prorated balance instead of a full year, and a raise applied as \"terminate the old contract, add a new one\" folds both periods in. Manual corrections are left alone and the past stays frozen: a closed year is never re-priced, and approved leave is never retroactively recalculated. If the change leaves already-scheduled free days that no longer fit the balance, the screen lists them with a button to take them back — nothing is ever cancelled silently."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Niet iedereen op het rooster staat op de loonlijst",
+          "en": "Not everyone on the roster is on the payroll"
+        },
+        "body": {
+          "nl": "Of een periode een dienstverband is of een freelanceopdracht, is een eigenschap van die periode en niet van de persoon: verandert de afspraak, dan is dat een nieuwe periode, precies zoals gewijzigde uren dat zijn, zodat vorig jaar geprijsd blijft onder de afspraak waaronder het werkelijk gewerkt is. Het bepaalt precies één ding, namelijk opbouw. Een freelanceperiode bouwt geen wettelijke vakantie en geen vrije tijd op, want een zzp'er factureert zijn uren en een pot zou meteen negatief staan bij de eerste week die hij vrij neemt. Verder verandert er niets: die periode draagt gewoon een werkweek, staat gewoon op het teamrooster, en een afgesproken aantal betaalde dagen leg je vast als handmatige aanspraak. En omdat plenty freelancers per opdracht werken, mag het aantal uren per week daar leeg blijven; op een dienstverband wordt datzelfde veld geweigerd, want een verzonnen 16 is een getal waar elke capaciteitsberekening daarna mee rekent alsof iemand het heeft afgesproken.",
+          "en": "Whether a period is employment or a freelance engagement is a property of that period rather than of the person: a changed arrangement is a new row, exactly as changed hours are, so last year stays priced under the arrangement it was actually worked. It decides precisely one thing: accrual. A freelance period earns no statutory holiday and no free time, because a contractor invoices their hours and a pot would go negative the first week they took off. Nothing else changes: that period still carries a working week, still shows on the team roster, and an agreed number of paid days is recorded as a manual entitlement. And because plenty of contractors work per assignment, hours per week may be left empty there; on an employment period that same field is refused, because an invented 16 is a number every capacity figure afterwards quotes as if somebody had agreed to it."
+        },
+        "bullets": {
+          "nl": [
+            "Een freelancer legt zijn eigen beschikbaarheid vast: een dag die hij wél werkt, een dag die hij niet werkt, of een verplaatsing als paar",
+            "Een nee weegt zwaarder dan een ja op dezelfde dag, want iemand inboeken die zei dat hij weg was is de ergere fout",
+            "Het contract is van het bureau, de uitzonderingen zijn van de freelancer, en dat zijn twee verschillende rechten"
+          ],
+          "en": [
+            "A contractor records their own availability: a day they will work, a day they will not, or a swap as a pair",
+            "A \"no\" outranks a \"yes\" on the same day, because booking somebody who said they were away is the worse failure",
+            "The contract is the agency's and the exceptions are the contractor's, and those are two different permissions"
+          ]
         }
       }
     ]

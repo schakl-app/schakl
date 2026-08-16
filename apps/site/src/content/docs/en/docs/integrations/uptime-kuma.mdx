@@ -1,0 +1,135 @@
+---
+title: Uptime Kuma
+description: "Connect the open-source monitor you already run, so a monitor becomes a record with a client, a website, a history and visible drift."
+sidebar:
+  order: 12
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Every website in schakl. has had a **monitoren** (monitor this) checkbox for years, with nothing
+behind it. This is what finally acts on it — and it is a module rather than a webhook into some
+automation flow, for a reason worth stating: a monitor becomes a *record*. It has a client, a
+website, a profile, an activity trail and a place on the client page beside the domain and the
+hosting account it depends on.
+
+## Where to find it
+
+- **Instellingen → Uptime** — the servers you connect to, and the monitor profiles.
+- The **Uptime** card on a website or a domain.
+- On a **client page**, the status sits beside everything else running for that client.
+
+Switch the integration on under *Instellingen → Integraties* (Settings → Integrations).
+
+## Two kinds of connection
+
+This is the first choice you make, and it decides what everything else means.
+
+| | **Managed** | **Linked** |
+| --- | --- | --- |
+| We hold a session | Yes | No |
+| Outbound reach needed | Yes | **No** |
+| Read monitors, import, mirror | Yes | Only what it reports |
+| Create / edit / pause monitors | Yes | No |
+| Receives status | Webhook **and** poll | Webhook only |
+
+<Aside type="note" title="Linked is not a degraded managed">
+It is the mode for a client-hosted server behind a firewall whose owner will never give you a
+tunnel, and it delivers most of the value — a status timeline on the client's page, an alert, an
+automation trigger — at **no infrastructure cost at all**, because the traffic runs the other way.
+
+Designing as if managed were the only real mode is how you build a feature that works in a demo
+and for one client.
+</Aside>
+
+## Connecting a managed server
+
+<Steps>
+1. Under *Instellingen → Uptime*, add a server and choose **Beheerd** (Managed).
+2. Fill in the address and your Uptime Kuma credentials. A **session token** is stored, never a
+   password and never a two-factor secret. It is encrypted at rest and is not handed back by the
+   API.
+3. If the server sits behind Cloudflare Access or a proxy, fill in the extra **connect headers**.
+   A service token, a proxy's shared secret or a `Host` override are all the same field with
+   different values, and it is encrypted for the same reason the token is.
+4. If a Kuma was already running, choose **Overnemen** (Adopt): its existing monitors are read and
+   you attach them to the website or domain they belong to, instead of recreating all of them and
+   measuring twice for a while.
+</Steps>
+
+<Aside type="caution" title="A server on a private address is refused by default">
+Like every outbound target in schakl., a `10.x`, `192.168.x` or `localhost` address is refused
+unless an administrator deliberately allows private targets on this installation. That is what
+stops somebody with rule-authoring rights from probing your internal network.
+</Aside>
+
+## Profiles, and the three layers
+
+Nobody types `interval=60, retries=3, resend=30, accepted=[200-299]` three hundred times. A
+**profile** carries those, plus the notification channels: *"Standaard website"*, *"Klant met
+SLA"*, *"Interne tooling"*.
+
+Three layers, and they must not fuse:
+
+1. **Product invariants** live in code — an interval below what your server accepts, or a monitor
+   type this version does not have, is clamped whatever you configure.
+2. **Your agency's house default** is a profile. A policy compiled into the source would be a
+   decision we took for you.
+3. **What is true about this one monitor** lives on the monitor.
+
+Blank means *inherit*, a value means *override*, and explicitly clearing a field is how you put
+"follow the default" back. The invariants clamp **last**, after both the profile and the monitor,
+so nothing you configure can slip under a floor the server would refuse anyway.
+
+<Aside type="tip" title="Leave the numeric boxes blank">
+A profile's numeric fields start empty on purpose, because empty means inherit. Prefilling `60`
+would be a decision you never made, and a `0` posted for an empty box would pin every following
+monitor to the invariant floor — a plausible wrong number nobody notices until a client asks why
+their site is polled every twenty seconds.
+</Aside>
+
+A profile can never set a **URL**. A profile that could would be able to point forty monitors at
+the wrong host in one save.
+
+Resolving to *no* profile falls back to the oldest active profile of that monitor type, and if you
+have exactly one profile it **is** the default: nobody makes one profile and means "use none of
+it".
+
+## Drift: what we decided, and what we last saw
+
+Uptime Kuma has a web interface of its own, and it is good, so somebody will edit a monitor in it.
+A webhook fired once cannot notice that; a mirror can.
+
+So what schakl. **decided** and what it **last observed** are stored in separate fields, and a
+check reports drift rather than silently overwriting it. Monitor payloads can carry secrets — a
+header with a token, a basic-auth pair — so a *fingerprint* of those is kept rather than the
+value: enough to see that something changed, without becoming a second place the secret lives.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `uptime.instance.manage` | Add, change and remove servers and profiles | Administrator |
+| `uptime.monitor.read` | See monitors and their status on a website, domain or client page | Administrator, Member |
+| `uptime.monitor.write` | Create, change, pause and link monitors (managed servers only) | Administrator |
+
+## Good to know
+
+- **On a linked server nothing can be created or changed.** That is the contract of that mode, not
+  a shortcoming: we send nothing into it.
+- **An expired session asks you to reconnect**, rather than being reported as an outage. Those are
+  different problems with different people who can fix them.
+- **Uptime Kuma has no real REST API.** The connection runs over the socket its own web interface
+  uses, which is why the range of supported versions is something to watch rather than something
+  that takes care of itself. Tested against 2.5.0; 1.23 and newer are supported.
+- **What you see is the status the server reports.** It is not a second monitor: if the Kuma
+  itself goes down, schakl. does not know that by itself.
+- **An outage can become a notification** in schakl., and an automation rule can react to it.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Websites" href="/en/docs/modules/websites/" description="The record a monitor attaches to." />
+  <LinkCard title="Domains" href="/en/docs/modules/domains/" description="The other thing a monitor can watch." />
+  <LinkCard title="Notifications" href="/en/docs/modules/notifications/" description="Where an outage lands." />
+</CardGrid>

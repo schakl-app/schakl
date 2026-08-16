@@ -326,7 +326,12 @@ _MEMBER_REQUEST_BUDGET = 8
 #: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
 #: composer skips every panel the caller may not read, so a restricted member's page costs
 #: strictly less than this. The budget stays measured as the owner, which is the worst case.
-_PANELS_BUDGET = 47
+#: 47 -> 50 (#382): the timeon panel, which answers "is this client's time registration in
+#: step?" in three statements — the customer pairing (carrying the organisation's name on its
+#: own join rather than a fourth round trip), one `GROUP BY status` over the client's hour
+#: pairings, and one count of what is waiting for a decision. It calls Timeon **never**: a
+#: company page must not wait on somebody else's timesheet server to render.
+_PANELS_BUDGET = 50
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.
@@ -1273,3 +1278,48 @@ async def test_company_status_set_costs_no_extra_read(client_for, count_queries)
             res = await c.get("/api/v1/companies", headers=headers)
         assert res.json()["total"] == 5
         assert len(unfiltered.matching("from companies")) == first
+
+
+# --- the composite create: a checklist is not one round trip per step ----------------------- #
+async def test_composite_create_does_not_scale_with_its_checklist(
+    client_for, count_queries
+) -> None:
+    """#382. A dictated task arrives whole, and the point of carrying its steps on the create is
+    that the browser makes **one** call instead of 1 + 1 + N + M.
+
+    That is only a win if the server does not simply move the fan-out inside itself, so what is
+    pinned here is the shape: ten steps must not cost ten times what two do. The per-item write
+    is genuinely per item — ``add_checklist_item`` validates and records each one, which is the
+    whole reason this reuses the service — so the budget is the *slope*, not a constant.
+    """
+    t = await make_tenant("perf-composite-create")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+
+        async def _create(steps: int) -> int:
+            with count_queries() as counter:
+                res = await c.post(
+                    "/api/v1/tasks",
+                    json={
+                        "title": f"Taak met {steps} stappen",
+                        "checklist": {
+                            "title": "Aanpak",
+                            "items": [{"title": f"Stap {i}"} for i in range(steps)],
+                        },
+                    },
+                    headers=headers,
+                )
+            assert res.status_code == 201, res.text
+            return len(counter.statements)
+
+        # Warm the org's status vocabulary, which the first create seeds.
+        warm = await c.post("/api/v1/tasks", json={"title": "warm"}, headers=headers)
+        assert warm.status_code == 201, warm.text
+
+        two, ten = await _create(2), await _create(10)
+        # Eight more steps and essentially no more statements: the items are written the way
+        # the template copy already writes them, one flush for the lot. Calling
+        # ``add_checklist_item`` per step cost six each — it re-reads the task and the
+        # checklist every time — which is the fan-out this create exists to remove rather than
+        # relocate. A small allowance, because a flush boundary is not a promise; a slope is.
+        assert ten - two <= 2, (two, ten)

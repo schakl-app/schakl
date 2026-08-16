@@ -147,13 +147,47 @@ they were working on.
 - Its own provider config on `ai_settings` (`speech_*`), because of the table at the top.
   `NULL` means "reuse the chat provider", which only resolves for one that can transcribe.
 - `enabled_features()` appends a `speech` **capability** (not an `AI_FEATURES` toggle) when
-  `_speech_ready()` holds, so the web gate never draws a microphone that would 409. Same helper
-  backs `AISettingsRead.speech_available`, so the settings screen and the control agree.
+  `_speech_ready()` holds **and** at least one dictating feature is on (`SPEECH_FEATURES`, #382),
+  so the web gate never draws a microphone that would 409 — nor one with nothing to be for. Same
+  helper backs `AISettingsRead.speech_available`, so the settings screen and the control agree.
 - `transcribe.py` is a **third top-level provider function**, not a branch in `stream_chat`: the
   request is multipart and the reply is one JSON object, so it shares neither the SSE reader nor
   the event normalisation the rest of `providers.py` is built around.
-- Rides the existing `time_assist` feature key. Adding a fifth `AI_FEATURES` entry would touch
-  eight places including two hand-maintained web copies.
+- Rides the existing `time_assist` feature key. Adding an `AI_FEATURES` entry touches eight
+  places including two hand-maintained web copies — worth it only where the toggle is a decision
+  a tenant would actually make differently, which is what #327 and #382 each argue for their own.
+
+## Dictating a whole task (#382)
+
+`app/core/ai/taskdraft.py`, feature key `task_assist`. Two routes — `/ai/tasks/transcribe` and
+`/ai/tasks/parse` — and the second is the time parse's shape with a different vocabulary: a
+candidate prefetch (`candidates.gather(..., blocks=TASK_BLOCKS)`), one free round, a forced
+`submit_task`, then every field re-derived from the call rather than passed through. See
+`docs/VOICE.md` for the feature; the AI-core parts:
+
+- **Its own `AI_FEATURES` key**, for a duller reason than #327's: the two keys it could have
+  ridden both say the wrong thing. `time_assist` would make dictating a *task* die when a tenant
+  switches off the *time* quick-add — a consequence nothing on the settings screen predicts —
+  and `writing_assist` is about polishing prose somebody already wrote.
+- **`max_tokens` is the provider default**, deliberately absent from the call. The lesson above,
+  one feature over: the schema invites twenty checklist items, a description and ten links, so a
+  cap sized for "a handful of short fields" truncates silently and comes back as *"schakl could
+  not make a task of this"* over a perfectly good dictation.
+- **A truncated answer is reported, not raised.** #327 raises, correctly: nobody is waiting on a
+  worker, and a half-read email is better not written. Here the speaker *is* waiting, over words
+  they can still see, so the partial draft is handed over with `truncated: true` and the review
+  says the plan may be short. Same fact, opposite right answer, and the difference is only
+  whether anybody is standing in front of it.
+- **The vocabulary is the whole task form**, which is the one design decision in the feature.
+  #327's narrow `TaskEnrichment` answers *an outsider's words applied by an unattended worker*;
+  neither half is true of a colleague speaking into their own microphone in front of a form they
+  then confirm. Copying the omissions would have kept the shape and dropped the reason, and the
+  only effect would be the speaker retyping the half the schema refused to carry.
+- **Grounding is per type here.** `assignee_user_id` and `label_ids` are checked against
+  `candidates.member_ids()` / `label_ids()` rather than the single `ids()` pool the time parse
+  uses: a project id offered as a company fails the write anyway, while another entity's id in
+  `assignee_user_id` is a real user id from the same space. A misheard name must come back as
+  *no client selected*, never as somebody else's client.
 
 ## Email into task (#327)
 

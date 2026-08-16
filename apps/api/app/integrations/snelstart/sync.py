@@ -38,6 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.activity import ActivityService
+from app.core.naming import document_name_of
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
 from app.errors import AppError
@@ -1286,7 +1287,9 @@ class SnelstartSyncService:
             company = await self.ctx.repo(Company).get_or_404(local_id)
             link.local_type = "company"
             link.company_id = company.id
-            link.external_name = link.external_name or company.name
+            # What SnelStart holds, not what our screens print: this column mirrors the far
+            # side, so it takes the name a push would have written (``app/core/naming.py``).
+            link.external_name = link.external_name or document_name_of(company)
         elif link.kind == SnelstartLinkKind.ARTICLE.value:
             from app.modules.invoicing.models import Product
 
@@ -1498,7 +1501,14 @@ class _CompanyIndex:
             _put(self.by_vat, _norm(getattr(row, "vat_number", None)), row.id)
             _put(self.by_client_number, _digits(getattr(row, "client_number", None)), row.id)
             _put(self.by_email, _norm(getattr(row, "invoice_email", None)), row.id)
+            # Both names (``app/core/naming.py``): a relation SnelStart holds was named by
+            # whoever typed it there — the bookkeeper, who uses the legal entity — while a
+            # relation *we* pushed carries the legal name too. Indexing only the label made the
+            # name tier miss exactly the clients it is most likely to be asked about. `_put`
+            # still collapses a key two clients share, so widening the index cannot make a
+            # wrong match, only fewer missed ones.
             _put(self.by_name, _norm(row.name), row.id)
+            _put(self.by_name, _norm(getattr(row, "legal_name", None)), row.id)
 
 
 def _put(index: dict[str, uuid.UUID], key: str | None, value: uuid.UUID) -> None:
@@ -1559,7 +1569,14 @@ def _same_company(relation: Mapping[str, Any], company: Any) -> bool:
         )
         if remote and local:
             return remote == local
-    return _norm(relation.get("naam")) == _norm(getattr(company, "name", None))
+    # Against the name we would have *pushed* (the legal one where there is one), and against
+    # the label as well: an agency that created the relation by hand before connecting the
+    # integration typed whichever of the two it thinks in.
+    remote_name = _norm(relation.get("naam"))
+    return remote_name is not None and remote_name in {
+        _norm(document_name_of(company)),
+        _norm(getattr(company, "name", None)),
+    }
 
 
 def _norm(value: Any) -> str | None:

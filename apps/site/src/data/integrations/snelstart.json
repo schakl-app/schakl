@@ -3,7 +3,7 @@
   "name": "SnelStart",
   "order": 21,
   "category": "accounting",
-  "status": "beta",
+  "status": "live",
   "lucide": "ledger",
   "mark": {
     "monogram": "SS",

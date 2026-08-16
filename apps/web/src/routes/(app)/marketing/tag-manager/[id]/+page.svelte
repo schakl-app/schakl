@@ -26,6 +26,50 @@
   let kind = $state("ga4_event");
   let triggerKind = $state("form_submit");
 
+  type Workspace = Awaited<typeof data.workspace>;
+  type Versions = Awaited<typeof data.versions>;
+
+  /**
+   * The two live halves, resolved into `$state` and never awaited in the markup: a raw `{#await}`
+   * re-enters its pending branch on every invalidation, so submitting the conversion form would
+   * blank the lists behind the dialog it was typed into (docs/PERFORMANCE.md).
+   *
+   * Both keep a pending flag of their own, because "we are still asking Google" and "this
+   * container has no tags" are different answers and only one of them is true at a time.
+   */
+  let workspace = $state<Workspace | null>(null);
+  let workspacePending = $state(true);
+  $effect(() => {
+    const promise = data.workspace;
+    workspacePending = true;
+    void promise.then((value) => {
+      // A stale resolution loses: a form post re-runs the load, so two can be in flight.
+      if (data.workspace !== promise) return;
+      workspace = value;
+      workspacePending = false;
+    });
+  });
+
+  let versions = $state<Versions | null>(null);
+  let versionsPending = $state(true);
+  $effect(() => {
+    const promise = data.versions;
+    versionsPending = true;
+    void promise.then((value) => {
+      if (data.versions !== promise) return;
+      versions = value;
+      versionsPending = false;
+    });
+  });
+
+  const tags = $derived(workspace?.tags ?? []);
+  const triggers = $derived(workspace?.triggers ?? []);
+  const variables = $derived(workspace?.variables ?? []);
+  const versionRows = $derived(versions?.versions ?? []);
+  // The first refusal either half met. Shown once at the top rather than per section: they share
+  // one grant and one workspace resolution, so a refusal is nearly always about both.
+  const liveError = $derived(workspace?.error ?? versions?.error ?? null);
+
   const companyName = $derived(
     container.company_id
       ? (data.companies.find((c) => c.id === container.company_id)?.name ?? "")
@@ -110,12 +154,13 @@
     <span class="min-w-0 break-words">{container.last_error}</span>
   </p>
 {/if}
-{#if data.liveError}
-  <!-- A refusal on one live read blanks that section only; saying so beats five empty lists
-       that look exactly like an empty container. -->
+{#if liveError}
+  <!-- A refusal on the live half blanks those sections only; saying so beats five empty lists
+       that look exactly like an empty container. It arrives with the stream, so it appears a
+       moment after the shell — which is right: it is an answer, and there was not one yet. -->
   <p class="mb-4 flex items-start gap-2 text-sm text-text">
     <AlertTriangle size={16} class="mt-0.5 shrink-0" aria-hidden="true" />
-    <span>{t(data.liveError)}</span>
+    <span>{t(liveError)}</span>
   </p>
 {/if}
 
@@ -141,7 +186,16 @@
     <div>
       <dt class="text-xs text-text-muted">{t("gtm.staged")}</dt>
       <dd class="mt-0.5 text-text">
-        {data.status && data.status.changes > 0 ? data.status.changes : t("gtm.staged_none")}
+        <!-- Three states, not two: still asking, nothing staged, or a number. Printing
+             "niets klaargezet" while the answer is in flight would be a wrong answer rather
+             than a slow one. -->
+        {#if workspacePending}
+          <span class="text-text-muted">{t("common.loading")}</span>
+        {:else}
+          {workspace && workspace.status && workspace.status.changes > 0
+            ? workspace.status.changes
+            : t("gtm.staged_none")}
+        {/if}
       </dd>
     </div>
   </dl>
@@ -192,11 +246,13 @@
   <!-- Tags -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="mb-3 text-sm font-semibold text-text">{t("gtm.tags.title")}</h2>
-    {#if data.tags.length === 0}
+    {#if workspacePending}
+      <p class="text-sm text-text-muted">{t("gtm.live_loading")}</p>
+    {:else if tags.length === 0}
       <p class="text-sm text-text-muted">{t("gtm.tags.empty")}</p>
     {:else}
       <ul class="divide-y divide-border">
-        {#each data.tags as tag (tag.tag_id)}
+        {#each tags as tag (tag.tag_id)}
           <li class="flex items-start gap-3 py-2">
             <div class="min-w-0 flex-1">
               <span class="block truncate text-sm text-text">{tag.name}</span>
@@ -222,11 +278,13 @@
   <!-- Triggers + variables -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="mb-3 text-sm font-semibold text-text">{t("gtm.triggers.title")}</h2>
-    {#if data.triggers.length === 0}
+    {#if workspacePending}
+      <p class="text-sm text-text-muted">{t("gtm.live_loading")}</p>
+    {:else if triggers.length === 0}
       <p class="text-sm text-text-muted">{t("gtm.triggers.empty")}</p>
     {:else}
       <ul class="mb-5 divide-y divide-border">
-        {#each data.triggers as trigger (trigger.trigger_id)}
+        {#each triggers as trigger (trigger.trigger_id)}
           <li class="py-2">
             <span class="block truncate text-sm text-text">{trigger.name}</span>
             <span class="mt-0.5 block text-xs text-text-muted">{trigger.type}</span>
@@ -237,11 +295,13 @@
     <h2 class="mb-3 mt-5 border-t border-border pt-4 text-sm font-semibold text-text">
       {t("gtm.variables.title")}
     </h2>
-    {#if data.variables.length === 0}
+    {#if workspacePending}
+      <p class="text-sm text-text-muted">{t("gtm.live_loading")}</p>
+    {:else if variables.length === 0}
       <p class="text-sm text-text-muted">{t("gtm.variables.empty")}</p>
     {:else}
       <ul class="divide-y divide-border">
-        {#each data.variables as variable (variable.variable_id)}
+        {#each variables as variable (variable.variable_id)}
           <li class="py-2">
             <span class="block truncate text-sm text-text">{variable.name}</span>
             <span class="mt-0.5 block text-xs text-text-muted">{variable.type}</span>
@@ -277,11 +337,13 @@
     {/if}
   </div>
 
-  {#if data.versions.length === 0}
+  {#if versionsPending}
+    <p class="text-sm text-text-muted">{t("gtm.live_loading")}</p>
+  {:else if versionRows.length === 0}
     <p class="text-sm text-text-muted">{t("gtm.versions.empty")}</p>
   {:else}
     <ul class="divide-y divide-border">
-      {#each data.versions as version (version.version_id)}
+      {#each versionRows as version (version.version_id)}
         <li class="flex items-start gap-3 py-2">
           <div class="min-w-0 flex-1">
             <span class="block truncate text-sm text-text">

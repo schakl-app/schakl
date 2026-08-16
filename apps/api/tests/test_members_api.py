@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import uuid
+
+from app.core.auth.models import User
+from app.db import async_session_maker
 from tests.conftest import auth_cookie, make_tenant
 
 
@@ -192,8 +196,15 @@ async def test_lookup_open_to_plain_members(client_for) -> None:
         assert r.status_code == 200
         rows = r.json()
         assert len(rows) == 1
-        # avatar_url joined the safe minimal shape in #122 (effective avatar for pickers).
-        assert set(rows[0].keys()) == {"user_id", "full_name", "email", "avatar_url"}
+        # avatar_url joined the safe minimal shape in #122 (effective avatar for pickers);
+        # is_active is what lets a picker retire a deactivated colleague without losing them.
+        assert set(rows[0].keys()) == {
+            "user_id",
+            "full_name",
+            "email",
+            "avatar_url",
+            "is_active",
+        }
 
 
 async def test_lookup_is_staff_only(client_for) -> None:
@@ -285,9 +296,7 @@ async def test_password_policy_applies_everywhere(client_for) -> None:
     t = await make_tenant("mem-password-policy")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
-        rejected = await c.patch(
-            "/api/v1/users/me", json={"password": "kort"}, headers=headers
-        )
+        rejected = await c.patch("/api/v1/users/me", json={"password": "kort"}, headers=headers)
         assert rejected.status_code == 400, rejected.text
         # FastAPI Users' reason travels through the app's own envelope (errors.py).
         assert rejected.json()["error"]["message"] == "errors.password_too_short"
@@ -296,3 +305,37 @@ async def test_password_policy_applies_everywhere(client_for) -> None:
             "/api/v1/users/me", json={"password": "lang-genoeg-wachtwoord"}, headers=headers
         )
         assert accepted.status_code == 200, accepted.text
+
+
+async def test_lookup_flags_a_deactivated_account_and_still_returns_it(client_for) -> None:
+    """A deactivated colleague is answered, carrying ``is_active=False``.
+
+    Both halves matter and they pull in opposite directions, which is why neither can be left
+    to a caller's memory. Dropping the row would blank the assignee on every task the person
+    was holding when they left, and make "show me what she was working on" unaskable. Handing
+    it back unmarked is how the pickers got here: an account that cannot sign in sat between
+    two colleagues, spelled identically, as an ordinary suggestion. The flag is what lets the
+    web put them behind the search instead of choosing one of the two mistakes.
+    """
+    t = await make_tenant("mem-lookup-inactive")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "vertrokken@example.com", "full_name": "Vertrokken", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        left = uuid.UUID(invited.json()["user_id"])
+
+        async with async_session_maker() as session:
+            user = await session.get(User, left)
+            assert user is not None
+            user.is_active = False
+            await session.commit()
+
+        rows = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        by_email = {m["email"]: m for m in rows}
+        assert "vertrokken@example.com" in by_email, "a deactivated colleague must stay nameable"
+        assert by_email["vertrokken@example.com"]["is_active"] is False
+        assert by_email[t.user.email]["is_active"] is True

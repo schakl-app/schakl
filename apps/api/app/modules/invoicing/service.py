@@ -38,6 +38,7 @@ from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.hosts import org_base_url
 from app.core.models import OrgSettings
+from app.core.naming import document_name_of
 from app.core.numbering import format_number
 from app.core.payments import available_accounts
 from app.core.phone import normalize_phone
@@ -248,9 +249,15 @@ _UNINVOICED_GROUP_LABEL = {
     "user": ("u.full_name", "LEFT JOIN users u ON u.id = te.user_id"),
 }
 
-#: Company columns a document snapshot copies (models.Company, issue #11).
+#: Company columns a document snapshot copies verbatim (models.Company, issue #11).
+#:
+#: ``name`` is deliberately **not** in this tuple. It is the one field of the addressee that is
+#: not a copy but a *resolution*: what a document is addressed to is the client's legal name
+#: where they have one, and their label where they do not (``app/core/naming.py``). Copying the
+#: column would put "Bakkerij Jansen" on an invoice the accountant of J. Jansen Holding B.V.
+#: has to book.
 _CUSTOMER_FIELDS = (
-    "name", "address_line1", "address_line2", "postal_code", "city", "country",
+    "address_line1", "address_line2", "postal_code", "city", "country",
     "vat_number", "coc_number", "client_number",
 )
 
@@ -791,9 +798,9 @@ async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
     row = (
         await ctx.session.execute(
             text(
-                "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                " house_number, address_line2, postal_code, city, country, client_number"
-                " FROM companies WHERE id = :cid AND org_id = :oid"
+                "SELECT id, name, legal_name, invoice_email, vat_number, coc_number,"
+                " address_line1, house_number, address_line2, postal_code, city, country,"
+                " client_number FROM companies WHERE id = :cid AND org_id = :oid"
             ),
             {"cid": company_id, "oid": ctx.org.id},
         )
@@ -831,7 +838,22 @@ async def _contact_party(ctx: Any, contact_id: uuid.UUID) -> tuple[str | None, s
 def _customer_snapshot(
     company: Any, *, email: str | None, attn: str | None = None
 ) -> dict[str, Any]:
-    data = {field: company[field] for field in _CUSTOMER_FIELDS}
+    data: dict[str, Any] = {field: company[field] for field in _CUSTOMER_FIELDS}
+    # Who the document is addressed to: the legal name where the client has one, else the label
+    # (``app/core/naming.py``). It lands in ``name`` — the key the PDF's bill-to block, the UBL
+    # party, the public page and every tenant's own Jinja design already read — so this needs no
+    # template change and no second key that could disagree with the first.
+    data["name"] = document_name_of(company)
+    # …and the label beside it, because the snapshot is a *record*: an invoice e-mail greets a
+    # human and should say what the agency calls them, UBL has a separate element for it
+    # (BT-45), and a document read back in two years should answer "which client was this?"
+    # without a join to a row that may have been renamed since. Absent on documents issued
+    # before the split, which is why every reader of it falls back to ``name``.
+    #
+    # Called ``trade_name`` and not ``label``: the renderer's own ``customer_values`` already
+    # has a ``label``, and there it means the *heading* over the block ("Aan:"). Two keys one
+    # dict apart meaning different things is a bug with a long fuse.
+    data["trade_name"] = (company["name"] or "").strip() or None
     data["address_line1"] = street_line(company["address_line1"], company["house_number"])
     data["email"] = email or company["invoice_email"]
     # The contact the document is addressed to. Frozen here with the rest of the addressee,

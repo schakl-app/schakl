@@ -253,8 +253,8 @@ async def link_google_ads_account(
     # Fill thirteen months in the background, so a year-over-year comparison works the day after
     # linking rather than a year after. Deferred so this transaction has committed before the
     # job reads the row, and keyed so re-linking does not queue a second one. A queue miss is
-    # not fatal — the nightly run catches up — so it is logged rather than failing the link the
-    # user actually asked for.
+    # not fatal — the nightly run reads `backfilled_at` and queues anything unfinished (#381) —
+    # so it is logged rather than failing the link the user actually asked for.
     try:
         await enqueue(
             "google_ads_backfill_account",

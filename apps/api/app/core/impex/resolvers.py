@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import column, select, table
+from sqlalchemy import column, or_, select, table
 
 from app.core.tenancy import RequestContext
 
@@ -19,12 +19,35 @@ _users = table("users", column("id"), column("email"))
 _memberships = table("memberships", column("user_id"), column("org_id"))
 
 
+#: Tables whose rows answer to more than one name, and the extra columns to try.
+#:
+#: A client has a label and, sometimes, a legal name (``app/core/naming.py``), and a spreadsheet
+#: from the bookkeeper carries the one this product does *not* print. Resolving only ``name``
+#: reported half such a file as "unresolved reference" over rows whose client is plainly there,
+#: which is the kind of refusal a user cannot act on: nothing on the screen names the other
+#: column, and the fix — retyping the label into a file exported from somewhere else — undoes
+#: the reason they had a spreadsheet.
+#:
+#: Stated here, once, rather than as an argument at each of the eight call sites that resolve a
+#: client: core already knows the table name and that ``name`` is its label, and "this table has
+#: a second name" is the same kind of knowledge. Ambiguity is decided over the *union*, so a
+#: reference matching two different clients by two different columns is still refused.
+_ALT_NAME_COLUMNS: dict[str, tuple[str, ...]] = {"companies": ("legal_name",)}
+
+
 def name_or_id_resolver(table_name: str):
     """A resolver over ``table_name`` (id/name/org_id columns): UUID → by id, else exact name.
 
     A name carried by two rows is ambiguous — erroring beats silently picking one.
     """
-    ref_table = table(table_name, column("id"), column("name"), column("org_id"))
+    alt_names = _ALT_NAME_COLUMNS.get(table_name, ())
+    ref_table = table(
+        table_name,
+        column("id"),
+        column("name"),
+        column("org_id"),
+        *(column(name) for name in alt_names),
+    )
 
     async def resolve(ctx: RequestContext, refs: list[str]) -> dict[str, uuid.UUID | str]:
         by_id: dict[str, uuid.UUID] = {}
@@ -49,19 +72,25 @@ def name_or_id_resolver(table_name: str):
             for ref, ref_id in by_id.items():
                 resolved[ref] = ref_id if ref_id in found else "impex.errors.unresolved_reference"
         if names:
-            matches: dict[str, list[uuid.UUID]] = {}
+            name_columns = [ref_table.c.name, *(ref_table.c[alt] for alt in alt_names)]
+            wanted = set(names)
+            matches: dict[str, set[uuid.UUID]] = {}
             rows = await ctx.session.execute(
-                select(ref_table.c.id, ref_table.c.name).where(
+                select(ref_table.c.id, *name_columns).where(
                     ref_table.c.org_id == ctx.org.id,
-                    ref_table.c.name.in_(names),
+                    or_(*(col.in_(names) for col in name_columns)),
                 )
             )
-            for row_id, name in rows:
-                matches.setdefault(name, []).append(row_id)
+            for row_id, *row_names in rows:
+                # A row matching on both of its names is still one row, so the bucket is a set:
+                # the ambiguity rule counts *clients*, not the ways one was found.
+                for value in row_names:
+                    if value in wanted:
+                        matches.setdefault(value, set()).add(row_id)
             for name in names:
-                found_ids = matches.get(name, [])
+                found_ids = matches.get(name, set())
                 if len(found_ids) == 1:
-                    resolved[name] = found_ids[0]
+                    resolved[name] = next(iter(found_ids))
                 elif not found_ids:
                     resolved[name] = "impex.errors.unresolved_reference"
                 else:

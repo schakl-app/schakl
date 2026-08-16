@@ -32,6 +32,7 @@
     user_id: string;
     full_name?: string | null;
     email: string | null;
+    is_active?: boolean;
   }
   interface Contact {
     id: string;

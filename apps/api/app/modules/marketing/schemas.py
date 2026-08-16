@@ -15,6 +15,7 @@ from app.modules.marketing.rankings import (
     DEFAULT_MIN_IMPRESSIONS,
     RankingSource,
 )
+from app.modules.marketing.reportsplit import ReportSplit
 
 
 # --- links (#132) ---------------------------------------------------------------------------- #
@@ -263,6 +264,44 @@ class RankingSettingsRead(BaseModel):
     show_landing_pages: bool = True
 
 
+# --- reporting a client with several websites (#381) ------------------------------------------ #
+class ReportSplitSettingsWrite(BaseModel):
+    """How a client's report treats a client with more than one website.
+
+    Every field optional and merged over what it inherits — ``RankingSettingsWrite``'s rule, so
+    an agency raising the house default reaches every client who never set one.
+    """
+
+    split: ReportSplit | None = None
+    #: Marketing links this client's report leaves out. Meaningful per client only, because a
+    #: link id is; an **exclusion** rather than an inclusion so linking a new property adds it
+    #: to the report, which is what linking a property means.
+    exclude: list[uuid.UUID] | None = None
+
+
+class LinkBrief(BaseModel):
+    """A link, as much of it as a chooser needs: what it is and what to call it.
+
+    Deliberately not :class:`LinkRead`. This rides the per-client settings payload that a
+    reporting screen already loads, and a screen offering "leave this property out of the
+    report" needs a name and an id — not sync health, not a connection owner, and not a config
+    blob (`docs/PERFORMANCE.md`: a row carries only what its screen draws).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: MarketingSource
+    display_name: str
+
+
+class ReportSplitSettingsRead(BaseModel):
+    """The resolved answer — never nulls, so no screen re-derives inheritance."""
+
+    split: ReportSplit = ReportSplit.PER_WEBSITE
+    exclude: list[uuid.UUID] = Field(default_factory=list)
+
+
 # --- per-client settings (#134, layout #192) -------------------------------------------------- #
 class CompanySettingsUpdate(BaseModel):
     """Per-client marketing preferences. Every field optional: send what changes.
@@ -283,6 +322,8 @@ class CompanySettingsUpdate(BaseModel):
     layout: dict | None = None
     compare: ComparePeriod | None = None
     rankings: RankingSettingsWrite | None = None
+    #: How this client's report handles their several websites (#381). Same rule again.
+    report: ReportSplitSettingsWrite | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -307,6 +348,13 @@ class CompanySettingsRead(BaseModel):
     #: linked. ``None`` = this client gets no rankings section — resolved here so the screen
     #: cannot promise one the run then drops.
     keyword_source: RankingSource | None = None
+    #: The stored per-website override; ``None`` = follows the org's (#381).
+    report: dict | None = None
+    #: …and what that resolves to, which is what a run will actually do.
+    report_resolved: ReportSplitSettingsRead = Field(default_factory=ReportSplitSettingsRead)
+    #: The client's active links, so the screen can offer "leave this property out" by name
+    #: rather than by id. Only ever a handful, and the screen already loads this row.
+    links: list[LinkBrief] = Field(default_factory=list)
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #
@@ -328,6 +376,8 @@ class MarketingSettingsRead(BaseModel):
     #: The house keyword-positions settings every client's report inherits (#373). Always
     #: resolved, for the same reason as ``default_compare``.
     rankings: RankingSettingsRead = Field(default_factory=RankingSettingsRead)
+    #: The house rule for a client with several websites (#381). Always resolved, same reason.
+    report: ReportSplitSettingsRead = Field(default_factory=ReportSplitSettingsRead)
 
 
 class MarketingSettingsWrite(BaseModel):
@@ -341,6 +391,8 @@ class MarketingSettingsWrite(BaseModel):
     default_compare: ComparePeriod | None = None
     #: The house keyword-positions settings (#373). Same rule: omitted keeps the stored one.
     rankings: RankingSettingsWrite | None = None
+    #: The house per-website rule (#381). Same rule again.
+    report: ReportSplitSettingsWrite | None = None
 
 
 class DrilldownRowOut(BaseModel):

@@ -55,16 +55,24 @@
   }
 
   /**
-   * Whether this client has what the section needs. `rankings` is the one section with two
-   * possible answers (#373), so it counts as wired up if *either* is linked — which is exactly
-   * what `RankingSource.AUTO` will do with it.
+   * Whether this client has what the section needs. Two sections have two possible answers and
+   * count as wired up if *either* is linked — `rankings` (#373: SE Ranking, or Search Console)
+   * and `search_engines` (#381: SE Ranking's per-engine positions, or GA4's organic split).
+   *
+   * Listing both here rather than special-casing `rankings` is the point: a section whose data
+   * has two possible sources is now a shape this product has twice, and the picker promising a
+   * section the run then drops is the failure #373 was about.
    */
+  const EITHER_OF: Record<string, string[]> = {
+    rankings: ["seranking", "gsc"],
+    search_engines: ["seranking", "ga4"],
+  };
+
   function connected(entry: SectionCatalogEntry): boolean | null {
     const source = sourceOf(entry);
     if (!source) return null;
-    if (source === "rankings") {
-      return linkedSources.includes("seranking") || linkedSources.includes("gsc");
-    }
+    const either = EITHER_OF[source];
+    if (either) return either.some((name) => linkedSources.includes(name));
     return linkedSources.includes(source);
   }
 

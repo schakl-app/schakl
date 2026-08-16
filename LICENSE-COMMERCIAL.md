@@ -89,6 +89,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/api/app/integrations/mollie/`
 - `apps/api/app/integrations/oxxa/`
 - `apps/api/app/integrations/snelstart/`
+- `apps/api/app/integrations/timeon/`
 - `apps/api/app/integrations/uptime/`
 - `apps/api/app/integrations/wordpress/`
 - `apps/web/src/lib/integrations/cloudflare/`
@@ -98,6 +99,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/lib/integrations/mollie/`
 - `apps/web/src/lib/integrations/oxxa/`
 - `apps/web/src/lib/integrations/snelstart/`
+- `apps/web/src/lib/integrations/timeon/`
 - `apps/web/src/lib/integrations/uptime/`
 - `apps/web/src/lib/integrations/wordpress/`
 - `apps/web/src/routes/(app)/settings/cloudflare/`
@@ -108,6 +110,8 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/routes/(app)/settings/mollie/`
 - `apps/web/src/routes/(app)/settings/oxxa/`
 - `apps/web/src/routes/(app)/settings/snelstart/`
+- `apps/web/src/routes/(app)/settings/timeon/`
+- `apps/web/src/routes/(app)/timeon/`
 - `apps/web/src/routes/(app)/settings/uptime/`
 
 Each covered directory carries a `LICENSE` file referring here. Code in these directories

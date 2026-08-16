@@ -25,11 +25,15 @@
     user_id: string;
     full_name?: string | null;
     email: string | null;
+    is_active?: boolean;
   }
   interface CompanyValues {
     /** Present when editing an existing client; scopes the notes editor's #task candidates. */
     id?: string;
+    /** What this client is called — the label every screen prints. */
     name?: string;
+    /** The entity a document is addressed to; blank means the label is also the legal name. */
+    legal_name?: string | null;
     /** Klantnummer; blank on create means the org's numbering allocates one. */
     client_number?: string | null;
     website?: string | null;
@@ -260,6 +264,26 @@
           {t("companies.billing_heading")}
         </legend>
         <div class="grid gap-3 sm:grid-cols-2">
+          <!-- The name a *document* is addressed to. It lives here rather than beside "Naam"
+               because what it belongs to is the block an invoice freezes, not the block a
+               screen prints — and because side by side, two boxes both labelled with a kind of
+               name is a question ("which one do I fill in?") where this is an answer ("this is
+               what your invoices will say"). The placeholder is the label, so leaving it empty
+               *shows* what happens: no hint needed for the common client, and the tenant who
+               invoices a holding company types it once. -->
+          <div class="sm:col-span-2">
+            <label for="{idPrefix}-legal-name" class="mb-1 block text-sm font-medium text-text">
+              {t("companies.legal_name")}
+            </label>
+            <input
+              id="{idPrefix}-legal-name"
+              name="legal_name"
+              value={company.legal_name ?? ""}
+              placeholder={company.name ?? ""}
+              class={inputClass}
+            />
+            <p class="mt-1 text-xs text-text-muted">{t("companies.legal_name_hint")}</p>
+          </div>
           <div>
             <label for="{idPrefix}-vat" class="mb-1 block text-sm font-medium text-text">
               {t("companies.vat_number")}

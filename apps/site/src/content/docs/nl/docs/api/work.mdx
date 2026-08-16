@@ -1,0 +1,1348 @@
+---
+title: "Werk: projecten, taken, uren"
+description: "Wat het bureau werkelijk doet, en wat het factureert: projecten met budgetten, taakborden en checklists, de timer en de weekstaat, en elk contactmoment op één tijdlijn."
+sidebar:
+  order: 2
+---
+
+Wat het bureau werkelijk doet, en wat het factureert: projecten met budgetten, taakborden en checklists, de timer en de weekstaat, en elk contactmoment op één tijdlijn.
+
+99 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `projects`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/projects` | `projects.project.read` |
+| `POST` `/projects` | `projects.project.write` |
+| `GET` `/projects/{project_id}` | `projects.project.read` |
+| `PATCH` `/projects/{project_id}` | `projects.project.write` |
+| `DELETE` `/projects/{project_id}` | `projects.project.delete` |
+| `GET` `/projects/dashboard-budgets` | `projects.project.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/projects`
+
+**List Projects**
+
+Recht: `projects.project.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `status` | string | Lifecycle status; comma-separate for several ('active,on_hold'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. |
+| `q` | string |  |
+| `unnamed` | boolean | Only projects nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. |
+| `mine` | boolean | Only projects I'm assigned to (primary or not) (default `false`) |
+| `sort` | string | name \| status \| start_date \| end_date \| budget_hours \| …, '-' desc |
+| `hours` | boolean | Include the budget burn-down; costs one grouped query (default `false`) |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+
+Antwoord: `200` · `Page_ProjectRead_`
+
+#### `POST /api/v1/projects`
+
+**Create Project**
+
+Recht: `projects.project.write`
+
+Request body: `ProjectCreate`
+
+Antwoord: `201` · `ProjectRead`
+
+#### `GET /api/v1/projects/{project_id}`
+
+**Get Project**
+
+Recht: `projects.project.read`
+
+Padparameters: `project_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `hours` | boolean | Include the budget burn-down for the current period; one extra query (default `false`) |
+
+Antwoord: `200` · `ProjectRead`
+
+#### `PATCH /api/v1/projects/{project_id}`
+
+**Update Project**
+
+Recht: `projects.project.write`
+
+Padparameters: `project_id`
+
+Request body: `ProjectUpdate`
+
+Antwoord: `200` · `ProjectRead`
+
+#### `DELETE /api/v1/projects/{project_id}`
+
+**Delete Project**
+
+Recht: `projects.project.delete`
+
+Padparameters: `project_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/projects/dashboard-budgets`
+
+**Dashboard Budgets** — The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
+
+Recht: `projects.project.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `4`) |
+
+Antwoord: `200` · `DashboardBudgetProject[]`
+
+</details>
+
+## `tasks`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/tasks` | `tasks.task.read` |
+| `POST` `/tasks` | `tasks.task.create` |
+| `GET` `/tasks/{task_id}` | `tasks.task.read` |
+| `PATCH` `/tasks/{task_id}` | `tasks.task.write` |
+| `DELETE` `/tasks/{task_id}` | `tasks.task.delete` |
+| `GET` `/tasks/{task_id}/ai-status` | `tasks.task.read` |
+| `POST` `/tasks/{task_id}/checklists` | `tasks.task.write` |
+| `PATCH` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
+| `DELETE` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/checklists/{checklist_id}/duplicate` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/checklists/{checklist_id}/items` | `tasks.task.write` |
+| `PATCH` `/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}` | `tasks.task.write` |
+| `DELETE` `/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/checklists/{checklist_id}/items/order` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/checklists/order` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/comments` | `tasks.comment.write` |
+| `PATCH` `/tasks/{task_id}/comments/{comment_id}` | `tasks.comment.write` |
+| `DELETE` `/tasks/{task_id}/comments/{comment_id}` | `tasks.comment.write` |
+| `PUT` `/tasks/{task_id}/labels` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/links` | `tasks.task.write` |
+| `DELETE` `/tasks/{task_id}/links/{link_id}` | `tasks.task.write` |
+| `GET` `/tasks/checklist-templates` | `tasks.task.write` |
+| `POST` `/tasks/checklist-templates` | `tasks.checklist_template.write` |
+| `PATCH` `/tasks/checklist-templates/{template_id}` | `tasks.checklist_template.write` |
+| `DELETE` `/tasks/checklist-templates/{template_id}` | `tasks.checklist_template.write` |
+| `GET` `/tasks/dashboard-groups` | `tasks.task.read` |
+| `GET` `/tasks/dashboard-mine` | `tasks.task.read` |
+| `GET` `/tasks/labels` | `tasks.task.read` |
+| `POST` `/tasks/labels` | `tasks.label.write` |
+| `PATCH` `/tasks/labels/{label_id}` | `tasks.label.write` |
+| `DELETE` `/tasks/labels/{label_id}` | `tasks.label.write` |
+| `GET` `/tasks/mine` | `tasks.task.read` |
+| `POST` `/tasks/recurrence/preview` | `tasks.task.write` |
+| `GET` `/tasks/schedules` | `tasks.schedule.read` |
+| `POST` `/tasks/schedules` | `tasks.schedule.write` |
+| `GET` `/tasks/schedules/{schedule_id}` | `tasks.schedule.read` |
+| `PATCH` `/tasks/schedules/{schedule_id}` | `tasks.schedule.write` |
+| `DELETE` `/tasks/schedules/{schedule_id}` | `tasks.schedule.write` |
+| `POST` `/tasks/schedules/{schedule_id}/log-time` | `time.entry.write` |
+| `GET` `/tasks/statuses` | `tasks.task.read` |
+| `POST` `/tasks/statuses` | `tasks.status.write` |
+| `PATCH` `/tasks/statuses/{status_id}` | `tasks.status.write` |
+| `DELETE` `/tasks/statuses/{status_id}` | `tasks.status.write` |
+| `GET` `/tasks/templates` | `tasks.template.apply` |
+| `POST` `/tasks/templates` | `tasks.template.write` |
+| `GET` `/tasks/templates/{template_id}` | `tasks.template.apply` |
+| `PATCH` `/tasks/templates/{template_id}` | `tasks.template.write` |
+| `DELETE` `/tasks/templates/{template_id}` | `tasks.template.write` |
+| `POST` `/tasks/templates/{template_id}/apply` | `tasks.template.apply` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/tasks`
+
+**List Tasks**
+
+Recht: `tasks.task.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `unlinked` | boolean | Only tasks with no client and no project (default `false`) |
+| `assignee_user_id` | string |  |
+| `assignee_contact_id` | string |  |
+| `status` | string | A configured status key |
+| `label_id` | string |  |
+| `due` | `overdue` · `today` · `week` |  |
+| `due_from` | string | Deadline window start (the Agenda feed) |
+| `due_to` | string | Deadline window end (inclusive) |
+| `q` | string |  |
+| `unnamed` | boolean | Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. |
+| `sort` | string | title \| due_date \| priority \| status \| assignee \| …, '-' desc |
+| `meta` | boolean | Include label/checklist/comment aggregates (default `true`) |
+| `hours` | boolean | Include the hour budget's burn (logged/remaining minutes); costs one grouped query. Omitted for a caller without time.entry.read rather than refused. (default `false`) |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+
+Antwoord: `200` · `Page_TaskListItem_`
+
+#### `POST /api/v1/tasks`
+
+**Create Task**
+
+Recht: `tasks.task.create`
+
+Request body: `TaskCreate`
+
+Antwoord: `201` · `TaskRead`
+
+#### `GET /api/v1/tasks/{task_id}`
+
+**Get Task** — The full card: labels, checklists, comments and recent activity included.
+
+Recht: `tasks.task.read`
+
+Padparameters: `task_id`
+
+Antwoord: `200` · `TaskDetail`
+
+#### `PATCH /api/v1/tasks/{task_id}`
+
+**Update Task**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `TaskUpdate`
+
+Antwoord: `200` · `TaskRead`
+
+#### `DELETE /api/v1/tasks/{task_id}`
+
+**Delete Task**
+
+Recht: `tasks.task.delete`
+
+Padparameters: `task_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/tasks/{task_id}/ai-status`
+
+**Get Task Ai Status** — Just the "is schakl still filling this in?" flag (#327).
+
+Recht: `tasks.task.read`
+
+Padparameters: `task_id`
+
+Antwoord: `200` · `TaskAIStatusRead`
+
+#### `POST /api/v1/tasks/{task_id}/checklists`
+
+**Add Checklist**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `ChecklistCreate`
+
+Antwoord: `201` · `ChecklistRead`
+
+#### `PATCH /api/v1/tasks/{task_id}/checklists/{checklist_id}`
+
+**Update Checklist**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`
+
+Request body: `ChecklistUpdate`
+
+Antwoord: `200` · `ChecklistRead`
+
+#### `DELETE /api/v1/tasks/{task_id}/checklists/{checklist_id}`
+
+**Delete Checklist**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/tasks/{task_id}/checklists/{checklist_id}/duplicate`
+
+**Duplicate Checklist** — Copy a checklist beside its source, items and all — a second run of the same steps.
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`
+
+Request body: `ChecklistDuplicate`
+
+Antwoord: `201` · `ChecklistRead`
+
+#### `POST /api/v1/tasks/{task_id}/checklists/{checklist_id}/items`
+
+**Add Checklist Item**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`
+
+Request body: `ChecklistItemCreate`
+
+Antwoord: `201` · `ChecklistItemRead`
+
+#### `PATCH /api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}`
+
+**Update Checklist Item**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`, `item_id`
+
+Request body: `ChecklistItemUpdate`
+
+Antwoord: `200` · `ChecklistItemRead`
+
+#### `DELETE /api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}`
+
+**Delete Checklist Item**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`, `item_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/tasks/{task_id}/checklists/{checklist_id}/items/order`
+
+**Reorder Checklist Items** — Set the order of one checklist's items in one call.
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `checklist_id`
+
+Request body: `ChecklistItemOrder`
+
+Antwoord: `200` · `ChecklistOrderRead`
+
+#### `POST /api/v1/tasks/{task_id}/checklists/order`
+
+**Reorder Checklists** — Set the order of a task's checklists in one call (``ChecklistOrder`` for the contract).
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `ChecklistOrder`
+
+Antwoord: `200` · `ChecklistOrderRead`
+
+#### `POST /api/v1/tasks/{task_id}/comments`
+
+**Add Comment**
+
+Recht: `tasks.comment.write`
+
+Padparameters: `task_id`
+
+Request body: `CommentCreate`
+
+Antwoord: `201` · `CommentRead`
+
+#### `PATCH /api/v1/tasks/{task_id}/comments/{comment_id}`
+
+**Update Comment**
+
+Recht: `tasks.comment.write`
+
+Padparameters: `task_id`, `comment_id`
+
+Request body: `CommentUpdate`
+
+Antwoord: `200` · `CommentRead`
+
+#### `DELETE /api/v1/tasks/{task_id}/comments/{comment_id}`
+
+**Delete Comment**
+
+Recht: `tasks.comment.write`
+
+Padparameters: `task_id`, `comment_id`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/tasks/{task_id}/labels`
+
+**Set Task Labels**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `TaskLabelsSet`
+
+Antwoord: `200` · `LabelRead[]`
+
+#### `POST /api/v1/tasks/{task_id}/links`
+
+**Add Link**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `app__modules__tasks__schemas__LinkCreate`
+
+Antwoord: `201` · `app__modules__tasks__schemas__LinkRead`
+
+#### `DELETE /api/v1/tasks/{task_id}/links/{link_id}`
+
+**Delete Link**
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`, `link_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/tasks/checklist-templates`
+
+**List Checklist Templates**
+
+Recht: `tasks.task.write`
+
+Antwoord: `200` · `ChecklistTemplateRead[]`
+
+#### `POST /api/v1/tasks/checklist-templates`
+
+**Create Checklist Template**
+
+Recht: `tasks.checklist_template.write`
+
+Request body: `ChecklistTemplateCreate`
+
+Antwoord: `201` · `ChecklistTemplateRead`
+
+#### `PATCH /api/v1/tasks/checklist-templates/{template_id}`
+
+**Update Checklist Template**
+
+Recht: `tasks.checklist_template.write`
+
+Padparameters: `template_id`
+
+Request body: `ChecklistTemplateUpdate`
+
+Antwoord: `200` · `ChecklistTemplateRead`
+
+#### `DELETE /api/v1/tasks/checklist-templates/{template_id}`
+
+**Delete Checklist Template**
+
+Recht: `tasks.checklist_template.write`
+
+Padparameters: `template_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/tasks/dashboard-groups`
+
+**Dashboard Groups** — Open-task counts grouped by project, then company, in one compact query.
+
+Recht: `tasks.task.read`
+
+Antwoord: `200` · `DashboardTaskGroup[]`
+
+#### `GET /api/v1/tasks/dashboard-mine`
+
+**Dashboard Mine** — Compact personal task list for the dashboard tile.
+
+Recht: `tasks.task.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `20`) |
+
+Antwoord: `200` · `DashboardTaskItem[]`
+
+#### `GET /api/v1/tasks/labels`
+
+**List Labels**
+
+Recht: `tasks.task.read`
+
+Antwoord: `200` · `LabelRead[]`
+
+#### `POST /api/v1/tasks/labels`
+
+**Create Label**
+
+Recht: `tasks.label.write`
+
+Request body: `LabelCreate`
+
+Antwoord: `201` · `LabelRead`
+
+#### `PATCH /api/v1/tasks/labels/{label_id}`
+
+**Update Label**
+
+Recht: `tasks.label.write`
+
+Padparameters: `label_id`
+
+Request body: `LabelUpdate`
+
+Antwoord: `200` · `LabelRead`
+
+#### `DELETE /api/v1/tasks/labels/{label_id}`
+
+**Delete Label**
+
+Recht: `tasks.label.write`
+
+Padparameters: `label_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/tasks/mine`
+
+**My Open Tasks** — Open/in-progress tasks assigned to the current user (My Day).
+
+Recht: `tasks.task.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `20`) |
+
+Antwoord: `200` · `TaskListItem[]`
+
+#### `POST /api/v1/tasks/recurrence/preview`
+
+**Preview Recurrence** — What the rule being composed resolves to — "Volgende taak: za 13 sep 2026".
+
+Recht: `tasks.task.write`
+
+Request body: `RecurrencePreview`
+
+Antwoord: `200` · `RecurrencePreviewRead`
+
+#### `GET /api/v1/tasks/schedules`
+
+**List Schedules**
+
+Recht: `tasks.schedule.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `user_ids` | string[] |  |
+| `task_id` | string |  |
+
+Antwoord: `200` · `ScheduleItem[]`
+
+#### `POST /api/v1/tasks/schedules`
+
+**Create Schedule**
+
+Recht: `tasks.schedule.write`
+
+Request body: `ScheduleCreate`
+
+Antwoord: `201` · `ScheduleRead`
+
+#### `GET /api/v1/tasks/schedules/{schedule_id}`
+
+**Get Schedule**
+
+Recht: `tasks.schedule.read`
+
+Padparameters: `schedule_id`
+
+Antwoord: `200` · `ScheduleRead`
+
+#### `PATCH /api/v1/tasks/schedules/{schedule_id}`
+
+**Update Schedule**
+
+Recht: `tasks.schedule.write`
+
+Padparameters: `schedule_id`
+
+Request body: `ScheduleUpdate`
+
+Antwoord: `200` · `ScheduleRead`
+
+#### `DELETE /api/v1/tasks/schedules/{schedule_id}`
+
+**Delete Schedule**
+
+Recht: `tasks.schedule.write`
+
+Padparameters: `schedule_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/tasks/schedules/{schedule_id}/log-time`
+
+**Log Schedule Time**
+
+Recht: `time.entry.write`
+
+Padparameters: `schedule_id`
+
+Request body: `ScheduleLogTime`
+
+Antwoord: `200` · `ScheduleRead`
+
+#### `GET /api/v1/tasks/statuses`
+
+**List Statuses**
+
+Recht: `tasks.task.read`
+
+Antwoord: `200` · `StatusRead[]`
+
+#### `POST /api/v1/tasks/statuses`
+
+**Create Status**
+
+Recht: `tasks.status.write`
+
+Request body: `StatusCreate`
+
+Antwoord: `201` · `StatusRead`
+
+#### `PATCH /api/v1/tasks/statuses/{status_id}`
+
+**Update Status**
+
+Recht: `tasks.status.write`
+
+Padparameters: `status_id`
+
+Request body: `StatusUpdate`
+
+Antwoord: `200` · `StatusRead`
+
+#### `DELETE /api/v1/tasks/statuses/{status_id}`
+
+**Delete Status**
+
+Recht: `tasks.status.write`
+
+Padparameters: `status_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/tasks/templates`
+
+**List Templates**
+
+Recht: `tasks.template.apply`
+
+Antwoord: `200` · `app__modules__tasks__schemas__TemplateRead[]`
+
+#### `POST /api/v1/tasks/templates`
+
+**Create Template**
+
+Recht: `tasks.template.write`
+
+Request body: `app__modules__tasks__schemas__TemplateCreate`
+
+Antwoord: `201` · `app__modules__tasks__schemas__TemplateRead`
+
+#### `GET /api/v1/tasks/templates/{template_id}`
+
+**Get Template**
+
+Recht: `tasks.template.apply`
+
+Padparameters: `template_id`
+
+Antwoord: `200` · `app__modules__tasks__schemas__TemplateRead`
+
+#### `PATCH /api/v1/tasks/templates/{template_id}`
+
+**Update Template**
+
+Recht: `tasks.template.write`
+
+Padparameters: `template_id`
+
+Request body: `app__modules__tasks__schemas__TemplateUpdate`
+
+Antwoord: `200` · `app__modules__tasks__schemas__TemplateRead`
+
+#### `DELETE /api/v1/tasks/templates/{template_id}`
+
+**Delete Template**
+
+Recht: `tasks.template.write`
+
+Padparameters: `template_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/tasks/templates/{template_id}/apply`
+
+**Apply Template**
+
+Recht: `tasks.template.apply`
+
+Padparameters: `template_id`
+
+Request body: `TemplateApply`
+
+Antwoord: `201` · `TaskRead[]`
+
+</details>
+
+## `time`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/time/cost` | `time.report.read` |
+| `GET` `/time/day` | `time.entry.read` |
+| `PUT` `/time/drafts/{entry_date}` | `time.entry.write` |
+| `DELETE` `/time/drafts/{entry_date}` | `time.entry.write` |
+| `GET` `/time/entries` | `time.entry.read` |
+| `POST` `/time/entries` | `time.entry.write` |
+| `GET` `/time/entries/{entry_id}` | `time.entry.read` |
+| `PATCH` `/time/entries/{entry_id}` | `time.entry.write` |
+| `DELETE` `/time/entries/{entry_id}` | `time.entry.write` |
+| `POST` `/time/entries/approve` | `time.entry.approve` |
+| `POST` `/time/entries/invoice` | `time.entry.invoice` |
+| `GET` `/time/entry-types` | `time.entry_type.read` |
+| `POST` `/time/entry-types` | `time.entry_type.manage` |
+| `PATCH` `/time/entry-types/{type_id}` | `time.entry_type.manage` |
+| `DELETE` `/time/entry-types/{type_id}` | `time.entry_type.manage` |
+| `GET` `/time/logged` | `time.entry.read` |
+| `GET` `/time/report` | `time.report.read` |
+| `GET` `/time/stats/productivity` | `time.report.read` |
+| `GET` `/time/stats/revenue` | `time.report.read` |
+| `GET` `/time/stats/team-summary` | `time.report.read` |
+| `GET` `/time/summary` | `time.entry.read` |
+| `GET` `/time/timer` | `time.entry.read` |
+| `POST` `/time/timer/start` | `time.entry.write` |
+| `POST` `/time/timer/stop` | `time.entry.write` |
+| `GET` `/time/timesheet` | `time.entry.read` |
+| `GET` `/time/workspace` | `time.entry.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/time/cost`
+
+**Project Cost** — A project's cost from employee rates (#111). The service also demands ``leave.rate.read:any`` — the figure is salary-derived.
+
+Recht: `time.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `project_id` | string · verplicht |  |
+
+Antwoord: `200` · `ProjectCost`
+
+#### `GET /api/v1/time/day`
+
+**Day View** — One day's entries (calendar day view) plus total + billable minutes.
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date` | string · verplicht |  |
+| `user_id` | string |  |
+
+Antwoord: `200` · `DayView`
+
+#### `PUT /api/v1/time/drafts/{entry_date}`
+
+**Upsert Draft** — Upsert the caller's own draft for a day. Author-only by construction.
+
+Recht: `time.entry.write`
+
+Padparameters: `entry_date`
+
+Request body: `TimeEntryDraftPayload`
+
+Antwoord: `200` · `TimeEntryDraftRead`
+
+#### `DELETE /api/v1/time/drafts/{entry_date}`
+
+**Delete Draft** — Discard the caller's own draft. Idempotent.
+
+Recht: `time.entry.write`
+
+Padparameters: `entry_date`
+
+Antwoord: `204`
+
+#### `GET /api/v1/time/entries`
+
+**List Entries**
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `user_id` | string |  |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `task_id` | string |  |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `entry_type` | string | Filter by entry type key |
+| `running` | boolean | Filter running timers in/out; unset = both |
+| `all_users` | boolean | The whole team's entries, not just mine. Free to anyone when the query names a company/project/task — those hours already show as a budget bar; managers only when it doesn't. (default `false`) |
+| `sort` | string | date \| employee \| company \| project \| task \| minutes \| …, '-' desc |
+| `count` | boolean | Compute total; set false for lightweight lookups (default `true`) |
+
+Antwoord: `200` · `Page_TimeEntryRead_`
+
+#### `POST /api/v1/time/entries`
+
+**Create Entry**
+
+Recht: `time.entry.write`
+
+Request body: `TimeEntryCreate`
+
+Antwoord: `201` · `TimeEntryRead`
+
+#### `GET /api/v1/time/entries/{entry_id}`
+
+**Get Entry**
+
+Recht: `time.entry.read`
+
+Padparameters: `entry_id`
+
+Antwoord: `200` · `TimeEntryRead`
+
+#### `PATCH /api/v1/time/entries/{entry_id}`
+
+**Update Entry**
+
+Recht: `time.entry.write`
+
+Padparameters: `entry_id`
+
+Request body: `TimeEntryUpdate`
+
+Antwoord: `200` · `TimeEntryRead`
+
+#### `DELETE /api/v1/time/entries/{entry_id}`
+
+**Delete Entry**
+
+Recht: `time.entry.write`
+
+Padparameters: `entry_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/time/entries/approve`
+
+**Approve Entries**
+
+Recht: `time.entry.approve`
+
+Request body: `EntryApproval`
+
+Antwoord: `200` · `BulkResult`
+
+#### `POST /api/v1/time/entries/invoice`
+
+**Invoice Entries**
+
+Recht: `time.entry.invoice`
+
+Request body: `EntryInvoiced`
+
+Antwoord: `200` · `BulkResult`
+
+#### `GET /api/v1/time/entry-types`
+
+**List Entry Types**
+
+Recht: `time.entry_type.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `TimeEntryTypeRead[]`
+
+#### `POST /api/v1/time/entry-types`
+
+**Create Entry Type**
+
+Recht: `time.entry_type.manage`
+
+Request body: `TimeEntryTypeCreate`
+
+Antwoord: `201` · `TimeEntryTypeRead`
+
+#### `PATCH /api/v1/time/entry-types/{type_id}`
+
+**Update Entry Type**
+
+Recht: `time.entry_type.manage`
+
+Padparameters: `type_id`
+
+Request body: `TimeEntryTypeUpdate`
+
+Antwoord: `200` · `TimeEntryTypeRead`
+
+#### `DELETE /api/v1/time/entry-types/{type_id}`
+
+**Delete Entry Type**
+
+Recht: `time.entry_type.manage`
+
+Padparameters: `type_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/time/logged`
+
+**Logged** — Team-wide logged minutes for a company/project/task (budget burn-down).
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `task_id` | string |  |
+| `date_from` | string |  |
+| `date_to` | string |  |
+
+Antwoord: `200` · `LoggedSummary`
+
+#### `GET /api/v1/time/report`
+
+**Time Report** — Org-wide entries with filter + sign-off totals, for the hours overview.
+
+Recht: `time.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `200`) |
+| `offset` | integer |  (default `0`) |
+| `user_id` | string |  |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `billable` | boolean |  |
+| `approved` | boolean |  |
+| `invoiced` | boolean |  |
+| `entry_type` | string | Filter by entry type key |
+| `sort` | string | date \| employee \| company \| project \| task \| minutes \| …, '-' desc |
+
+Antwoord: `200` · `TimeReport`
+
+#### `GET /api/v1/time/stats/productivity`
+
+**Productivity Stats** — Per-employee hours/billable/approved aggregates (managers).
+
+Recht: `time.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date_from` | string · verplicht |  |
+| `date_to` | string · verplicht |  |
+
+Antwoord: `200` · `ProductivityStats`
+
+#### `GET /api/v1/time/stats/revenue`
+
+**Revenue Stats** — Monthly omzet for the selected + previous year and the top clients (managers).
+
+Recht: `time.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `year` | integer · verplicht |  |
+
+Antwoord: `200` · `RevenueStats`
+
+#### `GET /api/v1/time/stats/team-summary`
+
+**Team Time Summary** — One-query hours + revenue payload for the manager dashboard tile.
+
+Recht: `time.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date_from` | string · verplicht |  |
+| `date_to` | string · verplicht |  |
+
+Antwoord: `200` · `TeamTimeSummary`
+
+#### `GET /api/v1/time/summary`
+
+**Summary**
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date` | string |  |
+| `user_id` | string |  |
+
+Antwoord: `200` · `TimeSummary`
+
+#### `GET /api/v1/time/timer`
+
+**Current Timer**
+
+Recht: `time.entry.read`
+
+Antwoord: `200` · `TimeEntryRead`
+
+#### `POST /api/v1/time/timer/start`
+
+**Start Timer**
+
+Recht: `time.entry.write`
+
+Request body: `TimerStart`
+
+Antwoord: `201` · `TimeEntryRead`
+
+#### `POST /api/v1/time/timer/stop`
+
+**Stop Timer**
+
+Recht: `time.entry.write`
+
+Antwoord: `200` · `TimeEntryRead`
+
+#### `GET /api/v1/time/timesheet`
+
+**Timesheet**
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `week_start` | string · verplicht |  |
+| `user_id` | string |  |
+
+Antwoord: `200` · `Timesheet`
+
+#### `GET /api/v1/time/workspace`
+
+**Time Workspace** — The interactive Hours screen in one request, reusing its weekly entry scan.
+
+Recht: `time.entry.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `week_start` | string · verplicht |  |
+| `day` | string · verplicht |  |
+
+Antwoord: `200` · `TimeWorkspace`
+
+</details>
+
+## `interactions`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/interactions` | `interactions.interaction.read` |
+| `POST` `/interactions` | `interactions.interaction.write` |
+| `GET` `/interactions/{interaction_id}` | `interactions.interaction.read` |
+| `PATCH` `/interactions/{interaction_id}` | `interactions.interaction.write` |
+| `DELETE` `/interactions/{interaction_id}` | `interactions.interaction.delete` |
+| `POST` `/interactions/{interaction_id}/add-to-conversation` | `interactions.interaction.review` |
+| `POST` `/interactions/{interaction_id}/approve` | `interactions.interaction.review` |
+| `POST` `/interactions/{interaction_id}/reject` | `interactions.interaction.review` |
+| `POST` `/interactions/{interaction_id}/remap` | `interactions.interaction.review` |
+| `GET` `/interactions/{interaction_id}/thread` | `interactions.interaction.read` |
+| `POST` `/interactions/bulk/approve` | `interactions.interaction.review` |
+| `POST` `/interactions/bulk/assign` | `interactions.interaction.review` |
+| `POST` `/interactions/bulk/reject` | `interactions.interaction.review` |
+| `GET` `/interactions/kinds` | `interactions.kind.read` |
+| `POST` `/interactions/kinds` | `interactions.kind.manage` |
+| `PATCH` `/interactions/kinds/{kind_id}` | `interactions.kind.manage` |
+| `DELETE` `/interactions/kinds/{kind_id}` | `interactions.kind.manage` |
+| `POST` `/interactions/upload-eml` | `interactions.interaction.write` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/interactions`
+
+**List Interactions**
+
+Recht: `interactions.interaction.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `task_id` | string |  |
+| `contact_id` | string |  |
+| `kind` | string |  |
+| `status` | string |  |
+| `owner_user_id` | string |  |
+| `mine` | boolean | Only my own rows — the review queue's filter (default `false`) |
+| `include` | string | Roll-up: 'tasks' with project_id also returns the project's tasks' rows |
+| `q` | string | Free text over subject/snippet/body |
+| `date_from` | string | Occurred on/after this org-local day |
+| `date_to` | string | Occurred on/before this org-local day |
+| `sort` | string | occurred_at \| subject \| kind \| contact \| owner, '-' desc |
+| `limit` | integer |  (default `20`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean | Compute the total. False skips a second full pass over the filter. (default `true`) |
+| `with_body` | boolean | Include each row's full body_text. Off by default — the list draws snippet. (default `false`) |
+
+Antwoord: `200` · `Page_InteractionRead_`
+
+#### `POST /api/v1/interactions`
+
+**Create Interaction**
+
+Recht: `interactions.interaction.write`
+
+Request body: `InteractionCreate`
+
+Antwoord: `201` · `InteractionRead`
+
+#### `GET /api/v1/interactions/{interaction_id}`
+
+**Get Interaction**
+
+Recht: `interactions.interaction.read`
+
+Padparameters: `interaction_id`
+
+Antwoord: `200` · `InteractionRead`
+
+#### `PATCH /api/v1/interactions/{interaction_id}`
+
+**Update Interaction**
+
+Recht: `interactions.interaction.write`
+
+Padparameters: `interaction_id`
+
+Request body: `InteractionUpdate`
+
+Antwoord: `200` · `InteractionRead`
+
+#### `DELETE /api/v1/interactions/{interaction_id}`
+
+**Delete Interaction**
+
+Recht: `interactions.interaction.delete`
+
+Padparameters: `interaction_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/interactions/{interaction_id}/add-to-conversation`
+
+**Add Interaction To Conversation** — Manually glue this gmail email onto another's conversation (#272). Gated on ``.review`` like every gmail-row mutation — the service enforces strict mailbox ownership on both the row and the target.
+
+Recht: `interactions.interaction.review`
+
+Padparameters: `interaction_id`
+
+Request body: `InteractionAddToConversation`
+
+Antwoord: `200` · `InteractionRead`
+
+#### `POST /api/v1/interactions/{interaction_id}/approve`
+
+**Approve Interaction**
+
+Recht: `interactions.interaction.review`
+
+Padparameters: `interaction_id`
+
+Request body: `InteractionApprove`
+
+Antwoord: `200` · `InteractionRead`
+
+#### `POST /api/v1/interactions/{interaction_id}/reject`
+
+**Reject Interaction**
+
+Recht: `interactions.interaction.review`
+
+Padparameters: `interaction_id`
+
+Request body: `InteractionReject`
+
+Antwoord: `204`
+
+#### `POST /api/v1/interactions/{interaction_id}/remap`
+
+**Remap Interaction**
+
+Recht: `interactions.interaction.review`
+
+Padparameters: `interaction_id`
+
+Request body: `InteractionRemap`
+
+Antwoord: `200` · `InteractionRead`
+
+#### `GET /api/v1/interactions/{interaction_id}/thread`
+
+**Get Interaction Thread** — The full conversation this interaction belongs to (#272), newest first — what the detail modal expands into. A row not in a conversation is its own one-message thread.
+
+Recht: `interactions.interaction.read`
+
+Padparameters: `interaction_id`
+
+Antwoord: `200` · `InteractionRead[]`
+
+#### `POST /api/v1/interactions/bulk/approve`
+
+**Bulk Approve Interactions** — Approve a selection, optionally filing all of it in one step.
+
+Recht: `interactions.interaction.review`
+
+Request body: `InteractionBulkApprove`
+
+Antwoord: `200` · `InteractionBulkResult`
+
+#### `POST /api/v1/interactions/bulk/assign`
+
+**Bulk Assign Interactions** — File a selection without approving it — the batch form of remap, so it re-files logged rows too. An absent link field leaves every row's own alone.
+
+Recht: `interactions.interaction.review`
+
+Request body: `InteractionBulkAssign`
+
+Antwoord: `200` · `InteractionBulkResult`
+
+#### `POST /api/v1/interactions/bulk/reject`
+
+**Bulk Reject Interactions** — Reject a selection. Permanent per row: the metadata goes and the message is suppressed, so a re-poll never resurrects it.
+
+Recht: `interactions.interaction.review`
+
+Request body: `InteractionBulkReject`
+
+Antwoord: `200` · `InteractionBulkResult`
+
+#### `GET /api/v1/interactions/kinds`
+
+**List Interaction Kinds**
+
+Recht: `interactions.kind.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `InteractionKindDefRead[]`
+
+#### `POST /api/v1/interactions/kinds`
+
+**Create Interaction Kind**
+
+Recht: `interactions.kind.manage`
+
+Request body: `InteractionKindDefCreate`
+
+Antwoord: `201` · `InteractionKindDefRead`
+
+#### `PATCH /api/v1/interactions/kinds/{kind_id}`
+
+**Update Interaction Kind**
+
+Recht: `interactions.kind.manage`
+
+Padparameters: `kind_id`
+
+Request body: `InteractionKindDefUpdate`
+
+Antwoord: `200` · `InteractionKindDefRead`
+
+#### `DELETE /api/v1/interactions/kinds/{kind_id}`
+
+**Delete Interaction Kind**
+
+Recht: `interactions.kind.manage`
+
+Padparameters: `kind_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/interactions/upload-eml`
+
+**Upload Interaction Eml** — Log an exported email as a contactmoment (#262).
+
+Recht: `interactions.interaction.write`
+
+Request body: `Body_upload_interaction_eml_api_v1_interactions_upload_eml_post`
+
+Antwoord: `201` · `InteractionEmlUploadRead`
+
+</details>
+

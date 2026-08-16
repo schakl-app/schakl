@@ -79,6 +79,7 @@ apps/
       uptime/      # Uptime Kuma
       wordpress/
       mollie/      # payments
+      timeon/      # time registration (migration + two-way sync)
     main.py        # discovers enabled modules/integrations and mounts their routers
   web/src/
     lib/core/      # api client, tenant/theme loader, i18n runtime, module + nav registry
@@ -86,7 +87,7 @@ apps/
       companies/   # components, CompanyPanel(s), nav items, message namespace
       ...
     lib/integrations/   # mirrors apps/api/app/integrations/ (§6a)
-      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/
+      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/ timeon/
     routes/        # thin route files that delegate into modules
     paraglide/     # generated (do not edit by hand)
 messages/          # en.json (SOURCE), nl.json (required, default UI lang) — flat, namespaced keys
@@ -234,7 +235,7 @@ and it is worth having with every third-party account in the world cancelled: `c
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
 over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
-`wordpress`, `mollie`.
+`wordpress`, `mollie`, `timeon` (an outgoing time registration a cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -257,7 +258,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`. Deliberately *not* "modules this is nicer with":
+  `invoicing`, `google_ads` → `google`, `timeon` → `time`. Deliberately *not* "modules this
+  is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
   (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
   nothing (its panels attach to `websites` **or** `domains`, which an AND-list cannot say).
@@ -635,6 +637,54 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
   and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
   `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
+  Five faults on one real July report, and only three of them were on the warnings strip the
+  agency reads; the two worse ones were on the client's page and named nothing. **A metric whose
+  daily row answers "how many, right now" is a level, however much its name reads like a total** —
+  `top3`/`top10`/`top30`/`keywords_ranking`/`keywords_tracked` were missing from
+  `AVERAGED_METRICS`, so a 31-day month printed *4.495 gevolgde zoekwoorden* over a project
+  tracking 145. `avg_position` had been registered years earlier with a docstring explaining the
+  exact trap, and the four counters added beside it were not; the test is a **sweep over the
+  source's metric list** rather than five names, because that is the only shape that catches the
+  seventh. It is the Rank Math rule (`mentions`, `citations`) one integration over, and the tell
+  generalises: if a vendor's own dashboard shows the number without asking for a date range,
+  adding thirty-one of them is not a period figure. **A cap belongs to the source that needs
+  it**: `limit` exists because Search Console answers with every phrase a site was ever shown
+  for, while an SE Ranking project holds terms somebody chose to track — so printing 25 of 68
+  was withholding part of an answer whose *summary above it counted all of them*, and
+  `max_position` meant two different depths depending on which integration the agency held.
+  **A credential answers several questions and they fail apart**: one `try` around three SE
+  Ranking calls turned the AI Result Tracker's permanent 401 (a plan it does not include) into
+  "SE Ranking was unreachable", on a run whose keyword table had already arrived — so a refusal
+  (`401/403`) is now a different sentence from an outage, and each question costs only its own
+  section. **A section named for a question must answer it**: "Zoekmachines" was GA4's organic
+  split, one row reading `google`, where a rank tracker can say where the client *stands* per
+  engine — and the fallback for a client without one is deliberately a *different* answer to the
+  same heading rather than an empty section. And **a company is the hub, so a client may have
+  two websites**: `next(link for link in links if …)` picked one arbitrary property for the live
+  tables while `stored[source]` kept whichever the query returned *last* for the totals, with no
+  `ORDER BY` to make even that stable — one document, two websites, no statement anywhere. A
+  section is composed of **parts** now (one per property, or one over all of them, org default
+  with a per-client diff), where a single property is one *unlabelled* part so the common case
+  renders unchanged, the flat keys stay on the section so a tenant's own Jinja design still
+  works, and a combined part folds the **raw daily rows** rather than two aggregates — because
+  `ctr`, `position` and `engagementRate` are weighted, and averaging two averages answers a
+  number that is neither site's. Its own sibling is about the tree rather than the report: **a
+  directory with no `__init__.py` is a namespace package**, so the `__pycache__` husks #378 left
+  under `app/modules/` shadowed four integrations that had moved to `app/integrations/` —
+  `find_spec` found them, the import succeeded, nothing registered, and the app booted with 23
+  modules instead of 27 saying nothing at all. `module_package` now requires `spec.origin`, and
+  the test asserts that every enabled module *registers* rather than merely resolving to a path,
+  which is the invariant that was actually broken. Its **third** sibling is the same "several
+  questions, one `try`" rule again, one integration over and worth stating because it was found
+  by *running the fix rather than reading it*: Google Ads' thirteen-month backfill had never
+  completed for any account on any instance. `change_event` reaches back thirty days while the
+  metrics reach back four hundred, and `read_changes` clamped its **start** forward to that
+  horizon and left its end where it was — so every chunk but the first sent an *inverted* range,
+  Google refused it, and because the change read shared a `try` with three successful metric
+  reads the whole chunk was discarded and `sync_account` returned False, which is what the
+  chunked backfill halts on. **A window that ended before the horizon begins is not a request to
+  make**, and a nicety that rides along on a credential fails alone.
 - **A section whose data has two possible sources needs a setting, not a silent preference**
   (#373, `app/modules/marketing/rankings.py`). "Zoekwoordposities" was produced from SE Ranking
   and nothing else, so a client without that subscription simply had no keyword section — the one
@@ -829,6 +879,38 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a `relatiecode` failed the whole create, when the relation is the requirement and the shared
   number is only a convenience — so the collision is resolved by *looking at who holds it* and
   either adopting them or letting SnelStart allocate its own.
+- **A client has two names, and only documents may read the second one** (`app/core/naming.py`,
+  `docs/INVOICING.md`). `companies.name` is the **label** — what every list, picker, panel,
+  dashboard, report, notification, Drive folder and breadcrumb prints — and `companies.legal_name`
+  is the entity an invoice, a quote, a UBL file and a ledger relation must be addressed to. Five
+  rules generalise past this column. **The nullable half is the new one, and `NULL` means
+  *inherit*, not *unfilled***: which of a client's two names is the legal one is a fact only the
+  agency holds, so nothing was migrated out of `name` and no backfill guessed — an instance that
+  upgrades and types nothing invoices, exports and pushes to its ledger exactly as it did, which
+  is the whole safety argument for shipping this into a live install and is pinned by a test that
+  says so. **The resolution is one rule in one place** (`document_name`, taking a mapping *or* an
+  object, because invoicing reads companies through hand-written SQL and SnelStart imports the
+  model): `legal_name or name` written in eight files is how the ninth forgets the `or`, prints an
+  empty bill-to on exactly the clients who have a legal name, and is found by a customer. **A
+  snapshot records both halves**, because two readers want different ones — EN 16931 says so
+  outright (`PartyName/Name` is BT-45's *trading* name, `PartyLegalEntity/RegistrationName` is
+  BT-47's *registered* one, and both were fed one string until now), and the covering e-mail
+  greets a human. **A search that only knows the half you already have is half a register**: the
+  list, the MCP tool and the voice-entry shortlist all match either name, and so do the import
+  resolvers — a spreadsheet from the bookkeeper carries the name this product does not print, and
+  reporting half of it as "unresolved reference" is a refusal nobody can act on. Widening a lookup
+  is safe precisely because the ambiguity rule counts *clients* rather than the ways one was
+  found. And the fifth is about the screen (`docs/UX.md`): two name fields side by side is a
+  question where a form should be an answer, so the legal name sits inside **Factuurgegevens**
+  with the label as its placeholder, and every surface that reads it draws nothing when the two
+  agree. Its sibling is the older decision this **reverses**: `report_profiles.display_name` (#300)
+  was introduced with an explicit argument against a second name on `companies`, on the grounds
+  that a global alias would re-title invoices along with the report. Right about the danger, wrong
+  about which name was which — `name` was already the friendly one, so the missing field was the
+  legal one, and the reporting override survives as a genuine third name that is now almost always
+  blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
+  the subscription cron having grown a hand-written copy that already omitted `client_number`, so
+  "which name does an invoice say?" would have depended on who raised it.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -874,6 +956,41 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   only ever turns on. It earns its **own** `AI_FEATURES` key against this file's usual "ride an
   existing one" advice, because an agency happy for AI to polish a colleague's paragraph has not
   thereby agreed to it reading the client mailbox.
+- **A narrow schema and a human review are two answers to the same question, and paying for both
+  buys nothing** (#382, `docs/VOICE.md`). A task arrives in someone's head as one spoken sentence
+  and reached the platform as twelve fields on two screens, so create-then-edit (#230) — right for
+  a *typed* task — is exactly wrong for a remembered one: by the time the detail page is open in
+  edit mode the steps have been forgotten and what lands is a title. `task_assist` records,
+  transcribes through the tenant's own provider (#246's machinery, one record over) and turns one
+  dictation into a **draft** the speaker reviews whole. Four rules generalise past it. **The
+  vocabulary a model may write is decided by who wrote the words and who is watching, not by "it
+  is AI"** — #327 narrowed `TaskEnrichment` to six fields because an email is written by an
+  outsider and applied by an ARQ worker with nobody in front of a screen, and both halves invert
+  here (a colleague's own microphone, a session holding `tasks.task.create`, nothing written until
+  a button beside every field it filled in), so copying the omissions would keep the shape, drop
+  the reason, and cost the speaker retyping the half the schema refused to carry. What does **not**
+  relax is grounding, and here it is **per type**: an id the model was never shown is dropped, and
+  `assignee_user_id` / `label_ids` check their own evidence sets rather than the time parse's
+  single pool — a project id offered as a company fails the write anyway, while another entity's
+  id in `assignee_user_id` is a real user id from the same space, so a misheard name comes back as
+  *no client selected* (one click to fix) and never as somebody else's client (which nobody
+  notices). **A rule about a surface is a rule about the control, not about the click**: #246
+  requires the transcript be readable before it is parsed *because a misheard proper noun is only
+  fixable while the words are visible*, which the sheet honours with an editable transcript and an
+  *Opnieuw verwerken* while the parse itself runs unprompted — and a second press **appends**,
+  because people dictate in breaths and a recorder that discards the first forty seconds is one
+  nobody presses twice. And **an utterance is one act, so it is one write**: `TaskCreate` grew
+  `checklist` / `links` / `label_ids`, applied through the service's own methods inside the
+  create's transaction, because 1 + 1 + N + M round trips for one button is the shape
+  `docs/PERFORMANCE.md` rejects on every other screen — the items are written the way a template
+  copy already writes them, since calling `add_checklist_item` per step re-reads the task and the
+  checklist each time and merely relocates the fan-out — and because §12 makes every operation a
+  tool, an MCP agent can now create a task *with its steps* in one call instead of four. Two
+  smaller ones, both found by running it rather than reading it: **every way out of a capturing
+  surface must release the microphone** — `SlideOver` owns three of its four exits and closes by
+  writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
+  dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
+  such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
 - **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
   MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
   source adapter inside `marketing`, so a licensed module on top of it meant one of the two
@@ -989,6 +1106,110 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   observation is the same shape: the number the nightly cron exists for is `workspace_changes`,
   because a change staged weeks ago and never published is how a client's tracking quietly stops
   being what they were told it is, and nobody opens a container they have no reason to open.
+- **A picker over a per-user quota is a search, or it is a picker that refuses** (`google_tag_manager`,
+  `docs/GOOGLE_TAG_MANAGER.md` §3a). The container picker listed every Tag Manager account and then
+  every account's containers — `1 + n` requests where **n belongs to the agency** — and the first
+  live grant it met held 44 of them, so request 45 answered *"Quota exceeded … Queries per minute
+  per user"* and the control whose whole job is finding a container found none. Nothing about that
+  is GTM's: it is what happens to any picker over a provider whose limit is per *user* rather than
+  per project, and no cache fixes it, because the first load is the one that fails. Four rules.
+  **Read the cheap half always and the expensive half on demand** — the account list is one call at
+  any size, containers are one call each, so a search decides which accounts to open and a stated
+  ceiling (8) puts the worst case at nine requests. **An identifier short-circuits the sweep**:
+  `containers:lookup?tagId=` is one request and is what somebody pasting the id off a client's
+  website actually wants — and an id that resolves to nothing is an **empty result on a search box**
+  and a **422 on the link route**, because in one place it is an outcome and in the other it is an
+  instruction. **What was not opened is named** (`accounts_read` / `accounts_total`, "8 van 44"),
+  since a short list that looks complete reads as "we are not in that account", which is §17's
+  failure wearing a picker's clothes — and the machine-facing warning beside it is *dropped* by the
+  screen that prints the numbers, because two sentences about one fact is one too many. And **a
+  quota refusal mid-loop keeps what was read**: a rate is not a verdict (the Cloudflare probe rule),
+  so the loop breaks, says so, and still offers the accounts that answered. Its sibling on the
+  screen: the same search is now the *only* way a container is named anywhere — Instellingen, the
+  connect dialog, and the client's own page, where the panel finally has the `＋` every other panel
+  has (#338), keeping the client from the route and mirroring the key the **call** makes rather
+  than the one the panel is about (#310). Its second sibling is the same quota read as a *page*
+  budget: **count the requests before you hide them.** The container page was six API round trips
+  over **nine** Google requests, because four of its reads each resolved the workspace for
+  themselves — and resolving means listing the container's workspaces. Streaming it would have
+  left it nine, which on a per-user-per-minute limit decides how many times somebody may *open*
+  the page, not merely how long they wait. So one endpoint resolves once and gathers the four
+  (two round trips, six requests), and only **then** does the shell — heading, client, the
+  conversions schakl set up, every write control — separate from the live halves and the live
+  halves stream behind it: first byte at 145 ms where before nothing was sent until everything
+  had answered. Two rules ride along. A streamed section's **error streams with it**: `liveError`
+  was a top-level key, which by definition cannot be computed before the reads answer, so one such
+  key holds the whole shell back however many promises sit beside it. And the pending copy is a
+  **state, not an absence** — "Tag Manager lezen…", never "geen tags", which is a different answer
+  to a different question, and the staged-count tile carries three states for exactly that reason.
+- **A cutover that takes months is two systems both being used, and an importer loses one of the
+  two directions by construction** (`timeon`, `docs/TIMEON.md`). The migration that moved breik.'s
+  2814 hours off Timeon argued *against* ever syncing, on a ground that was exactly right:
+  `TimeEntry.invoiced_at` is a downstream fact, so a sync lets the other system rewrite the basis
+  of an invoice already sent. What it got wrong was the shape of the problem — between the import
+  and the day Timeon is switched off, people log hours there and correct them here, and a
+  re-runnable importer can only ever *create* Timeon's version, so a correction made in schakl is
+  overwritten or duplicated. The invoicing objection becomes a **mechanism** rather than a veto
+  (`protect_invoiced`, refusing per entry and *reporting* the divergence; `history_floor`, putting
+  the whole imported past out of reach), which is the same move `payments` made from the other end:
+  gate what the agency does, never rewrite what has already happened to them. Five rules generalise
+  past Timeon. **Adoption comes before creation, always** — the first run against an instance an
+  importer already filled must *recognise* those rows and pair them writing nothing, which is why
+  the natural key here is byte-identical to the importer's; a sync that created first would double
+  three years of somebody's timesheet on its first press. **A pairing carries two fingerprints, not
+  a `synced` flag**: `local_hash` and `remote_hash` compared against *now* answer "which side
+  moved", and only both moving is a conflict — one bit makes that question unaskable, which is
+  `cloudflare`'s decided-vs-observed rule stated twice because either side may write. **Where the
+  provider has no modified timestamp, the window *is* the sync** — Timeon's hour rows carry
+  `createdOn` and nothing else (`billableModified` is a boolean, and a cursor read off it is always
+  false), so "what changed since" is not a question its API can answer; the run re-reads a span,
+  and because that span is a real horizon it is stored on the run and printed on the screen rather
+  than implied. **Absence is a deletion only inside a window known to be complete, and only after
+  asking again**: `filter.deleted` is accepted and ignored, so the read asserts its row count
+  against the server's own total and a vanished row is re-fetched by id first — an hour moved to
+  another month is absent from this one and is not gone. And **a conflict is a stored decision**
+  (#318 again): "these two rows may differ" is a real answer, and a queue that re-derives divergence
+  nightly re-proposes the same twelve rows until nobody reads it. Its own sibling is the ordinary
+  one: `hour/save` **replaces** rather than patches, measured — a save carrying `{hourID, seconds}`
+  blanks the remark and detaches both the project and the client — so a push sends the whole row,
+  carrying what schakl has no field for and, crucially, carrying a reference schakl *cannot express*
+  rather than asserting its absence. That conflict rule has a sibling found only by **running the
+  thing against the real organisation twice**, and it is the one worth carrying furthest: **a
+  sentinel is not a value, so agreement cannot be equality of two fingerprints.** `UNRESOLVED` is
+  what an unpairable reference canonicalises to on either side, and hashing it made a Timeon project
+  with no pairing here (`"?"`) differ from the entry the pull had *just written* (`""`) — 62 of the
+  first run's 66 rows, all filed in the "these may differ" arm, which is where a **dismissed
+  conflict** lives. A decision nobody made, recorded 62 times, burying the one signal that arm
+  carries. Two halves. The two hashes answer **"did *this* side move"** — a strictly one-sided
+  question they are right for and must keep — while **agreement is pairwise** (`mapping.differences`),
+  because only a pairwise test can see that a field is unactionable on both sides at once. And **a
+  difference no direction could ever act on is not a difference**: neither pulling nor pushing can
+  name a project the other system has never heard of, so it is reported once per run as the
+  `project_unmapped` warning an admin can close, and the row says nothing — the general form of
+  #318's "a queue nobody reads", one level below the queue. Nothing is lost by staying quiet: the
+  moment the pairing appears the sentinel becomes a real id, the fingerprint moves, and that side
+  reads as changed on the very next run.
+- **A notification that names something inside a record has to open *that*, and the record has to
+  be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
+  three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`
+  payload carrying an excerpt but not the comment's id — so "Jan reageerde op Productfeed
+  opschonen" opened a task with seventy messages on it and left the reader to find the new ones.
+  The two halves are one fix and neither works alone. The **payload** now carries `comment_id`
+  and `thread_id`, read by both destinations that exist (`notifications/href.ts` for the inbox and
+  the bell, `notifications/render.event_path` for the mail's button) — one fact, two twins, and
+  the twin that was already out of step is the argument for writing the id rather than an anchor
+  each surface has to invent. The **card** reads `?comment=`, unfolds whatever hides that message,
+  marks it, scrolls it into the middle and opens the reply composer under it: a deep link into a
+  list that folds must expand *before* it scrolls, or it is a link that visibly does nothing.
+  Three smaller rules ride along. **The order of a conversation is a per-user preference and it
+  applies to threads only** — an answer must follow its question, so the control flips the openers
+  and the default is newest-first, which is what a section on a record page needs and what a chat,
+  whose viewport is pinned to the bottom, gets for free. **A capped read says it was capped**
+  (`TaskDetail.comments_truncated`), answered by asking for one row more than is kept rather than
+  by a second count query — §17's rule, applied to the one list that had grown past its own cap in
+  silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
+  post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
+  after it is taken.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -1158,6 +1379,32 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   reachable through a proxy, assert the URL the proxy actually forwards, not the object behind
   it. `SCHAKL_API_DOCS_ENABLED=false` drops the HTTP surface while leaving the in-process spec
   that the tool builder and `scripts/gen-client.sh` both read.
+- **"May this caller?" and "is there a caller?" are different questions, and a codebase that
+  only ever asks the first answers the second by accident** (`app/core/apidocs.py`,
+  `tests/test_anonymous_denied.py`). Deny-by-default (§15) was enumerable, swept and enforced —
+  for *permissions*, against a member who was already signed in. Nothing ever asked what an
+  **unauthenticated** request reaches, so the one surface that could not be handed a dependency
+  was the one nobody noticed: a route FastAPI builds for its own docs takes no `Depends`, so
+  `/api/docs`, `/api/redoc` and `/api/openapi.json` answered 200 to the internet on every
+  instance ever shipped — 583 paths, 817 schemas, and the tenant's enabled module set. Not an
+  authorization hole (every operation behind them still travels `require_context`, so "Try it
+  out" collected 401s) but a **map**: which integrations this agency runs, and the exact shape of
+  every request body worth attacking. Three rules come out of fixing it. **A surface that cannot
+  carry the gate gets rewritten until it can** — the three paths are ours now, behind
+  `require_context` plus a portal refusal, because externality is its own axis (§15, #274) and
+  the agency's internal route table is not what a client signs in to see. **A sweep must cover
+  what the document cannot see**: both existing sweeps enumerate the OpenAPI paths, and the
+  reference, the edge error page and `/mcp` are all deliberately absent from it — so the new one
+  names them explicitly and pins the hidden-route set, `include_in_schema=False` being the single
+  flag that drops a route out of every guardrail at once. And **an authenticator is recognised by
+  identity, never by name**: fastapi-users builds `current_active_user` and its *optional* twin
+  from one factory, so both callables are named `current_user_dependency`, and matching that name
+  would accept the one that authenticates nobody — which is exactly what `require_context` uses
+  before deciding whether a session was required. The audit behind it found nothing else open:
+  the whole `/api/v1` surface, both MCP transports and every section refuse an anonymous caller,
+  and the routes that legitimately answer without one (the login surface, the first-run wizard,
+  four provider callbacks carrying tokens we minted ourselves, OAuth discovery, public branding)
+  are a list with a stated reason each instead of a property nobody had ever checked.
 - **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
   the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 

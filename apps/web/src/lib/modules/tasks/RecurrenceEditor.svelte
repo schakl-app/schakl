@@ -20,10 +20,9 @@
 
   import { fmtDayMonthYear, monthNames, weekdayNames } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
-  import { memberLabel } from "$lib/core/members";
 
   import { anchorKind, clockOf, FREQS, type Recurrence, type RecurrenceFreq } from "./recurrence";
 
@@ -31,6 +30,7 @@
     user_id: string;
     full_name: string | null;
     email: string | null;
+    is_active?: boolean;
   }
 
   let {
@@ -94,8 +94,10 @@
   const kind = $derived(freq ? anchorKind(freq as RecurrenceFreq) : "none");
   const weekdays = $derived(weekdayNames());
   const months = $derived(monthNames());
-  const personOptions = $derived(members.map((m) => ({ value: m.user_id, label: memberLabel(m) })));
-
+  // A rule saved today books occurrences for months, so a deactivated account is the worst
+  // possible answer here: nobody is ever reminded. Behind the search, wearing its state — and
+  // still offered outright while the rule already names them, or editing an inherited rule
+  // would silently reassign it.
   /**
    * Ticking the box prefills from what the screen already knows (#335): the assignee, the time
    * budget, and the hour of the last block someone planned by hand. Planning the first occurrence
@@ -382,11 +384,11 @@
                 {t("tasks.recurrence.plan.person")}
               </span>
               {#if canScheduleAny}
-                <Combobox
+                <MemberPicker
                   name="plan_user_id"
                   {formId}
+                  {members}
                   bind:value={planUser}
-                  items={personOptions}
                   placeholder={t("tasks.recurrence.plan.person_assignee")}
                 />
               {:else}

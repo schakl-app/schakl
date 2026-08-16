@@ -285,7 +285,7 @@ nobody can eyeball. So matching is ordered by what actually identifies:
 | `btwNummer` → `vat_number` | yes |
 | `relatiecode` → `client_number` | yes |
 | `email` → `invoice_email` | proposed |
-| `naam` → `name` | proposed |
+| `naam` → `name` or `legal_name` | proposed |
 
 *Jansen bv* and *Jansen Transport bv* are two companies and one substring. And an identifier that
 matches **two** schakl companies stops being an identifier: it matches nothing rather than
@@ -337,6 +337,18 @@ alone" applied across a system boundary.
 `relatiesoort` always keeps `Klant` (`BOE-0060`) and never loses `Leverancier`. `relatiecode` is
 set only on a *create*: renumbering an existing relation would rewrite what appears on every
 document that mentions it.
+
+**`naam` is the client's legal name, not the label the CRM shows** (`app/core/naming.py`,
+`docs/INVOICING.md`): a ledger relation is what an accountant books against and what a bank
+statement is reconciled to. A client with only one name — every relation this integration
+pushed before the split — is unaffected. One consequence is worth expecting rather than
+discovering: `naam` is capped at **50** characters and refused rather than trimmed, and legal
+names run longer than labels ("… Beheer B.V."), so that refusal fires more often now. That is
+the right direction to fail in; the alternative is a ledger full of names ending mid-word, and
+50 is SnelStart's limit, not ours. Matching reads **both** names — `_CompanyIndex.by_name`
+indexes each, and `_same_company` compares against either — because a relation the bookkeeper
+created by hand carries whichever of the two they think in. `_put` still drops a key two
+clients share, so widening the index can only produce fewer missed matches, never a wrong one.
 
 `factuurEmailVersturen.email` is supplied; `shouldSend` is left alone. Whether *SnelStart* mails
 the invoice is the bookkeeper's decision, and turning it on here would double-send a document

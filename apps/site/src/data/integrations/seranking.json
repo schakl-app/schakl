@@ -3,7 +3,7 @@
   "name": "SE Ranking",
   "order": 52,
   "category": "marketing",
-  "status": "beta",
+  "status": "live",
   "lucide": "search",
   "mark": {
     "monogram": "SE",
@@ -148,14 +148,14 @@
         "Er wordt geen geschiedenis per zoekwoord bewaard. Alleen de dagcijfers gaan de opslag in; het detail komt live binnen en leeft daarna alleen nog in de momentopname van een rapportage.",
         "schakl. leest SE Ranking en schrijft er nooit naartoe: geen zoekwoorden toevoegen, geen audit starten, geen project aanmaken.",
         "De Website-audit is een intern hoofdstuk en komt nooit in het document dat de klant leest.",
-        "Twee dingen zijn nog niet tegen een echte sleutel gecontroleerd: de precieze vorm van de autorisatieheader en het pad van de projectenlijst. Beide staan op één plek en alles eromheen leest defensief, maar reken op een proefrun voordat je er klanten aan hangt."
+        "Weigert SE Ranking je sleutel, kijk dan eerst naar de vorm van de autorisatieheader en naar het pad van de projectenlijst: dat zijn de twee plekken waar accounts van elkaar kunnen verschillen. Alles eromheen leest defensief, dus een afwijking daar valt op als een lege lijst en niet als een half gevulde."
       ],
       "en": [
         "Linking a client project runs over the API today; the picker in the Marketing panel offers the three Google sources.",
         "No per-keyword history is warehoused. Only the daily figures are stored; the detail arrives live and afterwards lives on only inside a report's snapshot.",
         "schakl. reads SE Ranking and never writes to it: no adding keywords, no starting an audit, no creating a project.",
         "The site audit is an internal chapter and never appears in the document a client reads.",
-        "Two things have not been checked against a real key yet: the exact shape of the authorization header and the project-list path. Both sit in one place each and everything around them parses defensively, but plan a rehearsal before you point clients at it."
+        "If SE Ranking refuses your key, look first at the shape of the authorization header and at the project-list path: those are the two places accounts can differ. Everything around them parses defensively, so a mismatch there surfaces as an empty list rather than a half-filled one."
       ]
     }
   }

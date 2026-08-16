@@ -11,6 +11,8 @@ Every client has their own Analytics property, Search Console site and Ads accou
 live somewhere else. The marketing module links them to the client in schakl., pulls the daily
 figures overnight, and shows them where the rest of the client record already is.
 
+![The cross-client marketing overview, with the period and the comparison as controls above it.](/img/docs/en-marketing.png)
+
 ## Where to find it
 
 - **Marketing** in the main nav: pick a client at the top and you get exactly the same dashboard
@@ -118,10 +120,11 @@ Set these per role under *Instellingen → Rollen* (Settings → Roles).
 The SE Ranking API key (one key for the whole agency, in *Instellingen → Marketing*) supplies
 the keyword-rankings, site-audit and AI-search-visibility chapters of the
 [monthly report](/en/docs/modules/reporting/). The account pickers on the client page currently
-offer Google Analytics, Search Console and Google Ads only. Two things about the SE Ranking
-connection have also never been exercised against a live key: the exact `Authorization` header
-scheme and the path the project list is read from. Both are taken from SE Ranking's own
-documentation.
+offer Google Analytics, Search Console and Google Ads only; an SE Ranking project is linked over
+the API today. If SE Ranking refuses your key, look first at the `Authorization` header scheme and
+at the path the project list is read from: those are the two places accounts can differ, and
+everything around them parses defensively, so a mismatch shows up as an empty list rather than a
+half-filled one.
 </Aside>
 
 ## Read next

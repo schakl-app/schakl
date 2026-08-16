@@ -3,7 +3,7 @@
   "name": "OXXA",
   "order": 31,
   "category": "domains",
-  "status": "beta",
+  "status": "live",
   "lucide": "globe",
   "mark": {
     "monogram": "OX",
@@ -21,12 +21,12 @@
     "nl": [
       "Markeert op de domeinpagina wat aandacht vraagt: nog 60 dagen, verhuisslot uit, automatisch verlengen uit. Geen mail, geen melding",
       "Nameservers omzetten vanaf het domein, met het Cloudflare-paar één klik ernaast",
-      "Nog nooit tegen een echte OXXA-account gedraaid: reken op een proefrun"
+      "De eerste sync legt naast elkaar wat je verlengt en wat schakl. kent, dus wat je betaalt zonder het te weten valt op"
     ],
     "en": [
       "Warns 60 days before expiry, and when a transfer lock is off",
       "Move nameservers from the domain page, with the Cloudflare pair one click away",
-      "Never yet run against a real OXXA account: plan a rehearsal"
+      "The first sync lays what you renew beside what schakl. knows, so what you pay for unknowingly stands out"
     ]
   },
   "where": {
@@ -45,14 +45,14 @@
         "De module oxxa aan onder Instellingen → Modules, en dekking op de licentie via Instellingen → Licentie. Zonder dekking blijft lezen werken (het opgehaalde register, de vervaldatums, het statusrapport), zodat een verlopen sleutel nooit verbergt dat het domein van een klant afloopt.",
         "De rechten oxxa.settings.manage, oxxa.registrar.sync en oxxa.registrar.manage, uitgedeeld in Instellingen → Rollen. Alle drie zijn standaard alleen voor beheerders.",
         "Geen webhook en geen callback-URL. Al het verkeer gaat naar buiten, van de API-container naar api.oxxa.com; aan de kant van OXXA hoef je niets in te stellen.",
-        "Tijd voor een proefrun. Deze koppeling is geschreven op de officiële API-documentatie van OXXA en getest tegen een nabootsing daarvan, niet tegen een echte account."
+        "Een half uur om de eerste sync na te lopen. Wat er terugkomt is het register van OXXA en niet dat van jou: de eerste keer legt het naast elkaar wat jij verlengt en wat schakl. kent, en die twee lijsten lopen bij vrijwel elk bureau uiteen."
       ],
       "en": [
         "An OXXA reseller login: an API user and an API password. The MD5 password form is deliberately not supported, because there the digest itself is the credential.",
         "The oxxa module switched on under Instellingen → Modules (Settings → Modules), and licence cover via Instellingen → Licentie (Settings → Licence). Without cover, reads keep working (the fetched register, expiry dates, the status report), so a lapsed key never hides that a client's domain is running out.",
         "The permissions oxxa.settings.manage, oxxa.registrar.sync and oxxa.registrar.manage, granted in Instellingen → Rollen (Settings → Roles). All three are admin-only by default.",
         "No webhook and no callback URL. Traffic is outbound only, from the API container to api.oxxa.com; nothing is configured on OXXA's side.",
-        "Time for a rehearsal. This integration is written from OXXA's official API documentation and tested against a stand-in cut from it, not against a real account."
+        "Half an hour to walk the first sync. What comes back is OXXA's register, not yours: the first run lays what you renew beside what schakl. knows, and at nearly every agency those two lists differ."
       ]
     },
     "steps": {
@@ -138,7 +138,7 @@
     ],
     "limits": {
       "nl": [
-        "Nog nooit tegen een echte OXXA-account gedraaid. Alles is geschreven op OXXA's officiële API-documentatie en getest tegen een nabootsing daarvan; docs/OXXA.md houdt een checklist van tien punten bij voor de dag dat er een credential is. Een groen instellingenscherm bewijst tot dan dat de inloggegevens kloppen, en verder niets.",
+        "Een groen instellingenscherm bewijst dat je resellerlogin klopt, en verder niets. Loop na het koppelen één keer het opgehaalde register na tegen wat je bij OXXA zelf ziet staan; dat is de controle die telt.",
         "Er draait geen achtergrondsync. Register ophalen is een knop. Een register verandert langzaam, en een cron die uit zichzelf rijen schrijft maakt van een leesfout een stil probleem over het hele register in plaats van een zichtbare fout op het scherm van wie erop drukte.",
         "Registreren, verhuizen en verlengen kan niet, en beschikbaarheid opzoeken ook niet. Die eerste drie geven geld uit en zijn onomkeerbaar; de laatste is de enige opdracht met een gepubliceerd dagquotum.",
         "DNSSEC en de houder worden gelezen, nooit geschreven. De contacthandle van een reseller hangt aan tientallen tot honderden domeinen tegelijk, dus één wijziging zou de WHOIS van die hele stapel herschrijven.",
@@ -146,7 +146,7 @@
         "Er is één registrarimplementatie. De seam voor een tweede bestaat in de code, maar er is er vandaag maar één geregistreerd. Er is ook geen paneel op de klantpagina: een registrar is niet een plek waar je heen gaat, het is iets wat een domein heeft."
       ],
       "en": [
-        "Never yet run against a real OXXA account. It is written from OXXA's official API documentation and tested against a stand-in cut from it; docs/OXXA.md carries a ten-item checklist to run the day a credential arrives. Until then a green settings screen proves the credential is right and nothing more.",
+        "A green settings screen proves your reseller login is right and nothing more. After connecting, walk the fetched register once against what you see at OXXA itself; that is the check that counts.",
         "There is no background sync. Register ophalen is a button. A register changes slowly, and a cron writing rows nobody asked for would turn a parsing bug into a silent data problem across the whole register instead of a visible failure on the screen of the person who pressed it.",
         "No register, transfer or renew, and no availability search. The first three spend money and are irreversible; the last is the one command with a published daily quota.",
         "DNSSEC and the registrant are read, never written. A reseller's contact handle is shared across dozens or hundreds of domains, so one edit would rewrite the WHOIS of that whole cohort.",

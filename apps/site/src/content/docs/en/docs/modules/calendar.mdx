@@ -1,0 +1,100 @@
+---
+title: Calendar
+description: "One agenda over every feed the platform has: planned task blocks, deadlines, team leave, availability, public holidays and your Google calendar."
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Planned work, deadlines, who is away and what is in your Google calendar are four different
+questions that a week only answers together. The agenda puts every one of them on the same grid,
+each as a feed you can hide, recolour or split per person.
+
+![The agenda in week view: planned task blocks alongside the all-day band that carries leave and holidays.](/img/docs/en-calendar.png)
+
+## Where to find it
+
+**Agenda** in the main menu. Four views — **Dag**, **Week**, **Maand** and **Jaar** (day, week,
+month, year) — with **Vandaag** (Today) and the arrows to move, and a filter button beside them
+holding every feed.
+
+The view you leave it on is remembered, so the agenda opens the way you last used it.
+
+## The feeds
+
+| Feed | What it draws |
+| --- | --- |
+| Ingeplande taken | Task blocks, positioned at the hour they were planned for |
+| Deadlines | A task's due date, as an all-day marker |
+| Teamverlof | Approved and pending absence, per colleague |
+| Beschikbaarheid | A freelancer's own deviations from their base week |
+| Feestdagen | The public holidays your organisation actually observes |
+| Google Agenda | Your own connected Google calendar |
+
+Each feed can be **switched off**, **recoloured**, and — for leave and availability — **split per
+person**, so one colleague's absence keeps its own colour while the rest share theirs. Those
+choices are yours and are stored against your account.
+
+<Aside type="note" title="A pending request is drawn faintly, with a question mark">
+Leave that has been requested and not yet decided is on the agenda already, at reduced opacity and
+prefixed with `?`. That is deliberate: an absence you have not approved yet is still something to
+plan around, and hiding it until somebody clicks Approve is how two people end up booked for the
+same Thursday.
+</Aside>
+
+## Planning work onto it
+
+A task can carry a **planned block**: a day, a start time, a duration and who it is for. That
+block appears here, in that person's colour, and it can be dragged to another day or time — the
+task moves with it.
+
+<Steps>
+1. Open a task and use **Inplannen** (Plan) to give it a block.
+2. Or press **＋ Nieuw** on the agenda and pick what you are adding.
+3. Drag a block to move it. Blocks are draggable; the chips that stand for leave are not, because
+   a chip is one occurrence of a rule and moving it would move the rule.
+</Steps>
+
+Planning is not the same as logging. A block says *when you intend to do it*; hours are recorded
+separately, and finishing a task offers to log the time against the block that was planned for it,
+so the same work is never counted twice.
+
+## Google Calendar, and which way it flows
+
+With the Google Workspace integration connected per employee, your own Google calendar appears as
+a feed here, and what schakl. schedules is mirrored the other way: approved leave and planned task
+blocks are written into Google.
+
+<Aside type="caution" title="The calendar writes one way">
+Leave and planned tasks go **out** to Google. Google events are read and shown, never turned into
+schakl. records. That keeps one authority per kind of thing rather than two systems each
+believing they own the same appointment.
+</Aside>
+
+A leave type decides how its absence is drawn: an all-day chip, or a positioned block between the
+hours the person was scheduled to work. That is a property of the *kind* of leave rather than of
+one request — whether an absence reads as "away today" or "away between 08:30 and 17:00" is the
+same answer every time — and the Google mirror follows the same flag, so one absence is never an
+hour block here and an all-day banner there.
+
+## Permissions
+
+The agenda declares none of its own: each feed carries the permission of the module behind it. So
+somebody who may not read other people's hours simply gets an agenda without the team feed, rather
+than an agenda that refuses.
+
+| Feed | Behind it |
+| --- | --- |
+| Ingeplande taken, Deadlines | `tasks.task.read`, and `tasks.schedule.write` to plan |
+| Teamverlof | `leave.request.read` |
+| Beschikbaarheid | `leave.availability.read` |
+| Google Agenda | Your own Google connection |
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Tasks" href="/en/docs/modules/tasks/" description="Where a planned block comes from." />
+  <LinkCard title="Leave" href="/en/docs/modules/leave/" description="The absence the agenda draws." />
+  <LinkCard title="Google Workspace" href="/en/docs/integrations/google-workspace/" description="Connecting the calendar, per employee." />
+</CardGrid>

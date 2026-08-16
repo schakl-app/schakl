@@ -6,7 +6,7 @@
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -59,9 +59,11 @@
   const memberName = $derived(
     Object.fromEntries(data.members.map((m) => [m.user_id, memberLabel(m)])),
   );
-  const memberOptions = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
-  );
+  // The register-for-someone picker. The roster table below deliberately keeps listing
+  // everyone — it is a record of the year, not a suggestion — but a sick call is never
+  // registered for somebody who has left, so they move behind the search there.
+  const memberPicker = $derived(splitMemberOptions(data.members));
+  const memberOptions = $derived(memberPicker.live);
   // `data.profiles` is null when the caller may not read them (`leave.profile.manage`) — the
   // column then shows a placeholder rather than pretending everyone works the default week.
   const hoursByUser = $derived(
@@ -688,6 +690,7 @@
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
     userOptions={memberOptions}
+    userArchived={memberPicker.retired}
     canOverride
     canBackdate={can(page.data.user, "leave.request.write", "any")}
     action="?/register"

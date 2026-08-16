@@ -10,7 +10,7 @@ import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { gmailActions } from "$lib/integrations/google/gmail-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
-import { RECORD_FIELDS, type RecordField } from "$lib/modules/interactions/scope";
+import { interactionView, type RecordField, scopedRecords } from "$lib/modules/interactions/scope";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -69,16 +69,14 @@ export const load: PageServerLoad = async (event) => {
   const params = event.url.searchParams;
   const q = params.get("q")?.trim() || undefined;
   const kind = params.get("kind") || undefined;
-  const pending = params.get("status") === "pending";
   // What record this list is scoped to (#323) — the destination a panel's "8 van 137" links
   // to. All four have been API filters since #147; only this page never asked, so a hand-typed
   // `?company_id=` was silently ignored and listed everything. Several at once is legal (the
   // API ANDs them) and each gets its own chip; a non-uuid is dropped rather than 422'd, because
-  // these arrive from a query string anyone can edit and an old bookmark can carry.
-  const scoped = RECORD_FIELDS.flatMap((field) => {
-    const id = params.get(field);
-    return id && UUID_RE.test(id) ? [{ field, id }] : [];
-  });
+  // these arrive from a query string anyone can edit and an old bookmark can carry. The reading
+  // itself lives in `scope.ts`, because `interactionView` below has to answer "is this scoped?"
+  // with the same rule and a second copy is how the two come to disagree.
+  const scoped = scopedRecords(params);
   const byField = (field: RecordField) => scoped.find((r) => r.field === field)?.id;
   // The one roll-up this list takes (#147): a project's own moments plus its tasks'. The panel
   // link carries it so the page counts what the panel counted.
@@ -94,6 +92,15 @@ export const load: PageServerLoad = async (event) => {
   // here would land a link that said 137 on a list of 12 — #323's own bug, one screen to the
   // right. The owner select still narrows it, and it writes `owner=me` out loud so it can.
   const ownerParam = params.get("owner") || (scoped.length > 0 ? "all" : "me");
+  // Which of the two views this is (`scope.ts::interactionView`, where the rule and its three
+  // clauses are written down). **The screen opens on the work that is waiting** — the review
+  // queue — and everything else is one click away under a URL of its own (`?status=all`), the
+  // shape #329 gave Klanten. Two things make that safe as a default. The **endpoint** is
+  // untouched: absent still means every status to the API, so the pickers, the panels and the
+  // generated MCP surface are told what they were always told, and only this page narrows
+  // (CLAUDE.md §9). And the narrowing **says so** — the tab is drawn selected with the number
+  // beside it, because a list that quietly leaves rows out looks identical to one that has none.
+  const pending = interactionView(params) === "pending";
   const everyone = ownerParam === "all";
   const owner = canReadAll && ownerParam !== "all" && ownerParam !== "me" ? ownerParam : undefined;
   const mine = !everyone && !owner;
@@ -106,6 +113,9 @@ export const load: PageServerLoad = async (event) => {
   const to = isoDay(params.get("to"));
   // The URL wins over the saved default so a sorted list stays shareable (docs/UX.md).
   const sort = params.get("sort") ?? resolved.sort ?? undefined;
+  // `?interaction=<id>` opens that moment's detail modal on arrival (#184).
+  const deepLinkId = params.get("interaction");
+  const deepLink = deepLinkId && UUID_RE.test(deepLinkId) ? deepLinkId : null;
 
   // Only the URL-dependent read. The kind vocabulary, the member names and the company custom
   // fields come from the section layout, which does not rerun on a search keystroke, a date
@@ -120,8 +130,13 @@ export const load: PageServerLoad = async (event) => {
           q,
           kind,
           status: pending ? "pending" : undefined,
-          mine: mine || undefined,
-          owner_user_id: !mine ? owner : undefined,
+          // The review queue is the caller's own by construction: an unreviewed e-mail is the
+          // mailbox owner's mail and the API answers nobody else about it (#172). So the owner
+          // filter is *not applied* here rather than merely hidden — a `?status=pending&owner=<a
+          // colleague>` bookmark ANDs to nothing, and an empty list whose reason is a control
+          // this view does not draw is the worst of both rules.
+          mine: pending || mine || undefined,
+          owner_user_id: !pending && !mine ? owner : undefined,
           company_id: byField("company_id"),
           project_id: byField("project_id"),
           contact_id: byField("contact_id"),
@@ -138,8 +153,32 @@ export const load: PageServerLoad = async (event) => {
     Promise.all(scoped.map((r) => recordLabel(api, r.field, r.id))),
   ]);
 
+  /**
+   * The deep-linked moment, when the page it landed on does not hold it.
+   *
+   * It used to be resolved *from the loaded rows*, which is true of the dashboard tile the
+   * param was built for (#15 — always the newest few) and false of every other caller: a
+   * notification about an @mention names a note somebody else wrote, weeks back, behind an
+   * owner filter, so the link opened the list and said nothing. That is the worst answer
+   * available to "open this one" — it looks exactly like a page that simply loaded.
+   *
+   * One by-id read, and only when the page came back without it, so the common case still costs
+   * nothing. `null` is a moment that was deleted or that this caller may not read: the list is
+   * then what they get, which is the same thing the old code did for every other reason.
+   */
+  const items = list.data?.items ?? [];
+  const deepLinked =
+    deepLink && !items.some((item) => item.id === deepLink)
+      ? ((
+          await api.GET("/api/v1/interactions/{interaction_id}", {
+            params: { path: { interaction_id: deepLink } },
+          })
+        ).data ?? null)
+      : null;
+
   return {
-    items: list.data?.items ?? [],
+    items,
+    deepLinked,
     total: list.data?.total ?? 0,
     paging,
     canReadAll,
@@ -147,6 +186,17 @@ export const load: PageServerLoad = async (event) => {
       q: q ?? "",
       kind: kind ?? null,
       pending,
+      /**
+       * Whether anything *besides* the view is narrowing this list.
+       *
+       * It decides which empty state the screen may honestly show: "niets meer te beoordelen"
+       * is a fact about the queue, and printing it over a search that matched nothing sends the
+       * reader hunting for the wrong problem (docs/UX.md — an empty list under a filter says
+       * `common.no_results`). The owner and the record chips are left out on purpose: both draw
+       * their own visible control saying what they are set to, and neither can empty the review
+       * queue, which is always the caller's own.
+       */
+      narrowed: !!(q || kind || from || to),
       mine,
       everyone,
       owner: owner ?? null,

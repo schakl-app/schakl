@@ -104,7 +104,8 @@
   reselect). A picker that only lists preloaded options and sends the user *elsewhere* to create
   the missing registrar / provider / client is a bug — that is precisely what the first domains and
   hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
-  an employee is *invited*, not created — so leave those select-only.
+  an employee is *invited*, not created — so those carry no ＋. They are still comboboxes: "no
+  inline create" is a statement about the ＋, never a licence to keep a native `<select>`.
   **A nested quick-create inherits the parent form's context** (#247): when the outer form already
   has a client selected and its picker opens a quick-create for a second entity (a project, a
   contact, a hosting account), that dialog opens with the *same* client pre-filled — as a default
@@ -174,6 +175,24 @@
   purpose — a client is only retired by the archive, because a lead is being chased and an
   offboarding client is still being invoiced, while a project is retired by `completed` as well,
   because delivered work is not something to suggest booking against.
+  **And where the rows are *people*, the picker is one component** (`core/ui/MemberPicker`). The
+  rule above had been written down once and then re-applied by hand at every call site — each
+  spelling out `splitMemberOptions`, `archived`, `archivedLabel` — while the three controls that
+  predated the helper were still native `<select>`s: the interacties owner filter, the automation
+  rule's assignee and the takensjabloon's. A `<select>` has no search to hide anything behind, so
+  those three degraded to "last, under an `<optgroup>`", which puts a colleague who left in March
+  one keystroke from being picked; and an eleventh, the beschikbaarheid form's *whose week is
+  this*, had no split at all because it was written from `memberLabel` rather than from the
+  helper. That is the shape a shared rule takes when it lives in a function instead of in a
+  control: it is right wherever somebody remembered it. `MemberPicker` takes the roster and
+  answers with the whole rule — deactivated accounts out of the opening list, findable by typing,
+  wearing "Gedeactiveerd", always offered while the field holds them — plus the two knobs the
+  call sites actually differ on. `extra` leads the list with the choices that are **not a
+  person** ("Mijn contactmomenten" / "Iedereen" on a filter, "Verantwoordelijke van de klant" on a
+  template, which resolves at apply time), and `exclude` drops the ids another control already
+  names — the owner filter excludes the signed-in user, because "mijn" is that same answer in
+  words. Reach for `splitMemberOptions` directly only where the control is not a single-value
+  picker: the assignee chips, the party picker.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
@@ -329,6 +348,34 @@
   comment while five disappear; and the composer keeps its draft on failure and closes only on
   success (`update({ reset: result.type === "success" })`), because the words are not the server's
   to throw away.
+- **A conversation is a feed, so it folds, it is counted, and its order is the reader's**
+  (`$lib/modules/tasks/TaskComments.svelte`). The rules above were written for the three-comment
+  task and were all still true at seventy: one flat column, oldest-first, no count, and nothing
+  said about the API's 200-row cap. Five things generalise to any threaded discussion the product
+  grows. **Order is a preference and it applies to threads only** — an answer must follow its
+  question, so replies stay oldest-first and what the control flips is the order of the openers.
+  The default is **newest-first**, because a chat pins its viewport to the bottom and a section on
+  a record page does not: inheriting the chat convention is what put the news at the bottom of the
+  page. It is a per-user pref (`/api/v1/prefs`, namespace `comments`), not a URL parameter — this
+  is how one person reads, not which records are on screen — applied optimistically and saved in
+  the background, because a reorder that waits for a round trip reads as a control that is broken.
+  **The list folds from the far end and the fold counts what it hides**: the newest few threads
+  stay open, "Toon 23 oudere reacties" is one line above or below them depending on the order, and
+  a thread's own earlier answers fold the same way. A list that simply stops looks exactly like a
+  list that is complete (Principle 7), which is also why the cap now says so (`comments_truncated`,
+  answered by reading one row more than is kept). **The count is on the heading**, because "how
+  much is there to read?" is the first question a discussion is asked and a folded list cannot
+  answer it by being looked at. **A deep link expands before it scrolls**: `?comment=<id>` is what
+  the notification inbox, the mail button and the activity trail all point at, and the section
+  unfolds whatever hides that message, marks it, scrolls it to the middle of the viewport and
+  opens the reply composer under it seeded with an `@mention` of its author — "someone answered
+  you" and "you are about to answer" are one motion and it used to be three clicks. Arriving is a
+  *navigation*, so the reveal is repeated over the second after it lands: SvelteKit's
+  post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
+  after we take it, and one attempt loses to whichever runs last. A `?comment=` the page does not
+  hold (deleted, or past the cap) says so in a strip — swallowing it is what a broken link looks
+  like. And **posting marks what you wrote**, for the same reason: reading oldest-first your own
+  comment lands at the far end of a long list while the composer stayed at the top.
 - **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
   own — the form lives on the detail page, and duplicating it onto the overview would be a second
   copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`
@@ -610,6 +657,30 @@
       *collapsed* bar from silently explaining an empty list — and an empty list under a filter
       says `common.no_results`, never "je hebt nog geen domeinen", which sends the reader
       hunting for the wrong problem.
+  - **A screen that holds a queue opens on the queue, and the queue carries its size.**
+    Interacties opened on the whole timeline with the unreviewed e-mails scattered through it
+    wearing an amber pill, and its two views were a pair of borderless words whose *selected*
+    half painted itself `bg-surface` — the page's own colour (`app.css`). So the primary switch
+    on the busiest screen in the app was invisible, and the one job the screen exists for was
+    something you scrolled for. Four rules came out of fixing it and none is about interactions.
+    **A pressed control must not be painted the colour it is standing on**: `bg-surface` marks
+    nothing on a `--surface` page; a chosen tab is raised and ringed, or carries the brand, the
+    way a card sits above the page it is on. **The count is the control**: "Te beoordelen 11"
+    says there is work, says how much, and — because it is read in the *layout* load, never the
+    page's — keeps saying it while the list below is searched, dated and paged, which is what
+    lets a reader tell an empty queue from a filtered one. **A default that hides rows owes the
+    hidden state a URL** (`?status=all`) and owes the *endpoint* nothing: the API's own filter
+    stays unset, because the pickers, the panels and the generated MCP surface read the same
+    route and must still be told everything (CLAUDE.md §9, #329). And **a view that cannot be
+    narrowed does not draw the narrowing control**: the queue is one person's mailbox by
+    construction, so the owner select would have only one non-empty answer, and every pending row
+    is an e-mail, so the kind select would have one too — both stand down there, and both come
+    back the moment a link arrives with the parameter set, or the list is narrowed by something
+    the screen does not show. The empty states then split three ways, because they are three
+    different facts: filtered → `common.no_results`; queue empty → *say it is done* and put a
+    real button to the full list in the middle of it; nothing at all → the old line. The one an
+    inbox-zero screen must never show is "Geen interacties in deze weergave", which on the view a
+    user now lands on first reads as a page that failed to load.
 - **A panel is the first page of the list it links to.** A client card shows five domains and
   five websites and then hands over — but only if the three things that make the hand-over
   honest hold. It shows the **whole count**, not the shown one, because five rows with nothing
@@ -1266,6 +1337,38 @@
   for a *type*, which is just the section the line already sits in. Both were dropped: derive
   what the kind determines, and ask only where the answer is genuinely open (a service line
   really is sold in stuks or dagen).
+- **An inline-create dialog that quietly offers less than the field it stands in for.**
+  `TaskQuickCreate` — the "＋ taak toevoegen" behind every task picker, and the only way a task
+  is made while reviewing a pending e-mail — asked for *one* assignee with a plain Combobox,
+  years after tasks grew a roster (#375). The dialog was not wrong when it was written; it was
+  never revisited, and nothing failed: a task created there simply came out assigned to one
+  person, so "assign the pair" meant opening the task afterwards — the exact trip the inline
+  create exists to save. It draws `AssigneePicker` now, the same chips the full form does, and
+  the form action forwards `assignees` rather than a lone id. Two rules come out of it. **A
+  quick-create is a shortcut to a record, not a smaller kind of record**: when the entity gains
+  a field, the dialog is part of the change. And **a permission mirror must follow the roster
+  it now creates** — "sluit deze taak hiermee" is gated on `tasks.task.write:own`, which means
+  *any* assignee server-side (`caller_may_write_task`), while the browser's `canWriteTask` read
+  only the starred one; harmless while a quick-created task had exactly one assignee, and a
+  disappearing control the moment it could have two.
+- **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
+  Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
+  addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and
+  "Juridische naam", that is a *question* — which one do I fill in? — where the screen should be
+  giving an *answer*. So the label keeps the top of the form and the H1, and the second name
+  sits inside **Factuurgegevens**, first, above the address: what it belongs to is the block a
+  document freezes, not the block a screen prints. Its placeholder is the label, so leaving it
+  empty **shows** what will happen instead of describing it.
+  Where it is *read* follows the same rule, and the operative word is **differs**: the API sends
+  `null` for "the label is also the legal name", so the header line, the billing card and the
+  panel all draw nothing at all for the ordinary client — a value equal to the label is treated
+  as absent too, because it arrives from an import or from somebody being cautious and is still
+  not a second fact. Where it does differ, the client page says so under the H1 (muted, prefixed
+  with its label, so it reads as a fact about the record and not as a second title): the invoice
+  this client gets will be headed with a name the H1 does not contain, and nobody should have to
+  open a card to discover that. The list column is opt-in and not sortable, because the register
+  is read by label; it exists for the one job — reconciling a bank statement, a bookkeeper's
+  list — where the other name is the only one you have. Search matches **both**, always.
 - **A picker that hides what it has already done.** A billed subscription period is listed and
   disabled with "al gefactureerd", not omitted: "did I invoice March?" is the question the
   picker exists to answer, and answering it by omission is what produces the duplicate.

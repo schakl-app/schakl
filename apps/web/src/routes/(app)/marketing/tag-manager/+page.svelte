@@ -17,6 +17,8 @@
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import GtmContainerSearch from "$lib/integrations/google_tag_manager/GtmContainerSearch.svelte";
+  import type { GtmSearchHit } from "$lib/integrations/google_tag_manager/types";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
@@ -24,6 +26,8 @@
   const busy = new InFlight();
   let linking = $state(false);
   let linkCompanyId = $state("");
+  /** The container the search picked; the form posts its public id and nothing else. */
+  let selected = $state<GtmSearchHit | null>(null);
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: linkCompanyId }),
   );
@@ -31,9 +35,6 @@
   const companyName = $derived((id: string | null | undefined) =>
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
-
-  const inputClass =
-    "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -148,22 +149,23 @@
       action="?/link"
       use:enhance={busy.wrap("link", () => async ({ update, result }) => {
         await update({ reset: true });
-        if (result.type === "success") linking = false;
+        // `selected` is `$state`, which `reset` cannot reach — cleared by hand or the next
+        // open of this dialog arrives with a container already chosen.
+        if (result.type === "success") {
+          linking = false;
+          selected = null;
+        }
       })}
       class="space-y-4"
     >
       <div>
-        <label for="gtm-link-id" class="mb-1 block text-sm font-medium text-text">
+        <span class="mb-1 block text-sm font-medium text-text">
           {t("settings.gtm.public_id")}
-        </label>
-        <input
-          id="gtm-link-id"
-          name="public_id"
-          required
-          placeholder="GTM-XXXXXXX"
-          class={inputClass}
-        />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.gtm.public_id_hint")}</p>
+        </span>
+        <!-- Searched, not typed. The id used to have to be dug off the client's website first,
+             and a typo came back as "that container does not exist". -->
+        <GtmContainerSearch bind:selected connectNext="/marketing/tag-manager" />
+        <input type="hidden" name="public_id" value={selected?.public_id ?? ""} />
       </div>
       <div>
         <label for="gtm-link-company" class="mb-1 block text-sm font-medium text-text">
@@ -183,7 +185,9 @@
         <Button type="button" variant="secondary" onclick={() => (linking = false)}>
           {t("common.cancel")}
         </Button>
-        <Button type="submit" disabled={busy.active}>{t("settings.gtm.link")}</Button>
+        <Button type="submit" disabled={busy.active || !selected}>
+          {t("settings.gtm.link")}
+        </Button>
       </div>
     </form>
   </Modal>

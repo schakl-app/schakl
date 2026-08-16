@@ -90,12 +90,24 @@ def _customer(doc: Any, field: str) -> str:
     return (doc.customer or {}).get(field) or ""
 
 
+def _customer_label(doc: Any) -> str:
+    """What the covering e-mail calls the client.
+
+    The **label**, not the legal name: the document is the legal instrument and it says
+    "J. Jansen Holding B.V." on its own bill-to block, while the mail around it is written to a
+    person and should open the way the agency actually addresses them. Falls back to the
+    document's own name, which is what a document issued before the client label / legal-name
+    split carries — and what a client with only one name carries either way.
+    """
+    return _customer(doc, "trade_name") or _customer(doc, "name")
+
+
 def _invoice_values(
     invoice: Any, brand: str, pay_url: str = "", qr_caption: str = ""
 ) -> dict[str, str]:
     return {
         "number": invoice.number or "",
-        "company": _customer(invoice, "name"),
+        "company": _customer_label(invoice),
         "contact": _customer(invoice, "attn"),
         "total": _fmt_money(invoice.total, invoice.currency),
         "date": _fmt_date(invoice.issue_date),
@@ -117,7 +129,7 @@ def _invoice_values(
 def _quote_values(quote: Any, brand: str) -> dict[str, str]:
     return {
         "number": quote.number or "",
-        "company": _customer(quote, "name"),
+        "company": _customer_label(quote),
         "contact": _customer(quote, "attn"),
         "total": _fmt_money(quote.total, quote.currency),
         "date": _fmt_date(quote.issue_date),

@@ -22,7 +22,12 @@ async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
         "website": company.website,
         "phone": company.phone,
         "invoice_email": company.invoice_email,
-        # Billing identity (issue #11): what invoicing (#207) snapshots at issue.
+        # Billing identity (issue #11): what invoicing (#207) snapshots at issue. The legal name
+        # belongs in this group and nowhere else on the panel — the heading above the card
+        # already says "name", and it says the label, which is the one a colleague is looking
+        # for. Sent raw (``None`` when the label is also the legal name) rather than resolved,
+        # so the screen can draw the difference instead of a line that silently repeats the H1.
+        "legal_name": company.legal_name,
         "vat_number": company.vat_number,
         "coc_number": company.coc_number,
         "address_line1": company.address_line1,

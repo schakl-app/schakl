@@ -21,6 +21,7 @@ Three rules from the rest of the codebase are load-bearing here and easy to lose
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -41,6 +42,7 @@ from app.integrations.google_tag_manager.errors import (
     GtmError,
     GtmNotConfigured,
     GtmNotFoundError,
+    GtmQuotaError,
     describe_failure,
 )
 from app.integrations.google_tag_manager.models import (
@@ -57,6 +59,15 @@ from app.integrations.google_tag_manager.models import (
 MAX_PICKER_ACCOUNTS = 50
 #: And the containers under them, for the same reason one level down.
 MAX_PICKER_CONTAINERS = 500
+#: **How many accounts one search may open, and the number this whole surface turns on.**
+#:
+#: Tag Manager's quota is *per user per minute* and it is small — a first live run against an
+#: agency holding **44** accounts refused on the 45th request with ``RESOURCE_EXHAUSTED``, because
+#: "list every account, then list every account's containers" is ``1 + n`` calls and n is not
+#: ours to choose. So the picker asks Google for the account list (one call, always affordable)
+#: and opens only the accounts a *search* selected. Eight is what keeps the worst case at nine
+#: requests, comfortably inside the minute, while still filling the box for the agency with two.
+MAX_SEARCH_ACCOUNTS = 8
 #: How many workspaces one observe walks for staged-change counts. A container has one or two;
 #: a container with twenty has a process problem this number is not going to fix.
 MAX_OBSERVED_WORKSPACES = 5
@@ -100,6 +111,62 @@ class AvailableContainer:
 class PickerResult:
     containers: list[AvailableContainer]
     warnings: tuple[str, ...] = ()
+    #: Every Tag Manager account this grant reaches, and how many of them were actually opened.
+    #: Both travel because a search that shows eight of forty-four must be able to *say so*: a
+    #: short list that looks complete is the failure §17 names, and "8 van 44" is the only thing
+    #: that turns an empty result into an instruction (#373's long-tail rule).
+    accounts_total: int = 0
+    accounts_read: int = 0
+
+
+#: What a Tag Manager public id looks like. Deliberately generous about length and case — the
+#: point is to tell "the user pasted the id off the client's website" apart from "the user is
+#: typing a name", not to validate: an id that is not a container comes back 404 from Google,
+#: which is a better answer than a regex's opinion.
+_PUBLIC_ID_RE = re.compile(r"^GTM-[A-Z0-9]{4,12}$", re.IGNORECASE)
+
+
+def _matches_account(account: dict[str, Any], needle: str) -> bool:
+    """Whether a search opens this account.
+
+    **The account name is the only thing a search can match before spending a request**, and at an
+    agency it is already the client's name ("Briellaerd", "campings Zeeland"). Matching a container
+    name would mean listing every container first, which is the cost this whole shape exists to
+    avoid — so the box says what it searches, and the id path above covers the other way anybody
+    identifies a container. An empty needle matches everything, which is what makes a blank box
+    show the first few accounts instead of nothing.
+    """
+    if not needle:
+        return True
+    folded = needle.casefold()
+    return folded in str(account.get("name") or "").casefold() or folded == str(
+        account.get("accountId") or ""
+    )
+
+
+def _option(
+    container: dict[str, Any], account: dict[str, Any], linked: set[str]
+) -> AvailableContainer | None:
+    """One Google container payload as the picker offers it, or ``None`` if it names no id.
+
+    The account is passed in rather than read off the container because ``containers:lookup``
+    answers a container and no account name; falling back to the numeric id is what keeps a
+    looked-up container from rendering under a blank heading.
+    """
+    container_id = str(container.get("containerId") or "")
+    if not container_id:
+        return None
+    account_id = str(container.get("accountId") or account.get("accountId") or "")
+    return AvailableContainer(
+        account_id=account_id,
+        account_name=str(account.get("name") or account_id),
+        container_id=container_id,
+        public_id=str(container.get("publicId") or ""),
+        name=str(container.get("name") or container_id),
+        path=str(container.get("path") or ""),
+        usage_context=tuple(str(v) for v in (container.get("usageContext") or [])),
+        already_linked=container_id in linked,
+    )
 
 
 class GtmService:
@@ -377,63 +444,104 @@ class GtmService:
 
     # --- the live picker --------------------------------------------------------------------- #
 
-    async def available_containers(self) -> PickerResult:
-        """Every container the caller's own Google grant can reach, across every GTM account.
+    async def available_containers(self, query: str = "") -> PickerResult:
+        """Search the containers the caller's own Google grant can reach — **a search, not a list**.
+
+        The first version listed every account and then every account's containers, which is
+        ``1 + n`` requests where *n* belongs to the agency and not to us. Against a real reseller
+        grant — 44 Tag Manager accounts — that refused on the 45th call with Tag Manager's
+        per-user-per-minute quota, so the control that exists to find a container could not find
+        any. Three rules came out of it and none of them is about GTM.
+
+        **The account list is the cheap half and the containers are the expensive half**, so the
+        accounts are read always (one call) and containers only for the accounts a search picked.
+        **A GTM id short-circuits the whole thing**: ``accounts/containers:lookup`` answers in one
+        request and is what somebody pasting an id off a client's website actually wants, so it
+        never costs a sweep. And **what was not opened is named** — ``accounts_read`` of
+        ``accounts_total``, plus a warning — because a short list that looks complete is the
+        failure mode §17 exists to prevent, and the number is what turns "nothing found" into
+        "search by account name" rather than into "we are not in that account".
 
         Live on every request, for the reason the Ads picker is: a picker showing a stale list is
         how somebody links a container that was deleted last month. One account that refuses is
-        skipped rather than emptying the picker — a user with access to five clients' Tag Manager
+        skipped rather than emptying the result — a user holding five clients' Tag Manager
         accounts and one revoked grant should still see four.
         """
         self.ctx.require("google_tag_manager.settings.manage")
         connection = await self._own_connection()
         linked = {row.container_id for row in await self.list_containers()}
+        needle = query.strip()
 
         warnings: list[str] = []
         options: list[AvailableContainer] = []
+        accounts_total = 0
+        opened = 0
         async with (
             gtm_client(self.ctx.session, self.ctx.org, connection, tool="picker") as client,
             self.ctx.release_db(),
         ):
             accounts = await client.list("accounts", "account")
-            if len(accounts) > MAX_PICKER_ACCOUNTS:
+            accounts_total = len(accounts)
+            if accounts_total > MAX_PICKER_ACCOUNTS:
                 warnings.append("gtm.warning.accounts_capped")
                 accounts = accounts[:MAX_PICKER_ACCOUNTS]
-            for account in accounts:
-                account_path = str(account.get("path") or "")
-                account_id = str(account.get("accountId") or "")
-                if not account_path or not account_id:
-                    continue
+            by_id = {str(a.get("accountId") or ""): a for a in accounts}
+
+            if _PUBLIC_ID_RE.match(needle):
+                # One request, and the exact answer. A id that names nothing this grant can reach
+                # is an empty result rather than a refusal: on a *search* box, "no match" is an
+                # ordinary outcome and an error envelope would be a wrong sentence about it.
                 try:
-                    containers = await client.list(f"{account_path}/containers", "container")
-                except GtmError:
-                    # One inaccessible account must not empty the picker (Cloudflare's rule: a
-                    # probe that fails is evidence about that probe, not a verdict on the whole).
-                    warnings.append("gtm.warning.account_unreadable")
-                    continue
-                for container in containers:
-                    if len(options) >= MAX_PICKER_CONTAINERS:
-                        warnings.append("gtm.warning.containers_capped")
-                        break
-                    container_id = str(container.get("containerId") or "")
-                    if not container_id:
-                        continue
-                    options.append(
-                        AvailableContainer(
-                            account_id=account_id,
-                            account_name=str(account.get("name") or account_id),
-                            container_id=container_id,
-                            public_id=str(container.get("publicId") or ""),
-                            name=str(container.get("name") or container_id),
-                            path=str(container.get("path") or ""),
-                            usage_context=tuple(
-                                str(v) for v in (container.get("usageContext") or [])
-                            ),
-                            already_linked=container_id in linked,
-                        )
+                    found = await client.get(
+                        "accounts/containers:lookup", params={"tagId": needle.upper()}
                     )
+                except GtmNotFoundError:
+                    found = {}
+                except GtmError:
+                    warnings.append("gtm.warning.account_unreadable")
+                    found = {}
+                if found:
+                    account = by_id.get(str(found.get("accountId") or ""), {})
+                    option = _option(found, account, linked)
+                    if option is not None:
+                        options.append(option)
+                        opened = 1
+            else:
+                candidates = [a for a in accounts if _matches_account(a, needle)]
+                if len(candidates) > MAX_SEARCH_ACCOUNTS:
+                    warnings.append("gtm.warning.narrow_search")
+                candidates.sort(key=lambda a: str(a.get("name") or "").casefold())
+                for account in candidates[:MAX_SEARCH_ACCOUNTS]:
+                    account_path = str(account.get("path") or "")
+                    if not account_path:
+                        continue
+                    try:
+                        containers = await client.list(f"{account_path}/containers", "container")
+                    except GtmQuotaError:
+                        # A rate, not a verdict: keep what was read, say the reading stopped, and
+                        # let the caller narrow rather than wait out a minute they cannot see.
+                        warnings.append("gtm.warning.quota")
+                        break
+                    except GtmError:
+                        # One inaccessible account must not empty the picker (Cloudflare's rule: a
+                        # probe that fails is evidence about that probe, not a verdict on all).
+                        warnings.append("gtm.warning.account_unreadable")
+                        continue
+                    opened += 1
+                    for container in containers:
+                        if len(options) >= MAX_PICKER_CONTAINERS:
+                            warnings.append("gtm.warning.containers_capped")
+                            break
+                        option = _option(container, account, linked)
+                        if option is not None:
+                            options.append(option)
         options.sort(key=lambda o: (o.account_name.casefold(), o.name.casefold()))
-        return PickerResult(containers=options, warnings=tuple(dict.fromkeys(warnings)))
+        return PickerResult(
+            containers=options,
+            warnings=tuple(dict.fromkeys(warnings)),
+            accounts_total=accounts_total,
+            accounts_read=opened,
+        )
 
     async def _lookup(self, connection: GoogleConnection, tag_id: str) -> dict[str, Any]:
         """``GTM-NPGFR9W9`` → the container, through ``accounts/containers:lookup``."""

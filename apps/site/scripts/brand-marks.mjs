@@ -25,11 +25,14 @@ const MARKS = {
   'google-ads': 'googleads',
   'google-analytics': 'googleanalytics',
   'google-workspace': 'google',
+  'google-tag-manager': 'googletagmanager',
   'search-console': 'googlesearchconsole',
   mcp: 'modelcontextprotocol',
   oidc: 'openid',
   openai: 'openai',
   stripe: 'stripe',
+  'uptime-kuma': 'uptimekuma',
+  wordpress: 'wordpress',
 };
 
 const entries = [];

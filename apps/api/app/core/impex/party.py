@@ -32,7 +32,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import column, select, table
+from sqlalchemy import column, or_, select, table
 
 from app.core.directory import ids_by_email, visible_ids
 from app.core.party.models import PartyType
@@ -41,7 +41,9 @@ from app.core.party.service import PartyInput
 from app.core.tenancy import RequestContext
 
 #: Bare tables by name — a token lookup is a lookup, not a data path into another module (§6).
-_companies = table("companies", column("id"), column("name"), column("org_id"))
+_companies = table(
+    "companies", column("id"), column("name"), column("org_id"), column("legal_name")
+)
 #: Export only — turning a *stored* pair back into its token. The import direction
 #: goes through app.core.directory instead (see _by_contact_email).
 _contacts = table("contacts", column("id"), column("email"), column("org_id"))
@@ -210,18 +212,26 @@ async def _by_company_name(
             {ref: (rid if rid in found else _UNRESOLVED) for ref, rid in by_id.items()}
         )
     if names:
-        matches: dict[str, list[uuid.UUID]] = {}
+        # Either name (``app/core/naming.py``). A registrant is a *legal* party, so a domain
+        # file naming the entity rather than the label is the likelier of the two spellings
+        # here, not the exotic one — and a token that resolves to two different clients by two
+        # different columns is still ambiguous, which is what the set is for.
+        wanted = set(names)
+        matches: dict[str, set[uuid.UUID]] = {}
         rows = await ctx.session.execute(
-            select(_companies.c.id, _companies.c.name).where(
-                _companies.c.org_id == ctx.org.id, _companies.c.name.in_(names)
+            select(_companies.c.id, _companies.c.name, _companies.c.legal_name).where(
+                _companies.c.org_id == ctx.org.id,
+                or_(_companies.c.name.in_(names), _companies.c.legal_name.in_(names)),
             )
         )
-        for row_id, name in rows:
-            matches.setdefault(name, []).append(row_id)
+        for row_id, *row_names in rows:
+            for value in row_names:
+                if value in wanted:
+                    matches.setdefault(value, set()).add(row_id)
         for name in names:
-            ids = matches.get(name, [])
+            ids = matches.get(name, set())
             resolved[name] = (
-                ids[0] if len(ids) == 1 else (_UNRESOLVED if not ids else _AMBIGUOUS)
+                next(iter(ids)) if len(ids) == 1 else (_UNRESOLVED if not ids else _AMBIGUOUS)
             )
     return resolved
 

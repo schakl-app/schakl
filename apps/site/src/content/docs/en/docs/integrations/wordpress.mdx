@@ -1,0 +1,152 @@
+---
+title: WordPress
+description: "One Application Password per website opens four surfaces on the same host, and supplies Rank Math's AI Visibility figures as a marketing source."
+sidebar:
+  order: 11
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Most of the sites an agency looks after run WordPress. One **Application Password** per website
+opens four surfaces on the same host at once — and one of them supplies a marketing source nobody
+else has: how often a client's brand turns up, and gets linked, in AI answers.
+
+## Where to find it
+
+The **WordPress** card on a website's detail page (*Domeinen & websites → Websites → the site*).
+There is deliberately no menu item: WordPress is not a place you go, it is something a website
+has — the same reasoning that keeps Cloudflare on a domain rather than in the sidebar.
+
+Switch the integration on under *Instellingen → Integraties* (Settings → Integrations). It needs
+the **Websites** module, because that is what the connection hangs off.
+
+## The credential, and what it actually is
+
+<Aside type="caution" title="This is an administrator password">
+Every Rank Math AI Visibility route requires `manage_options`, so the Application Password you
+store here belongs to a **WordPress administrator**. There is no read-only shape to ask for.
+
+That is a materially bigger blast radius than, say, a Cloudflare token scoped to DNS reads, and
+the permissions are set accordingly: managing a connection is admin-only, it is never folded into
+the ordinary website write permission, and neither permission is ever granted to the Client role.
+</Aside>
+
+<Steps>
+1. In WordPress, go to *Users → Profile* and scroll to **Application Passwords**. Create one and
+   give it a name you will recognise later ("schakl", say).
+2. In schakl., open the website and fill in the site address, the WordPress username and that
+   password on the **WordPress** card.
+3. Press **Controleren** (Verify).
+</Steps>
+
+The password is stored encrypted, is write-only through the API, and never appears in a response,
+a log line or the activity trail. The trail records *that* it changed, never what to.
+
+## What Verify actually checks
+
+Five independent probes run, and **none of them gates another**, because in reality those states
+are independent: Rank Math is routinely absent from a site whose posts API is perfectly healthy,
+and the MCP plugin from a site where Rank Math works fine.
+
+| Capability | What a ✓ means | What a ✗ means |
+| --- | --- | --- |
+| `rest` | The password reaches the WordPress REST API | The credential itself was refused |
+| `admin` | That user is an administrator | Valid credential, but not an administrator |
+| `abilities` | WordPress 6.9's Abilities API is present | WordPress is older than 6.9 |
+| `rankmath_aiv` | Rank Math answers on AI Visibility | Plugin absent, or no Content AI subscription |
+| `mcp` | The MCP Adapter plugin is installed | It is not |
+
+Two rules follow from that. **A read that succeeds outranks a probe that refuses**: a credential
+that reached the ordinary REST API is *active* even if the other four failed, and only one refused
+by every probe is called refused. And **unreachable** and **not WordPress** are kept separate from
+**refused**, because neither says anything about the password — reporting them as an auth failure
+sends somebody off to re-mint a credential that was never wrong.
+
+Every ✗ carries the site's own error text, untranslated, because it is a quote: `rest_no_route`,
+`rest_forbidden`, `aiv_unauthorized`. A ✗ with no explanation is the one state nobody can act on.
+
+<Aside type="tip" title="A common failure on shared hosting">
+Some hosts strip the `Authorization` header before PHP sees it. It surfaces here as a refused
+credential with `rest_not_logged_in` beside it — the password is fine, the host is eating it.
+</Aside>
+
+## Four surfaces, one key
+
+Rank Math registers its AI Visibility features as WordPress **Abilities**, with two lines of
+metadata: show in REST, and expose over MCP. Those two lines are the whole story — they put the
+same functions on WordPress core's REST route *and* on the MCP Adapter plugin's MCP server, and
+both authenticate the way any REST caller does.
+
+| Surface | What it is |
+| --- | --- |
+| `wp/v2` | The ordinary REST API: posts, media, users, plugins |
+| `wp-abilities/v1` | WordPress 6.9's Abilities API, opt-in per ability |
+| `mcp/<server>` | The MCP Adapter plugin's MCP server |
+| `rankmath/v1/ai-visibility` | Rank Math's own AI Visibility route |
+
+## AI Visibility as a marketing source
+
+With the credential in place, link a marketing source of type **Rank Math** to this website under
+*Marketing* on the client. Without a connected website that link is refused at once, rather than
+turning up as a red line on tomorrow morning's sync.
+
+Five figures, and because none of them is a number a marketeer already owns, each one carries its
+own sentence on screen — written out where there is room, as a tooltip where there is not, in the
+same component for your team and for the client's portal.
+
+| Figure | What it counts | Scale |
+| --- | --- | --- |
+| AI visibility score | Rank, mentions, citations and sentiment folded into one | 0–100 |
+| Mentions | Times the brand was named in answers to the tracked prompts | Count |
+| Citations | The subset of those that also **linked** to the brand's site | Count |
+| Average sentiment | How positively the brand is described | Percentage |
+| Average rank | The brand's mean place among the brands an answer names | 1 is best |
+
+<Aside type="note" title="Two of these are not counts">
+**Mentions** and **citations** look like counts and are running totals as at the last analysis.
+Two daily snapshots reading "18 mentions" mean eighteen, not thirty-six — so they are averaged
+over a period and never summed.
+</Aside>
+
+### Why the trend line is ours and not Rank Math's
+
+Rank Math keeps no history: every upstream path answers "latest" only. So the nightly sync writes
+**one** snapshot per day and the trend line exists because we store those snapshots. Filling a
+thirty-day window with thirty identical rows would be a flat line that looks like measurement.
+
+Analyses also run on the cadence of your Rank Math plan — weekly by default — so two consecutive
+snapshots may legitimately carry the same number. When it was last analysed travels with the
+figures, so a report can say what it is actually comparing rather than announcing a 0% week.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `wordpress.site.manage` | Connect, change the password, verify, disconnect | Administrator |
+| `wordpress.site.read` | See whether this client's site is connected and what the last verify found | Administrator, Member |
+
+The read goes to members because "is this client's site connected?" is a question an account
+manager asks while doing ordinary work. The manage permission stays admin-only and is deliberately
+**not** folded into `websites.website.write`.
+
+## Good to know
+
+- **Disconnecting forgets the password here; it does not revoke it at WordPress.** That is the
+  owner's act on their own profile screen, and doing it as a side effect of tidying a list would
+  break whatever else that password was minted for.
+- **The card renders instantly, connected or not.** It reads stored state and touches no outside
+  service, so a website page loads at the same speed whether the client's WordPress is up, down,
+  behind a firewall or gone. Going and looking is what the Verify button is for.
+- **A verify that succeeds clears the error a previous one set.** A status flag that only ever
+  turns on is a bug with a long tail.
+- **Reading only, for now.** No creating a brand, no editing prompts, no publishing posts.
+- **Restricted colleagues see only their own clients' sites.** A website belongs to its domain's
+  client, which is two joins away — and it is enforced, not assumed.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Websites" href="/en/docs/modules/websites/" description="The record this credential hangs off." />
+  <LinkCard title="Marketing sources" href="/en/docs/integrations/marketing-sources/" description="The other four sources, and how a client's figures are put together." />
+  <LinkCard title="Uptime Kuma" href="/en/docs/integrations/uptime-kuma/" description="The other thing a website has." />
+</CardGrid>

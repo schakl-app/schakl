@@ -32,6 +32,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.core.naming import document_name_of
 from app.modules.invoicing.calc import Totals, line_nets, round_cents
 from app.modules.invoicing.models import InvoiceKind, TaxCategory
 
@@ -237,13 +238,21 @@ def relation_payload(
     is not a customer, and a client of an agency that also supplies them would otherwise lose
     ``Leverancier`` on the first push.
     """
-    name = (getattr(company, "name", "") or "").strip()
+    # The **legal name** where the client has one (``app/core/naming.py``): a ledger relation is
+    # what an accountant books against and what a bank statement is reconciled to, so it must be
+    # the entity rather than the label the agency uses in conversation. A client with only one
+    # name is unaffected, which is every relation this integration pushed before the split.
+    name = document_name_of(company)
     if not name:
         raise MappingError("errors.snelstart.relation_name_missing")
     if len(name) > MAX_RELATION_NAME:
         # Refused, not trimmed. "Stichting Openbaar Onderwijs Noord-Holland Boven" cut to 50
         # characters is a record whose own bookkeeper cannot find it, and silently creating one
         # is worse than telling somebody to shorten the name they will have to search for.
+        #
+        # This fires more often now that the name is the legal one: "… Beheer B.V." is longer
+        # than "Bakkerij Jansen", and 50 is SnelStart's limit, not ours. That is the right
+        # direction to fail in — the alternative is a ledger full of names ending mid-word.
         raise MappingError(
             "errors.snelstart.relation_name_too_long", detail=f"{len(name)}/{MAX_RELATION_NAME}"
         )

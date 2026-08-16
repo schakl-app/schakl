@@ -195,6 +195,117 @@ is SE Ranking's own "visible at **either** end": a client whose agency switches 
 find sixty new "rankings" appearing in a month where nothing changed, and a term that has
 *dropped out* of the visible depth is exactly the row worth printing.
 
+## A level is not a total, and one client may have two websites (#381)
+
+Found reviewing a real July report before it went out. The run's warnings named three things;
+the two worse faults were on the client's own page and named nothing.
+
+### The rankings tiles were 31-day sums
+
+`top3`, `top10`, `top30`, `keywords_ranking` and `keywords_tracked` were missing from
+`AVERAGED_METRICS`, so a month of daily rows was **added up**. A project tracking 145 keywords
+printed *4.495 gevolgde zoekwoorden · 2.782 scorend · 639 in top 3*. `avg_position` had been
+registered years earlier and its docstring already explained the trap; the four counters added
+beside it were not.
+
+The rule generalises past SE Ranking, and `docs/WORDPRESS.md` already states it for Rank Math's
+`mentions` and `citations`: **a metric whose daily row answers "how many, right now" is a level,
+however much its name reads like a total.** A source's own dashboard is the tell — if it shows
+the number without asking for a date range, thirty-one of them added together is thirty-one, not
+a month. The test is a sweep over `SERANKING_METRICS` rather than five names, so the seventh
+metric fails in CI instead of in a client's PDF.
+
+### The table printed 25 of the 68 terms those tiles had counted
+
+`limit` exists because a Search Console property answers with every phrase it was ever shown
+for — thousands, most seen twice — so a report has to pick a slice. An SE Ranking project holds
+the terms somebody sat down and chose to track; cutting those is not editing for length, and it
+left the table disagreeing with the summary above it. `limit` is now Search Console's alone, the
+same argument that already exempts `min_impressions`. `max_position` moved with it: the Search
+Console adapter was handed the client's setting and SE Ranking hardcoded `VISIBLE_DEPTH`, so one
+control meant two things depending on which integration the agency held — and it had no control
+at all, on either screen, until now.
+
+### A 401 from one endpoint was reported as the credential being down
+
+`_gather_seranking` wrapped three independent questions in one `try`. SE Ranking's AI Result
+Tracker answers **401** for a project whose plan does not include it — permanently, not
+transiently — so a credential that had just returned 68 keywords and a site audit was reported
+as *"Een gegevensbron was niet bereikbaar"*, and the keywords survived only because of the order
+the calls happened to be written in. Each question fails alone now, and a refusal is separated
+from an outage: `…_unavailable` for a 401/403, `…_failed` otherwise. Telling an agency a source
+was unreachable sends them to re-issue a key that is working.
+
+### "Zoekmachines" had that name and answered a different question
+
+It was GA4's `organic_sources` split: on a Dutch client, one row reading `google` and a pie chart
+with a single slice. Where a client has a rank tracker it is now
+`SeRankingAdapter.engine_rows` — one row per tracked engine, with keywords tracked, top 3/10 and
+the average position and its move. Google Analytics knows which engine sent a session and nothing
+about a position, so this is the one thing it structurally cannot answer. A client with no rank
+tracker keeps the organic split, because for them the heading honestly means which engines sent
+people, and **which of the two they get follows their own `rankings` source** rather than a
+second setting.
+
+Three things the live API decided that a plausible implementation gets wrong silently:
+`/positions` answers per engine and its key is `site_engine_id` — *this project's* row, 1104694,
+where the catalogue that names it stops at 889, so naming an engine needs
+`/sites/{id}/search-engines` to bridge the two; the catalogue's `id` is a **string** and the
+project row's `search_engine_id` is an **int**; and `pos: 0` is *not ranking*, so a term nobody
+has ever seen counts as tracked and in nothing else.
+
+### One report, two websites
+
+A company is the hub, and a client may have several: AAproTec has `aaprotec.nl` **and**
+`opentjewereld.nl`, each with its own GA4 and Search Console property, all four legitimately on
+one company. The dashboard has always shown four named cards. The report had no answer, and the
+shape of not having one was the worst available — `next(link for link in links if …)` for the
+live tables and *whichever the query returned last* for the totals, with no `ORDER BY` anywhere
+to make even that stable. One document carried one website's tables under another's figures.
+
+A section is now composed of **parts**: one per property, or one covering all of them.
+
+| Setting | What it does |
+|---|---|
+| `per_website` (default) | one named block per property inside each section |
+| `combined` | one set of figures over every property — right where the second is a shop or a subdomain of the same business |
+| `exclude` | links this client's report leaves out. Per client only, because a link id is — and an *exclusion*, so linking a new property adds it to the report |
+
+Resolution is the three-layer diff `rankings` already uses (`marketing_settings.report` →
+`marketing_company_settings.report`, `NULL` = inherit). Three properties are load-bearing:
+
+- **A single property is one unlabelled part**, and an empty label is the renderer's instruction
+  not to draw a sub-heading — so for nearly every client the document is byte-for-byte what it
+  was.
+- **The flat keys stay on the section**, mirroring the first part. A tenant may bring their own
+  Jinja design (see *Bringing your own report design*), and a shape change would break one this
+  codebase has never seen; a design that has never heard of `parts` renders the first website,
+  which is strictly better than the arbitrary one it rendered before.
+- **A combined part folds the raw daily rows**, never two aggregates. `ctr`, `position` and
+  `engagementRate` are impression- or session-weighted, and averaging two properties' averages
+  answers a number that is neither site's.
+
+`marketing.rankings` deliberately does **not** split: *waar sta ik* is one question, its rows are
+already grouped by theme, and two keyword tables for one client would be two answers to it.
+
+### …and the Google Ads section printed zeros because the backfill had never finished
+
+`google_ads._performance`'s guard against printing a month of zeros could never fire: `totals` is
+assembled key by key from `trend.totals`, which answers `0.0` for every metric it knows rather
+than omitting it, so an unsynced window produced a *populated* dict of zeros — truthy, and
+printed. It now tests the stored rows, which is what distinguishes "we spent nothing" from "we
+have not looked".
+
+The reason there was nothing to look at is upstream and worse. `change_event` reaches back thirty
+days while the metrics reach back four hundred, and `read_changes` clamped its **start** forward
+to that horizon while leaving its end alone — so every backfill chunk but the first sent an
+inverted range, Google refused it with `changeEventError.CHANGE_DATE_RANGE_…`, and because the
+change read shared a `try` with three successful metric reads the whole chunk was thrown away and
+`sync_account` returned False. The chunked backfill halts on a False. Thirteen accounts on the
+live instance held exactly thirty days of history each, which is what that looks like from
+outside. A window that ended before the horizon begins is not a request to make, and the change
+log — a nicety riding on the same credential — now fails alone.
+
 ## Who may read what
 
 | Key | Scope | Guards |
@@ -251,14 +362,21 @@ control: the failure it describes is now unreachable rather than discouraged.
 
 ## What a client is called
 
-`report_profiles.display_name`. A CRM holds the name an invoice needs — the legal entity, its
-B.V., its holding — and a document somebody reads is not an invoice. "Camping De Zeehoeve" and
-"Zeehoeve Recreatie Beheer B.V." are one client, and only one of them belongs on the front of a
-monthly report.
+`report_profiles.display_name`, and it means less than it used to. This section originally
+argued that a CRM holds the name an invoice needs — the legal entity, its B.V., its holding —
+that a document somebody reads is not an invoice, and that a second name on `companies` would
+quietly re-title invoices and the client list along with the report.
 
-Deliberately **not** a second name on `companies`: the CRM's name is what every other module
-means by it, and a global alias would quietly re-title invoices, contracts and the client list
-along with the report. It resolves once at generation (`generate.client_name`) and is
+Right about the danger, wrong about which name was which. `companies.name` was never the
+invoice's name: it is what every list, picker, panel and notification prints, which is to say
+the friendly one. The field genuinely missing was the **legal** one, and it now exists as
+`companies.legal_name`, read only by documents (`app/core/naming.py`, `docs/INVOICING.md`).
+"Camping De Zeehoeve" is the label and "Zeehoeve Recreatie Beheer B.V." is what the invoice
+says; neither has to be typed twice, and a report left to itself already carries the right one.
+
+So what survives here is a **report-only third name**, for the agency that wants a cover reading
+just "Zeehoeve". Left blank — the normal case now — the report follows the label.
+`generate.client_name` is unchanged: it resolves once at generation and is
 snapshotted onto `Report.company_name`, like every other fact a report freezes — so a rename
 re-titles next month's document and leaves the twelve already sent saying what they said. The
 title, the cover, the PDF filename and the covering e-mail all read that one column.

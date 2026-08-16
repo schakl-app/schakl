@@ -32,10 +32,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_
 
+from app.core.auth.models import User
+from app.core.members import staff_select
 from app.core.tenancy import RequestContext
 from app.modules.companies.models import Company
 from app.modules.projects.models import Project
-from app.modules.tasks.models import Task
+from app.modules.tasks.models import Task, TaskLabel
+from app.modules.tasks.statuses import load_statuses
 from app.modules.time.models import TimeEntry
 from app.modules.time.service import TimeEntryTypeService
 
@@ -46,6 +49,20 @@ _PROJECT_LIMIT = 20
 _TASK_LIMIT = 20
 _RECENT_DAYS = 30
 _RECENT_LIMIT = 10
+#: The roster is offered **whole** rather than searched (#382). An assignee is dictated by first
+#: name and an ILIKE over the line's tokens would not find them — "Jan" against "Jan-Willem
+#: Bakker" matches, "Willem" does not, and neither does a name the recogniser spelled its own
+#: way. An agency is tens of people; this is the size at which "offer them all" stops holding.
+_MEMBER_LIMIT = 60
+#: Labels are a short tenant-authored vocabulary, so they go in the prompt for the same reason
+#: the time parse already inlines the entry-type keys: cheaper than a tool call to fetch them.
+_LABEL_LIMIT = 60
+
+#: Which blocks a caller pays for. The time quick-add wants none of the task-only queries and
+#: vice versa — three extra round trips on every parse is the docs/PERFORMANCE.md failure with
+#: a model in front of it.
+TIME_BLOCKS = frozenset({"companies", "projects", "tasks", "entry_types"})
+TASK_BLOCKS = frozenset({"companies", "projects", "members", "labels", "statuses"})
 
 #: Tokens that never name a record. Deliberately small and literal — this list only decides
 #: what we *search for*, and a stray token costs one harmless ILIKE, while a missing one costs
@@ -101,6 +118,26 @@ class ParseCandidates:
     projects: list[dict[str, str | None]] = field(default_factory=list)
     tasks: list[dict[str, str | None]] = field(default_factory=list)
     entry_type_keys: set[str] = field(default_factory=set)
+    #: Staff who could be given a task (#382). Whole roster, not a search — see ``_MEMBER_LIMIT``.
+    members: list[dict[str, str | None]] = field(default_factory=list)
+    labels: list[dict[str, str | None]] = field(default_factory=list)
+    #: The org's own task-status keys. Slugs, not ids, so they are grounded by membership in this
+    #: set (``features._checked_key``) rather than by the UUID evidence rule.
+    status_keys: set[str] = field(default_factory=set)
+
+    def member_ids(self) -> set[str]:
+        """The staff ids that were shown — a set of its **own**, deliberately.
+
+        ``ids()`` is one pool across companies, projects and tasks, which is harmless there:
+        a project id offered as a company would fail the write. An assignee is different — a
+        pool shared with three other entity types would let a confused answer put a *label's*
+        id in ``assignee_user_id``, and the id space is the same. Grounding per type is what
+        keeps a wrong answer null instead of plausible.
+        """
+        return {str(m["id"]).lower() for m in self.members if m.get("id")}
+
+    def label_ids(self) -> set[str]:
+        return {str(row["id"]).lower() for row in self.labels if row.get("id")}
 
     def ids(self) -> set[str]:
         """Every id the model was shown — the evidence set a returned id is checked against.
@@ -134,6 +171,14 @@ class ParseCandidates:
                 f"{t['id']}\t{t['title']}\tproject={t['project_id'] or '-'}" for t in self.tasks
             )
             parts.append(f"TASKS (id\ttitle\tproject):\n{rows}")
+        if self.members:
+            rows = "\n".join(f"{m['id']}\t{m['name']}" for m in self.members)
+            parts.append(f"COLLEAGUES (id\tname):\n{rows}")
+        if self.labels:
+            rows = "\n".join(f"{row['id']}\t{row['name']}" for row in self.labels)
+            parts.append(f"LABELS (id\tname):\n{rows}")
+        if self.status_keys:
+            parts.append("TASK STATUSES: " + ", ".join(sorted(self.status_keys)))
         if self.entry_type_keys:
             parts.append("ENTRY TYPES: " + ", ".join(sorted(self.entry_type_keys)))
         return "\n\n".join(parts)
@@ -183,23 +228,40 @@ async def _recent_ids(ctx: RequestContext) -> tuple[set[uuid.UUID], set[uuid.UUI
     return companies, projects, tasks
 
 
-async def gather(ctx: RequestContext, text: str) -> ParseCandidates:
-    """Resolve the shortlist for one quick-add line.
+async def gather(
+    ctx: RequestContext, text: str, *, blocks: frozenset[str] = TIME_BLOCKS
+) -> ParseCandidates:
+    """Resolve the shortlist for one dictated or typed line.
 
     Each block is gated on the permission its find tool declares — same visibility rule, one
     implementation — and every read rides the tenant repository, so a restricted login gets a
     shorter list rather than a wider one.
+
+    ``blocks`` is what keeps the two callers from paying for each other's queries: the time
+    quick-add has no use for the roster and a dictated task has no use for entry types, and a
+    shortlist that costs three unused round trips on every parse is a performance bug hiding
+    behind a model call nobody times.
     """
     candidates = ParseCandidates()
     tokens = name_tokens(text)
+    wants_recent = bool(blocks & {"companies", "projects", "tasks"})
     recent_companies, recent_projects, recent_tasks = (
-        await _recent_ids(ctx) if ctx.can("time.entry.read") else (set(), set(), set())
+        await _recent_ids(ctx)
+        if wants_recent and ctx.can("time.entry.read")
+        else (set(), set(), set())
     )
 
-    if ctx.can("companies.company.read"):
+    if "companies" in blocks and ctx.can("companies.company.read"):
         stmt = ctx.repo(Company).scoped_select()
+        # Both names and the klantnummer — the same fields the list and the MCP tool search
+        # (``app/core/naming.py``), so somebody dictating "twee uur voor Jansen Holding" reaches
+        # the same client the search box would have.
         matches = [
-            or_(Company.name.ilike(f"%{t}%"), Company.client_number.ilike(f"%{t}%"))
+            or_(
+                Company.name.ilike(f"%{t}%"),
+                Company.legal_name.ilike(f"%{t}%"),
+                Company.client_number.ilike(f"%{t}%"),
+            )
             for t in tokens
         ]
         # An empty line still gets the recent set: "2 uur" on the client you always book to.
@@ -212,7 +274,7 @@ async def gather(ctx: RequestContext, text: str) -> ParseCandidates:
             )
             candidates.companies = [_company_row(c) for c in rows]
 
-    if ctx.can("projects.project.read"):
+    if "projects" in blocks and ctx.can("projects.project.read"):
         stmt = ctx.repo(Project).scoped_select()
         matches = [Project.name.ilike(f"%{t}%") for t in tokens]
         criteria = [*matches, Project.id.in_(recent_projects)] if recent_projects else matches
@@ -224,7 +286,7 @@ async def gather(ctx: RequestContext, text: str) -> ParseCandidates:
             )
             candidates.projects = [_project_row(p) for p in rows]
 
-    if ctx.can("tasks.task.read"):
+    if "tasks" in blocks and ctx.can("tasks.task.read"):
         stmt = ctx.repo(Task).scoped_select()
         matches = [Task.title.ilike(f"%{t}%") for t in tokens]
         criteria = [*matches, Task.id.in_(recent_tasks)] if recent_tasks else matches
@@ -238,9 +300,47 @@ async def gather(ctx: RequestContext, text: str) -> ParseCandidates:
 
     # The entry-type vocabulary is a handful of short keys, so it belongs in the prompt rather
     # than behind a tool call the model would have to spend a round trip on.
-    if ctx.can("time.entry.read"):
+    if "entry_types" in blocks and ctx.can("time.entry.read"):
         candidates.entry_type_keys = await TimeEntryTypeService(ctx).active_keys()
+
+    # --- the task blocks (#382) ------------------------------------------------------ #
+    if "members" in blocks:
+        # `/members/lookup` declares no permission ("open to every member") and this is the
+        # same answer by the same statement, so it carries no gate of its own either. What it
+        # does carry is that endpoint's client-role exclusion, via the shared `staff_select`:
+        # a portal contact holds a membership and is never an assignee.
+        rows = (
+            (
+                await ctx.session.execute(
+                    staff_select(ctx.org.id).where(User.is_active.is_(True)).limit(_MEMBER_LIMIT)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        candidates.members = [
+            {"id": str(u.id), "name": u.full_name or u.email} for u in rows
+        ]
+
+    if "labels" in blocks and ctx.can("tasks.task.read"):
+        rows = (
+            (
+                await ctx.session.execute(
+                    ctx.repo(TaskLabel)
+                    .scoped_select()
+                    .order_by(TaskLabel.position, TaskLabel.name)
+                    .limit(_LABEL_LIMIT)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        candidates.labels = [{"id": str(row.id), "name": row.name} for row in rows]
+
+    if "statuses" in blocks and ctx.can("tasks.task.read"):
+        statuses = await load_statuses(ctx.session, ctx.org.id)
+        candidates.status_keys = {s.key for s in statuses}
     return candidates
 
 
-__all__ = ["ParseCandidates", "gather", "name_tokens"]
+__all__ = ["TASK_BLOCKS", "TIME_BLOCKS", "ParseCandidates", "gather", "name_tokens"]

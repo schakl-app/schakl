@@ -18,6 +18,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { TIME_REPORT_COLUMNS } from "$lib/modules/time/columns";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
@@ -59,9 +60,11 @@
   };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
-  // The two lookup filters: an archived client and a finished project are legitimate things to
-  // *filter* by, so neither is dropped — they are moved behind the search and wear their
-  // status, and whichever is currently filtering stays on offer (`core/picker.ts`).
+  // The three lookup filters: an archived client, a finished project and a deactivated
+  // colleague are all legitimate things to *filter* by, so none is dropped — they are moved
+  // behind the search and wear their status, and whichever is currently filtering stays on
+  // offer (`core/picker.ts`). The colleague half is `MemberPicker`, which is that same rule
+  // held by one component rather than restated here.
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: data.filters.company_id }),
   );
@@ -196,8 +199,10 @@
 <!-- Filters -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <div class="w-44">
-    <Combobox
-      items={data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) }))}
+    <!-- A departed colleague's hours are exactly what a manager comes here to look at, so the
+         retired bucket stays: out of the opening list, found by typing, labelled. -->
+    <MemberPicker
+      members={data.members}
       name="_f_user"
       id="f-user"
       value={data.filters.user_id}

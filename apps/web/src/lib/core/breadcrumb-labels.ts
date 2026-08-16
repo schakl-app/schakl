@@ -37,6 +37,7 @@ export const ROOTS: Record<string, string> = {
   settings: "settings.title",
   instance: "nav.instance",
   ai: "ai.assistant.title",
+  timeon: "nav.timeon",
 };
 
 /**

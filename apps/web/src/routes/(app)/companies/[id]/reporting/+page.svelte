@@ -280,7 +280,7 @@
             </span>
           {/if}
         </p>
-        <div class="grid gap-4 sm:grid-cols-3">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label for="rank-source" class="mb-1 block text-sm font-medium text-text">
               {t("reporting.rankings.source")}
@@ -333,7 +333,85 @@
               {t("reporting.rankings.min_impressions_hint")}
             </p>
           </div>
+          <div>
+            <label for="rank-depth" class="mb-1 block text-sm font-medium text-text">
+              {t("reporting.rankings.max_position")}
+            </label>
+            <input
+              id="rank-depth"
+              name="rankings_max_position"
+              type="number"
+              min="3"
+              max="100"
+              class={inputClass}
+              placeholder={String(marketing?.rankings_resolved?.max_position ?? 25)}
+              value={(marketing?.rankings as { max_position?: number } | null)?.max_position ?? ""}
+            />
+            <p class="mt-1 text-xs text-text-muted">
+              {t("reporting.rankings.max_position_hint")}
+            </p>
+          </div>
         </div>
+
+        <!-- Websites (#381). Only drawn where this client has more than one property: a client
+             with one has nothing to split and nothing to leave out, and a control whose only
+             possible answer is the one already showing is a control that should not be there
+             (#253). -->
+        {#if (marketing?.links ?? []).length > 1}
+          <div class="mt-5 border-t border-border pt-4">
+            <h4 class="mb-1 text-sm font-semibold text-text">{t("reporting.websites.title")}</h4>
+            <p class="mb-3 text-xs text-text-muted">{t("reporting.websites.hint")}</p>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="report-split" class="mb-1 block text-sm font-medium text-text">
+                  {t("reporting.websites.split")}
+                </label>
+                <select
+                  id="report-split"
+                  name="report_split"
+                  class={inputClass}
+                  value={(marketing?.report as { split?: string } | null)?.split ?? ""}
+                >
+                  <option value="">{t("reporting.profile.inherit")}</option>
+                  <option value="per_website">{t("reporting.websites.split_per_website")}</option>
+                  <option value="combined">{t("reporting.websites.split_combined")}</option>
+                </select>
+              </div>
+              <div>
+                <span class="mb-1 block text-sm font-medium text-text">
+                  {t("reporting.websites.included")}
+                </span>
+                <!-- Every link is rendered *and* named in this hidden field, so the action can
+                     turn "which are ticked" into "which are excluded" without a second read.
+                     Deriving it from the ticked boxes alone would silently include a property
+                     whose checkbox never rendered — the `bind:group` trap, one layer out. -->
+                <input
+                  type="hidden"
+                  name="report_all_links"
+                  value={(marketing?.links ?? []).map((l) => l.id).join(",")}
+                />
+                <div class="space-y-1">
+                  {#each marketing?.links ?? [] as link (link.id)}
+                    <label class="flex items-center gap-2 text-sm text-text">
+                      <FormCheckbox
+                        name="report_links"
+                        value={link.id}
+                        checked={!(
+                          marketing?.report_resolved?.exclude ?? []
+                        ).includes(link.id)}
+                        class="rounded border-border"
+                      />
+                      <span class="truncate">
+                        {link.display_name}
+                        <span class="text-text-muted">· {link.source}</span>
+                      </span>
+                    </label>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
   </section>

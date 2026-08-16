@@ -1,6 +1,6 @@
 ---
 title: Koppelingen
-description: "Waar schakl. met diensten van buiten praat: betalen, domeinen, Google, marketingcijfers en je eigen scripts, elk met je eigen account."
+description: "Waar schakl. met diensten van buiten praat: betalen, boekhouding, domeinen, Google, de sites die je host en je eigen scripts, elk met je eigen account."
 sidebar:
   order: 0
 ---
@@ -8,123 +8,166 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 schakl. draait op je eigen server en praat daarvandaan met de diensten die je bureau al gebruikt:
-je betaalprovider, je registrar, je DNS, Google Workspace, je marketingbronnen en je eigen
-scripts. Elke koppeling gebruikt **jouw eigen account bij die dienst**. De sleutel of het token
-staat versleuteld bij jouw organisatie in de database, niet in een configuratiebestand op de
-server, en je kunt hem op elk moment vervangen of weghalen.
+je betaalprovider, je boekhoudpakket, je registrar, je DNS, Google Workspace, je marketingbronnen,
+de sites die je host en je eigen scripts. Elke koppeling gebruikt **jouw eigen account bij die
+dienst**. De sleutel of het token staat versleuteld bij jouw organisatie in de database, niet in
+een configuratiebestand op de server, en je kunt hem op elk moment vervangen of weghalen.
 
-## Waar je het vindt
+![Instellingen → Integraties: met welke diensten deze werkruimte praat.](/img/docs/nl-settings-integrations.png)
 
-Alles wat je koppelt staat onder *Instellingen*, in de groep **Communicatie & koppelingen**:
-E-mail, Standaardmeldingen, Google Workspace, AI, Marketing, Rapportage, Cloudflare, OXXA en
-Mollie. Sleutels voor je eigen scripts staan er los van: persoonlijke sleutels onder
-*Instellingen → Mijn account* (sectie **API-sleutels**), en sleutels die iemands vertrek
-overleven onder *Instellingen → Service-accounts*.
+## Een module en een koppeling zijn twee dingen
 
-Staat een koppeling er niet bij, dan is de bijbehorende module uit of niet gelicentieerd; dat
-regel je onder *Instellingen → Modules*. Het zoekveld bovenaan Instellingen zoekt ook op woorden
-die je zelf zou typen als er iets misgaat, zoals "ideal", "webhook" of "nameservers".
+De twee woorden worden hier precies gebruikt, en het verschil bepaalt waar een instelling staat.
 
-## Beschikbaar, bèta of roadmap
+- **Een module is iets wat schakl. zelf doet.** Hij heeft eigen records en eigen schermen, en hij
+  is het waard ook als je elk account bij een andere partij ter wereld opzegt: klanten,
+  contactpersonen, taken, projecten, uren, facturatie, domeinen, rapportage.
+- **Een koppeling is een gesprek met de dienst van iemand anders.** Hij bewaart een inlog voor een
+  account daarbuiten, en wat hij opslaat is een spiegel van, of een verwijzing naar, gegevens die
+  daar staan.
 
-Niet elke koppeling is even ver, en dat staat er telkens bij. Drie woorden, met precies deze
-betekenis:
+De toets is één zin: *als de leverancier morgen ophoudt te bestaan, is het ding dan weg, of alleen
+armer?* Weg is een koppeling. Armer is een module. Marketing is volgens die toets een module, ook
+al komt elk getal erop via Google binnen: het dashboard, de periodes en de verhalen zijn van ons,
+en zonder de koppelingen is het een leeg scherm en geen afwezig scherm.
+
+Daarom zijn het twee schermen, elk als eerste in de groep instellingen waar hij over gaat:
+
+- **Instellingen → Modules**: wat schakl. zelf voor deze werkruimte doet.
+- **Instellingen → Integraties**: met welke diensten schakl. praat.
+
+Een koppeling aanvinken zet meteen de modules aan waar hij zijn gegevens anders nergens kwijt kan,
+en een module uitvinken zegt bij naam welke koppelingen daarmee meegaan: vóór het opslaan, op een
+scherm dat ze niet eens toont.
+
+Sleutels voor je eigen scripts staan los van allebei: persoonlijke sleutels onder
+*Instellingen → Mijn account*, sectie **API en MCP**, en sleutels die iemands vertrek overleven
+onder *Instellingen → Service-accounts*.
+
+## Beschikbaar, of op de roadmap
+
+Op elke kaart staat waar hij staat, en er zijn maar twee antwoorden die ertoe doen:
 
 | Status | Wat het betekent |
 | --- | --- |
-| **Beschikbaar** | Je kunt hem vandaag koppelen en hij is van begin tot eind tegen de dienst zelf uitgeprobeerd. |
-| **Bèta** | Hij zit in de app en is te koppelen, maar de code heeft nog nooit een echte account bij die leverancier gezien: hij is gebouwd op de officiële API-documentatie en getest tegen een nabootsing daarvan. |
-| **Op de roadmap** | Er valt nog niets te koppelen. Zulke koppelingen krijgen hier geen pagina. |
+| **Beschikbaar** | Er is een instellingenscherm, een inlog om in te vullen en een handleiding hier. Je kunt hem vandaag koppelen. |
+| **Op de roadmap** | Er valt niets te koppelen. Geen scherm, geen veld, geen meldingsadres. Die kaarten staan er zodat je niet gaat zoeken naar iets wat er niet is, en elke kaart zegt wat je in plaats daarvan gebruikt. |
 
-<Aside type="caution" title="Wat bèta hier concreet betekent">
-Een bètakoppeling bewijst dat onze code het eens is met de documentatie van de leverancier, niet
-dat hij het eens is met hun servers. Doe dus eerst zelf een proefronde met een testsleutel of op
-één domein, voordat je er klanten of geld doorheen stuurt. Vandaag staan **Mollie** en **OXXA**
-op bèta.
-
-**SnelStart** staat om een andere reden op bèta en is het lezen waard: die koppeling is wél tegen
-een echte administratie met een echte koppelsleutel gebouwd en gedraaid. Wat er nog niet af is,
-is het koppelen met één klik (dat wacht op certificering door SnelStart) en de kilometerstand: hij
-heeft nog niet in tientallen administraties gedraaid, en administraties verschillen. Begin met een
-paar facturen.
-
-**SE Ranking** is een geval apart en valt niet onder die omschrijving: die koppeling is tegen de
-echte API van SE Ranking geschreven en de antwoorden daarvan liggen vast in onze tests. Twee
-dingen eraan zijn wél nooit met een echte sleutel geprobeerd: de precieze opzet van de
-`Authorization`-header en het pad waarop de projectenlijst wordt opgehaald. Beide komen uit de
-documentatie van SE Ranking, dus begin ook daar met één project.
+<Aside type="tip" title="Wat een groen instellingenscherm bewijst, en wat niet">
+Koppelen bewijst dat je inloggegevens kloppen. Het bewijst niet dat de betaalmethode die je wilt
+aanstaat bij de provider, dat je hoster de header doorlaat die de API nodig heeft, of dat het
+bedrag op de eerste echte factuur klopt. Elke handleiding hier eindigt daarom met een korte
+proefronde: doe die één keer, met een testsleutel of op één domein, voordat je er klanten op zet.
 </Aside>
 
-## De koppelingen
+## Betalen en boekhouding
 
 <CardGrid>
   <LinkCard
-    title="Mollie (bèta)"
+    title="Mollie"
     href="/nl/docs/integrations/mollie/"
     description="Laat klanten een openstaande factuur online betalen met iDEAL, kaart, Bancontact of PayPal; de bevestigde betaling wordt vanzelf een betaalregel op die factuur."
   />
   <LinkCard
-    title="SnelStart (bèta)"
+    title="SnelStart"
     href="/nl/docs/integrations/snelstart/"
     description="Klanten, definitieve facturen en artikelen naar je boekhouding; wie er betaald heeft komt terug als een gewone betaling op de factuur."
   />
+</CardGrid>
+
+## Domeinen, sites en hosting
+
+<CardGrid>
   <LinkCard
     title="Cloudflare"
     href="/nl/docs/integrations/cloudflare/"
-    description="Lees de zones en DNS-records van je klanten uit en zet de omleiding die achter de domeinstatus Doorverwijzing hoort."
+    description="Lees de zones en DNS-records van je klanten, en zet een echt mechanisme achter de domeinstatus Doorverwijzing."
   />
   <LinkCard
-    title="OXXA (bèta)"
+    title="OXXA"
     href="/nl/docs/integrations/oxxa/"
-    description="Haal het register op bij je registrar: vervaldatum, slot en nameservers, en schrijf nameservers terug."
+    description="Haal het register van je registrar op: vervaldatum, verhuisslot en nameservers, en schrijf nameservers terug."
   />
+  <LinkCard
+    title="WordPress"
+    href="/nl/docs/integrations/wordpress/"
+    description="Eén applicatiewachtwoord per website, en de AI-zichtbaarheid van Rank Math als vijfde marketingbron."
+  />
+  <LinkCard
+    title="Uptime Kuma"
+    href="/nl/docs/integrations/uptime-kuma/"
+    description="De open-source monitor die je al draait, met monitors die records worden in plaats van meldingen."
+  />
+</CardGrid>
+
+## Google
+
+<CardGrid>
   <LinkCard
     title="Google Workspace"
     href="/nl/docs/integrations/google-workspace/"
-    description="Agenda, Drive en Gmail, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet."
+    description="Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet."
+  />
+  <LinkCard
+    title="Google Ads"
+    href="/nl/docs/integrations/google-ads/"
+    description="Campagnes, kosten en zoektermen, en achter een beleid de budgetten, zoekwoorden en uitsluitingen die je wijzigt."
+  />
+  <LinkCard
+    title="Google Tag Manager"
+    href="/nl/docs/integrations/google-tag-manager/"
+    description="De container van een klant: wat er live staat, wat er klaarstaat, en een publicatie die een eigen recht is."
   />
   <LinkCard
     title="Marketingbronnen"
     href="/nl/docs/integrations/marketing-sources/"
-    description="Google Analytics, Search Console, Google Ads en SE Ranking als cijfers per klant, op het klantdossier en in je rapportages."
+    description="Analytics, Search Console, Google Ads, SE Ranking en Rank Math als cijfers per klant, op het klantdossier en in je rapportages."
   />
+</CardGrid>
+
+## Je eigen scripts en assistenten
+
+<CardGrid>
   <LinkCard
     title="REST API"
     href="/nl/docs/integrations/rest-api/"
     description="Alles wat de app kan, kan een script ook: één getypte API met rechten per sleutel."
   />
   <LinkCard
+    title="API-referentie"
+    href="/nl/docs/api/"
+    description="Elk endpoint, gegroepeerd per gebied, met het recht dat ervoor nodig is."
+  />
+  <LinkCard
     title="MCP-server"
     href="/nl/docs/integrations/mcp/"
-    description="Dezelfde API als toolset voor AI-clients, met dezelfde rechten per sleutel."
+    description="Dezelfde API als gereedschap voor AI-clients, met dezelfde rechten per sleutel."
   />
 </CardGrid>
 
 ## Goed om te weten
 
-- **Een sleutel is een recht, geen instelling.** Wie een koppeling mag inrichten regel je per rol
-  onder *Instellingen → Rollen*; dat staat los van wie de gegevens mag zien die eruit komen. Een
-  klant met een portaallogin kan nooit bij een koppelscherm.
-- **Koppelen is per organisatie, niet per installatie.** Er is bewust geen omgevingsvariabele
-  waarin je een Mollie- of Cloudflare-sleutel zet: hij hoort bij de organisatie die hem gebruikt.
-- **Wat van buiten komt, wordt bewaard als waarneming.** Bij de koppelingen die iets buiten
-  schakl. spiegelen (Cloudflare en OXXA) staat apart opgeslagen wát schakl. zelf heeft gezet en
-  wát het bij de dienst heeft aangetroffen, zodat "iemand heeft dit in het dashboard van de
-  leverancier veranderd" zichtbaar wordt in plaats van stilletjes overschreven.
-- **Verwijder je een gekoppeld account, dan verandert er bij die dienst niets.** Wat de koppeling
-  al heeft opgeleverd, zoals ontvangen betalingen, blijft staan waar het hoort.
+- **Een sleutel is een recht, geen voorkeur.** Wie een koppeling mag instellen regel je per rol
+  onder *Instellingen → Rollen*, los van wie de gegevens mag zien die eruit komen. Een klant met
+  een portaallogin komt nooit bij een koppelscherm.
+- **Je koppelt per organisatie, niet per installatie.** Er is bewust geen omgevingsvariabele om
+  een Mollie- of Cloudflare-sleutel in te zetten: hij hoort bij de organisatie die hem gebruikt.
+- **Een inlog is een rij en geen enkelvoudige instelling.** Een bureau heeft zijn eigen
+  Cloudflare-account en klanten brengen het hunne mee; het WordPress-wachtwoord van één klantsite
+  is niet "het" WordPress-wachtwoord. Er wordt dus nooit voor je gekozen: bij twee wordt gevraagd
+  welke.
+- **Wat van buiten komt wordt als waarneming bewaard.** De koppelingen die toestand van buiten
+  spiegelen bewaren apart wat schakl. besloot en wat het als laatste bij de dienst aantrof, zodat
+  "iemand heeft dit in het dashboard van de leverancier aangepast" zichtbaar wordt in plaats van
+  stilzwijgend overschreven.
+- **Een gekoppeld account verwijderen verandert niets bij die dienst.** Wat de koppeling al heeft
+  opgeleverd (ontvangen betalingen, aangemaakte monitors, gepubliceerde tags) blijft waar het
+  hoort.
 
 ## Verder lezen
 
 <CardGrid>
-  <LinkCard
-    title="Facturatie"
-    href="/nl/docs/modules/invoicing/"
-    description="De module waarin een online betaling terechtkomt."
-  />
-  <LinkCard
-    title="Domeinen"
-    href="/nl/docs/modules/domains/"
-    description="Het register en de zone die Cloudflare en OXXA vullen."
-  />
+  <LinkCard title="Modules" href="/nl/docs/admin/modules/" description="Wat je aanzet, en wat een licentie dekt." />
+  <LinkCard title="Facturatie" href="/nl/docs/modules/invoicing/" description="De module waar een online betaling in landt." />
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het register en de zone die Cloudflare en OXXA vullen." />
 </CardGrid>

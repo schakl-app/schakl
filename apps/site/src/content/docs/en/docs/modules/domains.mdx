@@ -11,6 +11,8 @@ The domains module is the register of every domain you look after for a client: 
 registrar is, where DNS lives, whether e-mail runs on it, when the renewal falls due and what
 that renewal costs. What public DNS says about it, schakl. fetches by itself every day.
 
+![The domain register with expiry date, status and who pays for it.](/img/docs/en-domains.png)
+
 ## Where to find it
 
 In the main menu under **Domeinen & websites → Domeinen** (Domains & websites → Domains). Two
@@ -51,6 +53,8 @@ Beside the details, the domain page carries a **DNS** card with **Nameservers**,
 needs no registrar account and works for every domain. A nightly job refreshes every domain of
 every organisation, and a new domain is looked up once immediately after you save it, so it
 never sits on "Nooit" (Never). The **Verversen** (Refresh) button does it again on the spot.
+
+![A domain page with what the register reports, what the zone answers, and the panels of the integrations attached to it.](/img/docs/en-domain-detail.png)
 
 DNSSEC has three answers: Ja, Nee and **Onbekend** (Unknown). Unknown means the lookup could not
 answer, not that DNSSEC is off.
@@ -105,8 +109,7 @@ wordt gefactureerd".
 Only a register that has actually been read may narrow what you bill; a stored credential is not
 enough. So with no register connected, nothing changes about what you were already invoicing.
 Once a register *has* been fetched, the domains it does not hold stop drafting renewals by
-themselves. The OXXA integration was written from OXXA's official API documentation and has never
-been exercised against a live OXXA account.
+themselves. Read that list once after the first sync before you rely on it for invoicing.
 </Aside>
 
 ## List, export and bulk

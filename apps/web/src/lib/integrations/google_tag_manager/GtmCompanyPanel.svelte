@@ -7,10 +7,12 @@
    * three seconds off every client page load. What is *in* the container is one click away,
    * where waiting is the point rather than a surprise.
    */
-  import { AlertTriangle, ExternalLink, Tags } from "@lucide/svelte";
+  import { AlertTriangle, ExternalLink, Plus, Tags } from "@lucide/svelte";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+
+  import GtmLinkDialog from "./GtmLinkDialog.svelte";
 
   interface PanelContainer {
     id: string;
@@ -27,9 +29,15 @@
     tag_manager_url: string;
   }
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const forbidden = $derived(Boolean(data.forbidden));
   const containers = $derived((data.containers ?? []) as PanelContainer[]);
+  // Mirrors the key the *call* makes, not the one the panel is about (#310): linking posts to
+  // `POST /gtm/containers`, which declares `google_tag_manager.settings.manage`. Gating this on
+  // the panel's own read permission would draw a button the API then refuses.
+  const canLink = $derived(Boolean(data.can_manage));
+
+  let linking = $state(false);
 </script>
 
 {#if forbidden}
@@ -37,6 +45,20 @@
        page full of working cards teaches nobody anything. -->
 {:else if containers.length === 0}
   <p class="text-sm text-text-muted">{t("gtm.panel.empty")}</p>
+  {#if canLink}
+    <!-- It used to be a link to Instellingen → Tag Manager: an org-wide screen that dropped the
+         client you were looking at and then asked you to hand-type a `GTM-XXXXXXX` off their
+         website. Every other panel on this page keeps the client (`＋ Nieuwe website`, `＋ Nieuw
+         domein`); this one now does too, and the id is searched for rather than typed. -->
+    <button
+      type="button"
+      class="mt-2 inline-flex items-center gap-1 text-sm text-brand hover:underline"
+      onclick={() => (linking = true)}
+    >
+      <Plus size={14} aria-hidden="true" />
+      {t("gtm.panel.link_container")}
+    </button>
+  {/if}
 {:else}
   <ul class="divide-y divide-border">
     {#each containers as container (container.id)}
@@ -108,4 +130,22 @@
       </li>
     {/each}
   </ul>
+  {#if canLink}
+    <!-- A client with one container often gets a second (a second brand, a server container),
+         so the control stays after the first one — the shape every other panel's ＋ has. -->
+    <button
+      type="button"
+      class="mt-2 inline-flex items-center gap-1 text-sm text-brand hover:underline"
+      onclick={() => (linking = true)}
+    >
+      <Plus size={14} aria-hidden="true" />
+      {t("gtm.panel.link_another")}
+    </button>
+  {/if}
+{/if}
+
+{#if canLink}
+  <!-- The client is the route here, so the dialog asks only which container. Posts to the
+       company page's own `?/gtmLink`, which `gtmActions` mounts. -->
+  <GtmLinkDialog bind:open={linking} connectNext="/companies/{companyId}" />
 {/if}

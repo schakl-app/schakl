@@ -127,6 +127,28 @@
   break-inside: avoid;
 }
 .section .narrative { break-after: avoid; }
+
+/* The website a block is about, where a client has more than one (#381).
+
+   Deliberately quieter than the section heading and louder than a table head: it is a
+   *subdivision* of the section, and drawing it as a second h2 would read as two sections with
+   the same name. It carries a rule rather than a wash so it cannot be mistaken for the section
+   strip above it, and it never ends a page: a property name stranded at the foot of a sheet,
+   with its table overleaf, is worse than no heading at all — the same argument the section
+   heading's own `break-after: avoid` already makes. */
+.section > h3.website {
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 14px 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--rule);
+  break-after: avoid;
+  break-inside: avoid;
+}
+/* …and the first one sits directly under the section heading, which has its own margin. */
+.section > h3.website:first-of-type { margin-top: 4px; }
 /* The KPI strip and its chart belong to the section above them, not to whatever page they
    happen to land on. */
 .kpis, .split { break-inside: avoid; }

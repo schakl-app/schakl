@@ -94,10 +94,13 @@ def test_a_column_heading_is_the_short_name_and_the_tile_keeps_the_long_one() ->
     """Said once, in the place with room for it — not abbreviated everywhere."""
     assert ctx.metric_short("keyEvents", "nl") == "Doelen"
     assert ctx.metric_label("keyEvents", "nl") == "Belangrijke gebeurtenissen"
-    # A metric with no short form falls back rather than printing a message key.
-    assert ctx.metric_short("keywords_tracked", "nl") == ctx.metric_label(
-        "keywords_tracked", "nl"
-    )
+    # And the long name is what a *tile* gets — the point being that a short form narrows the
+    # heading without hiding the metric's name anywhere it has room.
+    assert ctx.metric_short("keywords_tracked", "nl") == "Gevolgd"
+    assert ctx.metric_label("keywords_tracked", "nl") == "Gevolgde zoekwoorden"
+    # A metric with no short form falls back rather than printing a message key. `top3` is
+    # already two characters and a digit, which is the case that needs no short form at all.
+    assert ctx.metric_short("top3", "nl") == ctx.metric_label("top3", "nl") == "Top 3"
 
 
 def test_a_metric_glyph_is_inline_svg_or_nothing() -> None:
@@ -302,3 +305,108 @@ def test_the_model_is_handed_the_table_the_document_prints() -> None:
     # …and the dropped columns are not.
     assert not any("Nieuwe gebruikers" in row for row in rows)
     assert not any("Belangrijke gebeurtenissen" in row for row in rows)
+
+
+# --------------------------------------------------------------------------------------- #
+# A client with two websites (#381)
+# --------------------------------------------------------------------------------------- #
+def _block(label: str, sessions: float) -> dict:
+    return {
+        "label": label,
+        "columns": ["sessions"],
+        "rows": [{"label": "Organic Search", "sessions": sessions}],
+        "totals": {"sessions": sessions},
+        "compare": None,
+        "chart": None,
+    }
+
+
+def _two_website_snapshot() -> dict:
+    first = _block("aaprotec.nl", 4124.0)
+    second = _block("opentjewereld.nl", 3910.0)
+    return {
+        "order": ["marketing.traffic_channels"],
+        "period": {"label": "juli 2026"},
+        "compare": {"label": "juli 2025"},
+        "company": {"name": "AAproTec B.V."},
+        "sections": {
+            "marketing.traffic_channels": {
+                "kind": "channels",
+                "parts": [first, second],
+                **{key: value for key, value in first.items() if key != "label"},
+            }
+        },
+    }
+
+
+def _built(snapshot: dict) -> dict:
+    from types import SimpleNamespace
+
+    return ctx.build_context(
+        report=SimpleNamespace(title="Maandrapportage", company_name="AAproTec B.V."),
+        snapshot=snapshot,
+        narrative={},
+        section_titles={"marketing.traffic_channels": "Verkeerskanalen"},
+        brand_name="breik.",
+        logo_uri=None,
+        cover_uri=None,
+        client_logo_uri=None,
+        accent="#b8860b",
+        intro_text=None,
+        footer_text=None,
+        locale="nl",
+        internal=False,
+    )
+
+
+def test_each_website_gets_its_own_block_with_its_own_geometry() -> None:
+    """Two properties, two tables, each named — and each with its *own* tiles and widths.
+
+    Sharing one set of column widths across two blocks would be the same class of fault the
+    section-level geometry rule already fixed: a width decided by one table and imposed on
+    another is a width that is right for neither.
+    """
+    section = _built(_two_website_snapshot())["sections"][0]
+
+    assert [part["label"] for part in section["parts"]] == ["aaprotec.nl", "opentjewereld.nl"]
+    assert section["parts"][0]["totals"] != section["parts"][1]["totals"]
+    # …and the section still carries the first block flat, so a tenant's own design renders.
+    assert section["rows"] == section["parts"][0]["rows"]
+
+
+def test_one_website_carries_no_name_to_print() -> None:
+    """An empty label is the renderer's instruction not to draw a sub-heading, and it is what a
+    client with one property — which is nearly all of them — has."""
+    snapshot = _two_website_snapshot()
+    section_data = snapshot["sections"]["marketing.traffic_channels"]
+    section_data["parts"] = [{**section_data["parts"][0], "label": ""}]
+
+    section = _built(snapshot)["sections"][0]
+
+    assert [part["label"] for part in section["parts"]] == [""]
+
+
+def test_a_report_stored_before_this_existed_still_renders() -> None:
+    """A snapshot is frozen so that a report reopened next December shows what it showed today.
+    Every report already in the database predates `parts`, and is its own single block."""
+    snapshot = _two_website_snapshot()
+    snapshot["sections"]["marketing.traffic_channels"].pop("parts")
+
+    section = _built(snapshot)["sections"][0]
+
+    assert len(section["parts"]) == 1
+    assert section["parts"][0]["rows"] == section["rows"]
+
+
+def test_the_model_reads_each_website_under_its_own_name() -> None:
+    """Otherwise a paragraph averages two businesses into one sentence, which is the failure the
+    document split exists to prevent — restated one layer along, in prose."""
+    data = _two_website_snapshot()["sections"]["marketing.traffic_channels"]
+
+    out = present.section(data, locale="nl", title="Verkeerskanalen")
+
+    assert [entry["website"] for entry in out["websites"]] == [
+        "aaprotec.nl",
+        "opentjewereld.nl",
+    ]
+    assert "rows" not in out

@@ -10,8 +10,8 @@
     "en": "Marketing per client"
   },
   "description": {
-    "nl": "Google Analytics, Search Console, Google Ads en SE Ranking per klant gekoppeld, en getoond waar je al werkt: op de klantpagina, in een marketingtabblad en in één overzicht over alle klanten.",
-    "en": "Google Analytics, Search Console, Google Ads and SE Ranking linked per client and shown where you already work — the client page, a marketing tab, and one overview across every client."
+    "nl": "Google Analytics, Search Console, Google Ads, SE Ranking en Rank Math per klant gekoppeld en getoond waar je toch al werkt: de klantpagina, een marketingtabblad, en één overzicht over alle klanten heen.",
+    "en": "Google Analytics, Search Console, Google Ads, SE Ranking and Rank Math linked per client and shown where you already work: the client page, a marketing tab, and one overview across every client."
   },
   "page": {
     "eyebrow": {
@@ -29,8 +29,8 @@
     "sections": [
       {
         "heading": {
-          "nl": "Vier bronnen, gekoppeld op de klant",
-          "en": "Four sources, linked on the client"
+          "nl": "Vijf bronnen, gekoppeld op de klant",
+          "en": "Five sources, linked on the client"
         },
         "body": {
           "nl": "Een klant krijgt zijn eigen koppelingen: een GA4-property, een Search Console-site, een Google Ads-account en een SE Ranking-project. Meerdere koppelingen per bron mogen, dus een klant met twee merken houdt ze uit elkaar. Elke koppeling kan bovendien aan één website van die klant hangen in plaats van klantbreed te blijven, zodat een klant met twee sites per site groepeert. De accountkiezers zoeken met type-ahead en tonen precies wat de Google-koppeling van de ingelogde collega werkelijk kan bereiken; een lege lijst legt uit waarom hij leeg is en wat de volgende stap is.",
@@ -158,6 +158,28 @@
             "Manage marketing links: admins, like the Google settings themselves",
             "Read the marketing overview: the cross-client screen, managers by default",
             "A portal login only ever sees the dashboard you composed for that client"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De periode is een naam, geen aantal dagen",
+          "en": "A period is a name, not a number of days"
+        },
+        "body": {
+          "nl": "De vraag die een bureau werkelijk krijgt is \"hoe ging juli?\", en dertig dagen terugtellen vanaf vandaag beantwoordt die niet: dat is 11 juli tot 9 augustus, en dat is geen maand waar iemand over rapporteert. Eén woord benoemt daarom de periode: een lopend venster, een rollend voorzetsel als deze maand of vorig kwartaal, of een vastgezette periode als 2026-07. Een tabblad blijft zo volgende maand nog steeds \"vorige maand\" betekenen, terwijl een link die je in een gesprek plakt de maand blijft tonen waar je naar keek. Het label wordt bepaald door de datums en niet door het woord dat je koos, dus een maand via de kiezer en dezelfde maand via het tabblad zijn niet uit elkaar te houden. Datzelfde geldt voor de vergelijking: een percentage is een uitspraak over twee periodes, dus staan ze er allebei bij (\"t.o.v. 11 jul - 9 aug 2025\" en niet \"t.o.v. vorige periode\"), en je kiest zelf of het dashboard tegen vorig jaar of tegen de vorige periode afzet, met per klant een afwijking waar seizoen dat vraagt.",
+          "en": "The question an agency actually gets is \"how did July go?\", and counting thirty days back from today does not answer it: that is 11 July to 9 August, which is not a month anybody reports on. So one token names the span: a trailing window, a rolling preset like this month or last quarter, or a frozen period like 2026-07. A tab then still means \"last month\" next month, while a link you paste into a chat keeps showing the month you were looking at. The label is decided by the dates rather than by the word you picked, so a month reached through the picker and the same month reached through the tab row are impossible to tell apart. The comparison works the same way: a percentage is a claim about two spans, so both are on the screen (\"vs 11 Jul - 9 Aug 2025\", not \"vs previous period\"), and you choose whether the dashboard compares against last year or against the previous period, with a per-client override where seasonality demands one."
+        },
+        "bullets": {
+          "nl": [
+            "Een periode-tot-nu zonder hele dag valt terug op de vorige hele periode; 1 augustus heeft nog geen augustus",
+            "Een periode die je zelf benoemde wordt nooit stilzwijgend vervangen",
+            "Het overzicht over alle klanten negeert bewust de afwijking per klant, want percentages met verschillende noemers rangschikken niets"
+          ],
+          "en": [
+            "A period-to-date with no complete day falls back to the previous whole one; 1 August has no August to show",
+            "A period you named yourself is never silently substituted",
+            "The cross-client overview deliberately ignores the per-client override, because percentages with different denominators rank nothing"
           ]
         }
       }

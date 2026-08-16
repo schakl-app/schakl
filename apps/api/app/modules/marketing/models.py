@@ -223,6 +223,11 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     #: one with an SE Ranking project where the rest are on Search Console, or the one whose
     #: long tail is worth printing where most clients' is not.
     rankings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: How this client's report treats a client with several websites (#381), and which links
+    #: it leaves out — ``marketing.reportsplit.ReportSettings``. **NULL = follow the org
+    #: default**, the idiom above. ``exclude`` is only ever meaningful here, because a link id
+    #: belongs to one client.
+    report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -257,3 +262,7 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: never opens this screen should get: **positions from whichever source the client
     #: actually has**, the terms they rank best for first, and nothing shown twice all month.
     rankings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: The house rule for a client with several websites (#381). NULL = the code default,
+    #: ``per_website``: one named block per property inside each section, because that is the
+    #: only answer that never quietly adds together two things a reader would have kept apart.
+    report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

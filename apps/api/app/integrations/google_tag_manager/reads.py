@@ -16,6 +16,7 @@ their next Publish ships it.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -190,6 +191,57 @@ async def list_variables(client: GtmClient, workspace_path: str) -> list[dict[st
         }
         for row in rows
     ]
+
+
+async def workspace_contents(
+    client: GtmClient,
+    container_path: str,
+    *,
+    workspace_id: str | None = None,
+    choice: WorkspaceChoice | None = None,
+) -> dict[str, Any]:
+    """Everything a container's page shows about one workspace, on **one** workspace resolution.
+
+    The four reads it replaces each resolved the workspace for themselves — and resolving means
+    *listing the container's workspaces*, so a screen that wanted tags, triggers, variables and
+    the staged count spent eight Google requests where five will do, plus four HTTP round trips
+    and four OAuth clients between the browser and Google.
+
+    That is an ordinary performance argument (docs/PERFORMANCE.md) with an extra edge here: Tag
+    Manager's quota is **per user per minute** and small, so the count is not only latency — it is
+    how many times a person may open the page before Google starts refusing. The per-resource
+    routes stay, because an agent asking only for tags should not pay for versions it did not
+    want; this is the shape the *screen* reads.
+
+    The three lists and the status are gathered rather than sequenced: they are independent GETs
+    on one client, and the request count is the same either way while the wall clock is not.
+    """
+    workspace = await resolve_workspace_path(
+        client, container_path, workspace_id=workspace_id, choice=choice
+    )
+    if not workspace:
+        # A container with no workspace at all is an empty page, not an error — and a read must
+        # never bring one into existence as a side effect of somebody opening a screen.
+        return {
+            "workspace_id": "",
+            "status": None,
+            "tags": [],
+            "triggers": [],
+            "variables": [],
+        }
+    tags, triggers, variables, status = await asyncio.gather(
+        list_tags(client, workspace),
+        list_triggers(client, workspace),
+        list_variables(client, workspace),
+        workspace_status(client, workspace),
+    )
+    return {
+        "workspace_id": workspace.rsplit("/", 1)[-1],
+        "status": status,
+        "tags": tags,
+        "triggers": triggers,
+        "variables": variables,
+    }
 
 
 async def list_versions(

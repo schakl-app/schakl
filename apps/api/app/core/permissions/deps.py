@@ -12,7 +12,9 @@ layer alone is enough — a decorator cannot see the row, and a service check ca
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import Depends
@@ -24,6 +26,10 @@ from app.core.tenancy import RequestContext, require_context
 #: Attribute names the introspection test looks for. Never read them by string elsewhere.
 PERMISSION_MARKER = "__schakl_permission__"
 EXEMPTION_MARKER = "__schakl_no_permission__"
+
+#: The methods an operation can be. ``head``/``options``/``trace`` are answered by Starlette,
+#: never declared by a route here, and would each be a phantom operation in the index below.
+HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
 
 def require_permission(permission: str, scope: str | None = None) -> Any:
@@ -87,7 +93,8 @@ def iter_route_leaves(routes: list[Any]) -> Iterator[APIRoute]:
     security guardrail. Hence this, and the anti-vacuum assertion that guards it.
 
     Leaf ``.path`` is **relative** (``/login``, not ``/api/v1/auth/login``): ancestor prefixes
-    resolve at match time. Build full paths from ``app.openapi()``, never from here.
+    resolve at match time. Build full paths from ``app.openapi()``, never from here — which is
+    what ``operation_index`` below does, once, so nobody has to do it again.
     """
     for route in routes:
         if isinstance(route, APIRoute):
@@ -96,6 +103,80 @@ def iter_route_leaves(routes: list[Any]) -> Iterator[APIRoute]:
             yield from iter_route_leaves(route.original_router.routes)
         elif hasattr(route, "routes"):
             yield from iter_route_leaves(route.routes)
+
+
+@dataclass(frozen=True)
+class Operation:
+    """One operation in the OpenAPI document, joined to the route that serves it."""
+
+    operation_id: str
+    method: str
+    #: The **full** path, as a caller would request it (``/api/v1/auth/login``).
+    path: str
+    route: APIRoute
+
+
+def _slug(name: str) -> str:
+    """FastAPI sanitises the whole operationId, so a route named ``auth:cookie.login`` appears
+    as ``auth_cookie_login…``. Comparing the raw name misses every fastapi-users route."""
+    return re.sub(r"\W", "_", name)
+
+
+def operation_index(application: Any) -> tuple[list[Operation], list[str]]:
+    """``(operations, unclaimed operationIds)`` — the route table joined to the document.
+
+    Both halves are needed by anything reasoning about routes *and* the URLs that reach them:
+    the published API reference (``app/openapi_docs_export.py``) and the authentication sweep
+    (``tests/test_anonymous_denied.py``). It lives here rather than inside either of them
+    because a second copy of this join is a copy that will drop routes quietly.
+
+    **Why it is fiddly.** ``route.unique_id`` looks like the join key and is not: ``include_router``
+    is lazy on this app, so a leaf's ``path`` is relative and its ``unique_id`` is built from the
+    relative path, while the document's ``operationId`` is built from the full one. Two conditions
+    settle it and **both** are needed. FastAPI's own formula (route name + full path, sanitised,
+    plus the method) is self-fulfilling on its own — all four routers with a ``create_account``
+    handler satisfy it for their own path, so it matches four operations and the route is dropped.
+    The leaf's relative path is the missing half: ``/cloudflare/accounts`` is a suffix of exactly
+    one of those four. Where the leaf path is itself a suffix of a sibling's (``/prefs`` under
+    ``/nav/prefs`` and ``/dashboard/prefs``, all three named ``get_prefs``), the shortest full
+    path is the one whose own router added no further prefix.
+
+    ``unclaimed`` is the honesty check, and a caller that ignores it silently reports on a
+    subset of the API: an operation nothing matched means the join needs widening.
+    """
+    spec = application.openapi()
+    operations: dict[str, tuple[str, str]] = {
+        op["operationId"]: (method, path)
+        for path, ops in spec["paths"].items()
+        for method, op in ops.items()
+        if method in HTTP_METHODS
+    }
+
+    matched: list[Operation] = []
+    claimed: set[str] = set()
+    for route in iter_route_leaves(application.routes):
+        if not route.include_in_schema:
+            continue
+        for method in sorted(m.lower() for m in (route.methods or ())):
+            if method not in HTTP_METHODS:
+                continue
+            candidates = [
+                (len(path), op_id)
+                for op_id, (m, path) in operations.items()
+                if m == method
+                and path.endswith(route.path)
+                and op_id == f"{_slug(route.name + path)}_{method}"
+            ]
+            if len(candidates) > 1:
+                shortest = min(length for length, _ in candidates)
+                candidates = [c for c in candidates if c[0] == shortest]
+            if len(candidates) != 1:
+                continue
+            op_id = candidates[0][1]
+            claimed.add(op_id)
+            matched.append(Operation(op_id, method, operations[op_id][1], route))
+
+    return matched, sorted(set(operations) - claimed)
 
 
 def _walk(dependant: Dependant) -> Iterator[Dependant]:

@@ -1,0 +1,792 @@
+---
+title: "People: leave, contracts, portal"
+description: "Employees rather than client contacts: leave balances and requests, employment periods and work schedules, and the login a client gets to look in."
+sidebar:
+  order: 6
+---
+
+Employees rather than client contacts: leave balances and requests, employment periods and work schedules, and the login a client gets to look in.
+
+59 endpoints across 3 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+
+## `leave`
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/leave/availability` | `leave.availability.read` |
+| `POST` `/leave/availability` | `leave.availability.write` |
+| `PATCH` `/leave/availability/{entry_id}` | `leave.availability.write` |
+| `DELETE` `/leave/availability/{entry_id}` | `leave.availability.write` |
+| `GET` `/leave/availability/days` | `leave.availability.read` |
+| `POST` `/leave/availability/move` | `leave.availability.write` |
+| `GET` `/leave/balance` | `leave.request.read` |
+| `GET` `/leave/balance/groups` | `leave.request.read` |
+| `GET` `/leave/contracts` | `leave.request.read` |
+| `POST` `/leave/contracts` | `leave.profile.manage` |
+| `PATCH` `/leave/contracts/{contract_id}` | `leave.profile.manage` |
+| `DELETE` `/leave/contracts/{contract_id}` | `leave.profile.manage` |
+| `GET` `/leave/entitlements` | `leave.entitlement.read` |
+| `PUT` `/leave/entitlements` | `leave.entitlement.write` |
+| `DELETE` `/leave/entitlements` | `leave.entitlement.write` |
+| `POST` `/leave/entitlements/generate` | `leave.entitlement.write` |
+| `GET` `/leave/free-time` | `leave.request.read` |
+| `POST` `/leave/free-time/withdraw` | `leave.request.write` |
+| `GET` `/leave/holidays` | `leave.request.read` |
+| `POST` `/leave/holidays` | `leave.holiday.write` |
+| `PATCH` `/leave/holidays/{holiday_id}` | `leave.holiday.write` |
+| `DELETE` `/leave/holidays/{holiday_id}` | `leave.holiday.write` |
+| `POST` `/leave/holidays/import` | `leave.holiday.write` |
+| `GET` `/leave/profile` | `leave.request.read` |
+| `GET` `/leave/profiles` | `leave.profile.manage` |
+| `PUT` `/leave/profiles/{user_id}` | `leave.profile.manage` |
+| `GET` `/leave/rate` | `leave.rate.read` |
+| `GET` `/leave/rate/{user_id}` | `leave.rate.read` |
+| `PUT` `/leave/rate/{user_id}` | `leave.rate.write` |
+| `GET` `/leave/rates` | `leave.rate.read` |
+| `GET` `/leave/recurring` | `leave.request.read` |
+| `POST` `/leave/recurring` | `leave.request.write` |
+| `PATCH` `/leave/recurring/{recurring_id}` | `leave.request.write` |
+| `DELETE` `/leave/recurring/{recurring_id}` | `leave.request.write` |
+| `GET` `/leave/requests` | `leave.request.read` |
+| `POST` `/leave/requests` | `leave.request.write` |
+| `GET` `/leave/requests/{request_id}` | `leave.request.read` |
+| `PATCH` `/leave/requests/{request_id}` | `leave.request.write` |
+| `POST` `/leave/requests/{request_id}/cancel` | `leave.request.write` |
+| `POST` `/leave/requests/{request_id}/decide` | `leave.request.approve` |
+| `POST` `/leave/requests/preview` | `leave.request.read` |
+| `GET` `/leave/settings` | `leave.profile.manage` |
+| `PUT` `/leave/settings` | `leave.profile.manage` |
+| `GET` `/leave/summary` | `leave.request.read` |
+| `GET` `/leave/team` | `leave.request.read` |
+| `GET` `/leave/types` | `leave.request.read` |
+| `POST` `/leave/types` | `leave.type.write` |
+| `PATCH` `/leave/types/{type_id}` | `leave.type.write` |
+| `DELETE` `/leave/types/{type_id}` | `leave.type.write` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/leave/availability`
+
+**List Availability** — The exception rows with an occurrence in the window — own, or anyone's with ``:any``.
+
+Permission: `leave.availability.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+| `user_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
+
+Returns: `200` · `AvailabilityRead[]`
+
+#### `POST /api/v1/leave/availability`
+
+**Create Availability**
+
+Permission: `leave.availability.write`
+
+Request body: `AvailabilityCreate`
+
+Returns: `201` · `AvailabilityRead`
+
+#### `PATCH /api/v1/leave/availability/{entry_id}`
+
+**Update Availability**
+
+Permission: `leave.availability.write`
+
+Path parameters: `entry_id`
+
+Request body: `AvailabilityUpdate`
+
+Returns: `200` · `AvailabilityRead`
+
+#### `DELETE /api/v1/leave/availability/{entry_id}`
+
+**Delete Availability** — Deletes the other half too when the row is a move — see the service.
+
+Permission: `leave.availability.write`
+
+Path parameters: `entry_id`
+
+Returns: `204`
+
+#### `GET /api/v1/leave/availability/days`
+
+**Availability Days** — The resolved week: the base schedule with every exception applied, day by day.
+
+Permission: `leave.availability.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+| `user_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
+
+Returns: `200` · `AvailabilityDay[]`
+
+#### `POST /api/v1/leave/availability/move`
+
+**Move Availability** — Swap one day for another — two rows sharing a ``pair_id``, written in one act.
+
+Permission: `leave.availability.write`
+
+Request body: `AvailabilityMove`
+
+Returns: `201` · `AvailabilityRead[]`
+
+#### `GET /api/v1/leave/balance`
+
+**Balances**
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer · required |  |
+| `user_id` | string |  |
+
+Returns: `200` · `LeaveBalance[]`
+
+#### `GET /api/v1/leave/balance/groups`
+
+**Group Balances** — The employee-facing combined balances (#265): one figure per balance group (statutory + extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown — accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer · required |  |
+| `user_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
+
+Returns: `200` · `LeaveGroupBalance[]`
+
+#### `GET /api/v1/leave/contracts`
+
+**List Contracts** — A user's employment history. Own for a member; anyone's — or everyone's, with ``all_users`` — for a manager (the Settings → Users roster).
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `user_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
+
+Returns: `200` · `EmploymentContractRead[]`
+
+#### `POST /api/v1/leave/contracts`
+
+**Create Contract**
+
+Permission: `leave.profile.manage`
+
+Request body: `EmploymentContractCreate`
+
+Returns: `201` · `EmploymentContractRead`
+
+#### `PATCH /api/v1/leave/contracts/{contract_id}`
+
+**Update Contract**
+
+Permission: `leave.profile.manage`
+
+Path parameters: `contract_id`
+
+Request body: `EmploymentContractUpdate`
+
+Returns: `200` · `EmploymentContractRead`
+
+#### `DELETE /api/v1/leave/contracts/{contract_id}`
+
+**Delete Contract**
+
+Permission: `leave.profile.manage`
+
+Path parameters: `contract_id`
+
+Returns: `204`
+
+#### `GET /api/v1/leave/entitlements`
+
+**List Entitlements** — Own entitlements; managers see everyone's when no ``user_id`` is given.
+
+Permission: `leave.entitlement.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer · required |  |
+| `user_id` | string |  |
+
+Returns: `200` · `LeaveEntitlementRead[]`
+
+#### `PUT /api/v1/leave/entitlements`
+
+**Upsert Entitlement**
+
+Permission: `leave.entitlement.write`
+
+Request body: `LeaveEntitlementUpsert`
+
+Returns: `200` · `LeaveEntitlementRead`
+
+#### `DELETE /api/v1/leave/entitlements`
+
+**Delete Entitlement** — Drop a pot and let generation re-derive it — the revert behind "clear it to let it be derived again". A current/next-year pot reappears with the derived figure in the same request; a past year's simply goes (history is never backfilled).
+
+Permission: `leave.entitlement.write`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer · required |  |
+| `user_id` | string · required |  |
+| `leave_type_id` | string · required |  |
+
+Returns: `204`
+
+#### `POST /api/v1/leave/entitlements/generate`
+
+**Generate Entitlements**
+
+Permission: `leave.entitlement.write`
+
+Request body: `EntitlementGenerate`
+
+Returns: `200` · `GenerateResult`
+
+#### `GET /api/v1/leave/free-time`
+
+**Free Time Overview** — Everything the free-time card and the employment wizard need, in one call.
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer · required |  |
+| `user_id` | string |  |
+
+Returns: `200` · `FreeTimeOverview`
+
+#### `POST /api/v1/leave/free-time/withdraw`
+
+**Withdraw Free Time** — Take back free days the pot no longer covers, after a contract change reprorated it (#264).
+
+Permission: `leave.request.write`
+
+Request body: `FreeTimeWithdraw`
+
+Returns: `200` · `FreeTimeWithdrawResult`
+
+#### `GET /api/v1/leave/holidays`
+
+**List Holidays** — The org's calendar. Any staff member: it drives the agenda and the timesheet.
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `year` | integer |  |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `LeaveHolidayRead[]`
+
+#### `POST /api/v1/leave/holidays`
+
+**Create Holiday**
+
+Permission: `leave.holiday.write`
+
+Request body: `LeaveHolidayCreate`
+
+Returns: `201` · `LeaveHolidayRead`
+
+#### `PATCH /api/v1/leave/holidays/{holiday_id}`
+
+**Update Holiday**
+
+Permission: `leave.holiday.write`
+
+Path parameters: `holiday_id`
+
+Request body: `LeaveHolidayUpdate`
+
+Returns: `200` · `LeaveHolidayRead`
+
+#### `DELETE /api/v1/leave/holidays/{holiday_id}`
+
+**Delete Holiday**
+
+Permission: `leave.holiday.write`
+
+Path parameters: `holiday_id`
+
+Returns: `204`
+
+#### `POST /api/v1/leave/holidays/import`
+
+**Import Holidays** — Re-run the generator for a year. Manual and deactivated rows survive untouched.
+
+Permission: `leave.holiday.write`
+
+Request body: `HolidayImport`
+
+Returns: `200` · `HolidayImportResult`
+
+#### `GET /api/v1/leave/profile`
+
+**My Profile** — The caller's **effective** schedule — merged server-side, on purpose (#46).
+
+Permission: `leave.request.read`
+
+Returns: `200` · `LeaveProfileRead`
+
+#### `GET /api/v1/leave/profiles`
+
+**List Profiles** — Contract hours + own schedule per user (managers). A null schedule follows the org's.
+
+Permission: `leave.profile.manage`
+
+Returns: `200` · `LeaveProfileSummary[]`
+
+#### `PUT /api/v1/leave/profiles/{user_id}`
+
+**Set Profile**
+
+Permission: `leave.profile.manage`
+
+Path parameters: `user_id`
+
+Request body: `LeaveProfileUpdate`
+
+Returns: `200` · `LeaveProfileSummary`
+
+#### `GET /api/v1/leave/rate`
+
+**My Rate** — The caller's own hourly rate (salary-adjacent — a member sees only their own).
+
+Permission: `leave.rate.read`
+
+Returns: `200` · `LeaveRateRead`
+
+#### `GET /api/v1/leave/rate/{user_id}`
+
+**User Rate** — One employee's rate. Own on ``:own``; anyone's on ``:any``.
+
+Permission: `leave.rate.read`
+
+Path parameters: `user_id`
+
+Returns: `200` · `LeaveRateRead`
+
+#### `PUT /api/v1/leave/rate/{user_id}`
+
+**Set Rate** — Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state.
+
+Permission: `leave.rate.write`
+
+Path parameters: `user_id`
+
+Request body: `LeaveRateUpdate`
+
+Returns: `200` · `LeaveRateRead`
+
+#### `GET /api/v1/leave/rates`
+
+**List Rates** — Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``.
+
+Permission: `leave.rate.read`
+
+Returns: `200` · `LeaveRateRead[]`
+
+#### `GET /api/v1/leave/recurring`
+
+**List Recurring** — Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``.
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `user_id` | string |  |
+
+Returns: `200` · `LeaveRecurringDayRead[]`
+
+#### `POST /api/v1/leave/recurring`
+
+**Create Recurring** — A manager plans any type for anyone; a member plans their **own** self-service types (``requires_approval = false``) — the service enforces the split.
+
+Permission: `leave.request.write`
+
+Request body: `LeaveRecurringDayCreate`
+
+Returns: `201` · `LeaveRecurringDaySaved`
+
+#### `PATCH /api/v1/leave/recurring/{recurring_id}`
+
+**Update Recurring**
+
+Permission: `leave.request.write`
+
+Path parameters: `recurring_id`
+
+Request body: `LeaveRecurringDayUpdate`
+
+Returns: `200` · `LeaveRecurringDaySaved`
+
+#### `DELETE /api/v1/leave/recurring/{recurring_id}`
+
+**Delete Recurring** — Delete the pattern. By default the days it placed stay — they are real leave somebody planned around, and a rule being removed is no reason to wipe a calendar.
+
+Permission: `leave.request.write`
+
+Path parameters: `recurring_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `withdraw_days` | boolean |  (default `false`) |
+
+Returns: `200` · `LeaveRecurringDeleteResult`
+
+#### `GET /api/v1/leave/requests`
+
+**List Requests**
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `user_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
+| `year` | integer |  |
+| `status` | LeaveRequestStatus |  |
+| `sort` | string | employee \| start_date \| end_date \| hours \| status, '-' desc |
+
+Returns: `200` · `Page_LeaveRequestRead_`
+
+#### `POST /api/v1/leave/requests`
+
+**Create Request**
+
+Permission: `leave.request.write`
+
+Request body: `LeaveRequestCreate`
+
+Returns: `201` · `LeaveRequestRead`
+
+#### `GET /api/v1/leave/requests/{request_id}`
+
+**Get Request**
+
+Permission: `leave.request.read`
+
+Path parameters: `request_id`
+
+Returns: `200` · `LeaveRequestRead`
+
+#### `PATCH /api/v1/leave/requests/{request_id}`
+
+**Update Request**
+
+Permission: `leave.request.write`
+
+Path parameters: `request_id`
+
+Request body: `LeaveRequestUpdate`
+
+Returns: `200` · `LeaveRequestRead`
+
+#### `POST /api/v1/leave/requests/{request_id}/cancel`
+
+**Cancel Request**
+
+Permission: `leave.request.write`
+
+Path parameters: `request_id`
+
+Returns: `200` · `LeaveRequestRead`
+
+#### `POST /api/v1/leave/requests/{request_id}/decide`
+
+**Decide Request** — Approve or reject a pending request (managers).
+
+Permission: `leave.request.approve`
+
+Path parameters: `request_id`
+
+Request body: `LeaveRequestDecision`
+
+Returns: `200` · `LeaveRequestRead`
+
+#### `POST /api/v1/leave/requests/preview`
+
+**Preview Request** — What a span costs, before it is submitted — so the number shown is the number stored.
+
+Permission: `leave.request.read`
+
+Request body: `LeaveRequestPreview`
+
+Returns: `200` · `LeavePreviewResult`
+
+#### `GET /api/v1/leave/settings`
+
+**Get Settings** — The org's leave settings. An org that never saved a row gets the defaults.
+
+Permission: `leave.profile.manage`
+
+Returns: `200` · `LeaveSettingsRead`
+
+#### `PUT /api/v1/leave/settings`
+
+**Update Settings**
+
+Permission: `leave.profile.manage`
+
+Request body: `LeaveSettingsUpdate`
+
+Returns: `200` · `LeaveSettingsRead`
+
+#### `GET /api/v1/leave/summary`
+
+**Summary**
+
+Permission: `leave.request.read`
+
+Returns: `200` · `LeaveSummary`
+
+#### `GET /api/v1/leave/team`
+
+**Team**
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+| `user_id` | string |  |
+
+Returns: `200` · `TeamLeaveItem[]`
+
+#### `GET /api/v1/leave/types`
+
+**List Types**
+
+Permission: `leave.request.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `LeaveTypeRead[]`
+
+#### `POST /api/v1/leave/types`
+
+**Create Type**
+
+Permission: `leave.type.write`
+
+Request body: `LeaveTypeCreate`
+
+Returns: `201` · `LeaveTypeRead`
+
+#### `PATCH /api/v1/leave/types/{type_id}`
+
+**Update Type**
+
+Permission: `leave.type.write`
+
+Path parameters: `type_id`
+
+Request body: `LeaveTypeUpdate`
+
+Returns: `200` · `LeaveTypeRead`
+
+#### `DELETE /api/v1/leave/types/{type_id}`
+
+**Delete Type**
+
+Permission: `leave.type.write`
+
+Path parameters: `type_id`
+
+Returns: `204`
+
+</details>
+
+## `hr`
+
+| Endpoint | Permission |
+| --- | --- |
+| `POST` `/hr/documents` | `hr.document.manage` |
+| `DELETE` `/hr/documents/{document_id}` | `hr.document.manage` |
+| `GET` `/hr/documents/{document_id}/file` | `hr.dossier.read` |
+| `GET` `/hr/dossier` | `hr.dossier.read` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `POST /api/v1/hr/documents`
+
+**Upload Document**
+
+Permission: `hr.document.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `user_id` | string · required |  |
+| `category` | string · required |  |
+| `title` | string |  (default ``) |
+| `note` | string |  (default ``) |
+
+Request body: `Body_upload_document_api_v1_hr_documents_post`
+
+Returns: `201` · `HrDocumentRead`
+
+#### `DELETE /api/v1/hr/documents/{document_id}`
+
+**Delete Document**
+
+Permission: `hr.document.manage`
+
+Path parameters: `document_id`
+
+Returns: `204`
+
+#### `GET /api/v1/hr/documents/{document_id}/file`
+
+**Serve Document**
+
+Permission: `hr.dossier.read`
+
+Path parameters: `document_id`
+
+Returns: `200`
+
+#### `GET /api/v1/hr/dossier`
+
+**Dossier**
+
+Permission: `hr.dossier.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `user_id` | string |  |
+
+Returns: `200` · `DossierRead`
+
+</details>
+
+## `portal`
+
+| Endpoint | Permission |
+| --- | --- |
+| `POST` `/portal/impersonation/stop` | _Deliberately open_ |
+| `GET` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `DELETE` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}/impersonate` | `portal.login.impersonate` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}/resend` | `members.member.write` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `POST /api/v1/portal/impersonation/stop`
+
+**Stop Portal Impersonation**
+
+Permission: _Deliberately open_
+
+Returns: `204`
+
+#### `GET /api/v1/portal/logins/{entity_type}/{subject_id}`
+
+**Portal Login State**
+
+Permission: `members.member.write`
+
+Path parameters: `entity_type`, `subject_id`
+
+Returns: `200` · `PortalLoginState`
+
+#### `POST /api/v1/portal/logins/{entity_type}/{subject_id}`
+
+**Enable Portal Login** — Invite this subject to the portal, or re-enable a login that was switched off.
+
+Permission: `members.member.write`
+
+Path parameters: `entity_type`, `subject_id`
+
+Returns: `200` · `PortalLoginState`
+
+#### `DELETE /api/v1/portal/logins/{entity_type}/{subject_id}`
+
+**Disable Portal Login**
+
+Permission: `members.member.write`
+
+Path parameters: `entity_type`, `subject_id`
+
+Returns: `200` · `PortalLoginState`
+
+#### `POST /api/v1/portal/logins/{entity_type}/{subject_id}/impersonate`
+
+**Impersonate Portal Login** — Sign in as this subject's portal login, time-boxed and on their own trail (#296).
+
+Permission: `portal.login.impersonate`
+
+Path parameters: `entity_type`, `subject_id`
+
+Request body: `PortalImpersonateRequest`
+
+Returns: `200` · `PortalImpersonateResponse`
+
+#### `POST /api/v1/portal/logins/{entity_type}/{subject_id}/resend`
+
+**Resend Portal Invite**
+
+Permission: `members.member.write`
+
+Path parameters: `entity_type`, `subject_id`
+
+Returns: `200` · `PortalLoginState`
+
+</details>
+

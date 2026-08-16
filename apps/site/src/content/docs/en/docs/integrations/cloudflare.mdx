@@ -15,8 +15,7 @@ into a real Redirect Rule that schakl. creates, reads back and watches.
 ## Where to find it
 
 The accounts live under *Instellingen → Cloudflare* (Settings → Cloudflare, "API-tokens, zones
-en Pages-projecten per account"), in the **Communicatie & koppelingen** (Communication &
-integrations) group. The day-to-day work is on the domain page: *Domeinen & websites → Domeinen*
+en Pages-projecten per account"), in the **Integraties** (Integrations) group. The day-to-day work is on the domain page: *Domeinen & websites → Domeinen*
 (Domains & websites → Domains), open a domain, and there is the **Cloudflare** panel, with the
 *Registrar (OXXA)* panel below it. The module deliberately adds no menu item: Cloudflare is not a
 place you go, it is something a domain has.
@@ -136,10 +135,11 @@ Cloudflare Registrar, dus dit domein wordt gefactureerd" (it is in the Cloudflar
 register, so this domain is invoiced), or the opposite. As long as no register has been read,
 everything bills exactly as it always did.
 
-<Aside type="caution">
-The Registrar half has never been exercised against a live Cloudflare Registrar account. Every
-field is parsed defensively, but check the list yourself after the first sync before you rely on
-it for invoicing.
+<Aside type="tip">
+Before you let the register decide what gets invoiced, read the list once after the first sync and
+check it against what Cloudflare Registrar itself shows you. That is a five-minute check that
+prevents the one failure worth preventing here: a renewal quietly dropping off an invoice because
+a register said it was somebody else's.
 </Aside>
 
 ## Permissions

@@ -124,7 +124,26 @@ def section(
     describe a column the page does not print, or to name thirteen referrers the document folded
     into one line.
     """
-    data = shape_section(data, locale, internal=internal)
+    parts = [part for part in (data.get("parts") or []) if isinstance(part, dict)]
+    if len(parts) > 1:
+        # A client with two websites, and a model that must not average them in a sentence
+        # (#381). Each block is presented on its own, under its own name, so a paragraph can say
+        # "aaprotec.nl groeide, opentjewereld.nl niet" — which is the whole reason the document
+        # splits them. One paragraph still covers the section: what the reader wants is the
+        # section's story, not two of them.
+        return {
+            "title": title,
+            "websites": [
+                {
+                    "website": str(part.get("label") or ""),
+                    **_one(part, data, locale, compare_label, internal),
+                }
+                for part in parts
+            ],
+        }
+    data = shape_section(
+        {**parts[0], "kind": data.get("kind")} if parts else data, locale, internal=internal
+    )
     out: dict[str, Any] = {"title": title}
     totals = _totals(data, locale, compare_label)
     if totals:
@@ -148,6 +167,25 @@ def section(
             )
     if data.get("audited_at"):
         out["audited_at"] = data["audited_at"]
+    return out
+
+
+def _one(
+    part: dict[str, Any],
+    data: dict[str, Any],
+    locale: str,
+    compare_label: str | None,
+    internal: bool,
+) -> dict[str, Any]:
+    """One website's block, without repeating the section title on every one of them."""
+    out = section(
+        {**part, "kind": data.get("kind")},
+        locale=locale,
+        title="",
+        compare_label=compare_label,
+        internal=internal,
+    )
+    out.pop("title", None)
     return out
 
 

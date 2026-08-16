@@ -63,6 +63,37 @@ Een paar dingen doen bewust niet mee:
 De rest van import en export blijft wel beschikbaar: kolommen opvragen en gegevens exporteren zijn
 allebei bruikbaar voor een AI.
 
+### Te veel tools voor een chatclient
+
+Het volledige oppervlak telt zo'n 620 tools, en dat is de juiste standaard voor een
+programmeerassistent, die de lijst één keer leest. Het is de verkeerde voor een chatclient, die
+elke tool bij elke beurt in de context van het model zet en daar dus een budget voor heeft:
+ChatGPT staat **5.000 tokens toe voor alle tools samen**, en de volledige lijst zit rond de
+527.000. Snoeien lost dat niet op: bij dat aantal houd je zo'n 85 tokens per tool over, en daar
+past nog geen naam in. Alleen *minder tools* werkt.
+
+Dezelfde server antwoordt daarom ook op smallere adressen, en je plakt het adres dat bij je client
+past:
+
+| Adres | Wat het aanbiedt |
+| --- | --- |
+| `/mcp` | Alles. De standaard, en wat een programmeerassistent wil |
+| `/mcp/compact` | Een samengestelde, alleen-lezen veertien, klein genoeg voor het plafond van een chatclient |
+| `/mcp/<module>` | De endpoints van één module, bijvoorbeeld `/mcp/google-ads` of `/mcp/invoicing` |
+| `/mcp/<bundel>` | Een benoemde klus over meerdere modules heen, bijvoorbeeld `/mcp/infra` of `/mcp/growth` |
+
+Een modulesectie wordt afgeleid uit de routes van die module zelf, dus een endpoint dat er morgen
+bij komt wordt morgen aangeboden; een bundel noemt *modules* en nooit tools, waardoor hij zichzelf
+net zo goed bijhoudt als de secties die hij samenvoegt. Een adres dat nergens naar verwijst wordt
+geweigerd, met erbij wat er wél bestaat, in plaats van stilletjes terug te vallen op alle 620: dat
+zou eruitzien alsof het werkte en met lezen niet te ontdekken zijn.
+
+<Aside type="caution" title="Een kortere lijst is geen kleiner recht">
+De lijst versmallen versmalt wat de client te *zien* krijgt, niet wat de sleutel mag. Een tool
+buiten de sectie antwoordt gewoon als hij rechtstreeks wordt aangeroepen, langs precies dezelfde
+rechtencontrole. Wat een sleutel mag, bepaal je bij het aanmaken en nergens anders.
+</Aside>
+
 ## Wat de AI wel en niet mag
 
 Een toolaanroep loopt precies dezelfde weg als een gewoon verzoek uit het scherm: hostnaam naar

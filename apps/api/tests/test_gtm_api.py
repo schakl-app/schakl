@@ -191,6 +191,135 @@ async def test_unlinking_deactivates_and_touches_nothing_at_google(client_for, f
     assert not fake.paths("DELETE")
 
 
+# --- the picker is a search, because the quota says so --------------------------------------- #
+
+
+def _reseller(fake: FakeTagManager, count: int = 20) -> None:
+    """An agency holding many Tag Manager accounts — the shape that broke the first picker.
+
+    The live grant this was written against holds **44**, and Tag Manager's quota is per user per
+    minute: "list the accounts, then list each account's containers" is 45 requests and refused on
+    the last one. Twenty is enough to prove the arithmetic without making the fake a load test.
+    """
+    for index in range(count):
+        account_id = f"90000000{index:02d}"
+        fake.accounts.append(
+            {
+                "accountId": account_id,
+                "name": f"Klant {index:02d}",
+                "path": f"accounts/{account_id}",
+            }
+        )
+        fake.containers.append(
+            {
+                "accountId": account_id,
+                "containerId": f"7000{index:02d}",
+                "publicId": f"GTM-KLANT{index:02d}",
+                "name": f"www.klant{index:02d}.nl",
+                "path": f"accounts/{account_id}/containers/7000{index:02d}",
+                "usageContext": ["web"],
+            }
+        )
+
+
+async def test_the_picker_opens_only_the_accounts_the_search_names(client_for, fake) -> None:
+    """The whole point: a search costs one request per *matched* account, not per account.
+
+    Before this, the picker was ``1 + n`` requests where n is however many Tag Manager accounts
+    the agency holds — which against a real 44-account grant answered ``RESOURCE_EXHAUSTED``
+    rather than a list, so the control that exists to find a container found none.
+    """
+    t = await _connected("gtm-pick-search")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _reseller(fake)
+        res = await c.get(
+            "/api/v1/gtm/containers/available", headers=headers, params={"q": "Klant 07"}
+        )
+    body = res.json()
+    assert [row["public_id"] for row in body["containers"]] == ["GTM-KLANT07"]
+    assert body["accounts_total"] == 21
+    assert body["accounts_read"] == 1
+    # One `accounts` call plus one `containers` call. Twenty-one accounts, two requests.
+    assert len(fake.paths("GET")) == 2
+
+
+async def test_a_blank_search_says_how_many_accounts_it_left_unopened(client_for, fake) -> None:
+    """A short list that looks complete is the failure §17 exists to prevent.
+
+    ``accounts_read`` of ``accounts_total`` plus the warning is what turns "my client is not
+    here" into "type their name" — the same rule #373 applied to a report's long tail.
+    """
+    t = await _connected("gtm-pick-blank")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _reseller(fake)
+        res = await c.get("/api/v1/gtm/containers/available", headers=headers)
+    body = res.json()
+    assert body["accounts_total"] == 21
+    assert body["accounts_read"] == 8
+    assert body["warnings"] == ["gtm.warning.narrow_search"]
+    assert len(body["containers"]) == 8
+
+
+async def test_a_gtm_id_resolves_in_one_request_instead_of_a_sweep(client_for, fake) -> None:
+    """Somebody pasting the id off a client's website should never cost an account sweep."""
+    t = await _connected("gtm-pick-id")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _reseller(fake)
+        fake.calls.clear()
+        res = await c.get(
+            "/api/v1/gtm/containers/available", headers=headers, params={"q": "gtm-klant13"}
+        )
+    body = res.json()
+    assert [row["public_id"] for row in body["containers"]] == ["GTM-KLANT13"]
+    # The account name comes off the account list, not off the container: `containers:lookup`
+    # answers a container and no account, and a blank heading is worse than a numeric one.
+    assert body["containers"][0]["account_name"] == "Klant 13"
+    assert fake.paths("GET") == ["accounts", "accounts/containers:lookup"]
+
+
+async def test_an_unknown_id_in_the_picker_is_an_empty_result_not_a_refusal(
+    client_for, fake
+) -> None:
+    """On a search box "no match" is an ordinary outcome; an error envelope is a wrong sentence
+    about it. The *link* route still 422s on the same id, because there it is an instruction."""
+    t = await _connected("gtm-pick-miss")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        res = await c.get(
+            "/api/v1/gtm/containers/available", headers=headers, params={"q": "GTM-NOTHERE"}
+        )
+    assert res.status_code == 200
+    assert res.json()["containers"] == []
+
+
+async def test_a_quota_refusal_keeps_what_was_read_and_says_the_reading_stopped(
+    client_for, fake
+) -> None:
+    """A rate is not a verdict (CLAUDE.md §10, learned from Cloudflare's probes).
+
+    Emptying the picker because the sixth account refused would hide the five that answered, and
+    "narrow your search" is something the user can act on where a 429 envelope is not.
+    """
+    t = await _connected("gtm-pick-quota")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _reseller(fake, count=3)
+        fake.fail(
+            "accounts/9000000001/containers",
+            error(429, reason="RESOURCE_EXHAUSTED", message="Quota exceeded"),
+        )
+        res = await c.get(
+            "/api/v1/gtm/containers/available", headers=headers, params={"q": "Klant"}
+        )
+    body = res.json()
+    assert res.status_code == 200
+    assert body["warnings"] == ["gtm.warning.quota"]
+    assert [row["public_id"] for row in body["containers"]] == ["GTM-KLANT00"]
+
+
 # --- isolation ------------------------------------------------------------------------------ #
 
 
@@ -326,6 +455,65 @@ async def test_reading_tags_resolves_a_workspace_without_creating_one(client_for
         res = await c.get(f"/api/v1/gtm/containers/{container['id']}/tags", headers=headers)
     assert res.status_code == 200
     assert [row["name"] for row in res.json()] == ["GA4 config"]
+    assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
+
+
+async def test_the_whole_workspace_costs_one_resolution_not_four(client_for, fake) -> None:
+    """The number this endpoint exists for, written down.
+
+    Asking for tags, triggers, variables and the staged count separately is **eight** Google
+    requests, because each of the four lists the container's workspaces to find out which one it
+    means. This is five, and the difference is not only latency: Tag Manager's quota is counted
+    per user per minute, so the count is how many times somebody may open the page.
+
+    Invisible in the JSON — the four separate calls answer exactly the same rows — which is why
+    it is pinned by a number rather than left to review (docs/PERFORMANCE.md).
+    """
+    t = await _connected("gtm-one-resolve")
+    headers = await auth_cookie(t.user)
+    fake.tags["1"] = [{"tagId": "5", "name": "GA4 config", "type": "googtag"}]
+    fake.triggers["1"] = [{"triggerId": "6", "name": "Alle pagina's", "type": "pageview"}]
+    fake.variables["1"] = [{"variableId": "7", "name": "Klant-id", "type": "c"}]
+    async with client_for(t.host) as c:
+        container = await _link(c, headers, public_id=PUBLIC_ID)
+        fake.calls.clear()
+        res = await c.get(f"/api/v1/gtm/containers/{container['id']}/workspace", headers=headers)
+    body = res.json()
+    assert res.status_code == 200, res.text
+    assert [row["name"] for row in body["tags"]] == ["GA4 config"]
+    assert [row["name"] for row in body["triggers"]] == ["Alle pagina's"]
+    assert [row["name"] for row in body["variables"]] == ["Klant-id"]
+    # The staged count rides along rather than costing its own workspace resolution — which is
+    # the whole point, and the reason the overview tile can stop being a fifth round trip.
+    assert body["status"]["workspace_id"] == "1"
+    assert body["workspace_id"] == "1"
+
+    paths = fake.paths("GET")
+    assert sum(1 for p in paths if p.endswith("/workspaces")) == 1
+    assert len(paths) == 5, paths
+    # And still never creates one: a read that mints a workspace puts our name in front of the
+    # client because somebody opened a screen.
+    assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
+
+
+async def test_a_container_with_no_workspace_reads_empty_rather_than_erroring(
+    client_for, fake
+) -> None:
+    """An empty page, never a 502 — and never a workspace brought into existence to fill it."""
+    t = await _connected("gtm-no-workspace")
+    headers = await auth_cookie(t.user)
+    fake.workspaces.clear()
+    async with client_for(t.host) as c:
+        container = await _link(c, headers, public_id=PUBLIC_ID)
+        res = await c.get(f"/api/v1/gtm/containers/{container['id']}/workspace", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {
+        "workspace_id": "",
+        "status": None,
+        "tags": [],
+        "triggers": [],
+        "variables": [],
+    }
     assert not [p for p in fake.paths("POST") if p.endswith("/workspaces")]
 
 

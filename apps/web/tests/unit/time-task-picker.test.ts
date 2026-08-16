@@ -78,6 +78,41 @@ describe("splitTaskOptions", () => {
     assert.deepEqual(ids(closed), [], "another project's finished task is not this one's");
   });
 
+  test("a picked client narrows the list the same way, keeping client-less tasks", () => {
+    const { open } = splitTaskOptions(
+      [
+        { id: "a", title: "Van c1", status: "open", company_id: "c1" },
+        { id: "b", title: "Van c2", status: "open", company_id: "c2" },
+        { id: "c", title: "Van niemand", status: "open" },
+      ],
+      { statuses: STATUSES, labels: LABELS, companyId: "c1" },
+    );
+    assert.deepEqual(ids(open), ["a", "c"]);
+  });
+
+  test("`companyOf` is what resolves a task hanging off a project", () => {
+    // A task attached to a project carries no client of its own, so narrowing by client without
+    // the resolver would drop every project task — the commonest shape there is.
+    const projectClient = new Map([
+      ["p1", "c1"],
+      ["p2", "c2"],
+    ]);
+    const { open } = splitTaskOptions(TASKS, {
+      statuses: STATUSES,
+      labels: LABELS,
+      companyId: "c1",
+      companyOf: (task) => projectClient.get(task.project_id ?? "") ?? "",
+    });
+    assert.deepEqual(ids(open), ["a", "c"], "p1's task and the unattached one; not p2's");
+  });
+
+  test("the task the entry is booked on is never narrowed away", () => {
+    // An entry saved before there was a cascade may hold any combination at all, and a field
+    // that cannot show what is in it reads as empty rather than as "from another client".
+    const { open } = split({ projectId: "p1", selectedId: "d" });
+    assert.ok(ids(open).includes("d"));
+  });
+
   test("the hint names the finished status, the deadline and the allocation, in that order", () => {
     const { open, closed } = splitTaskOptions(
       [

@@ -775,6 +775,11 @@ class TaskService:
         # reply above a parent that had dropped off the end, and the client would draw it as a new
         # thread. Reversed, this reads exactly as the card renders: threads oldest-first, each
         # opener followed by its answers in the order they were written.
+        #
+        # One row *more* than the cap is asked for and thrown away: that is the whole cost of
+        # answering "is anything missing?", and a capped list that cannot say so reads as the
+        # complete conversation (CLAUDE.md §17). A count query would have been a second read on
+        # the card's query budget for a sentence shown to almost nobody.
         comment_impersonator = aliased(User)
         comment_root = aliased(TaskComment)
         comment_rows = list(
@@ -796,11 +801,15 @@ class TaskService:
                             func.coalesce(comment_root.created_at, TaskComment.created_at).desc(),
                             TaskComment.created_at.desc(),
                         )
-                        .limit(_COMMENT_CAP)
+                        .limit(_COMMENT_CAP + 1)
                     )
                 ).all()
             )
         )
+        detail.comments_truncated = len(comment_rows) > _COMMENT_CAP
+        # Reversed above, so the surplus row is the *oldest* — the front of the list.
+        if detail.comments_truncated:
+            comment_rows = comment_rows[len(comment_rows) - _COMMENT_CAP :]
         detail.comments = []
         for comment, author, wrote_as in comment_rows:
             name, deleted = _attribution(author, comment.author_name)
@@ -900,6 +909,12 @@ class TaskService:
         # Nullable on the wire so an existing caller need not mention it (#350); the column is
         # `NOT NULL`, and "the caller said nothing" means the task has a title somebody chose.
         values["unnamed"] = bool(values.get("unnamed"))
+        # What the task arrives with (#382). Popped before the column write and applied after the
+        # row exists — each through this service's own method, so an inline checklist gets the
+        # same validation, activity line and 403 that a separate POST would.
+        composite_checklist = values.pop("checklist", None)
+        composite_links = values.pop("links", None) or []
+        composite_labels = values.pop("label_ids", None) or []
         # A task's company/project FKs must live in this tenant (audit F19).
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
@@ -949,6 +964,12 @@ class TaskService:
         await self.assignees.replace(task.id, links)
         task.assignees = await self.assignees.for_entity(task.id)
         await self._record(task.id, "created")
+        await self._apply_composite(
+            task.id,
+            checklist=composite_checklist,
+            links=composite_links,
+            label_ids=composite_labels,
+        )
         # Automation trigger (issue #27); deliberately not in the notifications vocabulary,
         # so it fans out to nobody. Status/company/project ride along for condition matching.
         await self._emit_task(
@@ -969,6 +990,45 @@ class TaskService:
                 "task.assigned", task, [link.user_id for link in task.assignees]
             )
         return task
+
+    async def _apply_composite(
+        self,
+        task_id: uuid.UUID,
+        *,
+        checklist: dict[str, Any] | None,
+        links: list[dict[str, Any]],
+        label_ids: list[uuid.UUID],
+    ) -> None:
+        """Write what a composite create carried alongside the row (#382).
+
+        Every branch goes through the ordinary method rather than touching a table, so an
+        inline checklist is validated, recorded on the trail and permission-checked exactly as
+        one added a minute later from the card would be. That is the whole reason this is a
+        wider ``TaskCreate`` and not a second endpoint: a second write path is how "creating a
+        task" and "creating a task with steps" come to mean two different things.
+
+        A checklist with a title and no items is still a checklist — an agency dictating
+        "maak een checklist Oplevering" and filling it in later is asking for exactly that —
+        so the guard is on *neither* being present, not on the items alone. A checklist with
+        items and no title borrows the task's, the fallback ``tasks.system`` already uses for
+        the same reason: ``add_checklist`` refuses an untitled one, an i18n key cannot help
+        (this is stored tenant data, and the reader's locale is not the writer's), and the
+        task's own title is the only string here that is neither invented nor English.
+        """
+        if checklist is not None and (checklist.get("title") or checklist.get("items")):
+            title = checklist.get("title") or None
+            if title is None:
+                row = await self.repo.get_or_404(task_id)
+                title = row.title[:255]
+            await self.add_checklist(
+                task_id,
+                ChecklistCreate(title=title, description=None),
+                items=[ChecklistItemCreate(**item) for item in checklist.get("items") or []],
+            )
+        for link in links:
+            await self.add_link(task_id, LinkCreate(**link))
+        if label_ids:
+            await self.set_task_labels(task_id, list(label_ids))
 
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
@@ -1342,7 +1402,12 @@ class TaskService:
                 # Everyone on it (#375) — someone doing half the work has the same reason to
                 # hear it was finished as the person holding the star.
                 [link.user_id for link in task.assignees],
-                {"from": old_status, "to": new_status},
+                # ``finished`` is published because the *notifications* module needs it and may
+                # not ask: a status list is tenant-defined, so "did this reach a terminal
+                # status" is a lookup in ``task_statuses`` only this module owns. It retires the
+                # task's own "due soon" / "overdue" reminders, which describe a state that has
+                # stopped being true (``notifications/service.py::RESOLVING_EVENTS``).
+                {"from": old_status, "to": new_status, "finished": finishing},
             )
         if roster_touched:
             # A colleague joining or leaving moves no star, so ``changed`` (which reads the
@@ -1551,8 +1616,23 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Checklists
     # ------------------------------------------------------------------ #
-    async def add_checklist(self, task_id: uuid.UUID, data: ChecklistCreate) -> TaskChecklist:
-        """A fresh checklist, or a copy of an org checklist template (title + items)."""
+    async def add_checklist(
+        self,
+        task_id: uuid.UUID,
+        data: ChecklistCreate,
+        *,
+        items: list[ChecklistItemCreate] | None = None,
+    ) -> TaskChecklist:
+        """A fresh checklist, a copy of an org checklist template, or one with its items (#382).
+
+        ``items`` is a **service** parameter and not a wire field: the checklist endpoint's
+        shape is unchanged, and the one caller that has its items in hand at creation time is
+        the composite create. It writes them exactly as the template branch below already does
+        — one flush for the lot — because the alternative, calling ``add_checklist_item`` in a
+        loop, re-reads the task and the checklist per step. Ten dictated steps cost six
+        statements each that way, which is the fan-out the composite create exists to remove
+        rather than relocate (``tests/test_perf_query_budgets.py``).
+        """
         await self._writable_task_or_403(task_id)
 
         template = None
@@ -1575,9 +1655,14 @@ class TaskService:
             description=sanitize_markdown(data.description),
             position=position,
         )
+        seeds: list[dict[str, Any]] = []
         if template is not None:
             # Copy each item's title *and* description from the template's rich shape (issue #66).
-            for index, entry in enumerate(_rich_items(template.items_rich, template.items)):
+            seeds = list(_rich_items(template.items_rich, template.items))
+        elif items:
+            seeds = [{"title": item.title, "description": item.description} for item in items]
+        if seeds:
+            for index, entry in enumerate(seeds):
                 self.ctx.session.add(
                     TaskChecklistItem(
                         org_id=self.ctx.org.id,
@@ -1972,6 +2057,17 @@ class TaskService:
         # people already in *that thread* are being answered, not merely told the task was
         # commented on, so they get `task.replied` and drop out of the generic fan-out. Everyone
         # else in the task's audience gets `task.commented`, exactly as before.
+        # Which comment the sentence is *about*. Without it "Jan reageerde op Website migratie"
+        # opened the task and left the reader to find the words that were written — on a task
+        # with fifty comments that is a search, not a link (docs/UX.md, "every number opens";
+        # #16's rule that a destination arrives ready to act on). Both ends read it: the web
+        # inbox and bell through ``notifications/href.ts``, the mail through
+        # ``notifications/render.event_path``. ``thread_id`` is the root, so the client can
+        # expand the right conversation before it scrolls — the answer is not the thread.
+        where = {
+            "comment_id": str(comment.id),
+            "thread_id": str(parent_id or comment.id),
+        }
         mentioned_set = set(mentioned)
         replied = (
             [
@@ -1994,7 +2090,7 @@ class TaskService:
                 "task.commented",
                 task,
                 commented,
-                {"excerpt": excerpt, "_exclude": list(heard)},
+                {"excerpt": excerpt, **where, "_exclude": list(heard)},
             )
         if replied:
             # Same rule one rung up: a mentioned person in this thread is watching it, so the
@@ -2003,10 +2099,10 @@ class TaskService:
                 "task.replied",
                 task,
                 replied,
-                {"excerpt": excerpt, "_exclude": list(mentioned_set)},
+                {"excerpt": excerpt, **where, "_exclude": list(mentioned_set)},
             )
         if mentioned:
-            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
+            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt, **where})
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )

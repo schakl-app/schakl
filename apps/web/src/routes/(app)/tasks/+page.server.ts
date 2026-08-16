@@ -145,6 +145,77 @@ export const actions: Actions = {
     throw redirect(303, editHref(`/tasks/${data.id}`));
   },
 
+  /**
+   * Create the task a colleague just dictated (#382).
+   *
+   * Deliberately **not** create-then-edit. That shape exists because a typed task starts as a
+   * title and gets its fields on the detail page; this one arrives with all of them already
+   * reviewed on screen, so landing the user in edit mode over it would be the second review of
+   * the same draft.
+   *
+   * One API call, carrying the checklist, the links and the labels (`TaskCreate`'s composite
+   * fields, #382). The draft rides as one JSON field because it is nested — steps and links —
+   * and flat form inputs cannot express that without inventing a naming convention this action
+   * would then have to re-parse.
+   */
+  createDictated: async (event) => {
+    const form = await event.request.formData();
+    let draft: Record<string, unknown>;
+    try {
+      draft = JSON.parse(String(form.get("payload") ?? "{}"));
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
+    const title = String(draft.title ?? "").trim();
+    if (!title) return fail(400, { error: "errors.validation" });
+
+    const steps = (Array.isArray(draft.checklist_items) ? draft.checklist_items : []) as {
+      title?: string;
+      description?: string | null;
+    }[];
+    const links = (Array.isArray(draft.links) ? draft.links : []) as {
+      url?: string;
+      title?: string | null;
+    }[];
+    const labelIds = (Array.isArray(draft.label_ids) ? draft.label_ids : []) as string[];
+    const checklistTitle = (draft.checklist_title as string | null) || null;
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
+      body: {
+        title,
+        description: (draft.description as string | null) || null,
+        due_date: (draft.due_date as string | null) || null,
+        priority: ((draft.priority as "low" | "normal" | "high" | null) ?? "normal") as
+          "low" | "normal" | "high",
+        status: (draft.status as string | null) || null,
+        company_id: (draft.company_id as string | null) || null,
+        project_id: (draft.project_id as string | null) || null,
+        assignee_user_id: (draft.assignee_user_id as string | null) || null,
+        allocated_minutes: (draft.allocated_minutes as number | null) ?? null,
+        // The two flags are tri-state on the draft and plain booleans on the wire. Resolving
+        // them here rather than in the browser keeps `null` meaning "the speaker said nothing",
+        // which is what stops a `false` reading as a decision nobody made (#284).
+        requires_interaction: draft.requires_interaction === true,
+        visible_to_client: draft.visible_to_client === true,
+        ...(steps.length || checklistTitle
+          ? {
+              checklist: {
+                title: checklistTitle,
+                items: steps.map((s) => ({
+                  title: String(s.title ?? "").trim(),
+                  description: s.description ?? null,
+                })),
+              },
+            }
+          : {}),
+        links: links.map((l) => ({ url: String(l.url ?? "").trim(), title: l.title ?? null })),
+        label_ids: labelIds.map(String),
+      },
+    });
+    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    // Straight to the finished task, in *use* mode: the review already happened.
+    throw redirect(303, `/tasks/${data.id}`);
+  },
+
   toggle: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

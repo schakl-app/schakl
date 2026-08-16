@@ -21,9 +21,9 @@
   import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -43,6 +43,7 @@
     user_id: string;
     full_name: string | null;
     email: string | null;
+    is_active?: boolean;
   }
   interface NameRef {
     id: string;
@@ -119,10 +120,8 @@
     new Map((pickerProjects.length ? pickerProjects : projects).map((p) => [p.id, p.name])),
   );
   const memberName = $derived(new Map(allMembers.map((m) => [m.user_id, memberLabel(m)])));
-  const personOptions = $derived(
-    allMembers.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
-  );
-
+  // Planning is future work, so a deactivated account is never a suggestion — and never
+  // unreachable either: `memberName` above still labels a block already booked on one.
   const filteredTasks = $derived(
     search.trim()
       ? pickerTasks.filter((task) => task.title.toLowerCase().includes(search.trim().toLowerCase()))
@@ -333,7 +332,7 @@
       <div>
         <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.person")}</span>
         {#if canScheduleAny}
-          <Combobox name="user_id" bind:value={personId} items={personOptions} />
+          <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
         {:else}
           <input type="hidden" name="user_id" value={currentUserId} />
           <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">

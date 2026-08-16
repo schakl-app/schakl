@@ -1,0 +1,316 @@
+---
+title: "Google Workspace"
+description: "Calendar, Drive, Gmail and Contacts, connected per organisation with your own OAuth client and switched on per employee."
+sidebar:
+  order: 7
+---
+
+Calendar, Drive, Gmail and Contacts, connected per organisation with your own OAuth client and switched on per employee.
+
+25 endpoints across 1 group. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+
+## `google`
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/google/calendar/events` | `google.calendar.read` |
+| `POST` `/google/calendar/webhook` | _Deliberately open_ |
+| `GET` `/google/connections` | `google.settings.manage` |
+| `GET` `/google/connections/me` | `google.connection.manage` |
+| `PATCH` `/google/connections/me` | `google.connection.manage` |
+| `POST` `/google/connections/me/disconnect` | `google.connection.manage` |
+| `GET` `/google/drive/browse` | `google.drive.read` |
+| `PUT` `/google/drive/folder` | `google.drive.write` |
+| `POST` `/google/drive/folders` | `google.drive.write` |
+| `GET` `/google/drive/links` | `google.drive.read` |
+| `POST` `/google/drive/links` | `google.drive.write` |
+| `DELETE` `/google/drive/links/{link_id}` | `google.drive.write` |
+| `POST` `/google/drive/provision` | `google.drive.write` |
+| `POST` `/google/drive/provision-all` | `google.settings.manage` |
+| `POST` `/google/drive/upload-session` | `google.drive.write` |
+| `POST` `/google/gmail/import` | `interactions.interaction.write` |
+| `GET` `/google/gmail/lookup` | `google.connection.manage` |
+| `POST` `/google/gmail/refresh` | `google.connection.manage` |
+| `GET` `/google/gmail/search` | `google.connection.manage` |
+| `GET` `/google/gmail/status` | `google.connection.manage` |
+| `GET` `/google/gmail/threads/{thread_id}` | `google.connection.manage` |
+| `GET` `/google/oauth/callback` | `google.connection.manage` |
+| `GET` `/google/oauth/connect` | `google.connection.manage` |
+| `GET` `/google/settings` | `google.settings.manage` |
+| `PUT` `/google/settings` | `google.settings.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/google/calendar/events`
+
+**Calendar Events** — The viewer's own cached Google events. Reads the local cache, never Google live.
+
+Permission: `google.calendar.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+
+Returns: `200` · `CalendarFeedItem[]`
+
+#### `POST /api/v1/google/calendar/webhook`
+
+**Calendar Webhook**
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+#### `GET /api/v1/google/connections`
+
+**List Connections**
+
+Permission: `google.settings.manage`
+
+Returns: `200` · `app__integrations__google__schemas__ConnectionRead[]`
+
+#### `GET /api/v1/google/connections/me`
+
+**My Connection**
+
+Permission: `google.connection.manage`
+
+Returns: `200` · `MyConnectionRead`
+
+#### `PATCH /api/v1/google/connections/me`
+
+**Update My Connection**
+
+Permission: `google.connection.manage`
+
+Request body: `MyConnectionUpdate`
+
+Returns: `200` · `MyConnectionRead`
+
+#### `POST /api/v1/google/connections/me/disconnect`
+
+**Disconnect My Connection**
+
+Permission: `google.connection.manage`
+
+Returns: `204`
+
+#### `GET /api/v1/google/drive/browse`
+
+**Browse** — Live folder contents **as the viewing user** — Drive's permissions are authoritative.
+
+Permission: `google.drive.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `folder_id` | string |  |
+| `q` | string |  |
+| `refresh` | boolean |  (default `false`) |
+
+Returns: `200` · `DriveBrowseResult`
+
+#### `PUT /api/v1/google/drive/folder`
+
+**Set Folder** — Point a record at an existing Drive folder — the picker's target.
+
+Permission: `google.drive.write`
+
+Request body: `DriveFolderSet`
+
+Returns: `200` · `DriveLinkRead`
+
+#### `POST /api/v1/google/drive/folders`
+
+**Create Folder** — Create a subfolder inside the folder being browsed, as the viewing user (issue #21).
+
+Permission: `google.drive.write`
+
+Request body: `DriveFolderCreate`
+
+Returns: `201` · `DriveFolder`
+
+#### `GET /api/v1/google/drive/links`
+
+**List Links**
+
+Permission: `google.drive.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `entity_type` | string · required |  |
+| `entity_id` | string · required |  |
+| `rollup` | boolean |  (default `false`) |
+
+Returns: `200` · `DriveLinkRead[]`
+
+#### `POST /api/v1/google/drive/links`
+
+**Create Link**
+
+Permission: `google.drive.write`
+
+Request body: `DriveLinkCreate`
+
+Returns: `201` · `DriveLinkRead`
+
+#### `DELETE /api/v1/google/drive/links/{link_id}`
+
+**Delete Link** — Unlink only. The Drive file is never touched (issue #21 — the dialog says so too).
+
+Permission: `google.drive.write`
+
+Path parameters: `link_id`
+
+Returns: `204`
+
+#### `POST /api/v1/google/drive/provision`
+
+**Provision Entity** — Queue one entity's folder — the panel's "create folder" button.
+
+Permission: `google.drive.write`
+
+Request body: `DriveProvisionRequest`
+
+Returns: `202`
+
+#### `POST /api/v1/google/drive/provision-all`
+
+**Provision All** — Backfill: a folder for every client that has none (Instellingen → Google).
+
+Permission: `google.settings.manage`
+
+Returns: `200` · `DriveBulkProvisionResult`
+
+#### `POST /api/v1/google/drive/upload-session`
+
+**Create Upload Session**
+
+Permission: `google.drive.write`
+
+Request body: `DriveUploadSessionCreate`
+
+Returns: `200` · `DriveUploadSession`
+
+#### `POST /api/v1/google/gmail/import`
+
+**Import Gmail Message** — Log one message the poller skipped, filed where the caller says.
+
+Permission: `interactions.interaction.write`
+
+Request body: `GmailImportRequest`
+
+Returns: `201` · `GmailImportResult`
+
+#### `GET /api/v1/google/gmail/lookup`
+
+**Lookup Gmail Message** — Resolve a pasted reference to the message(s) it names, in the caller's own mailbox.
+
+Permission: `google.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `reference` | string · required | A Gmail link, a message/thread id, or an RFC-822 Message-ID |
+
+Returns: `200` · `GmailLookupResult`
+
+#### `POST /api/v1/google/gmail/refresh`
+
+**Refresh Gmail** — Poll this mailbox once, now — rate-limited to one manual poll per minute.
+
+Permission: `google.connection.manage`
+
+Returns: `200` · `GmailRefreshResult`
+
+#### `GET /api/v1/google/gmail/search`
+
+**Search Gmail** — Find a message in the caller's **own** mailbox, by who it was with and when (#372).
+
+Permission: `google.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `participant` | string |  |
+| `subject` | string |  |
+| `after` | string |  |
+| `before` | string |  |
+
+Returns: `200` · `GmailSearchResult`
+
+#### `GET /api/v1/google/gmail/status`
+
+**Read Gmail Status** — When this mailbox was last polled, and whether asking for another one is worth it.
+
+Permission: `google.connection.manage`
+
+Returns: `200` · `GmailSyncStatus`
+
+#### `GET /api/v1/google/gmail/threads/{thread_id}`
+
+**Read Gmail Thread** — Every message of one conversation, marked with what is already on the timeline.
+
+Permission: `google.connection.manage`
+
+Path parameters: `thread_id`
+
+Returns: `200` · `GmailLookupResult`
+
+#### `GET /api/v1/google/oauth/callback`
+
+**Google Oauth Callback** — Store the grant and land the browser back where the connect started.
+
+Permission: `google.connection.manage`
+
+Returns: `200`
+
+#### `GET /api/v1/google/oauth/connect`
+
+**Oauth Connect** — 302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
+
+Permission: `google.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_gmail` | boolean |  (default `false`) |
+| `include_marketing` | boolean |  (default `false`) |
+| `include_analytics` | boolean |  (default `false`) |
+| `include_search_console` | boolean |  (default `false`) |
+| `include_ads` | boolean |  (default `false`) |
+| `include_tag_manager` | boolean |  (default `false`) |
+| `next` | string |  (default ``) |
+
+Returns: `200`
+
+#### `GET /api/v1/google/settings`
+
+**Get Settings**
+
+Permission: `google.settings.manage`
+
+Returns: `200` · `GoogleSettingsRead`
+
+#### `PUT /api/v1/google/settings`
+
+**Save Settings**
+
+Permission: `google.settings.manage`
+
+Request body: `GoogleSettingsWrite`
+
+Returns: `200` · `GoogleSettingsRead`
+
+</details>
+
