@@ -29,7 +29,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -43,6 +43,7 @@ from app.core.timezone import org_today
 from app.errors import AppError
 from app.integrations.snelstart.client import (
     CODE_DUPLICATE_INVOICE_NUMBER,
+    CODE_RELATIECODE_IN_USE,
     SnelstartClient,
     SnelstartError,
     SnelstartUnknownWriteError,
@@ -80,6 +81,7 @@ from app.integrations.snelstart.service import (
     client_for,
     translate,
 )
+from app.modules.invoicing.calc import CENTS
 
 logger = logging.getLogger("schakl.snelstart")
 
@@ -288,6 +290,18 @@ class SnelstartSyncService:
                     result = await client.post("relaties", payload) or {}
                     action = "created"
         except SnelstartError as exc:
+            if exc.code == CODE_RELATIECODE_IN_USE and existing is None:
+                # The client number this company carries is already somebody's relatiecode.
+                # That is a collision between two independent numbering systems and it must not
+                # cost the agency a client record — the code is a convenience, the relation is
+                # the requirement. So we look at who holds it (it is very often this same
+                # client, entered by the bookkeeper first), and either adopt them or create
+                # without a code and let SnelStart allocate its own.
+                resolved = await self._resolve_relatiecode_clash(
+                    account, company, payload, client=client
+                )
+                if resolved is not None:
+                    return resolved
             return await self._link_failed(
                 link, translate(exc).message_key, detail=redact(str(exc))[:500]
             )
@@ -318,6 +332,89 @@ class SnelstartSyncService:
             external_id=external_id,
             external_code=link.external_code,
             action=action,
+        )
+
+    async def _resolve_relatiecode_clash(
+        self,
+        account: SnelstartAccount,
+        company: Any,
+        payload: dict[str, Any],
+        *,
+        client: SnelstartClient,
+    ) -> SnelstartPushResult | None:
+        """Somebody already holds this relatiecode. Work out whether it is this client.
+
+        Two numbering systems that were never coordinated will collide, and the failure this
+        replaces was the worst possible shape: a client simply not reaching the books, reported
+        as "SnelStart weigert dit verzoek" with nothing an admin could do about it except
+        renumber their CRM.
+
+        **Adopt rather than duplicate, and never guess.** The relation holding the code is
+        fetched and compared on the identifiers that identify — Chamber of Commerce number,
+        then VAT number, then an exact name. A match is adopted (the bookkeeper entered this
+        client before we did, which is the normal case). No match means the number simply
+        belongs to somebody else, so the relation is created **without** it and SnelStart
+        allocates its own; the link then records the code it really got, so the screen tells the
+        truth rather than what we asked for.
+        """
+        code = payload.get("relatiecode")
+        if code is None:
+            return None
+        async with self.ctx.release_db():
+            holders = await client.fetch(
+                "relaties",
+                match=lambda row: row.get("relatiecode") == code,
+            )
+        holder = holders[0] if holders else None
+
+        if holder is not None and _same_company(holder, company):
+            link = await self.links.create(
+                account_id=account.id,
+                kind=SnelstartLinkKind.RELATION.value,
+                external_id=str(holder.get("id") or ""),
+                local_type="company",
+                local_id=company.id,
+                company_id=company.id,
+                status=SnelstartLinkStatus.ACTIVE.value,
+            )
+            # No ``push_hash``: we did not send this, so the next push writes once and only
+            # then may the hash mean what it says.
+            await self._observe(link, holder, datetime.now(UTC))
+            return SnelstartPushResult(
+                ok=True,
+                external_id=link.external_id,
+                external_code=link.external_code,
+                action="adopted",
+            )
+
+        retry = {key: value for key, value in payload.items() if key != "relatiecode"}
+        try:
+            async with self.ctx.release_db():
+                result = await client.post("relaties", retry) or {}
+        except SnelstartError as exc:
+            return await self._link_failed(
+                None, translate(exc).message_key, detail=redact(str(exc))[:500]
+            )
+        external_id = str(result.get("id") or "")
+        if not external_id:
+            return None
+        link = await self.links.create(
+            account_id=account.id,
+            kind=SnelstartLinkKind.RELATION.value,
+            external_id=external_id,
+            local_type="company",
+            local_id=company.id,
+            company_id=company.id,
+            status=SnelstartLinkStatus.ACTIVE.value,
+            push_hash=payload_hash(retry),
+            pushed_at=datetime.now(UTC),
+        )
+        await self._observe(link, result, datetime.now(UTC))
+        return SnelstartPushResult(
+            ok=True,
+            external_id=external_id,
+            external_code=link.external_code,
+            action="created",
         )
 
     async def push_relations(self, account_id: uuid.UUID) -> SnelstartSyncRun:
@@ -412,7 +509,16 @@ class SnelstartSyncService:
                     ok=True,
                     external_id=link.external_id,
                     external_code=invoice.number,
-                    action="adopted",
+                    # Adopted **and** disagreeing is its own outcome, not a footnote on the
+                    # panel: the sync log is where an admin looks, and "1 overgenomen" with no
+                    # mention that its amount is different is the silent half of a silent
+                    # overwrite.
+                    action=(
+                        "drift"
+                        if link.status == SnelstartLinkStatus.DRIFT.value
+                        else "adopted"
+                    ),
+                    error=link.last_error,
                 )
 
         plan = await self._plan_boeking(account, invoice, relation_id, link)
@@ -461,7 +567,12 @@ class SnelstartSyncService:
                         ok=True,
                         external_id=link.external_id,
                         external_code=invoice.number,
-                        action="adopted",
+                        action=(
+                            "drift"
+                            if link.status == SnelstartLinkStatus.DRIFT.value
+                            else "adopted"
+                        ),
+                        error=link.last_error,
                         guessed_rates=guessed,
                     )
             return await self._link_failed(
@@ -613,11 +724,17 @@ class SnelstartSyncService:
     async def _adopt_invoice(
         self, account: SnelstartAccount, invoice: Any, found: dict[str, Any]
     ) -> SnelstartLink:
-        """Record a boeking that already existed as ours.
+        """Record a boeking that already existed as ours, and say whether it agrees with us.
 
         ``push_hash`` is deliberately left ``NULL``: we did not send this payload, so we cannot
         claim it matches. The next push therefore compares against nothing, writes once, and
         from then on the hash means what it says.
+
+        **The amount is compared, and a difference is `drift`.** Adopting is the right answer to
+        "somebody already booked this number" — overwriting a bookkeeper's entry is not ours to
+        do — but adopting *silently* would leave schakl showing €635,25 and the ledger showing
+        €1.428,00 under one number, with nothing anywhere saying they disagree. That is the exact
+        state ``drift`` exists to name: it is there, and it is not what we would have written.
         """
         now = datetime.now(UTC)
         link = await self._link_for(account.id, SnelstartLinkKind.INVOICE, invoice.id)
@@ -630,11 +747,27 @@ class SnelstartSyncService:
                 local_id=invoice.id,
                 company_id=invoice.company_id,
             )
+        remote_total = parse_amount(found.get("factuurBedrag"))
+        agrees = remote_total is not None and remote_total == Decimal(invoice.total)
         link.external_id = found["_boeking_id"]
         link.external_code = invoice.number
-        link.status = SnelstartLinkStatus.ACTIVE.value
+        link.status = (
+            SnelstartLinkStatus.ACTIVE.value if agrees else SnelstartLinkStatus.DRIFT.value
+        )
         link.push_hash = None
-        link.last_error = None
+        # Not an error — nothing failed — but a fact a human has to resolve, so it is recorded
+        # where the screen already reads failures rather than in a log line nobody opens.
+        # Quantised to cents on both sides: SnelStart answers ``1428.0`` and schakl holds
+        # ``1428.00``, and a message that renders one of them short reads like a rounding
+        # difference rather than the eight-hundred-euro one it is actually reporting.
+        link.last_error = (
+            None
+            if agrees
+            else (
+                f"Boeking in SnelStart: {remote_total.quantize(CENTS)}; "
+                f"factuur in schakl: {Decimal(invoice.total).quantize(CENTS)}"
+            )[:500]
+        )
         link.last_synced_at = now
         link.observed = {k: v for k, v in found.items() if not k.startswith("_")}
         link.observed_at = parse_moment(found.get("modifiedOn")) or now
@@ -747,7 +880,7 @@ class SnelstartSyncService:
         client = client_for(account)
         counts = {
             "read": len(invoices), "created": 0, "updated": 0,
-            "adopted": 0, "unchanged": 0, "failed": 0,
+            "adopted": 0, "drift": 0, "unchanged": 0, "failed": 0,
         }
         errors: list[dict[str, Any]] = []
         guessed: set[str] = set()
@@ -758,14 +891,22 @@ class SnelstartSyncService:
             if result.ok:
                 key = result.action or "unchanged"
                 counts[key] = counts.get(key, 0) + 1
-            else:
-                counts["failed"] += 1
+            if not result.ok or result.action == "drift":
+                # Drift is not a failure — nothing went wrong and nothing needs retrying — but
+                # it is a row a human has to look at, so it rides the same list rather than
+                # being visible only to somebody who opens the right client's page.
+                if not result.ok:
+                    counts["failed"] += 1
                 if len(errors) < MAX_RUN_ERRORS:
                     errors.append(
                         {
                             "local_id": str(invoice.id),
                             "name": invoice.number,
-                            "key": result.error_key,
+                            "key": (
+                                "errors.snelstart.invoice_differs"
+                                if result.action == "drift"
+                                else result.error_key
+                            ),
                             "message": result.error,
                         }
                     )
@@ -1360,6 +1501,25 @@ def _match_company(
         if found and found != _AMBIGUOUS:
             return found, label
     return None, None
+
+
+def _same_company(relation: Mapping[str, Any], company: Any) -> bool:
+    """Is this SnelStart relation the schakl company we were about to create?
+
+    Only the identifiers that identify, and an **exact** name — the same rule
+    :func:`_match_company` applies, minus the "proposed" tier: nothing here reaches a human for
+    review, so a guess would be applied silently, which is the one thing matching must never do.
+    """
+    for key, attr in (("kvkNummer", "coc_number"), ("btwNummer", "vat_number")):
+        remote = _digits(relation.get(key)) if key == "kvkNummer" else _norm(relation.get(key))
+        local = (
+            _digits(getattr(company, attr, None))
+            if key == "kvkNummer"
+            else _norm(getattr(company, attr, None))
+        )
+        if remote and local:
+            return remote == local
+    return _norm(relation.get("naam")) == _norm(getattr(company, "name", None))
 
 
 def _norm(value: Any) -> str | None:

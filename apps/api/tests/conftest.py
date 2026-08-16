@@ -99,7 +99,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing", "cloudflare", "oxxa", "mollie",
+    "interactions", "google", "marketing", "cloudflare", "oxxa", "mollie", "snelstart",
 ]
 
 

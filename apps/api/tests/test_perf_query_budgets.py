@@ -316,10 +316,17 @@ _MEMBER_REQUEST_BUDGET = 8
 #: which is the shape that had to be paid for, since the alternative (a chip row resolving per
 #: task) is the exact N+1 this file exists to catch.
 #:
+#: 45 -> 47 (#377): the snelstart panel, which answers "is this client's bookkeeping in step?"
+#: in two statements — the relation pairing, and one `GROUP BY status` over the client's invoice
+#: pairings. It is deliberately **two** rather than one: folding them would mean loading every
+#: invoice link to count it in Python, which is the N+1 this file exists to catch, on a client
+#: with two hundred invoices. It also calls SnelStart **never** — a company page must not wait on
+#: somebody else's bookkeeping server to render.
+#:
 #: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
 #: composer skips every panel the caller may not read, so a restricted member's page costs
 #: strictly less than this. The budget stays measured as the owner, which is the worst case.
-_PANELS_BUDGET = 45
+_PANELS_BUDGET = 47
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.

@@ -263,6 +263,74 @@ async def test_pushing_a_relation_twice_writes_once(client_for, snelstart) -> No
         assert writes_after == writes_before, "an unchanged relation must not be rewritten"
 
 
+async def test_a_relatiecode_already_taken_by_this_client_adopts_them(
+    client_for, snelstart
+) -> None:
+    """schakl's client numbers and SnelStart's relatiecodes are two uncoordinated systems.
+
+    The usual reason one is taken is that the bookkeeper entered this very client first, so
+    ``REL-0008`` is not a failure — it is a pointer. Refusing the whole create over it (which is
+    what this replaces) cost an agency a client record for a number nobody cares about, and left
+    an admin with "SnelStart weigert dit verzoek" and nothing to do about it but renumber their
+    CRM.
+    """
+    t: Tenant = await make_tenant("snel-code-adopt")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _connected(c, headers)
+        await _map_rates(c, headers)
+        company_id = await _company(c, headers, name="Bakkerij Jansen", coc_number="12345678")
+        await _issued_invoice(c, headers, company_id)
+
+        # The bookkeeper got there first, under the same number and the same KvK.
+        existing = snelstart.add_relatie(
+            naam="Bakkerij Jansen bv", relatiecode=1001, kvkNummer="12345678"
+        )
+        await c.patch(
+            f"/api/v1/companies/{company_id}", json={"client_number": "1001"}, headers=headers
+        )
+
+        run = await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/push/relations", headers=headers
+        )
+        assert run.json()["ok"] is True, run.text
+        assert run.json()["counts"]["adopted"] == 1, run.text
+        assert len(snelstart.relaties) == 1, "the bookkeeper's relation was adopted, not doubled"
+        assert existing["id"] in {row["id"] for row in snelstart.relaties.values()}
+
+
+async def test_a_relatiecode_taken_by_somebody_else_creates_without_it(
+    client_for, snelstart
+) -> None:
+    """The number belongs to a different company, so the client is created without one.
+
+    The shared number is a convenience; the relation is the requirement. SnelStart allocates its
+    own, and the link records the code it really got rather than the one we asked for — so the
+    screen tells the truth.
+    """
+    t: Tenant = await make_tenant("snel-code-renumber")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _connected(c, headers)
+        await _map_rates(c, headers)
+        company_id = await _company(c, headers, name="Bakkerij Jansen", coc_number="12345678")
+        await _issued_invoice(c, headers, company_id)
+
+        snelstart.add_relatie(naam="Iemand anders bv", relatiecode=1001, kvkNummer="99999999")
+        await c.patch(
+            f"/api/v1/companies/{company_id}", json={"client_number": "1001"}, headers=headers
+        )
+
+        run = await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/push/relations", headers=headers
+        )
+        assert run.json()["ok"] is True, run.text
+        assert run.json()["counts"]["created"] == 1, run.text
+        assert len(snelstart.relaties) == 2
+        mine = next(r for r in snelstart.relaties.values() if r["naam"] == "Bakkerij Jansen")
+        assert mine["relatiecode"] != 1001, "SnelStart allocated its own"
+
+
 # --------------------------------------------------------------------------------------- #
 # Invoices — the four idempotency guards
 # --------------------------------------------------------------------------------------- #
@@ -347,7 +415,9 @@ async def test_guard_two_an_invoice_number_already_in_the_books_is_adopted(
         company_id = await _company(c, headers)
         invoice = await _issued_invoice(c, headers, company_id)
 
-        # Somebody already booked this number, by hand, before we ever ran.
+        # Somebody already booked this number, by hand, before we ever ran — **and for a
+        # different amount**, which is what makes this the interesting case rather than a
+        # re-install meeting its own work.
         relatie = snelstart.add_relatie(naam="Bakkerij Jansen")
         snelstart._verkoopboekingen  # noqa: B018 — documenting the resource under test
         import httpx
@@ -359,9 +429,9 @@ async def test_guard_two_an_invoice_number_already_in_the_books_is_adopted(
                 "factuurnummer": invoice["number"],
                 "factuurdatum": "2026-08-16T00:00:00",
                 "klant": {"id": relatie["id"]},
-                "factuurbedrag": 1210.0,
+                "factuurbedrag": 999.99,
                 "boekingsregels": [
-                    {"omschrijving": "handmatig", "grootboek": {"id": "x"}, "bedrag": 1000.0}
+                    {"omschrijving": "handmatig", "grootboek": {"id": "x"}, "bedrag": 826.44}
                 ],
             },
         )
@@ -371,8 +441,50 @@ async def test_guard_two_an_invoice_number_already_in_the_books_is_adopted(
         run = await c.post(
             f"/api/v1/snelstart/accounts/{account['id']}/push/invoices", headers=headers
         )
-        assert run.json()["counts"]["adopted"] == 1, run.text
         assert len(snelstart.boekingen) == 1, "the existing boeking was adopted, not duplicated"
+
+        # …and because the hand-made boeking's amount is **not** the invoice's, the outcome is
+        # `drift` rather than `adopted`, and it is on the run's own error list. Adopting
+        # silently would leave two amounts disagreeing under one invoice number with nothing
+        # anywhere saying so — the silent half of a silent overwrite.
+        body = run.json()
+        assert body["counts"]["drift"] == 1, run.text
+        assert body["counts"]["adopted"] == 0, run.text
+        assert body["ok"] is True, "drift is not a failure; nothing needs retrying"
+        assert body["errors"][0]["key"] == "errors.snelstart.invoice_differs"
+        assert "999.99" in body["errors"][0]["message"], run.text
+
+
+async def test_an_adopted_boeking_that_agrees_is_not_reported_as_drift(
+    client_for, snelstart
+) -> None:
+    """Drift has to mean something, which means it must not fire on a match.
+
+    A re-installed schakl meeting its own previous pushes is the ordinary case, and reporting
+    every one of them as "needs a human" would make the signal worthless within a week.
+    """
+    t: Tenant = await make_tenant("snel-adopt-agrees")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _connected(c, headers)
+        await _map_rates(c, headers)
+        company_id = await _company(c, headers)
+        invoice = await _issued_invoice(c, headers, company_id)
+
+        # Push, then forget the link entirely — a fresh install against the same books.
+        await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/push/invoices", headers=headers
+        )
+        await _forget_links(t)
+
+        run = await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/push/invoices",
+            json={"invoice_ids": [invoice["id"]]},
+            headers=headers,
+        )
+        assert run.json()["counts"]["adopted"] == 1, run.text
+        assert run.json()["counts"]["drift"] == 0, run.text
+        assert run.json()["errors"] == []
 
 
 async def test_guard_three_boe_0021_is_an_answer_not_a_failure(client_for, snelstart) -> None:

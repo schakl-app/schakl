@@ -339,6 +339,13 @@
               <span class="ml-2 text-xs text-text-muted">
                 {docMoney(Number(product.unit_price), getCurrency(), data.locale)}
                 {#if product.unit}/ {product.unit}{/if}
+                <!-- The article code, where there is one: it is what a push matches on, so
+                     "which of these will reach the bookkeeping?" is answerable from the list
+                     rather than by opening every row (#377).
+                     TODO(schema): cast until `code` is in the generated client. -->
+                {#if product.code}
+                  · {product.code}
+                {/if}
               </span>
             </div>
             <ActionsMenu
@@ -869,6 +876,27 @@
           value={editingProduct?.name ?? ""}
           class={inputClass}
         />
+      </div>
+      <div>
+        <label for="product-code" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.invoicing.product_code")}</label
+        >
+        <!-- The article code (#377): what pairs this product with the same article in the
+             bookkeeping, so a push matches an existing article instead of creating a second one.
+             Optional — a tenant with no accounting integration never fills it in — and what an
+             administration accepts (numeric only, a maximum length) is *its* rule, reported by
+             the push rather than guessed at here: a client-side rule stricter than the server's
+             is a control refusing valid input.
+             TODO(schema): `code` is not in the generated client yet, hence the cast; drop it
+             after `pnpm gen:client`. -->
+        <input
+          id="product-code"
+          name="code"
+          maxlength="30"
+          value={editingProduct?.code ?? ""}
+          class={inputClass}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.product_code_hint")}</p>
       </div>
       <div>
         <label for="product-description" class="mb-1 block text-sm font-medium text-text"

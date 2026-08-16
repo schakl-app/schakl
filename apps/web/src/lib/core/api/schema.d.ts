@@ -9508,6 +9508,384 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snelstart/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Connected administrations. The koppelsleutel is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_snelstart_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential, or open a pending one for the activation flow to fill.
+         *
+         *     Creating does not verify: ``/verify`` is the explicit probe, so a typo is reported on the
+         *     settings screen beside the row rather than as a failed save that loses what was typed.
+         */
+        post: operations["create_account_api_v1_snelstart_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Options
+         * @description The accounts a sync or push may run against.
+         *
+         *     Gated on the *weaker* ``sync.run`` rather than ``settings.manage``: choosing which
+         *     administration to push into is the sync caller's job, and should not require holding the
+         *     credential screen's permission (``oxxa``'s ``/accounts/options`` reasoning).
+         */
+        get: operations["account_options_api_v1_snelstart_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_api_v1_snelstart_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, rotate, or change what this connection does. An omitted key keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_snelstart_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/ledgers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger Options
+         * @description The revenue accounts a line may book to — the picker behind the per-rate mapping.
+         *
+         *     From the cache, never live: a settings screen that waits on SnelStart to draw a dropdown is
+         *     a settings screen that hangs when SnelStart does.
+         */
+        get: operations["ledger_options_api_v1_snelstart_accounts__account_id__ledgers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/links/{link_id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Link
+         * @description Pair a SnelStart row with a schakl record by hand — the reviewer's one click.
+         */
+        post: operations["adopt_link_api_v1_snelstart_accounts__account_id__links__link_id__adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Articles
+         * @description schakl's products into SnelStart's article file, matched on the article code.
+         */
+        post: operations["push_articles_api_v1_snelstart_accounts__account_id__push_articles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Invoices
+         * @description Every issued invoice not yet in SnelStart, or a named selection.
+         *
+         *     Idempotent by construction: a stored link, then a lookup by number, then SnelStart's own
+         *     ``BOE-0021`` duplicate refusal, then — for a write that got no answer at all — a lookup
+         *     before any retry. A duplicate invoice in a client's ledger is a real-world incident (#31),
+         *     so the guard is four-deep rather than careful.
+         */
+        post: operations["push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Invoice
+         * @description One invoice, from its own detail page.
+         */
+        post: operations["push_invoice_api_v1_snelstart_accounts__account_id__push_invoices__invoice_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Relations
+         * @description Push paired and invoiced companies into SnelStart's relation file.
+         */
+        post: operations["push_relations_api_v1_snelstart_accounts__account_id__push_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Relation Candidates
+         * @description Every SnelStart customer and what schakl believes it is. Writes nothing.
+         *
+         *     The review screen for a first connect, and the reason it exists rather than a silent merge:
+         *     200 relations against 180 companies is an overlap nobody can eyeball, and each proposal says
+         *     *why* it was made so an admin only has to actually read the guesses.
+         */
+        get: operations["relation_candidates_api_v1_snelstart_accounts__account_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description What the last syncs did, and what they could not do (#31: failures are visible).
+         */
+        get: operations["list_runs_api_v1_snelstart_accounts__account_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Payments
+         * @description Fold SnelStart's outstanding balances back into schakl as payments.
+         *
+         *     ``sync.run``, not ``ledger.write``, and the distinction is exact: this writes into *schakl*
+         *     and changes nothing in the administration. It is also the answer to "who hasn't paid", which
+         *     is the reason most agencies want this integration at all.
+         */
+        post: operations["sync_payments_api_v1_snelstart_accounts__account_id__sync_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Reference
+         * @description Pull the administration's chart of accounts, journals, countries and article groups.
+         */
+        post: operations["sync_reference_api_v1_snelstart_accounts__account_id__sync_reference_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Relations
+         * @description Adopt every SnelStart customer schakl can identify without guessing.
+         *
+         *     ``sync.run``, not ``ledger.write``: nothing outside schakl changes. It pairs records and
+         *     records what it could not pair.
+         */
+        post: operations["link_relations_api_v1_snelstart_accounts__account_id__sync_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Ask SnelStart which administration this key opens, and what it may do there.
+         *
+         *     Answers ``200`` with ``ok=false`` for a rejected credential rather than an error status: the
+         *     probe succeeded, its answer was no, and the row keeps SnelStart's own words on it. The
+         *     result also names *which* credential was refused — the tenant's koppelsleutel or the
+         *     install's subscription key — because only one of those is something the agency can fix.
+         */
+        post: operations["verify_account_api_v1_snelstart_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/coupling/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Coupling Callback
+         * @description Receive a koppelsleutel SnelStart has just granted.
+         *
+         *     ``{KoppelSleutel, ActionType: "Create"|"Regenerate"|"Delete", ReferenceKey}``. Five gates, in
+         *     this order and no other — the payment webhook's order, because the problem is the same one:
+         *
+         *     1. **The reference names the tenant.** No hostname, no session, no unscoped lookup. On cloud
+         *        this arrives on the instance apex, where no org resolves at all, so there is nothing else
+         *        it could come from.
+         *     2. **The RLS GUC is bound before anything is read**, which is what makes gate 3 safe to run
+         *        against attacker-chosen ids.
+         *     3. **The secret is compared in constant time**, and a mismatch is a bare 404 — never 401 or
+         *        403, which would confirm that the account exists.
+         *     4. **The body is a hint, never a fact.** It names a key; the key proves itself by minting a
+         *        token and reading ``/companyInfo``. A payload that merely *claims* to be a credential is
+         *        stored only after it has behaved like one — and that re-fetch is also what records which
+         *        administration it opens.
+         *     5. **``Delete`` disconnects, it does not delete the row.** The links, the mappings and the
+         *        run history are the tenant's record of what happened; throwing them away because
+         *        somebody revoked a key in SnelStart would destroy the audit trail of a ledger.
+         *
+         *     Answers ``200`` for anything it cannot act on, deliberately: SnelStart treats 2xx as
+         *     delivered and **does not retry**, so the only thing a non-2xx buys is a tenant staring at a
+         *     connect flow that failed silently. What we cannot process is logged, not bounced.
+         */
+        post: operations["coupling_callback_api_v1_snelstart_coupling_callback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -13084,6 +13462,11 @@ export interface components {
             name?: string | null;
             /** Slug */
             slug: string;
+        };
+        /** Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post */
+        Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post: {
+            /** Invoice Ids */
+            invoice_ids?: string[] | null;
         };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
@@ -21619,6 +22002,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Code */
+            code?: string | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -21645,6 +22030,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Code */
+            code?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -21688,6 +22075,8 @@ export interface components {
         ProductUpdate: {
             /** Active */
             active?: boolean | null;
+            /** Code */
+            code?: string | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -24304,6 +24693,369 @@ export interface components {
         SmsSetupIn: {
             /** Phone */
             phone: string;
+        };
+        /** SnelstartAccountCreate */
+        SnelstartAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Client Key */
+            client_key?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Subscription Key */
+            subscription_key?: string | null;
+        };
+        /**
+         * SnelstartAccountRead
+         * @description One connected administration, as the settings screen sees it. **Never a credential.**
+         */
+        SnelstartAccountRead: {
+            /**
+             * Activation Url
+             * @default
+             */
+            activation_url: string;
+            /** Active */
+            active: boolean;
+            /** Administration Id */
+            administration_id?: string | null;
+            /** Administration Name */
+            administration_name?: string | null;
+            /** Article Code Kind */
+            article_code_kind?: string | null;
+            /** Article Code Max Length */
+            article_code_max_length?: number | null;
+            /**
+             * Attach Invoice Pdf
+             * @default true
+             */
+            attach_invoice_pdf: boolean;
+            /**
+             * Auto Push Invoices
+             * @default false
+             */
+            auto_push_invoices: boolean;
+            connect_method: components["schemas"]["SnelstartConnectMethod"];
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Coupling Webhook Url
+             * @default
+             */
+            coupling_webhook_url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Ledger Code */
+            default_ledger_code?: string | null;
+            /** Financial Year */
+            financial_year?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Reference Sync At */
+            last_reference_sync_at?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Own Subscription Key
+             * @default false
+             */
+            own_subscription_key: boolean;
+            /** Provider Id */
+            provider_id?: string | null;
+            /**
+             * Pull Payments
+             * @default true
+             */
+            pull_payments: boolean;
+            /** Scopes */
+            scopes?: string[];
+            status: components["schemas"]["SnelstartAccountStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SnelstartAccountStatus
+         * @description Whether the stored credential still works. ``error`` is set by whatever found out.
+         *
+         *     ``pending`` is a third real state and not a nicety: with the activation flow the row exists
+         *     before the koppelsleutel does, because we created it to mint the ``referenceKey`` that
+         *     SnelStart will quote back to us. Rendering that as ``error`` would tell an admin something
+         *     is broken during the ten seconds in which everything is going exactly to plan.
+         * @enum {string}
+         */
+        SnelstartAccountStatus: "pending" | "active" | "error";
+        /** SnelstartAccountUpdate */
+        SnelstartAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Attach Invoice Pdf */
+            attach_invoice_pdf?: boolean | null;
+            /** Auto Push Invoices */
+            auto_push_invoices?: boolean | null;
+            /** Client Key */
+            client_key?: string | null;
+            /** Default Ledger Code */
+            default_ledger_code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Pull Payments */
+            pull_payments?: boolean | null;
+            /** Subscription Key */
+            subscription_key?: string | null;
+        };
+        /**
+         * SnelstartConnectMethod
+         * @description How the koppelsleutel arrived. Recorded because it changes what "disconnect" means.
+         *
+         *     A ``manual`` key was typed by a human and deleting the row is the end of it. A ``coupling``
+         *     key was granted through SnelStart's activation flow, and SnelStart may later POST
+         *     ``ActionType: "Delete"`` for it — so the row must be findable from a webhook that knows
+         *     only our own ``referenceKey``.
+         * @enum {string}
+         */
+        SnelstartConnectMethod: "manual" | "coupling";
+        /**
+         * SnelstartLedgerOption
+         * @description One revenue account an invoice line may book to.
+         */
+        SnelstartLedgerOption: {
+            /** Code */
+            code: string;
+            /**
+             * Function
+             * @default
+             */
+            function: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Vat Kinds */
+            vat_kinds?: string[];
+        };
+        /**
+         * SnelstartLinkAdopt
+         * @description Pair an existing SnelStart row with a schakl record, by hand.
+         *
+         *     The escape hatch matching cannot provide: an agency whose bookkeeper called a client
+         *     *"Jansen bv"* in SnelStart and *"Bakkerij Jansen"* in schakl has two records that no rule
+         *     should pair automatically and a human can pair in one click.
+         */
+        SnelstartLinkAdopt: {
+            /**
+             * Local Id
+             * Format: uuid
+             */
+            local_id: string;
+        };
+        /**
+         * SnelstartLinkRead
+         * @description One pairing between a schakl record and a SnelStart one.
+         */
+        SnelstartLinkRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Company Id */
+            company_id?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id: string;
+            /** External Name */
+            external_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Local Id */
+            local_id?: string | null;
+            /** Local Type */
+            local_type?: string | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Pushed At */
+            pushed_at?: string | null;
+            status: components["schemas"]["SnelstartLinkStatus"];
+        };
+        /**
+         * SnelstartLinkStatus
+         * @description Deliberately six values, not a boolean.
+         *
+         *     ``pending`` — paired but never pushed. ``active`` — pushed, and SnelStart still agrees.
+         *     ``drift`` — it is there and somebody changed it *in SnelStart*, which is a thing an agency's
+         *     bookkeeper legitimately does and which we must never silently overwrite. ``missing`` — the
+         *     document we created is gone. ``error`` — SnelStart refused. ``unlinked`` — it exists in
+         *     SnelStart and nothing in schakl matches it, which is the state that makes a first connect
+         *     reviewable instead of a leap of faith.
+         *
+         *     Each of those needs a different button, which is the test for whether a status column has
+         *     earned its values (the ``cloudflare`` redirect rule).
+         * @enum {string}
+         */
+        SnelstartLinkStatus: "pending" | "active" | "drift" | "missing" | "error" | "unlinked";
+        /**
+         * SnelstartPushResult
+         * @description The outcome of pushing one record.
+         */
+        SnelstartPushResult: {
+            /** Action */
+            action?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Key */
+            error_key?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** Guessed Rates */
+            guessed_rates?: string[];
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * SnelstartRelationCandidate
+         * @description One SnelStart relation and what schakl thinks it is, before anybody agrees.
+         *
+         *     The first connect is the dangerous moment: an administration with 200 relations and a CRM
+         *     with 180 companies has an overlap nobody can eyeball, and a sync that decided silently would
+         *     either duplicate every client or merge two that merely share a word. So matching *proposes*
+         *     and a human confirms — which is also the only place the confidence is worth showing.
+         */
+        SnelstartRelationCandidate: {
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id: string;
+            /** Link Id */
+            link_id?: string | null;
+            /**
+             * Linked
+             * @default false
+             */
+            linked: boolean;
+            /** Match On */
+            match_on?: string | null;
+            /** Name */
+            name: string;
+            /** Vat Number */
+            vat_number?: string | null;
+        };
+        /**
+         * SnelstartSyncRunRead
+         * @description What one sync did, and what it could not do.
+         */
+        SnelstartSyncRunRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Actor User Id */
+            actor_user_id?: string | null;
+            /** Counts */
+            counts?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * SnelstartVerifyResult
+         * @description The outcome of testing a connection. **Never raises** — see the service.
+         *
+         *     ``ok=False`` with the row still saved is a real and common state: a rejected credential is
+         *     still a stored credential, and telling somebody which one was rejected is more useful than
+         *     refusing to remember what they typed.
+         */
+        SnelstartVerifyResult: {
+            /** Administration Id */
+            administration_id?: string | null;
+            /** Administration Name */
+            administration_name?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Key */
+            error_key?: string | null;
+            /** Financial Year */
+            financial_year?: number | null;
+            /** Missing Scopes */
+            missing_scopes?: string[];
+            /** Ok */
+            ok: boolean;
+            /** Scopes */
+            scopes?: string[];
+            /** Seller */
+            seller?: {
+                [key: string]: unknown;
+            };
         };
         /** SourceMetrics */
         SourceMetrics: {
@@ -47400,6 +48152,549 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_snelstart_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_snelstart_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_options_api_v1_snelstart_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_snelstart_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_snelstart_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ledger_options_api_v1_snelstart_accounts__account_id__ledgers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartLedgerOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_link_api_v1_snelstart_accounts__account_id__links__link_id__adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartLinkAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_articles_api_v1_snelstart_accounts__account_id__push_articles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_invoice_api_v1_snelstart_accounts__account_id__push_invoices__invoice_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartPushResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_relations_api_v1_snelstart_accounts__account_id__push_relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relation_candidates_api_v1_snelstart_accounts__account_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartRelationCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_snelstart_accounts__account_id__runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_payments_api_v1_snelstart_accounts__account_id__sync_payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_reference_api_v1_snelstart_accounts__account_id__sync_reference_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_relations_api_v1_snelstart_accounts__account_id__sync_relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_snelstart_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    coupling_callback_api_v1_snelstart_coupling_callback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };

@@ -542,6 +542,32 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["mollie.settings.manage"],
     module: "mollie",
   },
+  {
+    // The accounting half (epic #377, issue #31): the SnelStart administration an agency's
+    // invoices, clients and articles travel to, and the outstanding balances that come back.
+    // An integration, not a section of Facturatie — `invoicing` owns what an invoice *is* and
+    // never learns which accounting package it was booked in (`invoicing.accounting`).
+    //
+    // **Two permissions, deliberately**, and this is the only integration card that names two.
+    // `snelstart.settings.manage` holds the credential; `snelstart.sync.run` acts through it —
+    // pulling the chart of accounts, pairing relations, reconciling who has paid. The second is
+    // an ordinary bookkeeping job an agency hands to somebody who has no business rotating a
+    // koppelsleutel, and the screen is where that job is done, so hiding the card from them
+    // would be hiding the work. The load mirrors the split rather than restating it: a
+    // sync-only holder reads the administrations through `/accounts/options` (which declares
+    // `sync.run`) and sees no credential control at all.
+    key: "snelstart",
+    href: "/settings/snelstart",
+    titleKey: "settings.snelstart.title",
+    subtitleKey: "settings.snelstart.subtitle",
+    // Without these the screen could not be found by searching "boekhouding", "grootboek" or
+    // "koppelsleutel" — the words somebody types when an invoice did not reach the accountant,
+    // and none of which the card's own title and subtitle contain.
+    keywordsKey: "settings.search.snelstart",
+    group: "integrations",
+    permissions: ["snelstart.settings.manage", "snelstart.sync.run"],
+    module: "snelstart",
+  },
 
   // --- Systeem ----------------------------------------------------------- //
   {

@@ -276,7 +276,10 @@ class FakeSnelstart:
             "id": str(uuid.uuid4()),
             "relatiesoort": ["Klant"],
             "naam": "Klant",
-            "relatiecode": 1000 + len(self.relaties),
+            # Allocated the way SnelStart allocates: the next code nothing holds. A fake that
+            # handed out `1000 + len(rows)` would re-collide on the row created *because* of a
+            # collision, which is exactly the path being tested.
+            "relatiecode": self._next_relatiecode(),
             "vestigingsAdres": {"land": {"id": LANDEN[0]["id"]}},
             "correspondentieAdres": None,
             "email": None,
@@ -289,6 +292,17 @@ class FakeSnelstart:
         row["uri"] = f"/relaties/{row['id']}"
         self.relaties[row["id"]] = row
         return row
+
+    def _next_relatiecode(self) -> int:
+        taken = {
+            row.get("relatiecode")
+            for row in self.relaties.values()
+            if isinstance(row.get("relatiecode"), int)
+        }
+        code = 1000
+        while code in taken:
+            code += 1
+        return code
 
     def add_artikel(self, **fields: Any) -> dict[str, Any]:
         row = {

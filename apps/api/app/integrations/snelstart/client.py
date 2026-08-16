@@ -86,6 +86,12 @@ MAX_PAGES = 100
 #: already here"*, and the correct response is to go and find it, never to try again.
 CODE_DUPLICATE_INVOICE_NUMBER = "BOE-0021"
 
+#: The relatiecode is already somebody's. Not a failure either: schakl's client numbers and
+#: SnelStart's relatiecodes are two independent numbering systems that were never coordinated,
+#: so a collision is ordinary — and the *relation* is the requirement while the shared number is
+#: a convenience. The caller looks at who holds it before deciding.
+CODE_RELATIECODE_IN_USE = "REL-0008"
+
 #: ``{resource}-{number}`` — three uppercase letters, four digits. Parsed out of whatever shape
 #: the body happens to have, because the API answers errors in at least three of them.
 _CODE_RE = re.compile(r"\b([A-Z]{3}-\d{4})\b")

@@ -475,11 +475,15 @@ def _boeking_description(invoice: Any, number: str, credit: bool) -> str:
     The client's name, because that is what somebody scanning a debtor list is looking for —
     the invoice number is already its own column. A credit note says so, since a negative
     amount alone is not a label.
+
+    Space-separated, with no dash: this lands in a Dutch bookkeeping package, where "X — Y" is
+    not how the language punctuates and where the column is narrow enough that a separator only
+    costs characters. It reads the way a bookkeeper would have typed it.
     """
     customer = getattr(invoice, "customer", None) or {}
     name = str(customer.get("name") or "").strip()
     prefix = "Creditnota" if credit else "Factuur"
-    text = f"{prefix} {number}" + (f" — {name}" if name else "")
+    text = " ".join(part for part in (prefix, number, name) if part)
     return text[:MAX_DESCRIPTION]
 
 

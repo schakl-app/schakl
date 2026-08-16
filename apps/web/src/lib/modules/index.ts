@@ -37,3 +37,4 @@ import "$lib/integrations/uptime";
 import "$lib/integrations/wordpress";
 import "$lib/integrations/oxxa";
 import "$lib/integrations/mollie";
+import "$lib/integrations/snelstart";
