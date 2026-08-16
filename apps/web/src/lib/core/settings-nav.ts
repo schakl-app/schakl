@@ -504,6 +504,19 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "google_ads",
   },
   {
+    // Tag Manager belongs here for the same reason: it holds the container links, the workspace
+    // schakl writes in, and the one switch that stops every change to a client's live website.
+    // None of those is something you decide while looking at one container.
+    key: "gtm",
+    href: "/settings/gtm",
+    titleKey: "settings.gtm.title",
+    subtitleKey: "settings.gtm.subtitle",
+    group: "integrations",
+    keywordsKey: "settings.search.gtm",
+    permissions: ["google_tag_manager.settings.manage"],
+    module: "google_tag_manager",
+  },
+  {
     // Uptime Kuma lives here rather than on a website, for principle 6's reason: it holds the
     // credential, and the credential is org-wide configuration. `uptime.monitor.read` does not
     // open it — seeing that a client's site is down and holding the administrator account of

@@ -83,6 +83,7 @@ export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
   },
   marketing: {
     "google-ads": "nav.google_ads",
+    "tag-manager": "nav.gtm",
     decisions: "google_ads.view.decisions",
     policy: "settings.google_ads.policy.title",
   },

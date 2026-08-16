@@ -3539,6 +3539,8 @@ export interface paths {
          *     (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
          *     marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
          *     **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+         *     ``include_tag_manager`` is its own flag and rides no bundle: it asks for the four GTM scopes,
+         *     one of which publishes to a client's live website (:mod:`app.integrations.google.oauth`).
          *
          *     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
          *     is asked from the page that needed it, so that is the page to come back to.
@@ -3563,6 +3565,406 @@ export interface paths {
         get: operations["get_settings_api_v1_google_settings_get"];
         /** Save Settings */
         put: operations["save_settings_api_v1_google_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Containers
+         * @description Every linked Tag Manager container this caller may see — **start here**.
+         *
+         *     The list an agent needs before anything else: it names the containers, and every other tool
+         *     takes one of these ``id`` values. Company-scoped logins see only the containers of clients in
+         *     their horizon; a container attached to no client (the agency's own) stays visible to all.
+         */
+        get: operations["list_gtm_containers_api_v1_gtm_containers_get"];
+        put?: never;
+        /**
+         * Link Gtm Container
+         * @description Attach a container to this workspace, and say whose it is.
+         *
+         *     Named either by its numeric pair or by the ``GTM-XXXXXXX`` on the client's website — the
+         *     second is resolved through Google's own lookup, so nobody has to dig a container id out of a
+         *     URL before they can link the container they are looking at.
+         */
+        post: operations["link_gtm_container_api_v1_gtm_containers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Gtm Containers
+         * @description Containers the caller's own Google grant can reach, across every Tag Manager account.
+         *
+         *     Live — this is the one read that calls Google on every request, because a picker showing a
+         *     stale list is how somebody links a container that was deleted last month.
+         */
+        get: operations["list_available_gtm_containers_api_v1_gtm_containers_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Gtm Container */
+        get: operations["get_gtm_container_api_v1_gtm_containers__container_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Gtm Container
+         * @description Forget the container here. **Nothing is removed from Tag Manager** — an agency that stops
+         *     working for a client does not thereby delete the tracking off their website.
+         */
+        delete: operations["unlink_gtm_container_api_v1_gtm_containers__container_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Gtm Container */
+        patch: operations["update_gtm_container_api_v1_gtm_containers__container_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Conversions
+         * @description The conversions schakl set up in this container, and whether each is live yet.
+         *
+         *     Stored rows, not a Google call: GTM records that a tag exists and records nowhere that it is
+         *     the client's "offerte aangevraagd" conversion, set up by us, on a date, by a person.
+         */
+        get: operations["list_gtm_conversions_api_v1_gtm_containers__container_id__conversions_get"];
+        put?: never;
+        /**
+         * Create Gtm Conversion
+         * @description Set up one conversion: the trigger, the tag, and the record that they belong together.
+         *
+         *     ``kind="ga4_event"`` needs ``event_name`` and ``measurement_id``; ``kind="ads_conversion"``
+         *     needs ``conversion_id`` and ``conversion_label``. Neither is ever guessed — sending a client's
+         *     conversions to a measurement id we picked would be wrong in a way no screen could show.
+         *
+         *     It lands in a workspace and is live for nobody until a version is published.
+         */
+        post: operations["create_gtm_conversion_api_v1_gtm_containers__container_id__conversions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/snippet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gtm Container Snippet
+         * @description The install snippet, for the developer who has to put it on the site.
+         */
+        get: operations["gtm_container_snippet_api_v1_gtm_containers__container_id__snippet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gtm Workspace Status
+         * @description What is staged in a workspace and not live — the question before every publish.
+         */
+        get: operations["gtm_workspace_status_api_v1_gtm_containers__container_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Tags
+         * @description Every tag in a workspace — what is (or is about to be) measuring this client's site.
+         */
+        get: operations["list_gtm_tags_api_v1_gtm_containers__container_id__tags_get"];
+        put?: never;
+        /**
+         * Create Gtm Tag
+         * @description Create a tag from its own ``type`` and parameter array.
+         *
+         *     The general case, and the escape hatch from the conversion recipe: GTM decides which
+         *     parameter keys a tag template accepts and its refusal names the field, so this is validated
+         *     by Google rather than here. It lands in a workspace and is live for nobody until a version is
+         *     published — which is a different permission.
+         */
+        post: operations["create_gtm_tag_api_v1_gtm_containers__container_id__tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Tag */
+        delete: operations["delete_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Gtm Tag
+         * @description Change one tag. Reads it first and writes back under its fingerprint, so an edit somebody
+         *     made in Tag Manager meanwhile is a 409 rather than a silent overwrite of their work.
+         */
+        patch: operations["update_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/triggers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Gtm Triggers */
+        get: operations["list_gtm_triggers_api_v1_gtm_containers__container_id__triggers_get"];
+        put?: never;
+        /**
+         * Create Gtm Trigger
+         * @description Create a trigger from six named kinds rather than from GTM's own vocabulary.
+         *
+         *     ``page_view``, ``form_submit``, ``link_click``, ``element_click``, ``element_visibility``,
+         *     ``custom_event`` — plus ``url_contains`` to narrow any of them to one part of the site. The
+         *     built-in variables the resulting trigger reads are switched on with it, because a trigger
+         *     referring to a variable that does not exist is stored happily by GTM and fires never.
+         */
+        post: operations["create_gtm_trigger_api_v1_gtm_containers__container_id__triggers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/triggers/{trigger_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Trigger */
+        delete: operations["delete_gtm_trigger_api_v1_gtm_containers__container_id__triggers__trigger_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Gtm Variables */
+        get: operations["list_gtm_variables_api_v1_gtm_containers__container_id__variables_get"];
+        put?: never;
+        /**
+         * Create Gtm Variable
+         * @description Create a user-defined variable — a dataLayer read (``v``), a constant (``c``), a lookup.
+         *
+         *     Same contract as a tag: the ``type`` and parameter keys are GTM's, and GTM validates them.
+         */
+        post: operations["create_gtm_variable_api_v1_gtm_containers__container_id__variables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/variables/{variable_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Variable */
+        delete: operations["delete_gtm_variable_api_v1_gtm_containers__container_id__variables__variable_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Gtm Container
+         * @description Ask Google what it says about this container, and record the answer either way.
+         *
+         *     Never raises for a container that answered badly: the outcome *is* the row, so a failure
+         *     comes back as ``status="error"`` with Google's own sentence on it rather than as an envelope
+         *     the screen has to guess the meaning of.
+         */
+        post: operations["verify_gtm_container_api_v1_gtm_containers__container_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Versions
+         * @description The container's version history, newest first, with the live one marked.
+         */
+        get: operations["list_gtm_versions_api_v1_gtm_containers__container_id__versions_get"];
+        put?: never;
+        /**
+         * Create Gtm Version
+         * @description Freeze what is staged into a version. **Still live for nobody** — publishing is separate.
+         *
+         *     ``empty=true`` means the workspace had nothing to freeze: GTM answers 200 with no version at
+         *     all, which is not a failure and is emphatically not something anybody can publish.
+         */
+        post: operations["create_gtm_version_api_v1_gtm_containers__container_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/versions/{version_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Gtm Version
+         * @description Make this version live on the client's website, now, for every visitor.
+         *
+         *     The only call on this surface with an audience outside the building, which is why it carries
+         *     its own permission, its own OAuth scope and its own line in the activity trail.
+         */
+        post: operations["publish_gtm_version_api_v1_gtm_containers__container_id__versions__version_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Workspaces
+         * @description The container's workspaces — its shared drafts. Usually one; sometimes one per person.
+         */
+        get: operations["list_gtm_workspaces_api_v1_gtm_containers__container_id__workspaces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gtm Settings
+         * @description The org's Tag Manager posture: the write kill switch and the workspace schakl writes in.
+         */
+        get: operations["get_gtm_settings_api_v1_gtm_settings_get"];
+        /** Save Gtm Settings */
+        put: operations["save_gtm_settings_api_v1_gtm_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -17710,6 +18112,511 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * GtmAvailableContainer
+         * @description One pickable container, as the live picker offers it.
+         */
+        GtmAvailableContainer: {
+            /** Account Name */
+            account_name: string;
+            /**
+             * Already Linked
+             * @default false
+             */
+            already_linked: boolean;
+            /** Gtm Account Id */
+            gtm_account_id: string;
+            /** Gtm Container Id */
+            gtm_container_id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Public Id */
+            public_id: string;
+            /** Usage Context */
+            usage_context: string[];
+        };
+        /**
+         * GtmContainerCreate
+         * @description Link a container, named either the way Google addresses it or the way a human reads it.
+         *
+         *     ``public_id`` (``GTM-NPGFR9W9``) is what is on the client's website and in the e-mail their
+         *     developer sent; the numeric pair is what the API uses. Accepting only the second would make
+         *     every link start with a lookup somebody has to do by hand, so ``containers:lookup`` does it.
+         */
+        GtmContainerCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Gtm Account Id */
+            gtm_account_id?: string | null;
+            /** Gtm Container Id */
+            gtm_container_id?: string | null;
+            /** Public Id */
+            public_id?: string | null;
+            /** Website Id */
+            website_id?: string | null;
+        };
+        /** GtmContainerRead */
+        GtmContainerRead: {
+            /** Active */
+            active: boolean;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Connection Id */
+            connection_id: string | null;
+            /** Domain Names */
+            domain_names: string[];
+            /** Gtm Account Id */
+            gtm_account_id: string;
+            /** Gtm Container Id */
+            gtm_container_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Last Verified At */
+            last_verified_at: string | null;
+            /** Live Version Id */
+            live_version_id: string | null;
+            /** Live Version Name */
+            live_version_name: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Path */
+            path: string;
+            /** Public Id */
+            public_id: string;
+            /** Status */
+            status: string;
+            /** Tag Count */
+            tag_count: number;
+            /** Tag Manager Url */
+            tag_manager_url: string;
+            /** Tagging Server Urls */
+            tagging_server_urls: string[];
+            /** Trigger Count */
+            trigger_count: number;
+            /** Usage Context */
+            usage_context: string[];
+            /** Variable Count */
+            variable_count: number;
+            /** Website Id */
+            website_id: string | null;
+            /** Workspace Changes */
+            workspace_changes: number;
+        };
+        /**
+         * GtmContainerUpdate
+         * @description Only the fields schakl *decided*. What Google said is refreshed by verify, never typed.
+         */
+        GtmContainerUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Website Id */
+            website_id?: string | null;
+        };
+        /**
+         * GtmConversionCreate
+         * @description Set up one conversion: the trigger, the tag, and the record that they belong together.
+         *
+         *     It lands in a workspace and is live for nobody until a version is published — which is a
+         *     separate permission, on purpose.
+         */
+        GtmConversionCreate: {
+            /** Conversion Id */
+            conversion_id?: string | null;
+            /** Conversion Label */
+            conversion_label?: string | null;
+            /** Conversion Value */
+            conversion_value?: string | null;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Event Name */
+            event_name?: string | null;
+            /** Kind */
+            kind: string;
+            /** Measurement Id */
+            measurement_id?: string | null;
+            /** Name */
+            name: string;
+            trigger?: components["schemas"]["GtmTriggerWrite"] | null;
+            /** Trigger Id */
+            trigger_id?: string | null;
+        };
+        /** GtmConversionRead */
+        GtmConversionRead: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Container Id
+             * Format: uuid
+             */
+            container_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Published Version Id */
+            published_version_id: string | null;
+            /** Status */
+            status: string;
+            /** Tag Id */
+            tag_id: string | null;
+            /** Trigger Id */
+            trigger_id: string | null;
+            /** Workspace Id */
+            workspace_id: string | null;
+        };
+        /**
+         * GtmParameter
+         * @description One GTM ``Parameter``. Recursive: ``list`` and ``map`` hold more of them.
+         *
+         *     The field names carry aliases because ``list`` and ``map`` are builtins; every serialisation
+         *     to Google goes ``by_alias=True``, so what leaves is Google's own spelling.
+         */
+        GtmParameter: {
+            /** Key */
+            key?: string | null;
+            /** List */
+            list?: components["schemas"]["GtmParameter"][] | null;
+            /** Map */
+            map?: components["schemas"]["GtmParameter"][] | null;
+            /**
+             * Type
+             * @default template
+             */
+            type: string;
+            /** Value */
+            value?: string | null;
+        };
+        /** GtmPickerRead */
+        GtmPickerRead: {
+            /** Containers */
+            containers: components["schemas"]["GtmAvailableContainer"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GtmPublishResult */
+        GtmPublishResult: {
+            /**
+             * Compiler Error
+             * @default false
+             */
+            compiler_error: boolean;
+            /** Live Version Id */
+            live_version_id?: string | null;
+            /** Name */
+            name: string;
+            /** Version Id */
+            version_id: string;
+        };
+        /** GtmSettingsRead */
+        GtmSettingsRead: {
+            /** Own Workspace */
+            own_workspace: boolean;
+            /** Workspace Name */
+            workspace_name: string;
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /** GtmSettingsWrite */
+        GtmSettingsWrite: {
+            /** Own Workspace */
+            own_workspace?: boolean | null;
+            /** Workspace Name */
+            workspace_name?: string | null;
+            /** Writes Enabled */
+            writes_enabled?: boolean | null;
+        };
+        /**
+         * GtmSnippetRead
+         * @description The install snippet, for the developer who has to put it on the site.
+         */
+        GtmSnippetRead: {
+            /** Public Id */
+            public_id: string;
+            /** Snippet */
+            snippet: string;
+        };
+        /** GtmTagRead */
+        GtmTagRead: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[];
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Tag Id */
+            tag_id: string;
+            /** Tag Manager Url */
+            tag_manager_url?: string | null;
+            /** Type */
+            type: string;
+        };
+        /** GtmTagUpdate */
+        GtmTagUpdate: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[] | null;
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[] | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][] | null;
+            /** Paused */
+            paused?: boolean | null;
+        };
+        /**
+         * GtmTagWrite
+         * @description The escape hatch, and the surface an agent uses most.
+         *
+         *     ``type`` and ``parameter`` are GTM's own; nothing here validates them, because the tag
+         *     template does and its refusal names the field. What *is* validated is the shape of the
+         *     envelope and the fact that this container is one this caller may write to.
+         */
+        GtmTagWrite: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[];
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][];
+            /** Paused */
+            paused?: boolean | null;
+            /** Type */
+            type: string;
+        };
+        /** GtmTriggerRead */
+        GtmTriggerRead: {
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Trigger Id */
+            trigger_id: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * GtmTriggerWrite
+         * @description The recipe's vocabulary, not GTM's — see the module docstring for why this one differs.
+         */
+        GtmTriggerWrite: {
+            /** Event Name */
+            event_name?: string | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Selector */
+            selector?: string | null;
+            /** Url Contains */
+            url_contains?: string | null;
+            /** Visible Percent */
+            visible_percent?: number | null;
+        };
+        /** GtmVariableRead */
+        GtmVariableRead: {
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Type */
+            type: string;
+            /** Variable Id */
+            variable_id: string;
+        };
+        /** GtmVariableWrite */
+        GtmVariableWrite: {
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][];
+            /** Type */
+            type: string;
+        };
+        /** GtmVersionCreate */
+        GtmVersionCreate: {
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
+        /** GtmVersionCreated */
+        GtmVersionCreated: {
+            /**
+             * Compiler Error
+             * @default false
+             */
+            compiler_error: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Sync Conflicts
+             * @default 0
+             */
+            sync_conflicts: number;
+            /** Version Id */
+            version_id: string | null;
+        };
+        /** GtmVersionRead */
+        GtmVersionRead: {
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Num Tags
+             * @default 0
+             */
+            num_tags: number;
+            /**
+             * Num Triggers
+             * @default 0
+             */
+            num_triggers: number;
+            /**
+             * Num Variables
+             * @default 0
+             */
+            num_variables: number;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Version Id */
+            version_id: string;
+        };
+        /** GtmWorkspaceRead */
+        GtmWorkspaceRead: {
+            /** Description */
+            description?: string | null;
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * GtmWorkspaceStatusRead
+         * @description What is staged in a workspace and not live, plus anything that will not merge cleanly.
+         */
+        GtmWorkspaceStatusRead: {
+            /** Changes */
+            changes: number;
+            /** Entries */
+            entries?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Merge Conflicts
+             * @default 0
+             */
+            merge_conflicts: number;
+            /** Workspace Id */
+            workspace_id: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -36493,6 +37400,7 @@ export interface operations {
                 include_analytics?: boolean;
                 include_search_console?: boolean;
                 include_ads?: boolean;
+                include_tag_manager?: boolean;
                 next?: string;
             };
             header?: never;
@@ -36561,6 +37469,873 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_containers_api_v1_gtm_containers_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_gtm_container_api_v1_gtm_containers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmContainerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_gtm_containers_api_v1_gtm_containers_available_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmPickerRead"];
+                };
+            };
+        };
+    };
+    get_gtm_container_api_v1_gtm_containers__container_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_gtm_container_api_v1_gtm_containers__container_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_gtm_container_api_v1_gtm_containers__container_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmContainerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_conversions_api_v1_gtm_containers__container_id__conversions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmConversionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_conversion_api_v1_gtm_containers__container_id__conversions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmConversionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmConversionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gtm_container_snippet_api_v1_gtm_containers__container_id__snippet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSnippetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gtm_workspace_status_api_v1_gtm_containers__container_id__status_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmWorkspaceStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_tags_api_v1_gtm_containers__container_id__tags_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_tag_api_v1_gtm_containers__container_id__tags_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTagWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__patch: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTagUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_triggers_api_v1_gtm_containers__container_id__triggers_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTriggerRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_trigger_api_v1_gtm_containers__container_id__triggers_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTriggerWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTriggerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_trigger_api_v1_gtm_containers__container_id__triggers__trigger_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                trigger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_variables_api_v1_gtm_containers__container_id__variables_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVariableRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_variable_api_v1_gtm_containers__container_id__variables_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmVariableWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVariableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_variable_api_v1_gtm_containers__container_id__variables__variable_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                variable_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_gtm_container_api_v1_gtm_containers__container_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_versions_api_v1_gtm_containers__container_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVersionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_version_api_v1_gtm_containers__container_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVersionCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_gtm_version_api_v1_gtm_containers__container_id__versions__version_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmPublishResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_workspaces_api_v1_gtm_containers__container_id__workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmWorkspaceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_gtm_settings_api_v1_gtm_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSettingsRead"];
+                };
+            };
+        };
+    };
+    save_gtm_settings_api_v1_gtm_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSettingsRead"];
                 };
             };
             /** @description Validation Error */

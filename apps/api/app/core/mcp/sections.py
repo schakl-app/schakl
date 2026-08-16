@@ -88,8 +88,8 @@ _BUNDLES: dict[str, tuple[str, ...]] = {
     "infra": ("domains", "websites", "hosting", "cloudflare", "oxxa", "uptime", "wordpress"),
     # What is owed and what is collected.
     "finance": ("invoicing", "subscriptions", "mollie"),
-    # What is being spent and what it returned.
-    "growth": ("google_ads", "marketing", "reporting"),
+    # What is being spent, what is measuring it, and what it returned.
+    "growth": ("google_ads", "google_tag_manager", "marketing", "reporting"),
 }
 
 

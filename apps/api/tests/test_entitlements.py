@@ -116,6 +116,10 @@ def test_paid_module_set_is_pinned() -> None:
         # `reporting` sits on: a tenant can license the dashboards without buying the surface
         # that reads and writes a client's live advertising account.
         "google_ads": "google_ads",
+        # Tag Manager writes to what runs on a client's website, which is the highest-consequence
+        # thing this platform does to somebody else's property — licensed for the same reason
+        # `google_ads` is, one rung further along the same ladder.
+        "google_tag_manager": "google_tag_manager",
         "hosting": "hosting",
         "hr": "hr",
         "interactions": "interactions",

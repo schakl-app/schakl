@@ -139,8 +139,9 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-            "interactions", "google", "marketing", "google_ads", "hr", "cloudflare", "oxxa",
-            "portal", "reporting", "mollie", "uptime", "wordpress", "snelstart",
+            "interactions", "google", "marketing", "google_ads", "google_tag_manager", "hr",
+            "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
+            "snelstart",
         ]
     )
     default_locale: str = "nl"

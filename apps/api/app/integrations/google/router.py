@@ -133,6 +133,7 @@ async def oauth_connect(
     include_analytics: bool = Query(False),
     include_search_console: bool = Query(False),
     include_ads: bool = Query(False),
+    include_tag_manager: bool = Query(False),
     next: str = Query("", alias="next"),  # noqa: A002 — the web's conventional name for it
     ctx: RequestContext = Depends(require_context),
 ):
@@ -143,6 +144,8 @@ async def oauth_connect(
     (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
     marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
     **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+    ``include_tag_manager`` is its own flag and rides no bundle: it asks for the four GTM scopes,
+    one of which publishes to a client's live website (:mod:`app.integrations.google.oauth`).
 
     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
     is asked from the page that needed it, so that is the page to come back to.
@@ -156,6 +159,7 @@ async def oauth_connect(
         include_analytics=include_analytics,
         include_search_console=include_search_console,
         include_ads=include_ads,
+        include_tag_manager=include_tag_manager,
     )
     # Whether the user opted their mailbox in — read back on the callback leg.
     request.session[_GMAIL_OPTIN_SESSION_KEY] = "1" if include_gmail else ""

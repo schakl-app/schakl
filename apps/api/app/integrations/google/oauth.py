@@ -52,6 +52,25 @@ SCOPE_ADS = "https://www.googleapis.com/auth/adwords"
 #: Every marketing scope, so a caller can ask "does this connection carry any marketing grant?"
 MARKETING_SCOPES = (SCOPE_ANALYTICS, SCOPE_SEARCH_CONSOLE, SCOPE_ADS)
 
+#: Tag Manager (the ``google_tag_manager`` integration, docs/GOOGLE_TAG_MANAGER.md). Four scopes
+#: rather than one, because GTM splits *reading a container*, *changing a workspace*, *cutting a
+#: version* and *making that version live* — and the split is exactly the one this platform wants:
+#: the last of those changes what runs on a client's website, right now, for everybody.
+#:
+#: Deliberately **not** requested: ``delete.containers`` (nothing here deletes a container),
+#: ``manage.users`` and ``manage.accounts``. A scope nobody's code path needs is a scope on the
+#: consent screen frightening an agency for nothing.
+SCOPE_TAG_MANAGER_READ = "https://www.googleapis.com/auth/tagmanager.readonly"
+SCOPE_TAG_MANAGER_EDIT = "https://www.googleapis.com/auth/tagmanager.edit.containers"
+SCOPE_TAG_MANAGER_VERSIONS = "https://www.googleapis.com/auth/tagmanager.edit.containerversions"
+SCOPE_TAG_MANAGER_PUBLISH = "https://www.googleapis.com/auth/tagmanager.publish"
+TAG_MANAGER_SCOPES = (
+    SCOPE_TAG_MANAGER_READ,
+    SCOPE_TAG_MANAGER_EDIT,
+    SCOPE_TAG_MANAGER_VERSIONS,
+    SCOPE_TAG_MANAGER_PUBLISH,
+)
+
 
 async def google_settings_row(
     session: AsyncSession, org_id: uuid.UUID
@@ -98,6 +117,36 @@ def missing_drive_scope(scopes: list[str] | None) -> bool:
     return bool(granted) and SCOPE_DRIVE not in granted
 
 
+def has_tag_manager_read_scope(scopes: list[str] | None) -> bool:
+    """True when this connection may *look at* a container.
+
+    ``edit.containers`` counts: Google lists it beside ``readonly`` on every GTM read method, so
+    a connection granted the editing scope and not the reading one can still list tags — and
+    demanding the narrower one would refuse a grant Google itself accepts.
+    """
+    granted = set(scopes or [])
+    return SCOPE_TAG_MANAGER_READ in granted or SCOPE_TAG_MANAGER_EDIT in granted
+
+
+def has_tag_manager_edit_scope(scopes: list[str] | None) -> bool:
+    """True when this connection may change a workspace (tags, triggers, variables)."""
+    return SCOPE_TAG_MANAGER_EDIT in set(scopes or [])
+
+
+def has_tag_manager_version_scope(scopes: list[str] | None) -> bool:
+    """True when this connection may cut a container version out of a workspace."""
+    return SCOPE_TAG_MANAGER_VERSIONS in set(scopes or [])
+
+
+def has_tag_manager_publish_scope(scopes: list[str] | None) -> bool:
+    """True when this connection may make a version **live on the client's website**.
+
+    Its own predicate rather than a flag on the one above, because that is the act with an
+    audience outside this building: everything else edits a draft nobody is served.
+    """
+    return SCOPE_TAG_MANAGER_PUBLISH in set(scopes or [])
+
+
 def scopes_for(
     row: GoogleSettings | None,
     *,
@@ -106,6 +155,7 @@ def scopes_for(
     include_analytics: bool = False,
     include_search_console: bool = False,
     include_ads: bool = False,
+    include_tag_manager: bool = False,
 ) -> list[str]:
     """The consent this install asks for: identity plus exactly the enabled surfaces.
 
@@ -136,6 +186,12 @@ def scopes_for(
         scopes.append(SCOPE_SEARCH_CONSOLE)
     if include_marketing or include_ads:
         scopes.append(SCOPE_ADS)
+    # Deliberately **not** folded into ``include_marketing``. The dashboard's three sources are
+    # read-only measurement; Tag Manager writes to what runs on a client's website, and asking
+    # for that on the consent screen of somebody who only wanted a traffic chart is how an
+    # agency learns to click through consent screens without reading them.
+    if include_tag_manager:
+        scopes.extend(TAG_MANAGER_SCOPES)
     return scopes
 
 

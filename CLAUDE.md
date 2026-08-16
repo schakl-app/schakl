@@ -961,6 +961,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   an `updateMask` is **derived from the body being sent**, never accepted as an argument, because a
   hand-written mask and a hand-written body are two spellings of one list and the day they disagree
   Google applies the intersection and reports success.
+- **A draft and a broadcast are not the same act, and one permission cannot say so**
+  (`google_tag_manager`, `docs/GOOGLE_TAG_MANAGER.md`). Tag Manager is where an agency's promise to
+  a client — "we measure quote requests" — is actually kept, and it was the one surface the platform
+  had no answer for: which container is this client's, what is live in it, who put that tag there,
+  and whether the change somebody staged three weeks ago was ever published. Five rules generalise
+  past GTM. **The write half splits where the audience changes**: editing a workspace changes a
+  draft that is real, recorded and served to nobody, while publishing changes what runs in every
+  visitor's browser with no review step behind it — so `tag.write` and `version.publish` are
+  separate keys, and "let the assistant prepare the tracking and I will look it over" becomes an API
+  key rather than a conversation. Version *creation* deliberately rides the first: it is the act of
+  writing down what was staged, and gating it behind the second would leave the staging half unable
+  to finish its own work. **A vendor's own validator is worth more than a half-modelled recipe** —
+  GTM decides the legal parameter keys per tag *template*, of which there are hundreds, so the two
+  templates an agency sets up over and over get a stated recipe (`gaawe` with
+  **`measurementIdOverride`**, not `measurementId`; `awct` with `enableConversionLinker` always on)
+  and everything else takes GTM's own `type` and parameter array, where a hand-written body fails
+  loudly and a wrong recipe would deploy quietly. **The recipe never guesses a value**: a
+  measurement id we picked sends a client's conversions to somebody else's property, and nothing on
+  any screen would say so. **What the provider does not store is the thing worth storing** —
+  `gtm_conversions` exists because Google records that a trigger and a tag exist and records nowhere
+  that together they are the client's "offerte aangevraagd", set up from here, on a date, by a
+  person (`google_ads_decisions`' argument, one integration over). And the surprise worth carrying
+  out of GTM specifically: **a workspace is a shared draft, not a branch**, so writing into the
+  client's own puts unfinished work in front of them and *their* next Publish ships it — schakl
+  writes in one of its own, named by the tenant because the client sees the name. Its own
+  observation is the same shape: the number the nightly cron exists for is `workspace_changes`,
+  because a change staged weeks ago and never published is how a client's tracking quietly stops
+  being what they were told it is, and nobody opens a container they have no reason to open.
 
 ## 11. Working agreement (for Claude Code)
 
