@@ -178,6 +178,21 @@ class GoogleAdsAccount(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Audi
         DateTime(timezone=True), nullable=True
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When the thirteen-month fill last **completed**. NULL means it has not, which is a state
+    #: the nightly run acts on rather than a fact nobody reads (#381).
+    #:
+    #: The backfill was a one-off enqueued when an account is linked, and the enqueue is
+    #: explicitly best-effort — "a queue miss is not fatal, the nightly run catches up", which
+    #: was not true of anything: the nightly run re-pulls a trailing week and has no opinion
+    #: about the year behind it. Thirteen accounts on the live instance therefore held seven to
+    #: eleven days each, and every report for a past month printed a Google Ads section of
+    #: zeros. A column that says whether the work was ever finished turns "we queued something
+    #: once" into a condition the scheduler can retry, which is what the comment already
+    #: promised.
+    #:
+    #: Stamped only on a **complete** run, so a backfill that halts on a bad credential is
+    #: re-attempted nightly and stops costing anything the moment it succeeds.
+    backfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: What the nightly sync last said, when it failed. Separate from ``last_error`` on purpose:
     #: verify and sync ask Google different questions, and a sync failing every night against a
     #: credential that verifies perfectly is exactly the state one shared column would hide.

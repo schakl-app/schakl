@@ -2,9 +2,15 @@
 
 - ``google_ads_sync_all`` — the nightly cron, fanned out per active org via ``run_per_org`` (the
   RLS GUC bound per tenant, one transaction each). It re-pulls a trailing window for every linked
-  account and upserts.
-- ``google_ads_backfill_account`` — a one-off thirteen-month fill, enqueued when an account is
-  first linked, so a year-over-year comparison works the day after rather than a year after.
+  account and upserts — and then queues the thirteen-month fill for any account that has never
+  finished one.
+- ``google_ads_backfill_account`` — the thirteen-month fill itself, so a year-over-year
+  comparison works the day after an account is linked rather than a year after. Enqueued when an
+  account is linked *and* by the nightly run above, because "we queued it once" and "it has run"
+  are different facts and only the second one is worth acting on (#381): the enqueue at link
+  time is best-effort by design, and thirteen accounts on the live instance were silently left
+  holding a week of history each, which made every report for a past month print a Google Ads
+  section of zeros.
 
 It runs at **05:15**, deliberately after ``marketing``'s 04:45: both walk every org and both make
 outbound Google calls, and stacking them on the same minute is how a self-hosted box with thirty
@@ -15,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,6 +66,42 @@ async def _sync_org(org: Org, session: AsyncSession) -> None:
         org.slug,
         failed,
     )
+    await _queue_missing_backfills(org, accounts)
+
+
+async def _queue_missing_backfills(org: Org, accounts: list[GoogleAdsAccount]) -> None:
+    """Any account whose thirteen months were never filled, queued again tonight (#381).
+
+    The backfill was a one-off fired when an account is linked, and that enqueue is
+    best-effort by design — its comment says *"a queue miss is not fatal, the nightly run
+    catches up"*, which was true of nothing: the nightly run re-pulls a trailing week and has
+    no opinion about the year behind it. Every account on the live instance was in exactly that
+    state, so a report for any past month printed a Google Ads section of zeros.
+
+    So the promise is now kept here. It is keyed on ``backfilled_at``, which is stamped only by
+    a **complete** run, which gives three properties worth having: an account linked before this
+    column existed is filled on the next nightly without anybody being told to press anything;
+    a backfill that halts on a revoked grant is retried each night and costs one chunk until the
+    grant is fixed; and a finished one is never asked again.
+
+    Queued rather than run inline: this is thirteen chunked calls per account against a shared
+    daily quota, and holding the nightly cron open for thirty of them would turn one slow
+    account into a sync that never reaches the rest.
+    """
+    from app.core.jobs import enqueue
+
+    for account in accounts:
+        if account.backfilled_at is not None:
+            continue
+        try:
+            await enqueue(
+                "google_ads_backfill_account",
+                str(org.id),
+                str(account.id),
+                _job_id=f"google-ads-backfill-{account.id}",
+            )
+        except Exception:  # noqa: BLE001 — the sync it rides on has already succeeded
+            logger.warning("google ads: could not queue backfill for account %s", account.id)
 
 
 async def google_ads_sync_all(ctx: dict) -> None:
@@ -76,6 +118,12 @@ async def google_ads_backfill_account(ctx: dict, org_id: str, account_id: str) -
     chunk re-binds the RLS GUC, because the GUC is transaction-local and the previous commit
     ended the transaction that carried it — the failure mode being that every chunk after the
     first silently reads and writes nothing.
+
+    Finishing **stamps ``backfilled_at``**, which is the whole difference between a job that was
+    queued once and a job that is known to have run (#381). Only a complete run stamps: a halt
+    leaves the column NULL so the nightly sync asks again tomorrow, which is what turns a queue
+    miss or a since-fixed credential into a self-healing state rather than a permanent hole
+    nobody can see.
     """
     if not await _licensed():
         return
@@ -87,6 +135,7 @@ async def google_ads_backfill_account(ctx: dict, org_id: str, account_id: str) -
         )
         if org is None:
             return
+        account: GoogleAdsAccount | None = None
         for offset in range(0, BACKFILL_DAYS, CHUNK_DAYS):
             await set_current_org(session, org.id)
             account = await session.scalar(
@@ -108,11 +157,23 @@ async def google_ads_backfill_account(ctx: dict, org_id: str, account_id: str) -
             await session.commit()
             if not ok:
                 # Halt rather than grind through twelve more failing chunks: the error is on the
-                # row, and a re-link or a reconnect is what fixes it.
+                # row, and a re-link or a reconnect is what fixes it. Deliberately **unstamped**,
+                # so tonight's sync tries again.
                 logger.info(
                     "google ads: backfill halted for account %s after %s days", account_id, offset
                 )
                 return
+        if account is not None:
+            # Re-bound because the last chunk's commit ended the transaction carrying the GUC —
+            # the same trap the loop above documents, one statement past its last iteration.
+            await set_current_org(session, org.id)
+            account = await session.get(GoogleAdsAccount, account.id)
+            if account is not None:
+                account.backfilled_at = datetime.now(UTC)
+                await session.commit()
+                logger.info(
+                    "google ads: backfilled %s days for account %s", BACKFILL_DAYS, account_id
+                )
 
 
 def backfill_delay() -> timedelta:
