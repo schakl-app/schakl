@@ -25,6 +25,7 @@
     user_id: string;
     full_name?: string | null;
     email: string | null;
+    is_active?: boolean;
   }
   interface CompanyValues {
     /** Present when editing an existing client; scopes the notes editor's #task candidates. */

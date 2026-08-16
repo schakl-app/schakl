@@ -4,6 +4,12 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import {
+    memberArchivedLabel,
+    memberLabel,
+    partitionMembers,
+    type PickerMember,
+  } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
@@ -16,6 +22,8 @@
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
+
+  const staff = $derived(partitionMembers(data.members as PickerMember[]));
 
   const busy = new InFlight();
 
@@ -311,9 +319,20 @@
               <option value="">{t("tasks.templates.no_assignee")}</option>
               <!-- Resolved at apply time to the company's primary responsible (#28). -->
               <option value="__responsible__">{t("tasks.templates.assignee_responsible")}</option>
-              {#each data.members as member (member.user_id)}
-                <option value={member.user_id}>{member.full_name || member.email}</option>
+              {#each staff.live as member (member.user_id)}
+                <option value={member.user_id}>{memberLabel(member)}</option>
               {/each}
+              <!-- A template is applied months from now, so a deactivated account is the one
+                   assignee that guarantees the task lands nowhere. Last and labelled — a
+                   `<select>` has no search to put them behind — and still selectable, because a
+                   template written before somebody left has to keep naming them. -->
+              {#if staff.retired.length > 0}
+                <optgroup label={memberArchivedLabel()}>
+                  {#each staff.retired as member (member.user_id)}
+                    <option value={member.user_id}>{memberLabel(member)}</option>
+                  {/each}
+                </optgroup>
+              {/if}
             </select>
             <input
               placeholder={t("tasks.templates.checklist_title")}

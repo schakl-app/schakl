@@ -1,7 +1,12 @@
 <script lang="ts" module>
   /** Shapes shared with the settings routes (derived from the API's generated types there). */
   export type CatalogTrigger = { event: string; entity_type: string };
-  export type Member = { user_id: string; full_name: string | null; email: string | null };
+  export type Member = {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    is_active?: boolean;
+  };
   export type Template = { id: string; name: string };
   export type RuleActionValue = { action_type: string; config: Record<string, unknown> };
   export type RuleValue = {
@@ -24,7 +29,7 @@
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, memberLabel, partitionMembers } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
 
@@ -48,6 +53,13 @@
     error?: string | null;
     dryRun?: DryRunOutcome | null;
   } = $props();
+
+  // A rule is a decision executed later, over and over, so pointing one at an account that
+  // cannot sign in is the quietest failure available: the rule keeps firing and the work lands
+  // nowhere. These are native `<select>`s with no search to hide anything behind, so the rule
+  // degrades to last-and-labelled — still selectable, because a rule written before somebody
+  // left has to keep saying who it names.
+  const staff = $derived(partitionMembers(members));
 
   const OPS = ["eq", "ne", "in", "contains", "gt", "lt"] as const;
   const TASK_STATUSES = ["open", "in_progress", "done"] as const;
@@ -358,9 +370,16 @@
                       setConfig(index, "assignee_user_id", event.currentTarget.value)}
                   >
                     <option value="">—</option>
-                    {#each members as member (member.user_id)}
+                    {#each staff.live as member (member.user_id)}
                       <option value={member.user_id}>{memberLabel(member)}</option>
                     {/each}
+                    {#if staff.retired.length > 0}
+                      <optgroup label={memberArchivedLabel()}>
+                        {#each staff.retired as member (member.user_id)}
+                          <option value={member.user_id}>{memberLabel(member)}</option>
+                        {/each}
+                      </optgroup>
+                    {/if}
                   </select>
                 </div>
               {/if}
@@ -389,9 +408,16 @@
                   onchange={(event) => setConfig(index, "user_id", event.currentTarget.value)}
                 >
                   <option value="">—</option>
-                  {#each members as member (member.user_id)}
+                  {#each staff.live as member (member.user_id)}
                     <option value={member.user_id}>{memberLabel(member)}</option>
                   {/each}
+                  {#if staff.retired.length > 0}
+                    <optgroup label={memberArchivedLabel()}>
+                      {#each staff.retired as member (member.user_id)}
+                        <option value={member.user_id}>{memberLabel(member)}</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
                 </select>
               </div>
             {:else if entry.action_type === "notification.send"}
@@ -407,7 +433,10 @@
               <div class="sm:col-span-2">
                 <span class={labelClass}>{t("automation.config.recipients")}</span>
                 <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  {#each members as member (member.user_id)}
+                  <!-- Deactivated colleagues are offered here only where a rule already names
+                       them, so an existing recipient list stays readable and editable without
+                       inviting anyone to add a mailbox nobody reads. -->
+                  {#each [...staff.live, ...staff.retired.filter( (m) => recipientIds(entry.config).includes(m.user_id) )] as member (member.user_id)}
                     <label class="flex items-center gap-2 text-sm text-text">
                       <input
                         type="checkbox"
@@ -416,7 +445,9 @@
                         onchange={(event) =>
                           toggleRecipient(index, member.user_id, event.currentTarget.checked)}
                       />
-                      {memberLabel(member)}
+                      {memberLabel(member)}{member.is_active === false
+                        ? ` (${t("members.status.inactive")})`
+                        : ""}
                     </label>
                   {/each}
                 </div>

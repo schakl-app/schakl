@@ -11,7 +11,7 @@
   import { page } from "$app/state";
   import { fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -32,9 +32,12 @@
           data.members.find((m) => m.user_id === data.viewedUserId)?.email ??
           ""),
   );
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
+  // Whose dossier to open. A former colleague's leave year still has to be readable — it is
+  // the one a manager checks when settling a final payslip — so they stay findable by name.
+  const memberPicker = $derived(
+    splitMemberOptions(data.members, { selectedId: data.viewedUserId }),
   );
+  const memberItems = $derived(memberPicker.live);
   // The combined balance's label (#265): the message-catalog copy for a known group, else the
   // API/representative label the server resolved for a tenant's own group.
   const groupLabel = (group: { group: string | null; label_i18n: Record<string, string> }) => {
@@ -82,6 +85,8 @@
         placeholder={t("hr.me.pick_employee")}
         onselect={(v) =>
           goto(v && v !== page.data.user?.id ? `/me?user=${v}` : "/me", { noScroll: true })}
+        archived={memberPicker.retired}
+        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

@@ -19,6 +19,7 @@
   import { enhance } from "$app/forms";
   import { capitalizeFirst, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberArchivedLabel } from "$lib/core/members";
   import { getLocale } from "$lib/paraglide/runtime";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -57,6 +58,7 @@
     defaultDate = "",
     balances = {},
     userOptions = null,
+    userArchived = [],
     canOverride = false,
     canBackdate = false,
     action = "?/create",
@@ -72,6 +74,14 @@
     balances?: Record<string, number>;
     /** Manager register-for-someone flow: member picker options. */
     userOptions?: { value: string; label: string }[] | null;
+    /**
+     * Deactivated colleagues, for the same picker: search-only, under their own heading.
+     *
+     * Registering a *new* absence for somebody who has left is not a thing to suggest, and
+     * correcting the record of one they took before they went is exactly what an approver
+     * comes here to do — so they are moved, not removed (`$lib/core/members`).
+     */
+    userArchived?: { value: string; label: string; hint?: string }[];
     /** Holders of `leave.request.approve` may set the hours by hand, and are recorded doing it. */
     canOverride?: boolean;
     /**
@@ -306,6 +316,8 @@
         bind:value={userId}
         allowEmpty={false}
         placeholder={t("leave.form.employee")}
+        archived={userArchived}
+        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

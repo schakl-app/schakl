@@ -102,6 +102,16 @@ class MemberLookup(BaseModel):
     full_name: str | None
     email: str | None
     avatar_url: str | None = None
+    #: The account can still be signed into. A deactivated colleague is **returned anyway** and
+    #: flagged here, because the two things a picker owes them are opposites: they must not be
+    #: suggested beside the people who are still here (that is how work gets assigned to somebody
+    #: who cannot open it), and they must still be *nameable* — a task assigned before they left
+    #: has to render their name rather than an empty box, and a filter has to be able to ask for
+    #: their old rows. Filtering them out of the payload would answer the first and break the
+    #: second, so the split is the picker's (`$lib/core/members`, §9's lifecycle rule) and this
+    #: field is what lets it be made. Defaulted ``True`` so a client reading an older response
+    #: shape is never told the whole roster has left.
+    is_active: bool = True
 
 
 class MemberInvite(BaseModel):
@@ -234,7 +244,7 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
     # resolved: that would be a query per member for an answer that is always ``False``.
     client_role_ids = {
         role_id
-        for role_id, in await ctx.session.execute(
+        for (role_id,) in await ctx.session.execute(
             select(RoleRow.id).where(RoleRow.org_id == ctx.org.id, RoleRow.key == ROLE_CLIENT)
         )
     }
@@ -300,6 +310,12 @@ async def lookup_members(
     Filtering by ``permission`` is what stops a picker from offering people who could never do
     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
     roles must not appear twice.
+
+    A **deactivated** account stays in the answer, carrying ``is_active=False``. Whether it is
+    offered is the picker's decision and not this endpoint's — §9's lifecycle rule, the one the
+    client and project pickers already follow: behind the search, wearing its status, never
+    absent. Dropping the row here would take that choice away from every caller at once and
+    blank the name on every task the person was holding when they left.
     """
     stmt = (
         select(User)
@@ -347,6 +363,7 @@ async def lookup_members(
             full_name=u.full_name,
             email=None if hide_email else u.email,
             avatar_url=effective_avatar_url(u),
+            is_active=u.is_active,
         )
         for u in rows
     ]
@@ -384,9 +401,7 @@ async def invite_member(
         user.full_name = payload.full_name
 
     existing = await ctx.session.scalar(
-        select(Membership).where(
-            Membership.org_id == ctx.org.id, Membership.user_id == user.id
-        )
+        select(Membership).where(Membership.org_id == ctx.org.id, Membership.user_id == user.id)
     )
     if existing is not None:
         raise AppError("conflict", "errors.conflict", status_code=409)
@@ -417,9 +432,7 @@ async def invite_member(
             request.state.password_email_kind = "invite"
             try:
                 await user_manager.forgot_password(user, request)
-                sent, send_error = getattr(
-                    request.state, "password_email_result", (True, None)
-                )
+                sent, send_error = getattr(request.state, "password_email_result", (True, None))
                 member.invite_email_sent = sent
                 member.invite_email_error = send_error
             except Exception:  # noqa: BLE001 — the invite itself must stand
@@ -430,9 +443,7 @@ async def invite_member(
 
 async def _membership_or_404(ctx: RequestContext, membership_id: uuid.UUID) -> Membership:
     membership = await ctx.session.scalar(
-        select(Membership).where(
-            Membership.id == membership_id, Membership.org_id == ctx.org.id
-        )
+        select(Membership).where(Membership.id == membership_id, Membership.org_id == ctx.org.id)
     )
     if membership is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
@@ -475,9 +486,7 @@ async def update_member_role(
             MembershipRole(org_id=ctx.org.id, membership_id=membership.id, role_id=target.id)
         )
     # The audit's "from" value: the highest-privilege system role they held (display only).
-    previous = collapse_to_legacy_role(
-        [link_key for _, link_key in held_system_links_with_keys]
-    )
+    previous = collapse_to_legacy_role([link_key for _, link_key in held_system_links_with_keys])
     await ctx.session.flush()
     await ensure_a_role_manager_remains(ctx)
     if previous != target.key:
@@ -538,12 +547,16 @@ async def set_member_roles(
     membership = await _membership_or_404(ctx, membership_id)
     role_ids = [uuid.UUID(value) for value in payload.role_ids]
     roles = (
-        await ctx.session.execute(
-            select(RoleRow).where(
-                RoleRow.org_id == ctx.org.id, RoleRow.id.in_(role_ids or [uuid.uuid4()])
+        (
+            await ctx.session.execute(
+                select(RoleRow).where(
+                    RoleRow.org_id == ctx.org.id, RoleRow.id.in_(role_ids or [uuid.uuid4()])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if len(roles) != len(set(role_ids)):
         raise AppError("not_found", "errors.not_found", status_code=404)
     if not roles:

@@ -19,7 +19,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -44,6 +44,13 @@
   import { LEAVE_AVAILABILITY_COLUMNS } from "$lib/modules/leave/columns";
 
   let { data, form } = $props();
+
+  // Who to show availability for. A freelancer whose account has been deactivated is exactly
+  // who a manager still wants to look back at, so they stay findable by name — just not
+  // suggested beside the people who are still bookable.
+  const memberPicker = $derived(
+    splitMemberOptions(data.members ?? [], { selectedId: data.filterUser }),
+  );
 
   /** A `DataTable` row is keyed by `id`; for a move that is the day being *added*, which is the
    *  half carrying the times and the half every control here acts on. */
@@ -144,8 +151,10 @@
         id="user"
         name="user"
         value={data.filterUser}
-        items={data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) }))}
+        items={memberPicker.live}
         placeholder={t("leave.availability.everyone")}
+        archived={memberPicker.retired}
+        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

@@ -23,7 +23,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
 
   import { anchorKind, clockOf, FREQS, type Recurrence, type RecurrenceFreq } from "./recurrence";
 
@@ -31,6 +31,7 @@
     user_id: string;
     full_name: string | null;
     email: string | null;
+    is_active?: boolean;
   }
 
   let {
@@ -94,7 +95,12 @@
   const kind = $derived(freq ? anchorKind(freq as RecurrenceFreq) : "none");
   const weekdays = $derived(weekdayNames());
   const months = $derived(monthNames());
-  const personOptions = $derived(members.map((m) => ({ value: m.user_id, label: memberLabel(m) })));
+  // A rule saved today books occurrences for months, so a deactivated account is the worst
+  // possible answer here: nobody is ever reminded. Behind the search, wearing its state — and
+  // still offered outright while the rule already names them, or editing an inherited rule
+  // would silently reassign it.
+  const personPicker = $derived(splitMemberOptions(members, { selectedId: planUser }));
+  const personOptions = $derived(personPicker.live);
 
   /**
    * Ticking the box prefills from what the screen already knows (#335): the assignee, the time
@@ -388,6 +394,8 @@
                   bind:value={planUser}
                   items={personOptions}
                   placeholder={t("tasks.recurrence.plan.person_assignee")}
+                  archived={personPicker.retired}
+                  archivedLabel={memberArchivedLabel()}
                 />
               {:else}
                 <!-- `:own` plans only yourself, so the field states that rather than offering a

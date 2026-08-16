@@ -8,6 +8,7 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -29,7 +30,7 @@
     title?: string;
     companyId?: string | null;
     projectId?: string | null;
-    members?: { user_id: string; full_name: string | null; email: string }[];
+    members?: { user_id: string; full_name: string | null; email: string; is_active?: boolean }[];
     action?: string;
     /** The page's `form?.qcError`. */
     error?: string | null;
@@ -37,9 +38,10 @@
     pickerSlot?: string;
   } = $props();
 
-  const memberOptions = $derived(
-    members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
+  // A brand-new task never *starts* on a deactivated account, so the dialog opens on the
+  // people still here; typing a name still finds the rest, wearing their state.
+  const memberPicker = $derived(splitMemberOptions(members));
+  const memberOptions = $derived(memberPicker.live);
   let assigneeId = $state("");
 
   const busy = new InFlight();
@@ -73,7 +75,9 @@
           <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.due_date")}</span>
           <DateInput name="due_date" id="qc-task-due" />
         </div>
-        {#if memberOptions.length > 0}
+        <!-- Guarded on the roster, not on the opening list: a picker whose every option sits
+             behind the search is still a picker, and hiding it would take the search with it. -->
+        {#if members.length > 0}
           <div>
             <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.assignee")}</span
             >
@@ -84,6 +88,8 @@
               placeholder={t("common.none")}
               onselect={(v) => (assigneeId = v)}
               id="qc-task-assignee"
+              archived={memberPicker.retired}
+              archivedLabel={memberArchivedLabel()}
             />
           </div>
         {/if}

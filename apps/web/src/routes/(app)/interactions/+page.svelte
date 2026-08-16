@@ -28,7 +28,12 @@
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import {
+    memberArchivedLabel,
+    memberLabel,
+    partitionMembers,
+    type PickerMember,
+  } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -79,6 +84,7 @@
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
+  const ownerFilter = $derived(partitionMembers(data.members as PickerMember[]));
 
   const table = createTableLayout<InteractionItem>({
     all: () => INTERACTION_COLUMNS,
@@ -574,11 +580,23 @@
     <option value="me">{t("interactions.filter.mine")}</option>
     <option value="all">{t("interactions.filter.everyone")}</option>
     {#if data.canReadAll}
-      {#each data.members as member (member.user_id)}
+      {#each ownerFilter.live as member (member.user_id)}
         {#if member.user_id !== me}
           <option value={member.user_id}>{memberLabel(member)}</option>
         {/if}
       {/each}
+      <!-- A `<select>` has no search to hide anything behind, so the members' lifecycle rule
+           degrades to the nearest honest thing: last, and under a heading that says what they
+           are. Filtering by a colleague who has left is a real question — this is their mail. -->
+      {#if ownerFilter.retired.length > 0}
+        <optgroup label={memberArchivedLabel()}>
+          {#each ownerFilter.retired as member (member.user_id)}
+            {#if member.user_id !== me}
+              <option value={member.user_id}>{memberLabel(member)}</option>
+            {/if}
+          {/each}
+        </optgroup>
+      {/if}
     {/if}
   </select>
   <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of

@@ -14,7 +14,7 @@
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -124,9 +124,15 @@
   );
   const companyItems = $derived(companyPicker.live);
   const projectItems = $derived(projectPicker.live);
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
+  // Deactivated colleagues sit behind the search, exactly as archived clients and finished
+  // projects do two lines up. The filter keeps the retired bucket — "what was she holding when
+  // she left" is a question a filter exists to answer — while the bulk dialog below is handed
+  // `live` only, which is how its client and project fields already behave: a batch hands out
+  // new work, and an account that cannot sign in is never the right end of it.
+  const memberPicker = $derived(
+    splitMemberOptions(data.members, { selectedId: data.filters.assignee_user_id }),
   );
+  const memberItems = $derived(memberPicker.live);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Triage is a bulk gesture: hand a sprint to a colleague, move a run of tickets onto the
@@ -299,6 +305,8 @@
         placeholder={t("tasks.field.assignee")}
         onselect={setAssigneeFilter}
         id="filter-assignee"
+        archived={memberPicker.retired}
+        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}
@@ -382,8 +390,7 @@
       href="/tasks/{task.id}"
       class="truncate font-medium {done
         ? 'text-text-muted line-through'
-        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}"
-      >{taskTitle(task)}</a
+        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}">{taskTitle(task)}</a
     >
     <!-- Client-portal visibility rides the title cell rather than becoming a column the user can
          turn off (#41's rule): "a client is reading this" is the one piece of task metadata you

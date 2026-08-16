@@ -22,13 +22,14 @@
   import { Star, X } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, memberLabel, splitMemberOptions } from "$lib/core/members";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
   interface Member {
     user_id: string;
     full_name?: string | null;
     email: string | null;
+    is_active?: boolean;
   }
   interface Assignee {
     user_id: string;
@@ -64,11 +65,14 @@
     const member = members.find((m) => m.user_id === userId);
     return member ? memberLabel(member) : userId;
   };
-  const candidates = $derived(
-    members
-      .filter((m) => !picked.includes(m.user_id))
-      .map((m) => ({ value: m.user_id, label: memberLabel(m) })),
-  );
+  // A deactivated colleague is not a suggestion, and is not gone either: the chips above may
+  // already name them (a task assigned before they left), so they are excluded from the options
+  // by being *picked*, not by being filtered — and if they are not on the roster they are still
+  // reachable by typing the name, under the "Gedeactiveerd" heading. `selectedId` is deliberately
+  // not passed: what the field holds is drawn as a chip, so a picked member belongs in neither
+  // bucket, and forcing them into the live one would re-suggest somebody already assigned.
+  const options = $derived(splitMemberOptions(members, { exclude: picked }));
+  const candidates = $derived(options.live);
 
   const payload = $derived(
     JSON.stringify(picked.map((userId) => ({ user_id: userId, is_primary: userId === primary }))),
@@ -143,5 +147,7 @@
     allowEmpty={false}
     onselect={pick}
     keepOpenOnSelect
+    archived={options.retired}
+    archivedLabel={memberArchivedLabel()}
   />
 </div>

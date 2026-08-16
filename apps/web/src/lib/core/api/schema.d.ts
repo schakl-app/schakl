@@ -8034,6 +8034,12 @@ export interface paths {
          *     Filtering by ``permission`` is what stops a picker from offering people who could never do
          *     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
          *     roles must not appear twice.
+         *
+         *     A **deactivated** account stays in the answer, carrying ``is_active=False``. Whether it is
+         *     offered is the picker's decision and not this endpoint's — §9's lifecycle rule, the one the
+         *     client and project pickers already follow: behind the search, wearing its status, never
+         *     absent. Dropping the row here would take that choice away from every caller at once and
+         *     blank the name on every task the person was holding when they left.
          */
         get: operations["lookup_members_api_v1_members_lookup_get"];
         put?: never;
@@ -21501,6 +21507,11 @@ export interface components {
             email: string | null;
             /** Full Name */
             full_name: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
             /** User Id */
             user_id: string;
         };

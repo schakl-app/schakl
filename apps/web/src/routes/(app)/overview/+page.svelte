@@ -6,7 +6,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberLabel } from "$lib/core/members";
+  import { memberArchivedLabel, memberLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -59,9 +59,13 @@
   };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
-  // The two lookup filters: an archived client and a finished project are legitimate things to
-  // *filter* by, so neither is dropped — they are moved behind the search and wear their
-  // status, and whichever is currently filtering stays on offer (`core/picker.ts`).
+  // The three lookup filters: an archived client, a finished project and a deactivated
+  // colleague are all legitimate things to *filter* by, so none is dropped — they are moved
+  // behind the search and wear their status, and whichever is currently filtering stays on
+  // offer (`core/picker.ts`).
+  const memberPicker = $derived(
+    splitMemberOptions(data.members, { selectedId: data.filters.user_id }),
+  );
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: data.filters.company_id }),
   );
@@ -196,13 +200,17 @@
 <!-- Filters -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <div class="w-44">
+    <!-- A departed colleague's hours are exactly what a manager comes here to look at, so the
+         retired bucket stays: out of the opening list, found by typing, labelled. -->
     <Combobox
-      items={data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) }))}
+      items={memberPicker.live}
       name="_f_user"
       id="f-user"
       value={data.filters.user_id}
       placeholder={t("time.overview.employee")}
       onselect={(v) => setFilter("user_id", v)}
+      archived={memberPicker.retired}
+      archivedLabel={memberArchivedLabel()}
     />
   </div>
   <div class="w-44">
