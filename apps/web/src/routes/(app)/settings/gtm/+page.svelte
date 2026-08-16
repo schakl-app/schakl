@@ -17,12 +17,17 @@
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import GtmContainerSearch from "$lib/integrations/google_tag_manager/GtmContainerSearch.svelte";
+  import type { GtmSearchHit } from "$lib/integrations/google_tag_manager/types";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
 
   const busy = new InFlight();
+
+  /** The container the search picked; the form posts its public id and nothing else. */
+  let selected = $state<GtmSearchHit | null>(null);
 
   // Empty is the agency's own container — a real state, and the one the client picker must not
   // require an answer for.
@@ -178,26 +183,30 @@
     </ul>
   {/if}
 
-  <!-- clear(): a create form starts something new, so it resets for the next one. -->
+  <!-- clear(): a create form starts something new, so it resets for the next one — and the
+       search's own selection is `$state`, which `reset` cannot reach, so it is cleared by hand
+       or the next container arrives pre-chosen. -->
   <form
     method="POST"
     action="?/link"
-    use:enhance={busy.clear()}
+    use:enhance={busy.wrap("link", () => async ({ update, result }) => {
+      await update({ reset: true });
+      if (result.type === "success") selected = null;
+    })}
     class="space-y-3 border-t border-border pt-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="gtm-public-id" class="mb-1 block text-sm font-medium text-text">
+        <span class="mb-1 block text-sm font-medium text-text">
           {t("settings.gtm.public_id")}
-        </label>
-        <input
-          id="gtm-public-id"
-          name="public_id"
-          required
-          placeholder="GTM-XXXXXXX"
-          class={inputClass}
-        />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.gtm.public_id_hint")}</p>
+        </span>
+        <!-- A search, not a text box (and not a combobox over everything): Tag Manager's quota is
+             per user per minute, so listing every account's containers is one request per account
+             and a 44-account agency grant simply gets refused. Searching by the client's name —
+             which *is* the Tag Manager account's name — or pasting the id off their website are
+             the two ways anybody identifies a container, and both are one or two requests. -->
+        <GtmContainerSearch bind:selected connectNext="/settings/gtm" />
+        <input type="hidden" name="public_id" value={selected?.public_id ?? ""} />
       </div>
       <div>
         <label for="gtm-company" class="mb-1 block text-sm font-medium text-text">
@@ -217,7 +226,7 @@
         />
       </div>
     </div>
-    <Button type="submit" disabled={busy.active || !data.connected}>
+    <Button type="submit" disabled={busy.active || !data.connected || !selected}>
       {t("settings.gtm.link")}
     </Button>
   </form>

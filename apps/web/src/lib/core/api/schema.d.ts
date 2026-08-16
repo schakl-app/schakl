@@ -3613,10 +3613,15 @@ export interface paths {
         };
         /**
          * List Available Gtm Containers
-         * @description Containers the caller's own Google grant can reach, across every Tag Manager account.
+         * @description Search the containers the caller's own Google grant can reach — **a search, not a list**.
          *
-         *     Live — this is the one read that calls Google on every request, because a picker showing a
-         *     stale list is how somebody links a container that was deleted last month.
+         *     Live: a picker showing a stale list is how somebody links a container that was deleted last
+         *     month. It is a *search* because Tag Manager's quota is per user per minute and listing every
+         *     account's containers is one request per account — an agency holding forty-four of them cannot
+         *     afford the sweep, and got a quota refusal instead of a picker.
+         *
+         *     ``accounts_total`` and ``accounts_read`` say how much of the grant this answer covers, so an
+         *     empty result reads as "narrow the search" rather than as "you are not in that account".
          */
         get: operations["list_available_gtm_containers_api_v1_gtm_containers_available_get"];
         put?: never;
@@ -18324,8 +18329,23 @@ export interface components {
         };
         /** GtmPickerRead */
         GtmPickerRead: {
+            /**
+             * Accounts Read
+             * @default 0
+             */
+            accounts_read: number;
+            /**
+             * Accounts Total
+             * @default 0
+             */
+            accounts_total: number;
             /** Containers */
             containers: components["schemas"]["GtmAvailableContainer"][];
+            /**
+             * Query
+             * @default
+             */
+            query: string;
             /** Warnings */
             warnings?: string[];
         };
@@ -37549,7 +37569,10 @@ export interface operations {
     };
     list_available_gtm_containers_api_v1_gtm_containers_available_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A Tag Manager account name, or a container id such as GTM-XXXXXXX. An id is resolved directly; anything else selects accounts by name and opens those. */
+                q?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -37563,6 +37586,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GtmPickerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

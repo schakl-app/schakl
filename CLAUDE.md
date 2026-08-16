@@ -989,6 +989,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   observation is the same shape: the number the nightly cron exists for is `workspace_changes`,
   because a change staged weeks ago and never published is how a client's tracking quietly stops
   being what they were told it is, and nobody opens a container they have no reason to open.
+- **A picker over a per-user quota is a search, or it is a picker that refuses** (`google_tag_manager`,
+  `docs/GOOGLE_TAG_MANAGER.md` §3a). The container picker listed every Tag Manager account and then
+  every account's containers — `1 + n` requests where **n belongs to the agency** — and the first
+  live grant it met held 44 of them, so request 45 answered *"Quota exceeded … Queries per minute
+  per user"* and the control whose whole job is finding a container found none. Nothing about that
+  is GTM's: it is what happens to any picker over a provider whose limit is per *user* rather than
+  per project, and no cache fixes it, because the first load is the one that fails. Four rules.
+  **Read the cheap half always and the expensive half on demand** — the account list is one call at
+  any size, containers are one call each, so a search decides which accounts to open and a stated
+  ceiling (8) puts the worst case at nine requests. **An identifier short-circuits the sweep**:
+  `containers:lookup?tagId=` is one request and is what somebody pasting the id off a client's
+  website actually wants — and an id that resolves to nothing is an **empty result on a search box**
+  and a **422 on the link route**, because in one place it is an outcome and in the other it is an
+  instruction. **What was not opened is named** (`accounts_read` / `accounts_total`, "8 van 44"),
+  since a short list that looks complete reads as "we are not in that account", which is §17's
+  failure wearing a picker's clothes — and the machine-facing warning beside it is *dropped* by the
+  screen that prints the numbers, because two sentences about one fact is one too many. And **a
+  quota refusal mid-loop keeps what was read**: a rate is not a verdict (the Cloudflare probe rule),
+  so the loop breaks, says so, and still offers the accounts that answered. Its sibling on the
+  screen: the same search is now the *only* way a container is named anywhere — Instellingen, the
+  connect dialog, and the client's own page, where the panel finally has the `＋` every other panel
+  has (#338), keeping the client from the route and mirroring the key the **call** makes rather
+  than the one the panel is about (#310).
 
 ## 11. Working agreement (for Claude Code)
 

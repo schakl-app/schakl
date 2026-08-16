@@ -116,6 +116,14 @@ class GtmPickerRead(BaseModel):
     containers: list[GtmAvailableContainer]
     #: i18n keys for anything that limited the answer — a cap hit, an account that refused.
     warnings: list[str] = Field(default_factory=list)
+    #: What the search was, echoed so a late answer can be discarded against a newer keystroke.
+    query: str = ""
+    #: Every Tag Manager account this grant reaches. Tag Manager's quota is per user per minute,
+    #: so opening all of them is not affordable past a handful — and a result that cannot say
+    #: "8 of 44" reads as "you are not in those accounts", which is a different and wrong fact.
+    accounts_total: int = 0
+    #: How many of them this search actually opened.
+    accounts_read: int = 0
 
 
 # --------------------------------------------------------------------------- workspaces

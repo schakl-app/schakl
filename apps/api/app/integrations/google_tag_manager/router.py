@@ -181,15 +181,31 @@ async def list_gtm_containers(
     dependencies=[require_permission("google_tag_manager.settings.manage")],
 )
 async def list_available_gtm_containers(
+    q: str = Query(
+        "",
+        max_length=120,
+        description=(
+            "A Tag Manager account name, or a container id such as GTM-XXXXXXX. An id is "
+            "resolved directly; anything else selects accounts by name and opens those."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> GtmPickerRead:
-    """Containers the caller's own Google grant can reach, across every Tag Manager account.
+    """Search the containers the caller's own Google grant can reach — **a search, not a list**.
 
-    Live — this is the one read that calls Google on every request, because a picker showing a
-    stale list is how somebody links a container that was deleted last month.
+    Live: a picker showing a stale list is how somebody links a container that was deleted last
+    month. It is a *search* because Tag Manager's quota is per user per minute and listing every
+    account's containers is one request per account — an agency holding forty-four of them cannot
+    afford the sweep, and got a quota refusal instead of a picker.
+
+    ``accounts_total`` and ``accounts_read`` say how much of the grant this answer covers, so an
+    empty result reads as "narrow the search" rather than as "you are not in that account".
     """
-    result = await GtmService(ctx).available_containers()
+    result = await GtmService(ctx).available_containers(q)
     return GtmPickerRead(
+        query=q,
+        accounts_total=result.accounts_total,
+        accounts_read=result.accounts_read,
         containers=[
             GtmAvailableContainer(
                 gtm_account_id=option.account_id,

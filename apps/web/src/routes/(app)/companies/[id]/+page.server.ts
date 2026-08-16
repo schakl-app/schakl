@@ -8,6 +8,7 @@ import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
+import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -337,4 +338,6 @@ export const actions: Actions = {
   ...driveActions,
   // Marketing panel contract (lib/modules/marketing): link/unlink GA4/GSC/Ads accounts.
   ...marketingActions,
+  // Tag Manager panel contract (lib/integrations/google_tag_manager): attach a container.
+  ...gtmActions,
 };

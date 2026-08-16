@@ -1371,9 +1371,15 @@ Returns: `200` · `GtmWorkspaceRead[]`
 
 #### `GET /api/v1/gtm/containers/available`
 
-**List Available Gtm Containers** — Containers the caller's own Google grant can reach, across every Tag Manager account.
+**List Available Gtm Containers** — Search the containers the caller's own Google grant can reach — **a search, not a list**.
 
 Permission: `google_tag_manager.settings.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `q` | string | A Tag Manager account name, or a container id such as GTM-XXXXXXX. An id is resolved directly; anything else selects accounts by name and opens those. (default ``) |
 
 Returns: `200` · `GtmPickerRead`
 
