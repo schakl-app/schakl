@@ -14,7 +14,7 @@
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
-  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
+  import { splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -25,6 +25,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
@@ -125,14 +126,12 @@
   const companyItems = $derived(companyPicker.live);
   const projectItems = $derived(projectPicker.live);
   // Deactivated colleagues sit behind the search, exactly as archived clients and finished
-  // projects do two lines up. The filter keeps the retired bucket — "what was she holding when
-  // she left" is a question a filter exists to answer — while the bulk dialog below is handed
-  // `live` only, which is how its client and project fields already behave: a batch hands out
-  // new work, and an account that cannot sign in is never the right end of it.
-  const memberPicker = $derived(
-    splitMemberOptions(data.members, { selectedId: data.filters.assignee_user_id }),
-  );
-  const memberItems = $derived(memberPicker.live);
+  // projects do two lines up — the filter is a `MemberPicker`, which keeps the retired bucket
+  // because "what was she holding when she left" is a question a filter exists to answer. The
+  // bulk dialog below is a list of options rather than a picker, and is handed `live` only,
+  // which is how its client and project fields already behave: a batch hands out new work, and
+  // an account that cannot sign in is never the right end of it.
+  const memberItems = $derived(splitMemberOptions(data.members).live);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Triage is a bulk gesture: hand a sprint to a colleague, move a run of tickets onto the
@@ -298,15 +297,13 @@
   </div>
   {#if !isPortal}
     <div class="w-full sm:w-44">
-      <Combobox
-        items={memberItems}
+      <MemberPicker
+        members={data.members}
         name="_filter_assignee"
         value={assigneeFilterValue}
         placeholder={t("tasks.field.assignee")}
         onselect={setAssigneeFilter}
         id="filter-assignee"
-        archived={memberPicker.retired}
-        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

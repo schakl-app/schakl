@@ -4,12 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
-  import {
-    memberArchivedLabel,
-    memberLabel,
-    partitionMembers,
-    type PickerMember,
-  } from "$lib/core/members";
+  import { type PickerMember } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
@@ -18,12 +13,20 @@
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
 
-  const staff = $derived(partitionMembers(data.members as PickerMember[]));
+  const staff = $derived(data.members as PickerMember[]);
+  // The two answers that name nobody. "De verantwoordelijke" is resolved at apply time to the
+  // company's primary responsible (#28), so it is a choice about the rule rather than a person,
+  // and it leads the list beside "geen".
+  const assigneeExtra = $derived([
+    { value: "", label: t("tasks.templates.no_assignee") },
+    { value: "__responsible__", label: t("tasks.templates.assignee_responsible") },
+  ]);
 
   const busy = new InFlight();
 
@@ -311,29 +314,20 @@
               placeholder={t("tasks.field.description")}
               onchange={(v) => (item.description = v)}
             />
-            <select
+            <!-- A template is applied months from now, so a deactivated account is the one
+                 assignee that guarantees the task lands nowhere: behind the search, wearing the
+                 word, and still selectable — a template written before somebody left has to keep
+                 naming them. The items post as one JSON field, so the picker's own hidden input
+                 is a `_`-name nothing reads. -->
+            <MemberPicker
+              members={staff}
+              extra={assigneeExtra}
+              allowEmpty={false}
               bind:value={item.assignee_user_id}
-              class={inputClass}
-              aria-label={t("tasks.field.assignee")}
-            >
-              <option value="">{t("tasks.templates.no_assignee")}</option>
-              <!-- Resolved at apply time to the company's primary responsible (#28). -->
-              <option value="__responsible__">{t("tasks.templates.assignee_responsible")}</option>
-              {#each staff.live as member (member.user_id)}
-                <option value={member.user_id}>{memberLabel(member)}</option>
-              {/each}
-              <!-- A template is applied months from now, so a deactivated account is the one
-                   assignee that guarantees the task lands nowhere. Last and labelled — a
-                   `<select>` has no search to put them behind — and still selectable, because a
-                   template written before somebody left has to keep naming them. -->
-              {#if staff.retired.length > 0}
-                <optgroup label={memberArchivedLabel()}>
-                  {#each staff.retired as member (member.user_id)}
-                    <option value={member.user_id}>{memberLabel(member)}</option>
-                  {/each}
-                </optgroup>
-              {/if}
-            </select>
+              name="_tpl_assignee_{item.key}"
+              id="tpl-assignee-{item.key}"
+              ariaLabel={t("tasks.field.assignee")}
+            />
             <input
               placeholder={t("tasks.templates.checklist_title")}
               bind:value={item.checklist_title}

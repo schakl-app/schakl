@@ -104,7 +104,8 @@
   reselect). A picker that only lists preloaded options and sends the user *elsewhere* to create
   the missing registrar / provider / client is a bug — that is precisely what the first domains and
   hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
-  an employee is *invited*, not created — so leave those select-only.
+  an employee is *invited*, not created — so those carry no ＋. They are still comboboxes: "no
+  inline create" is a statement about the ＋, never a licence to keep a native `<select>`.
   **A nested quick-create inherits the parent form's context** (#247): when the outer form already
   has a client selected and its picker opens a quick-create for a second entity (a project, a
   contact, a hosting account), that dialog opens with the *same* client pre-filled — as a default
@@ -174,6 +175,24 @@
   purpose — a client is only retired by the archive, because a lead is being chased and an
   offboarding client is still being invoiced, while a project is retired by `completed` as well,
   because delivered work is not something to suggest booking against.
+  **And where the rows are *people*, the picker is one component** (`core/ui/MemberPicker`). The
+  rule above had been written down once and then re-applied by hand at every call site — each
+  spelling out `splitMemberOptions`, `archived`, `archivedLabel` — while the three controls that
+  predated the helper were still native `<select>`s: the interacties owner filter, the automation
+  rule's assignee and the takensjabloon's. A `<select>` has no search to hide anything behind, so
+  those three degraded to "last, under an `<optgroup>`", which puts a colleague who left in March
+  one keystroke from being picked; and an eleventh, the beschikbaarheid form's *whose week is
+  this*, had no split at all because it was written from `memberLabel` rather than from the
+  helper. That is the shape a shared rule takes when it lives in a function instead of in a
+  control: it is right wherever somebody remembered it. `MemberPicker` takes the roster and
+  answers with the whole rule — deactivated accounts out of the opening list, findable by typing,
+  wearing "Gedeactiveerd", always offered while the field holds them — plus the two knobs the
+  call sites actually differ on. `extra` leads the list with the choices that are **not a
+  person** ("Mijn contactmomenten" / "Iedereen" on a filter, "Verantwoordelijke van de klant" on a
+  template, which resolves at apply time), and `exclude` drops the ids another control already
+  names — the owner filter excludes the signed-in user, because "mijn" is that same answer in
+  words. Reach for `splitMemberOptions` directly only where the control is not a single-value
+  picker: the assignee chips, the party picker.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.

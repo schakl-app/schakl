@@ -31,12 +31,7 @@
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import {
-    memberArchivedLabel,
-    memberLabel,
-    partitionMembers,
-    type PickerMember,
-  } from "$lib/core/members";
+  import { memberLabel, type PickerMember } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -49,6 +44,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
@@ -87,7 +83,17 @@
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
-  const ownerFilter = $derived(partitionMembers(data.members as PickerMember[]));
+  // Naming a *colleague* is the read_all grant (#168); "mijn" and "iedereen" are nobody's, so
+  // without it the picker offers those two and no roster at all. The API enforces it harder.
+  const ownerMembers = $derived(data.canReadAll ? (data.members as PickerMember[]) : []);
+  // Two words that are not a person, and they lead: you land on your own moments (#263) and
+  // widen from there. Every choice is written out, "mijn" included — a record-scoped view
+  // defaults to iedereen (#323), so deleting the param to mean "me" would make that option
+  // do nothing.
+  const ownerExtra = $derived([
+    { value: "me", label: t("interactions.filter.mine") },
+    { value: "all", label: t("interactions.filter.everyone") },
+  ]);
 
   const table = createTableLayout<InteractionItem>({
     all: () => INTERACTION_COLUMNS,
@@ -633,43 +639,29 @@
       {/each}
     </select>
   {/if}
-  <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
-       nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
-       list is gated — the API enforces it harder either way.
-       Every choice is written out, "mijn" included: a record-scoped view defaults to iedereen
-       (#323), so deleting the param to mean "me" would have made that option do nothing.
+  <!-- The colleague half is a `MemberPicker` like every other "which colleague" control: a
+       deactivated account is behind the search wearing "Gedeactiveerd", never beside the people
+       still here. Filtering by somebody who has left is a real question — this is their mail —
+       so they are found by typing rather than dropped. The signed-in user is excluded because
+       "mijn" already names them.
        Not drawn over the review queue at all: an unreviewed e-mail is private to its mailbox
        owner, so every option but "mijn" would return nothing there — a control whose only
        possible answer is an empty list is #253's control that always refuses. -->
   {#if !reviewing}
-    <select
-      value={data.filters.ownerValue}
-      onchange={(e) => applyFilter({ owner: e.currentTarget.value, mine: null })}
-      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-      aria-label={t("interactions.filter.owner")}
-    >
-      <option value="me">{t("interactions.filter.mine")}</option>
-      <option value="all">{t("interactions.filter.everyone")}</option>
-      {#if data.canReadAll}
-        {#each ownerFilter.live as member (member.user_id)}
-          {#if member.user_id !== me}
-            <option value={member.user_id}>{memberLabel(member)}</option>
-          {/if}
-        {/each}
-        <!-- A `<select>` has no search to hide anything behind, so the members' lifecycle rule
-             degrades to the nearest honest thing: last, and under a heading that says what they
-             are. Filtering by a colleague who has left is a real question — this is their mail. -->
-        {#if ownerFilter.retired.length > 0}
-          <optgroup label={memberArchivedLabel()}>
-            {#each ownerFilter.retired as member (member.user_id)}
-              {#if member.user_id !== me}
-                <option value={member.user_id}>{memberLabel(member)}</option>
-              {/if}
-            {/each}
-          </optgroup>
-        {/if}
-      {/if}
-    </select>
+    <div class="w-full sm:w-44">
+      <MemberPicker
+        members={ownerMembers}
+        extra={ownerExtra}
+        exclude={me ? [me] : []}
+        name="_filter_owner"
+        id="filter-owner"
+        value={data.filters.ownerValue}
+        allowEmpty={false}
+        placeholder={t("interactions.filter.owner")}
+        ariaLabel={t("interactions.filter.owner")}
+        onselect={(v) => applyFilter({ owner: v, mine: null })}
+      />
+    </div>
   {/if}
   <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of
        a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->

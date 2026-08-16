@@ -19,17 +19,16 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import AvailabilityForm from "$lib/modules/leave/AvailabilityForm.svelte";
   import {
@@ -46,11 +45,8 @@
   let { data, form } = $props();
 
   // Who to show availability for. A freelancer whose account has been deactivated is exactly
-  // who a manager still wants to look back at, so they stay findable by name — just not
-  // suggested beside the people who are still bookable.
-  const memberPicker = $derived(
-    splitMemberOptions(data.members ?? [], { selectedId: data.filterUser }),
-  );
+  // who a manager still wants to look back at, so `MemberPicker` keeps them findable by name —
+  // just not suggested beside the people who are still bookable.
 
   /** A `DataTable` row is keyed by `id`; for a move that is the day being *added*, which is the
    *  half carrying the times and the half every control here acts on. */
@@ -147,14 +143,12 @@
   {#if data.anyUser}
     <div class="min-w-[12rem]">
       <label for="user" class="mb-1 block text-xs text-text-muted">{t("leave.team.member")}</label>
-      <Combobox
+      <MemberPicker
         id="user"
         name="user"
         value={data.filterUser}
-        items={memberPicker.live}
+        members={data.members ?? []}
         placeholder={t("leave.availability.everyone")}
-        archived={memberPicker.retired}
-        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

@@ -18,12 +18,12 @@
 
   import { fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberArchivedLabel, memberLabel, splitMemberOptions } from "$lib/core/members";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -122,9 +122,6 @@
   const memberName = $derived(new Map(allMembers.map((m) => [m.user_id, memberLabel(m)])));
   // Planning is future work, so a deactivated account is never a suggestion — and never
   // unreachable either: `memberName` above still labels a block already booked on one.
-  const personPicker = $derived(splitMemberOptions(allMembers, { selectedId: personId }));
-  const personOptions = $derived(personPicker.live);
-
   const filteredTasks = $derived(
     search.trim()
       ? pickerTasks.filter((task) => task.title.toLowerCase().includes(search.trim().toLowerCase()))
@@ -335,13 +332,7 @@
       <div>
         <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.person")}</span>
         {#if canScheduleAny}
-          <Combobox
-            name="user_id"
-            bind:value={personId}
-            items={personOptions}
-            archived={personPicker.retired}
-            archivedLabel={memberArchivedLabel()}
-          />
+          <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
         {:else}
           <input type="hidden" name="user_id" value={currentUserId} />
           <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">

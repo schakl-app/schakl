@@ -11,13 +11,12 @@
   import { page } from "$app/state";
   import { fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { memberArchivedLabel, splitMemberOptions } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
   import { GROUP_LABEL_KEYS } from "$lib/modules/leave/format";
 
@@ -33,11 +32,8 @@
           ""),
   );
   // Whose dossier to open. A former colleague's leave year still has to be readable — it is
-  // the one a manager checks when settling a final payslip — so they stay findable by name.
-  const memberPicker = $derived(
-    splitMemberOptions(data.members, { selectedId: data.viewedUserId }),
-  );
-  const memberItems = $derived(memberPicker.live);
+  // the one a manager checks when settling a final payslip — so `MemberPicker` keeps them
+  // findable by name rather than on offer.
   // The combined balance's label (#265): the message-catalog copy for a known group, else the
   // API/representative label the server resolved for a tenant's own group.
   const groupLabel = (group: { group: string | null; label_i18n: Record<string, string> }) => {
@@ -77,16 +73,14 @@
   </div>
   {#if data.canAny}
     <div class="w-64 max-w-full">
-      <Combobox
-        items={memberItems}
+      <MemberPicker
+        members={data.members}
         name="_dossier_user"
         id="dossier-user"
         value={data.viewedUserId}
         placeholder={t("hr.me.pick_employee")}
         onselect={(v) =>
           goto(v && v !== page.data.user?.id ? `/me?user=${v}` : "/me", { noScroll: true })}
-        archived={memberPicker.retired}
-        archivedLabel={memberArchivedLabel()}
       />
     </div>
   {/if}

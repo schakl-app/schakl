@@ -96,20 +96,16 @@ export function memberArchivedLabel(): string {
 }
 
 /**
- * Members in the order a **native** `<select>` should list them: everyone still here, then the
- * deactivated accounts.
+ * There is no `partitionMembers` anymore, and the deletion is worth a note.
  *
- * Three member controls are still native selects — the interactions owner filter, the
- * automation rule's assignee, the task template's — and a `<select>` has no search to hide
- * anything behind, so the rule degrades to the nearest honest thing: last in the list, under an
- * `<optgroup>` that says what they are. Converting them to comboboxes is the separate change
- * docs/UX.md already asks for (#256).
+ * It existed for the three controls that were still native `<select>`s — the interactions owner
+ * filter, the automation rule's assignee, the task template's — where the rule above had to
+ * degrade to "last in the list, under an `<optgroup>` that says what they are", because a
+ * `<select>` has no search to hide anything behind. Those three are `MemberPicker`
+ * (`$lib/core/ui/MemberPicker.svelte`) now, which is the conversion docs/UX.md asked for at
+ * #256, so the degraded shape has no callers — and leaving it exported is how a fourth screen
+ * would come to have one.
+ *
+ * Name a colleague with `MemberPicker`. Reach for `splitMemberOptions` directly only where the
+ * control is not a single-value picker: the assignee chips, the party picker.
  */
-export function partitionMembers<M extends PickerMember>(
-  members: readonly M[],
-): { live: M[]; retired: M[] } {
-  const live: M[] = [];
-  const retired: M[] = [];
-  for (const member of members) (member.is_active === false ? retired : live).push(member);
-  return { live, retired };
-}
