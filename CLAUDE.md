@@ -673,7 +673,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   `find_spec` found them, the import succeeded, nothing registered, and the app booted with 23
   modules instead of 27 saying nothing at all. `module_package` now requires `spec.origin`, and
   the test asserts that every enabled module *registers* rather than merely resolving to a path,
-  which is the invariant that was actually broken.
+  which is the invariant that was actually broken. Its **third** sibling is the same "several
+  questions, one `try`" rule again, one integration over and worth stating because it was found
+  by *running the fix rather than reading it*: Google Ads' thirteen-month backfill had never
+  completed for any account on any instance. `change_event` reaches back thirty days while the
+  metrics reach back four hundred, and `read_changes` clamped its **start** forward to that
+  horizon and left its end where it was — so every chunk but the first sent an *inverted* range,
+  Google refused it, and because the change read shared a `try` with three successful metric
+  reads the whole chunk was discarded and `sync_account` returned False, which is what the
+  chunked backfill halts on. **A window that ended before the horizon begins is not a request to
+  make**, and a nicety that rides along on a credential fails alone.
 - **A section whose data has two possible sources needs a setting, not a silent preference**
   (#373, `app/modules/marketing/rankings.py`). "Zoekwoordposities" was produced from SE Ranking
   and nothing else, so a client without that subscription simply had no keyword section — the one

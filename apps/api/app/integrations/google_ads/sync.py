@@ -101,9 +101,24 @@ async def sync_account(
             daily = await reporting.read_account_daily(client, account.customer_id, window)
             campaigns = await reporting.read_campaign_daily(client, account.customer_id, window)
             devices = await reporting.read_device_daily(client, account.customer_id, window)
-            changes = await reporting.read_changes(
-                client, account.customer_id, window, limit=reporting.LIMITS["changes"]
-            )
+            # The change log is a **different question on the same credential**, and it fails on
+            # its own (#381, the rule SE Ranking's gatherer learned in the same issue). It reads
+            # a resource with a 30-day horizon while the metrics reach back four hundred days,
+            # so on any backfill chunk but the first it is *expected* to have nothing to say —
+            # and sharing a `try` with the metrics meant one such refusal threw away three
+            # successful reads and reported the account as failed, which halts the chunked
+            # backfill. What the mirror is for is the metrics; the changes are a nicety that
+            # rides along.
+            try:
+                changes = await reporting.read_changes(
+                    client, account.customer_id, window, limit=reporting.LIMITS["changes"]
+                )
+            except AdsError as exc:
+                logger.info(
+                    "google ads: change log unavailable for %s (%s..%s): %s",
+                    account.customer_id, window.start, window.end, exc,
+                )
+                changes = None
     except AdsNotConfigured as exc:
         # A presentable state, not a failure to alarm anyone about: the account is unlinked from
         # its Google connection, or the org has no developer token yet.
@@ -129,7 +144,8 @@ async def sync_account(
     await _upsert_daily(session, account, GoogleAdsDimension.ACCOUNT, daily)
     await _upsert_daily(session, account, GoogleAdsDimension.CAMPAIGN, campaigns)
     await _upsert_daily(session, account, GoogleAdsDimension.DEVICE, devices)
-    await _upsert_changes(session, account, changes.rows)
+    if changes is not None:
+        await _upsert_changes(session, account, changes.rows)
     if learned_zone:
         account.time_zone = learned_zone
     account.last_synced_at = datetime.now(UTC)

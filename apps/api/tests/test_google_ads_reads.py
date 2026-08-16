@@ -645,6 +645,35 @@ async def test_changes_report_the_window_they_actually_read(client_for, fake) ->
     assert change == {"field": "amount_micros", "from": "40000000", "to": "400000000"}
 
 
+async def test_a_window_entirely_older_than_the_change_log_asks_nothing(fake) -> None:
+    """Clamping only the *start* produced an inverted range, and Google refused the pair (#381).
+
+    A backfill chunk covering 17 Jun – 16 Jul had its start pulled forward to the earliest
+    `change_event` answers for, its end left on the 16th, and was refused with
+    `changeEventError.CHANGE_DATE_RANGE_...`. There is nothing to ask about a window that ended
+    before the horizon begins, so the honest answer is no call at all — and the fake refuses
+    every query it was not scripted for, which is what makes "no call" assertable here.
+    """
+    from datetime import date as _date
+
+    from app.integrations.google_ads import reporting
+    from app.integrations.google_ads.reporting import Window
+
+    end = _date.today() - timedelta(days=60)
+    window = Window(start=end - timedelta(days=29), end=end)
+
+    result = await reporting.read_changes(
+        object(),  # type: ignore[arg-type] — never used: no call is made
+        "1234567890",
+        window,
+        limit=50,
+    )
+
+    assert result.rows == []
+    assert result.extra["effective_period"] is None
+    assert "google_ads.warning.changes_window_shortened" in result.warnings
+
+
 # --- the query passthrough ------------------------------------------------------------------ #
 
 

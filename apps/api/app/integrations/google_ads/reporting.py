@@ -1137,6 +1137,23 @@ async def read_changes(
     if start < earliest:
         start = earliest
         warnings.append("google_ads.warning.changes_window_shortened")
+    if start > window.end:
+        # The whole window is older than Google will answer for, so there is nothing to ask
+        # about — and asking anyway sends an **inverted** range (#381).
+        #
+        # Clamping only the start was half a fix. A backfill chunk of 17 Jun – 16 Jul had its
+        # start pulled forward to ~18 Jul while its end stayed on the 16th, and Google refused
+        # the pair with `changeEventError.CHANGE_DATE_RANGE_...`. Because `sync_account` read
+        # metrics and changes inside one `try`, that refusal discarded three successful metric
+        # reads and returned False, and the chunked backfill halts on a False — so the
+        # thirteen-month fill has never got past its *first* chunk on any account, on any
+        # instance, since it was written. Thirteen accounts on the live instance held exactly
+        # 30 days each, which is what that looks like from the outside.
+        result = ReadResult(rows=[], warnings=warnings)
+        result.extra["effective_period"] = None
+        result.extra["change_event_window_days"] = CHANGE_EVENT_DAYS
+        result.warnings.append("google_ads.warning.changes_exclude_automation")
+        return result
     rows = await client.search(
         customer_id,
         "SELECT change_event.change_date_time, change_event.change_resource_type, "

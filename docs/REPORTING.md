@@ -288,6 +288,24 @@ Resolution is the three-layer diff `rankings` already uses (`marketing_settings.
 `marketing.rankings` deliberately does **not** split: *waar sta ik* is one question, its rows are
 already grouped by theme, and two keyword tables for one client would be two answers to it.
 
+### …and the Google Ads section printed zeros because the backfill had never finished
+
+`google_ads._performance`'s guard against printing a month of zeros could never fire: `totals` is
+assembled key by key from `trend.totals`, which answers `0.0` for every metric it knows rather
+than omitting it, so an unsynced window produced a *populated* dict of zeros — truthy, and
+printed. It now tests the stored rows, which is what distinguishes "we spent nothing" from "we
+have not looked".
+
+The reason there was nothing to look at is upstream and worse. `change_event` reaches back thirty
+days while the metrics reach back four hundred, and `read_changes` clamped its **start** forward
+to that horizon while leaving its end alone — so every backfill chunk but the first sent an
+inverted range, Google refused it with `changeEventError.CHANGE_DATE_RANGE_…`, and because the
+change read shared a `try` with three successful metric reads the whole chunk was thrown away and
+`sync_account` returned False. The chunked backfill halts on a False. Thirteen accounts on the
+live instance held exactly thirty days of history each, which is what that looks like from
+outside. A window that ended before the horizon begins is not a request to make, and the change
+log — a nicety riding on the same credential — now fails alone.
+
 ## Who may read what
 
 | Key | Scope | Guards |

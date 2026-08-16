@@ -600,3 +600,40 @@ async def test_only_a_complete_backfill_stamps_itself(fake, monkeypatch) -> None
 
 async def _true() -> bool:
     return True
+
+
+async def test_a_backfill_chunk_older_than_the_change_log_still_mirrors_its_metrics(  # noqa: F811
+    fake,  # noqa: F811
+) -> None:
+    """The bug that stopped every thirteen-month backfill this feature has ever run (#381).
+
+    `change_event` reaches back thirty days; the metrics reach back four hundred. `read_changes`
+    clamped its *start* forward to the earliest Google answers for and left its end where it
+    was, so a chunk covering 17 Jun – 16 Jul sent an inverted range and was refused with
+    `changeEventError.CHANGE_DATE_RANGE_...`. Sharing one `try` with the three metric reads,
+    that refusal discarded them and returned False — and the chunked backfill halts on a False.
+
+    Which is why thirteen accounts on the live instance held exactly thirty days of history each
+    while `sync_account` had been reporting success on the first chunk and nothing after it.
+    """
+    t, account_id = await _org_and_account("gads-backfill-old-chunk")
+    old_end = date.today() - timedelta(days=60)
+    _script_week(fake, old_end)
+    # …and the change log refuses for that window, exactly as Google does.
+    fake.script("FROM change_event", failure("changeEventError", "CHANGE_DATE_RANGE_INFINITE"))
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        account = await session.scalar(
+            select(GoogleAdsAccount).where(GoogleAdsAccount.id == account_id)
+        )
+        ok = await sync_account(session, t.org, account, days=30, ends_days_ago=59)
+        await session.commit()
+
+    assert ok, "a refused change log must not fail the account it rode in on"
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        stored = await session.scalar(
+            select(func.count()).select_from(GoogleAdsMetricDaily)
+        )
+    assert stored > 0, "the metrics were read successfully and must still have been written"
