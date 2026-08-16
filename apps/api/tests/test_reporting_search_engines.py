@@ -32,6 +32,7 @@ import pytest
 from app.modules.marketing.report_sections import (
     _CACHE_ATTR,
     GatheredMarketing,
+    Part,
     _search_engines,
 )
 from app.modules.marketing.sources import seranking as se
@@ -290,13 +291,16 @@ async def test_a_client_without_one_still_gets_the_traffic_split() -> None:
     rank tracker, "zoekmachines" honestly means which ones sent people."""
     ctx, window = _seeded(
         GatheredMarketing(
+            parts={"ga4": [Part(key="ga4", label="", links=())]},
             live={
-                "organic_sources": {
-                    "columns": ["sessions"],
-                    "rows": [{"label": "google", "sessions": 512.0}],
-                    "compare_rows": [{"label": "google", "sessions": 480.0}],
+                "ga4": {
+                    "organic_sources": {
+                        "columns": ["sessions"],
+                        "rows": [{"label": "google", "sessions": 512.0}],
+                        "compare_rows": [{"label": "google", "sessions": 480.0}],
+                    }
                 }
-            }
+            },
         )
     )
 

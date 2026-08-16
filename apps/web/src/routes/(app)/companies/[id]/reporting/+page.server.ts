@@ -185,6 +185,18 @@ export const actions: Actions = {
       limit !== undefined ||
       minImpressions !== undefined ||
       maxPosition !== undefined;
+    // Websites (#381). The block is only rendered for a client with more than one property, so
+    // its absence means "this screen had nothing to say about it" and must leave the stored
+    // override alone — not clear it. `report_all_links` is what tells the two apart, and it is
+    // also what makes the exclusion complete: the ticked boxes say what is *in*, and a property
+    // whose checkbox never rendered would otherwise silently stay in.
+    const allLinks = String(form.get("report_all_links") ?? "")
+      .split(",")
+      .filter(Boolean);
+    const kept = new Set(form.getAll("report_links").map(String));
+    const split = inherited(form.get("report_split"));
+    const exclude = allLinks.filter((id) => !kept.has(id));
+    const anyReport = allLinks.length > 0 && (split !== null || exclude.length > 0);
     const marketing = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
       params: { path: { company_id: event.params.id } },
       body: {
@@ -198,6 +210,16 @@ export const actions: Actions = {
               max_position: maxPosition ?? null,
             }
           : null,
+        ...(allLinks.length
+          ? {
+              report: anyReport
+                ? {
+                    split: split as "per_website" | "combined" | null,
+                    exclude,
+                  }
+                : null,
+            }
+          : {}),
       },
     });
     if (marketing.error) return fail(400, { error: apiErrorKey(marketing.error).key });

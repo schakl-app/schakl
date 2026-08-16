@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -27,8 +28,15 @@ from app.modules.marketing.rankings import RankingSettings, RankingSource
 from app.modules.marketing.report_sections import (
     _CACHE_ATTR,
     GatheredMarketing,
+    Part,
+    _compose,
+    _partition,
     _rankings,
     _seranking_part,
+)
+from app.modules.marketing.reportsplit import ReportSplit
+from app.modules.marketing.reportsplit import (
+    resolve as resolve_report,
 )
 from app.modules.marketing.service import aggregate
 from app.modules.marketing.sources.base import AVERAGED_METRICS, SERANKING_METRICS
@@ -314,3 +322,119 @@ async def test_an_outage_and_an_entitlement_are_different_sentences() -> None:
         "reporting.warning.seranking_audit_failed",
         "reporting.warning.seranking_rankings_unavailable",
     ]
+
+
+# --------------------------------------------------------------------------------------- #
+# A client with two websites (#381)
+# --------------------------------------------------------------------------------------- #
+def _link(source: str, name: str) -> Any:
+    """Enough of a `MarketingLink` for `_partition`: what it is and what to call it."""
+    return SimpleNamespace(
+        id=uuid.uuid4(), source=source, display_name=name, config={}, last_synced_at=None
+    )
+
+
+def test_two_properties_of_one_source_become_two_named_blocks() -> None:
+    """The default, and the whole point.
+
+    Before this a source resolved to one arbitrary link — `next(...)` for the live tables and
+    whichever the query returned *last* for the totals — so one client's document carried one
+    website's tables under another's figures, with no `ORDER BY` to make even that stable.
+    """
+    aaprotec, opentje = _link("ga4", "AAproTec GA4"), _link("ga4", "opentjewereld.nl")
+
+    parts = _partition([aaprotec, opentje], ReportSplit.PER_WEBSITE)["ga4"]
+
+    assert [part.label for part in parts] == ["AAproTec GA4", "opentjewereld.nl"]
+    assert [part.links for part in parts] == [(aaprotec,), (opentje,)]
+    assert len({part.key for part in parts}) == 2
+
+
+def test_one_property_is_one_unlabelled_block() -> None:
+    """Which is what makes this change invisible for every client but the ones it is for.
+
+    An empty label is what tells the renderer there is nothing to name, so a section with one
+    block renders byte for byte as it did before parts existed — including in a tenant's own
+    Jinja design, which this codebase has never seen.
+    """
+    parts = _partition([_link("ga4", "Klant GA4")], ReportSplit.PER_WEBSITE)["ga4"]
+
+    assert len(parts) == 1
+    assert parts[0].label == ""
+
+
+def test_combined_is_one_block_over_every_property() -> None:
+    """…and it is unlabelled too. A heading reading "aaprotec.nl + opentjewereld.nl" over a
+    combined figure would be a heading arguing with the number under it."""
+    links = [_link("ga4", "Eén"), _link("ga4", "Twee"), _link("ga4", "Drie")]
+
+    parts = _partition(links, ReportSplit.COMBINED)["ga4"]
+
+    assert len(parts) == 1
+    assert parts[0].label == ""
+    assert parts[0].links == tuple(links)
+
+
+def test_each_source_is_split_on_its_own() -> None:
+    """A client can have two GA4 properties and one Search Console — splitting the second
+    because the first is split would invent a block with nothing in it."""
+    links = [_link("ga4", "Eén"), _link("ga4", "Twee"), _link("gsc", "sc-domain:klant.nl")]
+
+    parts = _partition(links, ReportSplit.PER_WEBSITE)
+
+    assert len(parts["ga4"]) == 2
+    assert len(parts["gsc"]) == 1
+    assert parts["gsc"][0].label == ""
+
+
+def test_a_section_flattens_its_first_block_onto_itself() -> None:
+    """`parts` is additive, and it has to be.
+
+    A tenant may bring their own Jinja (docs/INVOICING.md), so a payload shape change would
+    break a design nobody here can see. A design that has never heard of `parts` renders the
+    first website — strictly better than the arbitrary one it rendered before.
+    """
+    data = GatheredMarketing(
+        parts={"ga4": [Part("a", "aaprotec.nl", ()), Part("b", "opentjewereld.nl", ())]}
+    )
+
+    payload = _compose(
+        data,
+        "ga4",
+        "channels",
+        lambda part: {"columns": ["sessions"], "rows": [{"label": part.label}], "totals": {}},
+    )
+
+    assert payload is not None
+    assert [part["label"] for part in payload["parts"]] == ["aaprotec.nl", "opentjewereld.nl"]
+    assert payload["rows"] == payload["parts"][0]["rows"]
+    assert payload["columns"] == ["sessions"]
+
+
+def test_a_block_with_nothing_in_it_is_not_drawn() -> None:
+    """A property linked but never synced must not print an empty table under its own name —
+    the section-level rule (`None` rather than an empty table), one level down."""
+    data = GatheredMarketing(
+        parts={"ga4": [Part("a", "aaprotec.nl", ()), Part("b", "leeg.nl", ())]}
+    )
+
+    payload = _compose(
+        data,
+        "ga4",
+        "channels",
+        lambda part: {"rows": [{"label": "x"}]} if part.key == "a" else None,
+    )
+
+    assert payload is not None
+    assert [part["label"] for part in payload["parts"]] == ["aaprotec.nl"]
+
+
+def test_a_report_that_excludes_every_property_is_no_report_at_all() -> None:
+    """`resolve` merges the org's rule with this client's diff, and an exclusion is per client
+    because a link id is."""
+    settings = resolve_report({"split": "combined"}, {"exclude": ["not-a-uuid"]})
+
+    # An id that no longer parses is a link that no longer exists: the same answer as excluding
+    # nothing, rather than a stale setting taking a client's whole report down.
+    assert settings.exclude == frozenset()
+    assert settings.split is ReportSplit.COMBINED

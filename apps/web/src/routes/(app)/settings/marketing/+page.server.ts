@@ -51,6 +51,14 @@ export const actions: Actions = {
           grouped: checked(form, "rankings_grouped"),
           show_landing_pages: checked(form, "rankings_show_landing_pages"),
         },
+        // The house rule for a client with several websites (#381). Like the source above it,
+        // an unrecognised value is dropped rather than written — this is a two-option select,
+        // and a third value could only ever come from something that is not this form.
+        report: {
+          split: (["per_website", "combined"].includes(String(form.get("report_split")))
+            ? String(form.get("report_split"))
+            : null) as "per_website" | "combined" | null,
+        },
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

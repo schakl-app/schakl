@@ -162,6 +162,21 @@
           <p class="mt-1 text-xs text-text-muted">{t("reporting.rankings.max_position_hint")}</p>
         </div>
       </div>
+      <div class="mt-4">
+        <label for="report-split" class="mb-1 block text-sm font-medium text-text">
+          {t("reporting.websites.split")}
+        </label>
+        <select
+          id="report-split"
+          name="report_split"
+          value={settings?.report?.split ?? "per_website"}
+          class={inputClass}
+        >
+          <option value="per_website">{t("reporting.websites.split_per_website")}</option>
+          <option value="combined">{t("reporting.websites.split_combined")}</option>
+        </select>
+        <p class="mt-1 text-xs text-text-muted">{t("reporting.websites.split_hint")}</p>
+      </div>
       <div class="mt-3 space-y-2">
         <label class="flex items-center gap-2 text-sm text-text">
           <FormCheckbox

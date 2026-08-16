@@ -49,13 +49,26 @@ def module_package(name: str) -> str | None:
     executing it: a module whose own imports are broken must still raise from the *import*, not
     be quietly reported as absent (an instance booting with a module missing from the registry
     404s every route it owns, with nothing having said why).
+
+    **A directory with no ``__init__.py`` is not a package here** (#381). Python has treated one
+    as a PEP 420 *namespace* package since 3.3, so ``find_spec`` finds it, the import succeeds,
+    and nothing registers — the exact silent absence the paragraph above exists to prevent,
+    arriving through a door it did not check. That is not hypothetical: #378 moved
+    ``cloudflare``, ``mollie``, ``oxxa`` and ``uptime`` from ``app/modules/`` to
+    ``app/integrations/``, git does not track empty directories, and every checkout that
+    predated the move kept four ``app/modules/<name>/__pycache__/`` husks. ``app.modules`` is
+    searched first, so those husks shadowed the real packages: the app booted, the registry held
+    23 modules instead of 27, and the only visible symptom was fifty-one endpoints quietly
+    missing from a regenerated OpenAPI client. A namespace package has ``origin is None``, which
+    is the one-line test for "this is a leftover directory, not a module".
     """
     for root in MODULE_ROOTS:
         try:
-            if importlib.util.find_spec(f"{root}.{name}") is not None:
-                return f"{root}.{name}"
+            spec = importlib.util.find_spec(f"{root}.{name}")
         except ModuleNotFoundError:
             continue
+        if spec is not None and spec.origin is not None:
+            return f"{root}.{name}"
     return None
 
 

@@ -57,6 +57,10 @@ from app.modules.marketing.rankings import (
 from app.modules.marketing.rankings import (
     resolve as resolve_rankings,
 )
+from app.modules.marketing.reportsplit import ReportSettings, ReportSplit
+from app.modules.marketing.reportsplit import (
+    resolve as resolve_report,
+)
 from app.modules.marketing.service import (
     aggregate,
     org_key_client,
@@ -94,10 +98,18 @@ class GatheredMarketing:
     """Everything the marketing sections need for one client and one period pair."""
 
     links: list[MarketingLink] = field(default_factory=list)
-    #: ``{source: {"totals": {...}, "compare": {...}, "channels": {...},
-    #:             "compare_channels": {...}, "days": int}}``
+    #: What each section draws one block for, per source (#381). One entry per property under
+    #: ``per_website``, or a single entry covering all of them under ``combined``.
+    parts: dict[str, list[Part]] = field(default_factory=dict)
+    #: ``{part key: {"totals": {...}, "compare": {...}, "channels": {...},
+    #:               "compare_channels": {...}, "days": int}}``
+    #:
+    #: Keyed by **part**, not by source. It was keyed by source and written once per link, so a
+    #: client with two GA4 properties silently kept whichever one the query happened to return
+    #: last — while :func:`_gather_ga4_live` read whichever it returned *first*, putting one
+    #: website's tables under another's totals in one document.
     stored: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: ``{kind: {"rows": [...], "compare_rows": [...]}}`` — the live GA4 splits.
+    #: ``{part key: {kind: {"rows": [...], "compare_rows": [...]}}}`` — the live GA4 splits.
     live: dict[str, dict[str, Any]] = field(default_factory=dict)
     keywords: list[dict[str, Any]] = field(default_factory=list)
     #: Which source the keyword rows above came from, or ``None`` when this client gets no
@@ -114,7 +126,28 @@ class GatheredMarketing:
     ai_search: list[dict[str, Any]] = field(default_factory=list)
     key_event_labels: dict[str, str] = field(default_factory=dict)
     show_conversions: bool = True
+    report_settings: ReportSettings = field(default_factory=ReportSettings)
     notes: list[dict[str, str]] = field(default_factory=list)
+
+    def of(self, source: str) -> list[Part]:
+        """The blocks a section of ``source`` draws, in the order the document prints them."""
+        return self.parts.get(source, [])
+
+
+@dataclass(frozen=True)
+class Part:
+    """One block inside a section: a label, and the links its figures come from.
+
+    A part is what makes "this client has two websites" expressible without every provider
+    learning about it. Under ``per_website`` there is one per property and ``label`` names it;
+    under ``combined`` there is one covering all of them and ``label`` is empty, which is also
+    exactly what a client with a single property gets — so the common case renders byte for byte
+    as it did before there was a part at all.
+    """
+
+    key: str
+    label: str
+    links: tuple[MarketingLink, ...]
 
 
 def _memo(ctx: RequestContext) -> dict[tuple, GatheredMarketing]:
@@ -170,8 +203,25 @@ async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketin
             if isinstance(labels, dict)
         }
 
+    org_settings = await ctx.session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == ctx.org.id)
+    )
+    out.report_settings = resolve_report(
+        org_settings.report if org_settings else None,
+        settings_row.report if settings_row else None,
+    )
+    # A link the client's report excludes is dropped here, before anything reads it, so no
+    # provider and no warning has to remember (#381). Done after the links are loaded rather
+    # than in the query, because the exclusion is a report setting and the same rows answer the
+    # dashboard, which still shows every property.
+    out.links = [link for link in out.links if link.id not in out.report_settings.exclude]
+    if not out.links:
+        return out
+    out.parts = _partition(out.links, out.report_settings.split)
+
+    for part in [part for parts in out.parts.values() for part in parts]:
+        out.stored[part.key] = await _stored(ctx, part, window)
     for link in out.links:
-        out.stored[link.source] = await _stored(ctx, link, window)
         if link.last_synced_at is None:
             out.notes.append(
                 {"code": "reporting.warning.never_synced", "detail": link.display_name}
@@ -181,9 +231,6 @@ async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketin
                 {"code": "reporting.warning.link_error", "detail": link.display_name}
             )
 
-    org_settings = await ctx.session.scalar(
-        select(MarketingSettings).where(MarketingSettings.org_id == ctx.org.id)
-    )
     out.ranking_settings = resolve_rankings(
         org_settings.rankings if org_settings else None,
         settings_row.rankings if settings_row else None,
@@ -204,10 +251,47 @@ async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketin
     return out
 
 
+def _partition(links: list[MarketingLink], split: ReportSplit) -> dict[str, list[Part]]:
+    """The blocks each section will draw, per source.
+
+    Under ``combined`` — and for every client with a single property, which is the overwhelming
+    majority — a source resolves to one unlabelled part, and every section renders exactly as it
+    did before parts existed. Under ``per_website`` a source with two properties resolves to two
+    named ones, in the links' own order, so the two tables in one section sit in the same order
+    as the two tables in the next.
+    """
+    by_source: dict[str, list[MarketingLink]] = {}
+    for link in links:
+        by_source.setdefault(link.source, []).append(link)
+    out: dict[str, list[Part]] = {}
+    for source, group in by_source.items():
+        if split is ReportSplit.COMBINED or len(group) == 1:
+            # An empty label is what tells the renderer there is nothing to name. One property
+            # does not want a heading saying which property, and neither does a deliberate
+            # merge — "aaprotec.nl + opentjewereld.nl" over a combined figure would be a
+            # heading arguing with the number under it.
+            out[source] = [Part(key=source, label="", links=tuple(group))]
+            continue
+        out[source] = [
+            Part(key=f"{source}:{link.id}", label=link.display_name, links=(link,))
+            for link in group
+        ]
+    return out
+
+
 async def _stored(
-    ctx: RequestContext, link: MarketingLink, window: ReportWindow
+    ctx: RequestContext, part: Part, window: ReportWindow
 ) -> dict[str, Any]:
-    """Both periods of one link's daily rows, aggregated. Two indexed reads, never per day."""
+    """Both periods of a part's daily rows, aggregated. Two indexed reads, never per day.
+
+    A combined part is folded **from the raw daily rows of every link it covers**, not by adding
+    two links' aggregates together. That is the whole reason it takes a part rather than a link:
+    ``ctr``, ``position`` and ``engagementRate`` are impression- or session-weighted
+    (``service._WEIGHT_BY_METRIC``), and averaging two properties' averages answers a number
+    that is neither site's and no one's.
+    """
+    source = part.links[0].source
+    link_ids = [link.id for link in part.links]
 
     async def totals(
         start: date | None, end: date | None
@@ -220,7 +304,7 @@ async def _stored(
                     MarketingMetricDaily.metrics, MarketingMetricDaily.currency
                 ).where(
                     MarketingMetricDaily.org_id == ctx.org.id,
-                    MarketingMetricDaily.link_id == link.id,
+                    MarketingMetricDaily.link_id.in_(link_ids),
                     MarketingMetricDaily.date >= start,
                     MarketingMetricDaily.date <= end,
                 )
@@ -234,7 +318,9 @@ async def _stored(
         for row in rows:
             for name, sessions in (row.get("channels") or {}).items():
                 channels[name] = channels.get(name, 0.0) + float(sessions or 0)
-        return aggregate(link.source, rows), channels, len(rows), currency
+        # `days` counts *rows*, and a combined part has one per link per day — divided back out,
+        # so "31 days of July" stays 31 for a client with two properties rather than 62.
+        return aggregate(source, rows), channels, len(rows) // len(link_ids), currency
 
     current, channels, days, currency = await totals(window.start, window.end)
     compare, compare_channels, compare_days, _ = await totals(
@@ -242,61 +328,121 @@ async def _stored(
     )
     return {
         "totals": current,
-        "currency": currency or (link.config or {}).get("currency"),
+        "currency": currency or (part.links[0].config or {}).get("currency"),
         "channels": channels,
         "compare": compare if compare_days else None,
         "compare_channels": compare_channels,
         "days": days,
         "compare_days": compare_days,
-        "display_name": link.display_name,
+        "display_name": part.label or part.links[0].display_name,
     }
 
 
 async def _gather_ga4_live(
     ctx: RequestContext, out: GatheredMarketing, window: ReportWindow
 ) -> None:
-    """The four splits GA4 never warehoused, both periods, in one Google session."""
-    link = next(
-        (link for link in out.links if link.source == MarketingSource.GA4.value), None
-    )
-    if link is None or link.connection_id is None:
-        return
-    connection = await ctx.session.get(GoogleConnection, link.connection_id)
-    if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
-        out.notes.append({"code": "reporting.warning.disconnected", "detail": "ga4"})
-        return
-    adapter = source_for(MarketingSource.GA4.value)
-    try:
-        # The pool connection is handed back for the whole live block — this is a dozen GA4
-        # calls and would otherwise pin a connection for the length of them (CLAUDE.md §11).
-        async with (
-            google_client.acting_as(ctx.session, ctx.org, connection) as gclient,
-            ctx.release_db(),
-        ):
-            for kind in _GA4_LIVE_KINDS:
-                if kind == "key_events" and not out.show_conversions:
-                    continue
-                current = await adapter.drilldown(
-                    gclient, link.external_id, kind, window.start, window.end,
-                    link.config or {},
-                )
-                compare_rows: list[dict[str, Any]] = []
-                if window.compare_start and window.compare_end:
-                    previous = await adapter.drilldown(
-                        gclient, link.external_id, kind,
-                        window.compare_start, window.compare_end, link.config or {},
+    """The four splits GA4 never warehoused, both periods — one block per part (#381).
+
+    It used to take ``next(link for link in out.links if link.source == "ga4")``: one arbitrary
+    property, for a client who might have two, while the totals above these tables came from
+    whichever property the *stored* loop had written last. Two websites, one document, and no
+    ``ORDER BY`` anywhere to make even the wrong answer a stable one.
+    """
+    for part in out.of(MarketingSource.GA4.value):
+        out.live[part.key] = await _ga4_part(ctx, out, part, window)
+
+
+async def _ga4_part(
+    ctx: RequestContext,
+    out: GatheredMarketing,
+    part: Part,
+    window: ReportWindow,
+) -> dict[str, Any]:
+    """One part's live splits. A combined part reads each property and merges by label."""
+    live: dict[str, Any] = {}
+    for link in part.links:
+        if link.connection_id is None:
+            continue
+        connection = await ctx.session.get(GoogleConnection, link.connection_id)
+        if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
+            out.notes.append(
+                {"code": "reporting.warning.disconnected", "detail": link.display_name}
+            )
+            continue
+        adapter = source_for(MarketingSource.GA4.value)
+        try:
+            # The pool connection is handed back for the whole live block — this is a dozen GA4
+            # calls and would otherwise pin a connection for the length of them (CLAUDE.md §11).
+            async with (
+                google_client.acting_as(ctx.session, ctx.org, connection) as gclient,
+                ctx.release_db(),
+            ):
+                for kind in _GA4_LIVE_KINDS:
+                    if kind == "key_events" and not out.show_conversions:
+                        continue
+                    current = await adapter.drilldown(
+                        gclient, link.external_id, kind, window.start, window.end,
+                        link.config or {},
                     )
-                    compare_rows = [
-                        {"label": row.label, **row.metrics} for row in previous.rows
-                    ]
-                out.live[kind] = {
-                    "columns": current.columns,
-                    "rows": [{"label": row.label, **row.metrics} for row in current.rows],
-                    "compare_rows": compare_rows,
-                }
-    except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
-        logger.warning("reporting: GA4 live fetch failed for %s: %s", link.id, exc)
-        out.notes.append({"code": "reporting.warning.source_failed", "detail": "ga4"})
+                    compare_rows: list[dict[str, Any]] = []
+                    if window.compare_start and window.compare_end:
+                        previous = await adapter.drilldown(
+                            gclient, link.external_id, kind,
+                            window.compare_start, window.compare_end, link.config or {},
+                        )
+                        compare_rows = [
+                            {"label": row.label, **row.metrics} for row in previous.rows
+                        ]
+                    _merge_live(
+                        live,
+                        kind,
+                        current.columns,
+                        [{"label": row.label, **row.metrics} for row in current.rows],
+                        compare_rows,
+                    )
+        except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
+            logger.warning("reporting: GA4 live fetch failed for %s: %s", link.id, exc)
+            out.notes.append(
+                {"code": "reporting.warning.source_failed", "detail": link.display_name}
+            )
+    return live
+
+
+def _merge_live(
+    live: dict[str, Any],
+    kind: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    compare_rows: list[dict[str, Any]],
+) -> None:
+    """Fold one property's split into the part's, adding rows that share a label.
+
+    Only ever called more than once per kind for a **combined** part, where adding is what the
+    setting asked for: ``google`` on two properties of one business is one row of organic
+    traffic. Rows are summed rather than concatenated because a table listing ``google`` twice
+    would be the same failure as printing two properties' figures without saying so, one level
+    down.
+    """
+    entry = live.setdefault(kind, {"columns": columns, "rows": [], "compare_rows": []})
+    if not entry["columns"]:
+        entry["columns"] = columns
+    for target, incoming in (("rows", rows), ("compare_rows", compare_rows)):
+        by_label = {str(row.get("label")): row for row in entry[target]}
+        for row in incoming:
+            label = str(row.get("label"))
+            existing = by_label.get(label)
+            if existing is None:
+                by_label[label] = dict(row)
+                entry[target].append(by_label[label])
+                continue
+            for key, value in row.items():
+                if key == "label" or not isinstance(value, int | float):
+                    continue
+                existing[key] = float(existing.get(key) or 0) + float(value)
+        entry[target].sort(
+            key=lambda row: float(row.get("sessions") or row.get("keyEvents") or 0),
+            reverse=True,
+        )
 
 
 async def _gather_seranking(
@@ -417,36 +563,46 @@ async def _gather_gsc_keywords(
     """
     if out.keyword_source is not RankingSource.SEARCH_CONSOLE:
         return
-    link = next(
-        (link for link in out.links if link.source == MarketingSource.GSC.value), None
-    )
-    if link is None or link.connection_id is None:
-        return
-    connection = await ctx.session.get(GoogleConnection, link.connection_id)
-    if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
-        out.notes.append({"code": "reporting.warning.disconnected", "detail": "gsc"})
-        return
     adapter = source_for(MarketingSource.GSC.value)
     settings = out.ranking_settings
-    try:
-        async with (
-            google_client.acting_as(ctx.session, ctx.org, connection) as gclient,
-            ctx.release_db(),
-        ):
-            out.keywords = await adapter.keyword_rows(
-                gclient,
-                link.external_id,
-                window.start,
-                window.end,
-                window.compare_start,
-                window.compare_end,
-                limit=settings.limit,
-                min_impressions=settings.min_impressions,
-                max_position=settings.max_position,
+    # One keyword table per property, concatenated and re-sorted — the rankings section groups
+    # by theme rather than by property, and a client's terms are their terms whichever of their
+    # sites answers for them. Which is also why this one section does not split: two tables of
+    # "waar sta ik" for one client would be two answers to one question (#381).
+    for link in [
+        link for link in out.links if link.source == MarketingSource.GSC.value
+    ]:
+        if link.connection_id is None:
+            continue
+        connection = await ctx.session.get(GoogleConnection, link.connection_id)
+        if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
+            out.notes.append(
+                {"code": "reporting.warning.disconnected", "detail": link.display_name}
             )
-    except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
-        logger.warning("reporting: Search Console keywords failed for %s: %s", link.id, exc)
-        out.notes.append({"code": "reporting.warning.source_failed", "detail": "gsc"})
+            continue
+        try:
+            async with (
+                google_client.acting_as(ctx.session, ctx.org, connection) as gclient,
+                ctx.release_db(),
+            ):
+                out.keywords.extend(
+                    await adapter.keyword_rows(
+                        gclient,
+                        link.external_id,
+                        window.start,
+                        window.end,
+                        window.compare_start,
+                        window.compare_end,
+                        limit=settings.limit,
+                        min_impressions=settings.min_impressions,
+                        max_position=settings.max_position,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
+            logger.warning("reporting: Search Console keywords failed for %s: %s", link.id, exc)
+            out.notes.append(
+                {"code": "reporting.warning.source_failed", "detail": link.display_name}
+            )
 
 
 # --------------------------------------------------------------------------------------- #
@@ -472,45 +628,83 @@ def _delta(current: float, previous: float | None) -> float | None:
     return round(((current - previous) / previous) * 100, 1)
 
 
+#: What a part contributes to its section. Everything else on a section payload — the kind, the
+#: notes — is the section's, and is stated once.
+_PART_FIELDS = ("columns", "rows", "groups", "totals", "compare", "chart", "currency")
+
+
+def _compose(
+    data: GatheredMarketing,
+    source: str,
+    kind: str,
+    build: Any,
+) -> dict[str, Any] | None:
+    """One section from one block per part (#381).
+
+    The payload keeps its old shape **exactly** for a client with one property: ``rows``,
+    ``totals`` and the rest sit at the top level, mirroring the first (only) part. That is not
+    politeness towards old code — a tenant may bring their own Jinja design (`docs/INVOICING.md`),
+    and a shape change would break a template this codebase has never seen. ``parts`` is
+    additive, and a design that ignores it renders the first website, which is strictly better
+    than the arbitrary one it rendered before.
+    """
+    parts: list[dict[str, Any]] = []
+    for part in data.of(source):
+        payload = build(part)
+        if payload:
+            parts.append({"label": part.label, **payload})
+    if not parts:
+        return None
+    return {
+        "kind": kind,
+        "parts": parts,
+        **{key: parts[0].get(key) for key in _PART_FIELDS},
+        "notes": data.notes,
+    }
+
+
 async def _traffic_channels(
     ctx: RequestContext, window: ReportWindow
 ) -> dict[str, Any] | None:
     data = await gather(ctx, window)
-    stored = data.stored.get(MarketingSource.GA4.value)
-    if not stored or not stored["channels"]:
-        return None
-    compare_channels = stored.get("compare_channels") or {}
-    rows = [
-        {
-            "label": name,
-            "sessions": round(sessions, 0),
-            "compare_sessions": round(compare_channels.get(name, 0.0), 0),
-            "delta": _delta(sessions, compare_channels.get(name) if compare_channels else None),
-            "share": round(sessions / sum(stored["channels"].values()) * 100, 1)
-            if sum(stored["channels"].values())
-            else 0.0,
+
+    def build(part: Part) -> dict[str, Any] | None:
+        stored = data.stored.get(part.key)
+        if not stored or not stored["channels"]:
+            return None
+        compare_channels = stored.get("compare_channels") or {}
+        total = sum(stored["channels"].values())
+        rows = [
+            {
+                "label": name,
+                "sessions": round(sessions, 0),
+                "compare_sessions": round(compare_channels.get(name, 0.0), 0),
+                "delta": _delta(
+                    sessions, compare_channels.get(name) if compare_channels else None
+                ),
+                "share": round(sessions / total * 100, 1) if total else 0.0,
+            }
+            for name, sessions in sorted(
+                stored["channels"].items(), key=lambda pair: pair[1], reverse=True
+            )
+        ]
+        return {
+            "columns": ["sessions", "compare_sessions", "delta", "share"],
+            "rows": rows,
+            "totals": stored["totals"],
+            "currency": stored.get("currency"),
+            "compare": stored["compare"],
+            "chart": {
+                "type": "grouped",
+                "labels": [row["label"] for row in rows],
+                "series": [
+                    {"key": "current", "values": [row["sessions"] for row in rows]},
+                    {"key": "compare", "values": [row["compare_sessions"] for row in rows]},
+                ],
+            },
         }
-        for name, sessions in sorted(
-            stored["channels"].items(), key=lambda pair: pair[1], reverse=True
-        )
-    ]
-    return {
-        "kind": "channels",
-        "columns": ["sessions", "compare_sessions", "delta", "share"],
-        "rows": rows,
-        "totals": stored["totals"],
-        "currency": stored.get("currency"),
-        "compare": stored["compare"],
-        "chart": {
-            "type": "grouped",
-            "labels": [row["label"] for row in rows],
-            "series": [
-                {"key": "current", "values": [row["sessions"] for row in rows]},
-                {"key": "compare", "values": [row["compare_sessions"] for row in rows]},
-            ],
-        },
-        "notes": data.notes,
-    }
+
+    return _compose(data, MarketingSource.GA4.value, "channels", build)
 
 
 #: GA4 answers with a *total* engagement time per row, and printing it under a column headed
@@ -532,76 +726,83 @@ def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
 
     async def provider(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
         data = await gather(ctx, window)
-        live = data.live.get(kind)
-        if not live or not live["rows"]:
-            return None
-        compare = {row["label"]: row for row in live.get("compare_rows") or []}
-        rows = []
-        for row in live["rows"]:
-            previous = compare.get(row["label"])
-            rows.append(
-                {
-                    **row,
-                    _ENGAGEMENT_AVG: _per_session(row),
-                    "compare_sessions": (previous or {}).get("sessions"),
-                    "delta": _delta(
-                        float(row.get("sessions") or 0),
-                        (previous or {}).get("sessions") if previous else None,
-                    ),
+
+        def build(part: Part) -> dict[str, Any] | None:
+            live = (data.live.get(part.key) or {}).get(kind)
+            if not live or not live["rows"]:
+                return None
+            compare = {row["label"]: row for row in live.get("compare_rows") or []}
+            rows = []
+            for row in live["rows"]:
+                previous = compare.get(row["label"])
+                rows.append(
+                    {
+                        **row,
+                        _ENGAGEMENT_AVG: _per_session(row),
+                        "compare_sessions": (previous or {}).get("sessions"),
+                        "delta": _delta(
+                            float(row.get("sessions") or 0),
+                            (previous or {}).get("sessions") if previous else None,
+                        ),
+                    }
+                )
+            rows = _capped(rows, limit, data, kind)
+            payload: dict[str, Any] = {
+                "columns": [
+                    _ENGAGEMENT_AVG if column == _ENGAGEMENT_TOTAL else column
+                    for column in live["columns"]
+                ],
+                "rows": rows,
+                "totals": {},
+                "compare": None,
+                "chart": None,
+            }
+            if chart == "share":
+                payload["chart"] = {
+                    "type": "share",
+                    "items": [
+                        {"label": row["label"], "value": float(row.get("sessions") or 0)}
+                        for row in rows
+                    ],
                 }
-            )
-        rows = _capped(rows, limit, data, kind)
-        payload: dict[str, Any] = {
-            "kind": kind,
-            "columns": [
-                _ENGAGEMENT_AVG if column == _ENGAGEMENT_TOTAL else column
-                for column in live["columns"]
-            ],
-            "rows": rows,
-            "totals": {},
-            "compare": None,
-            "chart": None,
-            "notes": data.notes,
-        }
-        if chart == "share":
-            payload["chart"] = {
-                "type": "share",
-                "items": [
-                    {"label": row["label"], "value": float(row.get("sessions") or 0)}
-                    for row in rows
-                ],
-            }
-        elif chart == "grouped":
-            payload["chart"] = {
-                "type": "grouped",
-                "labels": [row["label"] for row in rows[:10]],
-                "series": [
-                    {
-                        "key": "current",
-                        "values": [float(r.get("sessions") or 0) for r in rows[:10]],
-                    },
-                    {
-                        "key": "compare",
-                        "values": [float(r.get("compare_sessions") or 0) for r in rows[:10]],
-                    },
-                ],
-            }
-        return payload
+            elif chart == "grouped":
+                payload["chart"] = {
+                    "type": "grouped",
+                    "labels": [row["label"] for row in rows[:10]],
+                    "series": [
+                        {
+                            "key": "current",
+                            "values": [float(r.get("sessions") or 0) for r in rows[:10]],
+                        },
+                        {
+                            "key": "compare",
+                            "values": [
+                                float(r.get("compare_sessions") or 0) for r in rows[:10]
+                            ],
+                        },
+                    ],
+                }
+            return payload
+
+        return _compose(data, MarketingSource.GA4.value, kind, build)
 
     return provider
 
 
-#: The columns the per-engine table prints. Six, which is what the design's ``column_widths``
-#: is willing to lay out beside a name — see #373 on stating a printed table's geometry.
+#: The columns the per-engine table prints. **Five**, which is the geometry the rankings table
+#: beside it already proves fits (#373: a printed table's width is stated, not negotiated). Six
+#: was one too many — measured, not guessed: at six the stated width is narrow enough that
+#: ``GEVOLGD`` and ``VERSCHIL`` each wrap under their own glyph, which is the exact failure that
+#: rule was written about.
 #:
-#: ``keywords_ranking`` is deliberately not among them and is still on the row: the model reads
-#: the snapshot and can say "of the 145, ninety rank at all", while the printed table spends its
-#: sixth column on the *move* — which is what makes a section a report rather than a screenshot.
+#: ``keywords_ranking`` and ``top30`` are deliberately not among them and are still on the row,
+#: where the model reads them: a paragraph can say "van de 145 scoren er negentig, 67 binnen de
+#: top 30" far better than a seventh column can, and the printed table spends its last column on
+#: the *move* instead — which is what makes a section a report rather than a screenshot.
 _ENGINE_COLUMNS = (
     "keywords_tracked",
     "top3",
     "top10",
-    "top30",
     "avg_position",
     "change",
 )
@@ -663,42 +864,49 @@ async def _conversions(ctx: RequestContext, window: ReportWindow) -> dict[str, A
     data = await gather(ctx, window)
     if not data.show_conversions:
         return None
-    live = data.live.get("key_events")
-    if not live or not live["rows"]:
-        return None
-    compare = {row["label"]: row for row in live.get("compare_rows") or []}
-    rows = [
-        {
-            # The tenant's own label for this event where they set one (#192), so the client's
-            # dashboard and their PDF call the same thing by the same name.
-            "label": data.key_event_labels.get(row["label"]) or row["label"],
-            "keyEvents": float(row.get("keyEvents") or 0),
-            "compare_keyEvents": float((compare.get(row["label"]) or {}).get("keyEvents") or 0),
-            "delta": _delta(
-                float(row.get("keyEvents") or 0),
-                (compare.get(row["label"]) or {}).get("keyEvents")
-                if row["label"] in compare
-                else None,
-            ),
+
+    def build(part: Part) -> dict[str, Any] | None:
+        live = (data.live.get(part.key) or {}).get("key_events")
+        if not live or not live["rows"]:
+            return None
+        compare = {row["label"]: row for row in live.get("compare_rows") or []}
+        rows = [
+            {
+                # The tenant's own label for this event where they set one (#192), so the
+                # client's dashboard and their PDF call the same thing by the same name.
+                "label": data.key_event_labels.get(row["label"]) or row["label"],
+                "keyEvents": float(row.get("keyEvents") or 0),
+                "compare_keyEvents": float(
+                    (compare.get(row["label"]) or {}).get("keyEvents") or 0
+                ),
+                "delta": _delta(
+                    float(row.get("keyEvents") or 0),
+                    (compare.get(row["label"]) or {}).get("keyEvents")
+                    if row["label"] in compare
+                    else None,
+                ),
+            }
+            for row in live["rows"]
+        ]
+        return {
+            "columns": ["keyEvents", "compare_keyEvents", "delta"],
+            "rows": _capped(rows, MAX_TABLE_ROWS, data, "conversions"),
+            "totals": {},
+            "compare": None,
+            "chart": {
+                "type": "grouped",
+                "labels": [row["label"] for row in rows[:10]],
+                "series": [
+                    {"key": "current", "values": [row["keyEvents"] for row in rows[:10]]},
+                    {
+                        "key": "compare",
+                        "values": [row["compare_keyEvents"] for row in rows[:10]],
+                    },
+                ],
+            },
         }
-        for row in live["rows"]
-    ]
-    return {
-        "kind": "conversions",
-        "columns": ["keyEvents", "compare_keyEvents", "delta"],
-        "rows": _capped(rows, MAX_TABLE_ROWS, data, "conversions"),
-        "totals": {},
-        "compare": None,
-        "chart": {
-            "type": "grouped",
-            "labels": [row["label"] for row in rows[:10]],
-            "series": [
-                {"key": "current", "values": [row["keyEvents"] for row in rows[:10]]},
-                {"key": "compare", "values": [row["compare_keyEvents"] for row in rows[:10]]},
-            ],
-        },
-        "notes": data.notes,
-    }
+
+    return _compose(data, MarketingSource.GA4.value, "conversions", build)
 
 
 async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
@@ -750,7 +958,10 @@ async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any]
             {**group, "rows": [{**row, "landing_page": None} for row in group["rows"]]}
             for group in grouped
         ]
-    stored = data.stored.get(MarketingSource.SERANKING.value) or {}
+    # Deliberately **one block, whichever way the client's report is split** (#381): "waar sta
+    # ik" is one question, its rows are already grouped by theme, and an agency tracking one
+    # client's terms across two of their sites has one keyword list rather than two answers.
+    stored = data.stored.get(_first_part_key(data, MarketingSource.SERANKING.value)) or {}
     totals = dict(stored.get("totals") or {})
     if not totals:
         totals = _position_summary(rows)
@@ -764,6 +975,11 @@ async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any]
         "chart": None,
         "notes": data.notes,
     }
+
+
+def _first_part_key(data: GatheredMarketing, source: str) -> str:
+    parts = data.of(source)
+    return parts[0].key if parts else source
 
 
 def _position_summary(rows: list[dict[str, Any]]) -> dict[str, float]:
@@ -798,18 +1014,20 @@ def _position_summary(rows: list[dict[str, Any]]) -> dict[str, float]:
 
 async def _search_console(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
     data = await gather(ctx, window)
-    stored = data.stored.get(MarketingSource.GSC.value)
-    if not stored or not stored["totals"]:
-        return None
-    return {
-        "kind": "search_console",
-        "columns": ["clicks", "impressions", "ctr", "position"],
-        "rows": [],
-        "totals": stored["totals"],
-        "compare": stored["compare"],
-        "chart": None,
-        "notes": data.notes,
-    }
+
+    def build(part: Part) -> dict[str, Any] | None:
+        stored = data.stored.get(part.key)
+        if not stored or not stored["totals"]:
+            return None
+        return {
+            "columns": ["clicks", "impressions", "ctr", "position"],
+            "rows": [],
+            "totals": stored["totals"],
+            "compare": stored["compare"],
+            "chart": None,
+        }
+
+    return _compose(data, MarketingSource.GSC.value, "search_console", build)
 
 
 async def _ai_search(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:

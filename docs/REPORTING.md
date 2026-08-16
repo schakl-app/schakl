@@ -195,6 +195,99 @@ is SE Ranking's own "visible at **either** end": a client whose agency switches 
 find sixty new "rankings" appearing in a month where nothing changed, and a term that has
 *dropped out* of the visible depth is exactly the row worth printing.
 
+## A level is not a total, and one client may have two websites (#381)
+
+Found reviewing a real July report before it went out. The run's warnings named three things;
+the two worse faults were on the client's own page and named nothing.
+
+### The rankings tiles were 31-day sums
+
+`top3`, `top10`, `top30`, `keywords_ranking` and `keywords_tracked` were missing from
+`AVERAGED_METRICS`, so a month of daily rows was **added up**. A project tracking 145 keywords
+printed *4.495 gevolgde zoekwoorden · 2.782 scorend · 639 in top 3*. `avg_position` had been
+registered years earlier and its docstring already explained the trap; the four counters added
+beside it were not.
+
+The rule generalises past SE Ranking, and `docs/WORDPRESS.md` already states it for Rank Math's
+`mentions` and `citations`: **a metric whose daily row answers "how many, right now" is a level,
+however much its name reads like a total.** A source's own dashboard is the tell — if it shows
+the number without asking for a date range, thirty-one of them added together is thirty-one, not
+a month. The test is a sweep over `SERANKING_METRICS` rather than five names, so the seventh
+metric fails in CI instead of in a client's PDF.
+
+### The table printed 25 of the 68 terms those tiles had counted
+
+`limit` exists because a Search Console property answers with every phrase it was ever shown
+for — thousands, most seen twice — so a report has to pick a slice. An SE Ranking project holds
+the terms somebody sat down and chose to track; cutting those is not editing for length, and it
+left the table disagreeing with the summary above it. `limit` is now Search Console's alone, the
+same argument that already exempts `min_impressions`. `max_position` moved with it: the Search
+Console adapter was handed the client's setting and SE Ranking hardcoded `VISIBLE_DEPTH`, so one
+control meant two things depending on which integration the agency held — and it had no control
+at all, on either screen, until now.
+
+### A 401 from one endpoint was reported as the credential being down
+
+`_gather_seranking` wrapped three independent questions in one `try`. SE Ranking's AI Result
+Tracker answers **401** for a project whose plan does not include it — permanently, not
+transiently — so a credential that had just returned 68 keywords and a site audit was reported
+as *"Een gegevensbron was niet bereikbaar"*, and the keywords survived only because of the order
+the calls happened to be written in. Each question fails alone now, and a refusal is separated
+from an outage: `…_unavailable` for a 401/403, `…_failed` otherwise. Telling an agency a source
+was unreachable sends them to re-issue a key that is working.
+
+### "Zoekmachines" had that name and answered a different question
+
+It was GA4's `organic_sources` split: on a Dutch client, one row reading `google` and a pie chart
+with a single slice. Where a client has a rank tracker it is now
+`SeRankingAdapter.engine_rows` — one row per tracked engine, with keywords tracked, top 3/10 and
+the average position and its move. Google Analytics knows which engine sent a session and nothing
+about a position, so this is the one thing it structurally cannot answer. A client with no rank
+tracker keeps the organic split, because for them the heading honestly means which engines sent
+people, and **which of the two they get follows their own `rankings` source** rather than a
+second setting.
+
+Three things the live API decided that a plausible implementation gets wrong silently:
+`/positions` answers per engine and its key is `site_engine_id` — *this project's* row, 1104694,
+where the catalogue that names it stops at 889, so naming an engine needs
+`/sites/{id}/search-engines` to bridge the two; the catalogue's `id` is a **string** and the
+project row's `search_engine_id` is an **int**; and `pos: 0` is *not ranking*, so a term nobody
+has ever seen counts as tracked and in nothing else.
+
+### One report, two websites
+
+A company is the hub, and a client may have several: AAproTec has `aaprotec.nl` **and**
+`opentjewereld.nl`, each with its own GA4 and Search Console property, all four legitimately on
+one company. The dashboard has always shown four named cards. The report had no answer, and the
+shape of not having one was the worst available — `next(link for link in links if …)` for the
+live tables and *whichever the query returned last* for the totals, with no `ORDER BY` anywhere
+to make even that stable. One document carried one website's tables under another's figures.
+
+A section is now composed of **parts**: one per property, or one covering all of them.
+
+| Setting | What it does |
+|---|---|
+| `per_website` (default) | one named block per property inside each section |
+| `combined` | one set of figures over every property — right where the second is a shop or a subdomain of the same business |
+| `exclude` | links this client's report leaves out. Per client only, because a link id is — and an *exclusion*, so linking a new property adds it to the report |
+
+Resolution is the three-layer diff `rankings` already uses (`marketing_settings.report` →
+`marketing_company_settings.report`, `NULL` = inherit). Three properties are load-bearing:
+
+- **A single property is one unlabelled part**, and an empty label is the renderer's instruction
+  not to draw a sub-heading — so for nearly every client the document is byte-for-byte what it
+  was.
+- **The flat keys stay on the section**, mirroring the first part. A tenant may bring their own
+  Jinja design (see *Bringing your own report design*), and a shape change would break one this
+  codebase has never seen; a design that has never heard of `parts` renders the first website,
+  which is strictly better than the arbitrary one it rendered before.
+- **A combined part folds the raw daily rows**, never two aggregates. `ctr`, `position` and
+  `engagementRate` are impression- or session-weighted, and averaging two properties' averages
+  answers a number that is neither site's.
+
+`marketing.rankings` deliberately does **not** split: *waar sta ik* is one question, its rows are
+already grouped by theme, and two keyword tables for one client would be two answers to it.
+
 ## Who may read what
 
 | Key | Scope | Guards |

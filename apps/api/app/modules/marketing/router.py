@@ -186,9 +186,9 @@ async def set_company_settings(
     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
     returned for this client — panel, tab and overview — until they're back on.
 
-    ``compare`` and ``rankings`` are the two fields where an explicit ``null`` differs from
-    omitting it: it clears the override back to the org default, which is a choice both screens
-    offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
+    ``compare``, ``rankings`` and ``report`` are the fields where an explicit ``null`` differs
+    from omitting it: it clears the override back to the org default, which is a choice these
+    screens offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
     """
     return await MarketingService(ctx).set_company_settings(
         company_id,
@@ -200,6 +200,12 @@ async def set_company_settings(
             payload.rankings.model_dump(exclude_none=True) if payload.rankings else None
         ),
         rankings_set="rankings" in payload.model_fields_set,
+        report=(
+            payload.report.model_dump(exclude_none=True, mode="json")
+            if payload.report
+            else None
+        ),
+        report_set="report" in payload.model_fields_set,
     )
 
 

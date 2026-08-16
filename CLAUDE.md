@@ -635,6 +635,45 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
   and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
   `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
+  Five faults on one real July report, and only three of them were on the warnings strip the
+  agency reads; the two worse ones were on the client's page and named nothing. **A metric whose
+  daily row answers "how many, right now" is a level, however much its name reads like a total** —
+  `top3`/`top10`/`top30`/`keywords_ranking`/`keywords_tracked` were missing from
+  `AVERAGED_METRICS`, so a 31-day month printed *4.495 gevolgde zoekwoorden* over a project
+  tracking 145. `avg_position` had been registered years earlier with a docstring explaining the
+  exact trap, and the four counters added beside it were not; the test is a **sweep over the
+  source's metric list** rather than five names, because that is the only shape that catches the
+  seventh. It is the Rank Math rule (`mentions`, `citations`) one integration over, and the tell
+  generalises: if a vendor's own dashboard shows the number without asking for a date range,
+  adding thirty-one of them is not a period figure. **A cap belongs to the source that needs
+  it**: `limit` exists because Search Console answers with every phrase a site was ever shown
+  for, while an SE Ranking project holds terms somebody chose to track — so printing 25 of 68
+  was withholding part of an answer whose *summary above it counted all of them*, and
+  `max_position` meant two different depths depending on which integration the agency held.
+  **A credential answers several questions and they fail apart**: one `try` around three SE
+  Ranking calls turned the AI Result Tracker's permanent 401 (a plan it does not include) into
+  "SE Ranking was unreachable", on a run whose keyword table had already arrived — so a refusal
+  (`401/403`) is now a different sentence from an outage, and each question costs only its own
+  section. **A section named for a question must answer it**: "Zoekmachines" was GA4's organic
+  split, one row reading `google`, where a rank tracker can say where the client *stands* per
+  engine — and the fallback for a client without one is deliberately a *different* answer to the
+  same heading rather than an empty section. And **a company is the hub, so a client may have
+  two websites**: `next(link for link in links if …)` picked one arbitrary property for the live
+  tables while `stored[source]` kept whichever the query returned *last* for the totals, with no
+  `ORDER BY` to make even that stable — one document, two websites, no statement anywhere. A
+  section is composed of **parts** now (one per property, or one over all of them, org default
+  with a per-client diff), where a single property is one *unlabelled* part so the common case
+  renders unchanged, the flat keys stay on the section so a tenant's own Jinja design still
+  works, and a combined part folds the **raw daily rows** rather than two aggregates — because
+  `ctr`, `position` and `engagementRate` are weighted, and averaging two averages answers a
+  number that is neither site's. Its own sibling is about the tree rather than the report: **a
+  directory with no `__init__.py` is a namespace package**, so the `__pycache__` husks #378 left
+  under `app/modules/` shadowed four integrations that had moved to `app/integrations/` —
+  `find_spec` found them, the import succeeded, nothing registered, and the app booted with 23
+  modules instead of 27 saying nothing at all. `module_package` now requires `spec.origin`, and
+  the test asserts that every enabled module *registers* rather than merely resolving to a path,
+  which is the invariant that was actually broken.
 - **A section whose data has two possible sources needs a setting, not a silent preference**
   (#373, `app/modules/marketing/rankings.py`). "Zoekwoordposities" was produced from SE Ranking
   and nothing else, so a client without that subscription simply had no keyword section — the one

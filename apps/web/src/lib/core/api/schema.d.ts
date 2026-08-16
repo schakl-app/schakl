@@ -7860,9 +7860,9 @@ export interface paths {
          *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
          *     returned for this client — panel, tab and overview — until they're back on.
          *
-         *     ``compare`` and ``rankings`` are the two fields where an explicit ``null`` differs from
-         *     omitting it: it clears the override back to the org default, which is a choice both screens
-         *     offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
+         *     ``compare``, ``rankings`` and ``report`` are the fields where an explicit ``null`` differs
+         *     from omitting it: it clears the override back to the org default, which is a choice these
+         *     screens offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -14931,11 +14931,18 @@ export interface components {
             } | null;
             /** Linked Sources */
             linked_sources?: components["schemas"]["MarketingSource"][];
+            /** Links */
+            links?: components["schemas"]["LinkBrief"][];
             /** Rankings */
             rankings?: {
                 [key: string]: unknown;
             } | null;
             rankings_resolved?: components["schemas"]["RankingSettingsRead"];
+            /** Report */
+            report?: {
+                [key: string]: unknown;
+            } | null;
+            report_resolved?: components["schemas"]["ReportSplitSettingsRead"];
             /** Show Key Events */
             show_key_events: boolean;
         };
@@ -14961,6 +14968,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             rankings?: components["schemas"]["RankingSettingsWrite"] | null;
+            report?: components["schemas"]["ReportSplitSettingsWrite"] | null;
             /** Show Key Events */
             show_key_events?: boolean | null;
         };
@@ -21198,6 +21206,25 @@ export interface components {
             unit_price: number | string;
         };
         /**
+         * LinkBrief
+         * @description A link, as much of it as a chooser needs: what it is and what to call it.
+         *
+         *     Deliberately not :class:`LinkRead`. This rides the per-client settings payload that a
+         *     reporting screen already loads, and a screen offering "leave this property out of the
+         *     report" needs a name and an id — not sync health, not a connection owner, and not a config
+         *     blob (`docs/PERFORMANCE.md`: a row carries only what its screen draws).
+         */
+        LinkBrief: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            source: components["schemas"]["MarketingSource"];
+        };
+        /**
          * LoggedSummary
          * @description Aggregated logged time for an entity (e.g. a project or company), across the team.
          */
@@ -21321,6 +21348,7 @@ export interface components {
              */
             env_ads_token_configured: boolean;
             rankings?: components["schemas"]["RankingSettingsRead"];
+            report?: components["schemas"]["ReportSplitSettingsRead"];
             /**
              * Seranking Api Key Configured
              * @default false
@@ -21333,6 +21361,7 @@ export interface components {
             ads_developer_token?: string | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
             rankings?: components["schemas"]["RankingSettingsWrite"] | null;
+            report?: components["schemas"]["ReportSplitSettingsWrite"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
         };
@@ -24946,6 +24975,34 @@ export interface components {
             publish: boolean;
             /** Recipients */
             recipients?: components["schemas"]["ReportRecipient"][] | null;
+        };
+        /**
+         * ReportSplit
+         * @description Whether a client's properties are reported apart or together.
+         * @enum {string}
+         */
+        ReportSplit: "per_website" | "combined";
+        /**
+         * ReportSplitSettingsRead
+         * @description The resolved answer — never nulls, so no screen re-derives inheritance.
+         */
+        ReportSplitSettingsRead: {
+            /** Exclude */
+            exclude?: string[];
+            /** @default per_website */
+            split: components["schemas"]["ReportSplit"];
+        };
+        /**
+         * ReportSplitSettingsWrite
+         * @description How a client's report treats a client with more than one website.
+         *
+         *     Every field optional and merged over what it inherits — ``RankingSettingsWrite``'s rule, so
+         *     an agency raising the house default reaches every client who never set one.
+         */
+        ReportSplitSettingsWrite: {
+            /** Exclude */
+            exclude?: string[] | null;
+            split?: components["schemas"]["ReportSplit"] | null;
         };
         /** ReportTemplateLayout */
         ReportTemplateLayout: {
