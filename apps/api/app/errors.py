@@ -38,6 +38,21 @@ class AppError(Exception):
     ``message_key`` and any ``fields`` values must be i18n keys.
     """
 
+    #: Every attribute the handler reads has a class-level default, so a subclass that builds
+    #: itself **field by field** rather than calling this initialiser cannot lose one. Two do,
+    #: for the same stated reason (``AdsError``, ``GtmError``: ``str(exc)`` must stay the
+    #: provider's own text for ``last_error``, which ``super().__init__(message_key)`` would
+    #: overwrite) — and when ``details`` was added to the envelope, ``GtmError`` was written in
+    #: a parallel worktree off an older base and rebased clean on top of it, so the attribute
+    #: simply was not there. Every refusal from that integration then answered 500 from the
+    #: handler itself. A default costs nothing and makes the next such addition inert rather
+    #: than fatal; ``tests/test_error_envelope.py`` sweeps the subclasses for the same reason.
+    code: str = "error"
+    message_key: str = "errors.server"
+    status_code: int = status.HTTP_400_BAD_REQUEST
+    fields: dict[str, str] | None = None
+    details: dict[str, Any] | None = None
+
     def __init__(
         self,
         code: str,

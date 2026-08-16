@@ -66,6 +66,15 @@ class GtmError(AppError):
         self.message_key = f"errors.{type(self).code}"
         self.status_code = type(self).status_code
         self.fields: dict[str, str] | None = None
+        #: Google's machine-readable ``reason``, carried onto the envelope the way ``AdsError``
+        #: carries its error code: it is the identifier this module's own classifier calls the
+        #: only reliable way to tell two 403s apart, so withholding it leaves a caller told
+        #: "permission denied" with no way to learn *which* of the four it was.
+        #:
+        #: Deliberately **not** ``str(exc)``. Google's prose stays out of the envelope, whose
+        #: message is an i18n key (§9); the sentence an admin reads reaches them through the
+        #: container row's ``last_error``.
+        self.details: dict[str, Any] | None = {"google_reason": reason} if reason else None
         #: The HTTP status Google answered with, or ``None`` for a transport failure.
         self.status = status
         #: ``error.details[].reason`` — the only reliable way to tell two 403s apart.
