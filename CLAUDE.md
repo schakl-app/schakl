@@ -268,13 +268,24 @@ It is stated in five places and each one is load-bearing:
   instance-admin path and the first-run wizard cannot disagree, and it runs **before** the licence
   gate: telling somebody to buy a licence for a combination that would not work anyway is the
   worse of the two refusals.
-- **The screen.** Instellingen → Modules is two lists with two sentences ("what schakl does" /
-  "what schakl talks to"), and the settings index and rail have a `modules` group and an
-  `integrations` group instead of one drawer holding both. The requirement is **derived, not
-  validated**: ticking an integration pulls in what it needs, and unticking a module leaves the
-  integrations that needed it ticked-but-not-saved with an amber line naming what is missing —
+- **The screens** — two of them, and where they *sit* is half the rule (#378). Two lists with two
+  sentences on one page was still one page called Modules, filed under Werkruimte, while a group
+  heading fourteen cards further down the index also read "Modules": the word named the switch and
+  the collection at once, and the Integraties group was a list of settings for connections with no
+  way to make one. So **Instellingen → Modules** and **Instellingen → Integraties** are separate
+  screens, each **first in the group of settings it governs**, which is the only arrangement where
+  a heading and the screen under it cannot disagree (`settings-groups.test.ts` asserts the
+  position, because a position is not something a type can hold). The requirement is **derived,
+  not validated**: ticking an integration pulls in what it needs, and unticking a module leaves
+  the integrations that needed it ticked-but-not-saved with an amber line naming what is missing —
   the API's 409 is the backstop for callers that are not this screen, and a backstop should never
-  be the thing a user meets first.
+  be the thing a user meets first. Because they are two screens over **one** `enabled_modules`
+  list, each computes the fixpoint over the *whole* set, posts the whole set, and **names the
+  casualties on the other screen by name** (`EnablementForm`): switching Domeinen off under
+  Modules says that Cloudflare and OXXA go with it, before Save, on a screen that does not list
+  them. A row also carries what it *is* (`module.<name>.description`) and, where the module owns
+  exactly one settings screen, a link to it — switching an integration on and saying nothing about
+  the empty credential box elsewhere is half a sentence.
 - **The licence.** `LICENSE-COMMERCIAL.md` lists Core, Modules and Integrations separately. They
   are licensed identically — what is licensed is the code either way — but an integration's API,
   terms and continued existence are not ours, and a reader should be able to tell which they are

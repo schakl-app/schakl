@@ -1077,17 +1077,39 @@
   The **grouping** is part of the same job. "Modules & workflows" had become a fifteen-card junk
   drawer holding the org's dashboard defaults, its outgoing mail transport, its AI provider and a
   cloud support switch side by side, while Google Workspace sat two groups away from the other two
-  third-party integrations. Five groups, each answering one question: what this workspace looks
-  like (Werkruimte), who may use it (Team & toegang), what shape our data takes (Gegevens &
-  keuzelijsten), how each module behaves (Modules & werkprocessen), what it talks to (Communicatie
-  & koppelingen). A card is named after what is *on* it — the screen holding only client numbering
-  is "Klantnummering", not "Bedrijven", which read as a sibling of Klantgroepen and was neither.
-- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up, and never
-  on the index itself — there the cards *are* the navigation, with subtitles the rail has no room
-  for. Below `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings
-  form a fifth of its width to save one click, and the app-wide breadcrumb row is already the way
-  back. It lists exactly what the index would show that viewer, marks the current screen, and
-  resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  third-party integrations. Each group answers one question: what this workspace looks like
+  (Werkruimte), who may use it (Team & toegang), what shape our data takes (Gegevens &
+  keuzelijsten), how each module behaves (**Modules**), what it talks to (**Integraties**) — the
+  last two split apart along CLAUDE.md §6a, because "a module is configured" and "an integration is
+  connected" are not the same kind of setting and do not fail the same way. **The screen that
+  switches each collection on leads its own group** (#378): Instellingen → Modules first under
+  Modules, Instellingen → Integraties first under Integraties. Before that, one screen switched
+  both on, it was filed under Werkruimte, and it was called "Modules" — the same word a group
+  heading fourteen cards down the index used for something else. A card is named after what is *on*
+  it — the screen holding only client numbering is "Klantnummering", not "Bedrijven", which read as
+  a sibling of Klantgroepen and was neither.
+- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up as a sticky
+  column, below it as a disclosure over the content, and **on every screen in the section including
+  the index**. It lists exactly what the index would show that viewer, marks the current screen,
+  and resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  Two earlier positions were wrong and are worth keeping written down, because both were reasoned
+  from a plausible principle (#378).
+  *"The index needs no rail — its cards are the navigation."* Its cards are the **descriptions**.
+  Forty of them stack 3050 px tall in a ragged two-column grid, and the screen you come back to in
+  order to find something was the one screen with nothing to find it with. It carries the rail now,
+  with `search={false}`, because its own content owns the search over that same list — the rule
+  being **one search box per screen**, never two filtering different things.
+  *"A flat list of links is the rail."* Forty-one links are 1628 px inside a box 902 px tall on a
+  1440 × 950 laptop and 752 px on a 1280 × 800 one, so 45–54% of the tree sat below the fold of a
+  **nested** scroller that the page's own scrollbar does not move and overlay scrollbars do not
+  advertise. Standing on Instellingen → Modules, the rail beside you ended at Import & export: the
+  group that screen belongs to was missing from its own navigation, along with Integraties and
+  Systeem. **So the groups collapse** (`SettingsNav`), under three rules that keep collapsing from
+  becoming hiding: the group holding the active screen is open *unconditionally* — it is where you
+  are, not a preference; a search opens every group that matches, because a result you must reveal
+  is not a result; and what you open by hand is remembered in `localStorage`. A closed group shows
+  its item count, or an empty group and a collapsed one look identical. Seven headings fit at any
+  width; forty-one links fit at none, and the forty-second would only have made it worse.
   It is a **component, not a route layout**, because of the bullet two above this one: the three
   catalogs that live on their working page (#229) are Instellingen screens at a `/tasks/`,
   `/subscriptions/` or `/domains/` URL, and a layout under `/settings/` can only wrap its own

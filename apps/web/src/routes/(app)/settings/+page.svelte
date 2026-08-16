@@ -41,7 +41,7 @@
 {#snippet card(screen: SettingsScreen)}
   <a
     href={screen.href}
-    class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    class="rounded-xl border border-border bg-surface-raised p-4 hover:border-brand"
   >
     <h3 class="text-sm font-semibold text-text">{t(screen.titleKey)}</h3>
     <p class="mt-1 text-sm text-text-muted">{t(screen.subtitleKey)}</p>
@@ -73,7 +73,10 @@
       {#if group.labelKey}
         <h3 class="mb-2 text-sm font-medium text-text">{t(group.labelKey)}</h3>
       {/if}
-      <div class="mb-6 grid gap-4 sm:grid-cols-2">
+      <!-- Two columns at every width above `sm` left a 1536 px screen rendering half-empty cards
+           down a 3050 px page with five orphan gaps (#378). The rail now takes 13 rem from `xl`,
+           and what is left still fits three from `2xl`. -->
+      <div class="mb-6 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
         {#each group.items as screen (screen.key)}
           {@render card(screen)}
         {/each}

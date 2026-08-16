@@ -34,6 +34,25 @@ export function moduleLabel(name: string): string {
   return label === key ? name : label;
 }
 
+/**
+ * One line saying what a module or integration *is*, for the two screens that ask a reader to
+ * decide whether to run it (issue #378).
+ *
+ * Instellingen → Modules listed twenty-six names against twenty-six checkboxes. "HR",
+ * "Klantportaal", "Uptime" are not self-explanatory to the person who has to decide, and the
+ * consequence was that nobody switched anything on or off deliberately — the screen could be read
+ * only by someone who already knew the product, which is the audience least likely to be reading it.
+ *
+ * Empty rather than the raw key for a module this build has no copy for, exactly as `moduleLabel`
+ * falls back to the name: a missing description costs a line of prose, and printing
+ * `module.foo.description` at a user costs their trust in every other line on the screen.
+ */
+export function moduleDescription(name: string): string {
+  const key = `module.${name}.description`;
+  const text = t(key);
+  return text === key ? "" : text;
+}
+
 export interface NavItem {
   key: string;
   href: string;

@@ -23,6 +23,7 @@ import {
   SETTINGS_SCREENS,
   groupSettingsScreens,
   matchSettingsScreens,
+  settingsScreenForModule,
   type SettingsScreen,
 } from "../../src/lib/core/settings-nav.ts";
 
@@ -101,8 +102,62 @@ describe("modules and integrations are separated in Instellingen", () => {
   test("every screen names a group the registry declares", () => {
     const known = new Set(SETTINGS_GROUPS.map((group) => group.key));
     for (const screen of SETTINGS_SCREENS) {
-      assert.ok(known.has(screen.group), `screen '${screen.key}' names unknown group '${screen.group}'`);
+      assert.ok(
+        known.has(screen.group),
+        `screen '${screen.key}' names unknown group '${screen.group}'`,
+      );
     }
+  });
+});
+
+describe("the switch heads the group it switches (issue #378)", () => {
+  // "Modules" used to name two things on one page: a card in Werkruimte that enabled things, and
+  // a group heading fourteen cards down that collected their settings. Putting each enablement
+  // screen *first in the group it governs* is what makes the word mean one thing in each place —
+  // and it is a position, so only a positional assertion can hold it.
+  for (const [group, key] of [
+    ["modules", "modules"],
+    ["integrations", "integrations"],
+  ] as const) {
+    test(`${key} is the first screen in the ${group} group`, () => {
+      const items = SETTINGS_SCREENS.filter((screen) => screen.group === group);
+      assert.ok(items.length > 1, `the ${group} group holds nothing to switch on`);
+      assert.equal(
+        items[0].key,
+        key,
+        `'${key}' must lead the ${group} group — a list of settings for things you cannot ` +
+          "switch on is the state #378 was raised about.",
+      );
+    });
+  }
+
+  test("neither enablement screen claims a module of its own", () => {
+    // They enable *every* module, so declaring one would hide the screen the moment a tenant
+    // switched that module off — including, for `modules`, the way back.
+    for (const key of ["modules", "integrations"]) {
+      const screen = SETTINGS_SCREENS.find((s) => s.key === key);
+      assert.ok(screen, `no '${key}' screen`);
+      assert.equal(screen!.module, undefined);
+    }
+  });
+});
+
+describe("a row on the enablement screens links onward only when that is unambiguous", () => {
+  test("an integration with one settings screen resolves to it", () => {
+    assert.equal(settingsScreenForModule("cloudflare")?.href, "/settings/cloudflare");
+    assert.equal(settingsScreenForModule("mollie")?.href, "/settings/mollie");
+  });
+
+  test("a module owning several settings screens resolves to none", () => {
+    // `tasks` owns labels, statuses and templates. Picking one would be picking arbitrarily on
+    // the reader's behalf, and a link that lands on one of three is worse than no link.
+    assert.ok(SETTINGS_SCREENS.filter((s) => s.module === "tasks").length > 1);
+    assert.equal(settingsScreenForModule("tasks"), null);
+  });
+
+  test("a module owning no settings screen resolves to none", () => {
+    assert.equal(settingsScreenForModule("wordpress"), null);
+    assert.equal(settingsScreenForModule("nope-not-a-module"), null);
   });
 });
 
@@ -118,7 +173,13 @@ describe("the index and the rail search the same way", () => {
 
   test("every word must match, not any", () => {
     const screens: SettingsScreen[] = [
-      { key: "a", href: "/a", titleKey: "google workspace", subtitleKey: "", group: "integrations" },
+      {
+        key: "a",
+        href: "/a",
+        titleKey: "google workspace",
+        subtitleKey: "",
+        group: "integrations",
+      },
       { key: "b", href: "/b", titleKey: "google ads", subtitleKey: "", group: "integrations" },
     ];
     assert.deepEqual(
@@ -129,7 +190,14 @@ describe("the index and the rail search the same way", () => {
 
   test("keywords are searched, so a word off the card still finds the screen", () => {
     const screens: SettingsScreen[] = [
-      { key: "m", href: "/m", titleKey: "Mollie", subtitleKey: "", keywordsKey: "ideal", group: "integrations" },
+      {
+        key: "m",
+        href: "/m",
+        titleKey: "Mollie",
+        subtitleKey: "",
+        keywordsKey: "ideal",
+        group: "integrations",
+      },
     ];
     assert.equal(matchSettingsScreens(screens, "ideal", t).length, 1);
   });

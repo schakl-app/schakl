@@ -167,14 +167,6 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["settings.domain.write"],
   },
   {
-    key: "modules",
-    href: "/settings/modules",
-    titleKey: "settings.modules.title",
-    subtitleKey: "settings.modules.subtitle",
-    group: "workspace",
-    permissions: ["settings.branding.write"],
-  },
-  {
     key: "navigation",
     href: "/settings/navigation",
     titleKey: "settings.navigation.title",
@@ -326,6 +318,21 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
 
   // --- Modules ----------------------------------------------------------- //
   {
+    // **First in its own group, and that placement is the point** (issue #378). This screen used
+    // to sit in Werkruimte, third card down, while fourteen cards further along a *group heading*
+    // also read "Modules" — so the word named two different things on one page, and the reader
+    // asking "where do I switch Facturatie on" had to already know which of the two was meant.
+    // The switch now heads the list of the things it switches, which is the only arrangement where
+    // the heading and the screen can never disagree.
+    key: "modules",
+    href: "/settings/modules",
+    titleKey: "settings.modules.title",
+    subtitleKey: "settings.modules.subtitle",
+    keywordsKey: "settings.search.modules",
+    group: "modules",
+    permissions: ["settings.branding.write"],
+  },
+  {
     // A catalog staff touch day-to-day lives on the working page (#229); this is the deep link.
     key: "task-templates",
     href: "/tasks/templates",
@@ -439,6 +446,22 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
   },
 
   // --- Integraties ------------------------------------------------------- //
+  {
+    // The other half of the split (#378), and the reason it is a second screen rather than a
+    // second section of one: a module and an integration are answered by different people at
+    // different moments and fail differently. A module is *configured* and works; an integration
+    // is *connected* and stops working the day somebody else revokes a token. One form with one
+    // Save said neither, and put the switch for the whole Integraties group on a page called
+    // Modules — so the eight screens that need a credential had no way in from the group that
+    // holds them.
+    key: "integrations",
+    href: "/settings/integrations",
+    titleKey: "settings.integrations.title",
+    subtitleKey: "settings.integrations.subtitle",
+    keywordsKey: "settings.search.integrations",
+    group: "integrations",
+    permissions: ["settings.branding.write"],
+  },
   {
     key: "email",
     href: "/settings/email",
@@ -687,6 +710,24 @@ export function canAccessSettings(granted: readonly string[] | undefined): boole
       !screen.instanceOwnerOnly &&
       screen.permissions?.some((key) => hasPermission(granted, key)),
   );
+}
+
+/**
+ * The one settings screen that configures `module`, or `null` — for the enable/disable screens,
+ * which owe the reader a way onward (issue #378).
+ *
+ * Switching a module on used to end the sentence: the screen never said that an integration does
+ * nothing until a credential is entered, nor where that is done, and the rail it would have to be
+ * found in did not show it (§1 of #378). A link on the row closes that.
+ *
+ * **Exactly one, or none.** `tasks` owns three settings screens (labels, statuses, templates) and
+ * picking one of them would be picking arbitrarily on the reader's behalf; `wordpress` owns none,
+ * because its credential lives on a website. Both answer `null` and render no link, which is the
+ * honest outcome — a link that lands on one of three is worse than the reader opening the group.
+ */
+export function settingsScreenForModule(module: string): SettingsScreen | null {
+  const owned = SETTINGS_SCREENS.filter((screen) => screen.module === module);
+  return owned.length === 1 ? owned[0] : null;
 }
 
 /** Settings slug → its screen title key, for the breadcrumb resolver. */

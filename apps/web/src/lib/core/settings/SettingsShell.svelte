@@ -21,8 +21,13 @@
    * people read on. A collapsed `<details>` costs one row of chrome, opens *over* the content
    * instead of beside it, and closes itself on navigation.
    *
-   * The Instellingen index renders no shell: its cards *are* the navigation, with subtitles the
-   * rail has no room for.
+   * **The index carries it too** (issue #378). It used to be the one screen without: "its cards
+   * *are* the navigation". In practice its cards are a 3050 px wall of forty, two ragged columns
+   * and five orphan gaps, with no way to jump to a group — so the section's most orientation-heavy
+   * screen was the only one missing the orientation aid, and coming back to Instellingen to find
+   * something meant losing the structure you had just been navigating. It renders the rail with
+   * `search={false}`: the index's own *content* is this same list and it owns the search over it,
+   * so the rule stays one search box per screen rather than two that filter different things.
    */
   import { ChevronDown, Menu } from "@lucide/svelte";
   import type { Snippet } from "svelte";
@@ -34,6 +39,7 @@
 
   let {
     cloud = false,
+    search = true,
     children,
   }: {
     /**
@@ -43,6 +49,8 @@
      * same entries.
      */
     cloud?: boolean;
+    /** Off where the screen's own content is the settings list and owns the search over it. */
+    search?: boolean;
     children: Snippet;
   } = $props();
 
@@ -86,20 +94,25 @@
       <ChevronDown size={16} class="text-text-muted" />
     </summary>
     <div class="max-h-[60vh] overflow-y-auto border-t border-border px-3 pb-3 pt-3">
-      <SettingsNav {screens} {activeHref} onnavigate={() => (open = false)} />
+      <SettingsNav {screens} {activeHref} showSearch={search} onnavigate={() => (open = false)} />
     </div>
   </details>
 
   <nav aria-label={t("settings.title")} class="hidden xl:block">
     <div class="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pb-4">
+      <!-- On the index this is a link to the page you are on. Marking it current turns the third
+           "Instellingen" on screen (crumb, this, the h1) from a repetition into an answer. -->
       <a
         href="/settings"
-        class="mb-3 block text-sm font-semibold text-text hover:text-brand"
+        aria-current={page.url.pathname === "/settings" ? "page" : undefined}
+        class="mb-3 block text-sm font-semibold {page.url.pathname === '/settings'
+          ? 'text-brand'
+          : 'text-text hover:text-brand'}"
         data-sveltekit-preload-data="hover"
       >
         {t("settings.title")}
       </a>
-      <SettingsNav {screens} {activeHref} />
+      <SettingsNav {screens} {activeHref} showSearch={search} />
     </div>
   </nav>
   <!-- min-w-0: a grid item is otherwise sized by its widest descendant, and one wide table
