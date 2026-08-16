@@ -312,19 +312,67 @@ async def _gather_seranking(
     # says: "report positions from Search Console" is a statement about one section, not a
     # decision to stop reading a credential the client is paying for.
     want_keywords = out.keyword_source is RankingSource.SERANKING
+    settings = out.ranking_settings
     try:
         async with org_key_client(key) as client, ctx.release_db():
+            # Three independent questions, three ``try`` blocks (#381). One block around all
+            # three meant the AI Result Tracker answering **401** — which it does for a project
+            # whose plan does not include it, permanently and by design — was reported as
+            # *"Een gegevensbron was niet bereikbaar"* for the whole of SE Ranking, on a run
+            # whose keyword table had already arrived. Worse than the wrong sentence: in this
+            # call order the keywords survived by luck, and the failure was one reordering away
+            # from discarding sixty-eight rows that had been fetched successfully.
             if want_keywords:
-                out.keywords = await adapter.keyword_rows(
-                    client, link.external_id, window.start, window.end
+                out.keywords = await _seranking_part(
+                    out,
+                    "rankings",
+                    adapter.keyword_rows(
+                        client,
+                        link.external_id,
+                        window.start,
+                        window.end,
+                        max_position=settings.max_position,
+                    ),
+                    default=[],
                 )
-            out.audit = await adapter.audit(client, link.external_id)
-            out.ai_search = await adapter.ai_search(
-                client, link.external_id, window.start, window.end
+            out.audit = await _seranking_part(
+                out, "audit", adapter.audit(client, link.external_id), default=None
             )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("reporting: SE Ranking fetch failed for %s: %s", link.id, exc)
+            out.ai_search = await _seranking_part(
+                out,
+                "ai",
+                adapter.ai_search(client, link.external_id, window.start, window.end),
+                default=[],
+            )
+    except Exception as exc:  # noqa: BLE001 — the session itself, not one of its questions
+        logger.warning("reporting: SE Ranking session failed for %s: %s", link.id, exc)
         out.notes.append({"code": "reporting.warning.source_failed", "detail": "seranking"})
+
+
+async def _seranking_part(
+    out: GatheredMarketing, part: str, awaitable: Any, *, default: Any
+) -> Any:
+    """One SE Ranking question, whose failure costs only its own section.
+
+    The warning names **the part, not the credential**, and separates "we could not reach it"
+    from "this project is not entitled to it": a 401/403 on the AI Result Tracker is a fact
+    about the agency's subscription that will be true again tomorrow, and telling them a source
+    was unreachable sends them to check a key that is working.
+    """
+    try:
+        return await awaitable
+    except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        denied = status in (401, 403)
+        logger.warning("reporting: SE Ranking %s failed (%s): %s", part, status, exc)
+        out.notes.append(
+            {
+                "code": f"reporting.warning.seranking_{part}_"
+                + ("unavailable" if denied else "failed"),
+                "detail": str(status or ""),
+            }
+        )
+        return default
 
 
 async def _gather_gsc_keywords(
@@ -575,9 +623,20 @@ async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any]
     if not data.keywords or data.keyword_source is None:
         return None
     settings = data.ranking_settings
-    rows = _capped(
-        data.keywords, min(settings.limit, MAX_KEYWORD_ROWS), data, "rankings"
+    # ``limit`` is a **Search Console** concern and always was (#381). A property answers with
+    # every phrase it was ever shown for — thousands, most seen twice — so a report has to pick
+    # a top slice or print an export. SE Ranking's keywords are the ones somebody sat down and
+    # chose to track, which is the same argument that already exempts ``min_impressions``: this
+    # client tracks 145 terms, 68 of them rank inside ``max_position``, and printing 25 of those
+    # while the tiles counted all of them is what "er ontbreken zoekwoorden" looked like.
+    # ``MAX_KEYWORD_ROWS`` still holds — it is a guard against a project nobody curated, not a
+    # view on how many terms a report should show.
+    ceiling = (
+        MAX_KEYWORD_ROWS
+        if data.keyword_source is RankingSource.SERANKING
+        else min(settings.limit, MAX_KEYWORD_ROWS)
     )
+    rows = _capped(data.keywords, ceiling, data, "rankings")
     if settings.grouped:
         groups: dict[str, list[dict]] = {}
         for row in rows:

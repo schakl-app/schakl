@@ -49,6 +49,13 @@ class RankingSource(StrEnum):
 #: A report table is a page of a PDF. Twenty-five terms is a page a client reads; two hundred is
 #: an export they scroll past. The cap is reported on the run's warnings, never on the document
 #: (CLAUDE.md §17).
+#:
+#: **Search Console only** (#381), for the same reason ``min_impressions`` is: a property answers
+#: with every phrase it was ever shown for and somebody has to pick a slice, while an SE Ranking
+#: project contains exactly the terms an agency chose to track. Capping the second is not
+#: editing for length, it is withholding part of an answer the client already agreed the shape
+#: of — and it did so while the section's own summary tiles counted every term, so the table and
+#: the number above it disagreed by construction.
 DEFAULT_LIMIT = 25
 #: Below this a "position" is one or two impressions and a coin toss — Search Console will
 #: happily report an average position of 3.0 for a term shown twice, and a table of those buries

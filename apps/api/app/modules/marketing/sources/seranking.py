@@ -229,13 +229,26 @@ class SeRankingAdapter:
         )
 
     async def keyword_rows(
-        self, client: httpx.AsyncClient, external_id: str, start: date, end: date
+        self,
+        client: httpx.AsyncClient,
+        external_id: str,
+        start: date,
+        end: date,
+        *,
+        max_position: int = VISIBLE_DEPTH,
     ) -> list[dict[str, Any]]:
         """Per-keyword begin/end positions for the period, with its group and landing page.
 
         This is the rankings section of a report. It is deliberately **not** stored per day in
         ``marketing_metrics_daily``: a keyword × day warehouse for every client is a large
         table answering one question a month, and a report snapshots its own answer anyway.
+
+        ``max_position`` is the client's own ``rankings.max_position`` (#381). It used to be
+        :data:`VISIBLE_DEPTH` and nothing else, while the Search Console adapter was handed the
+        setting — so one control on one screen drew the line at 25 for one client and wherever
+        they asked for it for the next, depending on which integration the agency happened to
+        hold. The default stays :data:`VISIBLE_DEPTH`, which is the same number the setting
+        defaults to, so nothing moves for a caller that does not care.
         """
         keywords = await self._positions(client, external_id, start, end, landing_pages=True)
         groups = await self._keyword_groups(client, external_id)
@@ -252,7 +265,7 @@ class SeRankingAdapter:
             begin, finish = _int(entries[0].get("pos")), _int(entries[-1].get("pos"))
             # A keyword that was invisible at both ends says nothing a client can act on and
             # would fill the table with dashes.
-            if not (0 < begin <= VISIBLE_DEPTH or 0 < finish <= VISIBLE_DEPTH):
+            if not (0 < begin <= max_position or 0 < finish <= max_position):
                 continue
             pages = [p for p in (keyword.get("landing_pages") or []) if isinstance(p, dict)]
             pages.sort(key=lambda page: str(page.get("date") or ""))

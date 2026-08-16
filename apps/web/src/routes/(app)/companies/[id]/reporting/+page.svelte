@@ -280,7 +280,7 @@
             </span>
           {/if}
         </p>
-        <div class="grid gap-4 sm:grid-cols-3">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label for="rank-source" class="mb-1 block text-sm font-medium text-text">
               {t("reporting.rankings.source")}
@@ -331,6 +331,24 @@
             />
             <p class="mt-1 text-xs text-text-muted">
               {t("reporting.rankings.min_impressions_hint")}
+            </p>
+          </div>
+          <div>
+            <label for="rank-depth" class="mb-1 block text-sm font-medium text-text">
+              {t("reporting.rankings.max_position")}
+            </label>
+            <input
+              id="rank-depth"
+              name="rankings_max_position"
+              type="number"
+              min="3"
+              max="100"
+              class={inputClass}
+              placeholder={String(marketing?.rankings_resolved?.max_position ?? 25)}
+              value={(marketing?.rankings as { max_position?: number } | null)?.max_position ?? ""}
+            />
+            <p class="mt-1 text-xs text-text-muted">
+              {t("reporting.rankings.max_position_hint")}
             </p>
           </div>
         </div>

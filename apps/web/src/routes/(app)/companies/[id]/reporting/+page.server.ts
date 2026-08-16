@@ -179,7 +179,12 @@ export const actions: Actions = {
     const source = inherited(form.get("rankings_source"));
     const limit = inheritedNumber(form.get("rankings_limit"));
     const minImpressions = inheritedNumber(form.get("rankings_min_impressions"));
-    const anyRanking = source !== null || limit !== undefined || minImpressions !== undefined;
+    const maxPosition = inheritedNumber(form.get("rankings_max_position"));
+    const anyRanking =
+      source !== null ||
+      limit !== undefined ||
+      minImpressions !== undefined ||
+      maxPosition !== undefined;
     const marketing = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
       params: { path: { company_id: event.params.id } },
       body: {
@@ -190,6 +195,7 @@ export const actions: Actions = {
               source: source as "auto" | "seranking" | "search_console" | "off" | null,
               limit: limit ?? null,
               min_impressions: minImpressions ?? null,
+              max_position: maxPosition ?? null,
             }
           : null,
       },

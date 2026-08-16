@@ -47,6 +47,7 @@ export const actions: Actions = {
             form.get("rankings_min_impressions") === ""
               ? null
               : Number(form.get("rankings_min_impressions")),
+          max_position: Number(form.get("rankings_max_position")) || null,
           grouped: checked(form, "rankings_grouped"),
           show_landing_pages: checked(form, "rankings_show_landing_pages"),
         },

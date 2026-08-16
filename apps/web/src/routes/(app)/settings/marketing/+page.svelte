@@ -99,7 +99,7 @@
     <div class="border-t border-border pt-5">
       <h3 class="mb-1 text-sm font-semibold text-text">{t("settings.marketing.rankings")}</h3>
       <p class="mb-3 text-xs text-text-muted">{t("settings.marketing.rankings_hint")}</p>
-      <div class="grid gap-4 sm:grid-cols-3">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label for="rankings-source" class="mb-1 block text-sm font-medium text-text">
             {t("reporting.rankings.source")}
@@ -145,6 +145,21 @@
             class={inputClass}
           />
           <p class="mt-1 text-xs text-text-muted">{t("reporting.rankings.min_impressions_hint")}</p>
+        </div>
+        <div>
+          <label for="rankings-depth" class="mb-1 block text-sm font-medium text-text">
+            {t("reporting.rankings.max_position")}
+          </label>
+          <input
+            id="rankings-depth"
+            name="rankings_max_position"
+            type="number"
+            min="3"
+            max="100"
+            value={settings?.rankings?.max_position ?? 25}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("reporting.rankings.max_position_hint")}</p>
         </div>
       </div>
       <div class="mt-3 space-y-2">
