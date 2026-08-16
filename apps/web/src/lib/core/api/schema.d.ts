@@ -8115,6 +8115,60 @@ export interface paths {
         patch: operations["update_member_role_api_v1_members__membership_id__patch"];
         trace?: never;
     };
+    "/api/v1/members/{membership_id}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Member Account
+         * @description Edit a colleague's account: their name, and whether they still work here.
+         *
+         *     This is the control the product was missing, and its absence had a cost worth writing down.
+         *     Off-boarding offered only "Toegang intrekken", which deletes the membership — so an agency
+         *     with a departing colleague either kept a live login for someone who had left, or deleted the
+         *     row and watched a thousand hours of their work go nameless on every screen. Neither is what
+         *     anybody meant by "they don't work here any more".
+         *
+         *     Deactivating keeps everything and ends only the access. The name still renders on every hour,
+         *     task, contactmoment and activity line; the roles, contract, rooster and tarief stay on the
+         *     row; the account drops out of the pickers that offer *new* work and stays findable behind
+         *     every search and filter (§9's lifecycle rule, the one clients and projects already follow).
+         *     One press of Activeren undoes it.
+         *
+         *     Absent means leave alone (§18): the dialog opens over one member, but a form that posts a
+         *     field it did not show is how a rename quietly reactivates somebody.
+         *
+         *     Three refusals:
+         *
+         *     - **Not yourself.** ``cannot_deactivate_self`` — for the reason ``cannot_remove_self`` exists,
+         *       minus the drama: the request would succeed and the next one would 403.
+         *     - **Not the last administrator.** ``ensure_a_role_manager_remains`` counts only accounts that
+         *       can actually sign in (see ``role_manager_count``), so deactivating the last owner is refused
+         *       exactly as revoking them is. Applied *after* the flush, so the guard sees the world being
+         *       proposed and the ``AppError`` rolls it back.
+         *     - **The e-mail address is not editable here** — it is not on the schema at all. It is the
+         *       account's identity across the whole instance and the key an OIDC login matches on, so a
+         *       tenant screen renaming it can silently detach somebody's Google sign-in. A typo is fixed by
+         *       inviting the right address and revoking the wrong one, which is the rare case this whole
+         *       endpoint exists to make *unnecessary* for the common one.
+         *
+         *     Deactivating writes only this org's column. **Reactivating** may also lift
+         *     ``users.is_active``, under two narrow conditions stated at the call site — that column is the
+         *     instance's answer and, separately, the client portal's own "login enabled" flag, so the two
+         *     principals it belongs to are the two exemptions.
+         */
+        patch: operations["update_member_account_api_v1_members__membership_id__account_patch"];
+        trace?: never;
+    };
     "/api/v1/members/{membership_id}/permissions": {
         parameters: {
             query?: never;
@@ -21827,6 +21881,25 @@ export interface components {
             /** Locale */
             locale?: string | null;
         };
+        /**
+         * MemberAccountUpdate
+         * @description What Instellingen → Gebruikers → Bewerken may change about a colleague's account.
+         *
+         *     Both fields are optional and **absent means leave alone** (§18): the dialog opens over one
+         *     member and shows both, but a partial caller — the ⋯ Deactiveren item, which posts only the
+         *     status — must not blank a name by omitting it.
+         *
+         *     ``full_name`` is nullable on purpose, so absent and ``null`` have to be told apart by
+         *     ``model_fields_set`` rather than by truthiness: an explicit ``null`` — or the blank string an
+         *     emptied input actually posts — clears the name back to "we don't know it", and the account
+         *     reads as its e-mail address again. ``email`` is absent by design; see the endpoint.
+         */
+        MemberAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Full Name */
+            full_name?: string | null;
+        };
         /** MemberInvite */
         MemberInvite: {
             /**
@@ -21880,6 +21953,8 @@ export interface components {
              * @default false
              */
             company_scope_empty: boolean;
+            /** Deactivated At */
+            deactivated_at?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -47388,6 +47463,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MemberRoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_account_api_v1_members__membership_id__account_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberAccountUpdate"];
             };
         };
         responses: {

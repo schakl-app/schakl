@@ -338,6 +338,12 @@ async def require_context(
                 .where(
                     Membership.user_id == user.id,
                     Membership.org_id == org.id,
+                    # A deactivated membership is not a membership for the purposes of serving a
+                    # request. It rides the statement that was already being made rather than
+                    # becoming a second read, and it is what closes a session that was minted
+                    # *before* somebody left: the login gate (``member_of_request_org``) stops the
+                    # next sign-in, and this stops the tab still open on their desk.
+                    Membership.deactivated_at.is_(None),
                 )
                 .group_by(Membership.id)
             )

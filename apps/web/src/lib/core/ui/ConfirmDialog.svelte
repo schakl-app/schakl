@@ -17,6 +17,7 @@
     open = $bindable(false),
     title,
     message,
+    consequences = [],
     action,
     fields = {},
     confirmLabel,
@@ -25,6 +26,17 @@
     open?: boolean;
     title: string;
     message: string;
+    /**
+     * What this action actually does, one clause per line, rendered as a list under the message.
+     *
+     * A sentence is enough for "delete this row?", and is not enough the moment an action has
+     * effects the record it names does not show. Withdrawing a colleague's access deletes their
+     * roles and takes their name off a thousand hours of work, and the dialog that asked
+     * "Toegang van dit lid intrekken?" was accurate, complete as a question, and told the admin
+     * none of it. Consequences belong *in the dialog*: nobody reads the manual at the moment
+     * they are about to press a red button.
+     */
+    consequences?: string[];
     action: string;
     fields?: Record<string, string>;
     /** Text on the confirm button; defaults to the shared "Delete" string. */
@@ -38,6 +50,16 @@
 
 <Modal bind:open {title}>
   <p class="text-sm text-text-muted">{message}</p>
+  {#if consequences.length > 0}
+    <ul class="mt-3 space-y-1.5 rounded-lg bg-surface px-3 py-2.5">
+      {#each consequences as line (line)}
+        <li class="flex gap-2 text-sm text-text-muted">
+          <span aria-hidden="true" class="text-text-muted/60">•</span>
+          <span>{line}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
   <div class="mt-5 flex justify-end gap-2">
     <button
       type="button"

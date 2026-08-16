@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.models import User
 from app.core.models import Membership, OrgSettings
 from app.core.permissions.catalog import (
     PRIVILEGE_ORDER,
@@ -234,20 +235,31 @@ async def effective_permissions(
 
 
 async def role_manager_count(session: AsyncSession, org_id: uuid.UUID) -> int:
-    """How many memberships can still administer roles.
+    """How many memberships can still administer roles — and can still *sign in* to do it.
 
     Replaces the old ``owner``-counting guard: the moment ``membership_roles`` is authoritative,
     counting ``memberships.role == 'owner'`` answers the wrong question. Zero here means the org
     has locked itself out for good, so every mutation that could cause it is rejected.
+
+    The account state is part of the count, not a separate check at one call site. An
+    administrator who cannot authenticate administers nothing, so a deactivation that leaves only
+    deactivated administrators locks the org out exactly as thoroughly as revoking them — and
+    every one of the five mutations that reaches this guard (deactivate, revoke, change roles,
+    delete a role, untick a permission) has to refuse it, which a count that only looks at
+    ``membership_roles`` cannot do for any of them.
     """
     return int(
         await session.scalar(
             select(func.count(func.distinct(MembershipRole.membership_id)))
             .select_from(MembershipRole)
             .join(RolePermission, RolePermission.role_id == MembershipRole.role_id)
+            .join(Membership, Membership.id == MembershipRole.membership_id)
+            .join(User, User.id == Membership.user_id)
             .where(
                 MembershipRole.org_id == org_id,
                 RolePermission.permission.in_(ROLE_MANAGER_PERMISSIONS),
+                Membership.deactivated_at.is_(None),
+                User.is_active.is_(True),
             )
         )
         or 0

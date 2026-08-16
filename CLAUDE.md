@@ -1856,6 +1856,34 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   screen that lies about someone else's account.
   **Stopping declares no permission on purpose**: it runs as the impersonated account, and gating
   the way out behind a permission that account cannot hold would trap someone inside the session.
+- **Leaving is not the same act as never having been here, and only one of them was buildable**
+  (`app/core/members.py`, `docs/UX.md`). Off-boarding a colleague offered exactly one control —
+  "Toegang intrekken", which deletes the `memberships` row. Nothing in the database is lost by
+  that, because every historical row keys on `users.id`; what is lost is the *name*, since every
+  surface that says who did something resolves it through a membership. So an agency retiring a
+  departing employee either kept a live login for somebody who had left, or pressed the only
+  button available and watched three years of their hours, tasks and contactmomenten go
+  authorless on every screen at once. Found the way these things are found: a real tenant pressed
+  it, on a real person, and the 470 entries were still there and no longer said whose. Four rules.
+  **The bit is the org's, so it lives on the membership** — `memberships.deactivated_at`, not
+  `users.is_active`, because `users` is instance-level and a tenant screen writing it disables an
+  account in somebody else's org (§5); the *derived* answer stays the field every consumer already
+  reads (`members.account_active`, `MemberRead.is_active`), which is what let the picker split,
+  the roster badge and `$lib/core/members` pick this up without being touched. **A column two
+  features share is the thing to stop widening, not to migrate around**: the client portal uses
+  `users.is_active` as its own "login enabled" flag, so the obvious backfill — copy the fact onto
+  the new column, clear the old one — would have switched every disabled client login back on, and
+  the migration is therefore purely additive with the reasoning written into it. **Both doors close
+  or neither does**: `member_of_request_org` refuses the next sign-in, answering exactly as it does
+  for an address that never existed, and `require_context` refuses the session already open on
+  their desk — a check in one place alone leaves "the password was right" observable, or leaves the
+  tab working until it expires. And **a guard about administration must count administrators who
+  can still sign in**: `role_manager_count` counted `membership_roles` alone, so it would have
+  waved through the deactivation that leaves an org with only administrators who cannot log in —
+  locked out exactly as thoroughly as the revoke it has always refused. The general form is the
+  one worth carrying: **a status a screen can display and cannot set is a missing control, not a
+  finished feature.** The read half of this had shipped a year earlier — flagged in the lookup,
+  split out of every picker, refused at login — against a column no endpoint could write.
 - **Scope is what lets one key serve a client and the agency at once** (#266, `docs/INVOICING.md`).
   Before you grant an existing permission to `client`, list every route that declares it: reads
   cluster, and `invoicing.invoice.read` gated seven endpoints of which only three were documents —

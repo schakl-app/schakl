@@ -6,7 +6,7 @@ import uuid
 
 from app.core.auth.models import User
 from app.db import async_session_maker
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import _password_hash, auth_cookie, make_tenant
 
 
 async def _role_key_by_id(client, headers) -> dict[str, str]:
@@ -339,3 +339,258 @@ async def test_lookup_flags_a_deactivated_account_and_still_returns_it(client_fo
         assert "vertrokken@example.com" in by_email, "a deactivated colleague must stay nameable"
         assert by_email["vertrokken@example.com"]["is_active"] is False
         assert by_email[t.user.email]["is_active"] is True
+
+
+async def _invite(c, headers, email: str, *, role: str = "member", name: str | None = None) -> dict:
+    r = await c.post(
+        "/api/v1/members/invite",
+        json={"email": email, "full_name": name, "role": role},
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+async def test_deactivating_keeps_the_member_and_everything_they_are_named_on(client_for) -> None:
+    """The control the product was missing, and the whole reason it had to exist.
+
+    Off-boarding offered only "Toegang intrekken", which deletes the membership. Nothing in the
+    database is lost by that — every historical row keys on ``users.id`` — but every screen that
+    names a person resolves the name *through* a membership, so revoking a departing colleague
+    silently blanked the author of every hour, task and contactmoment they had ever written.
+    Deactivating is the other answer: the row stays, the name stays, only the access ends.
+    """
+    t = await make_tenant("mem-deactivate")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        left = await _invite(c, headers, "weg@example.com", name="Weg Gegaan")
+
+        off = await c.patch(
+            f"/api/v1/members/{left['membership_id']}/account",
+            json={"active": False},
+            headers=headers,
+        )
+        assert off.status_code == 200, off.text
+        assert off.json()["is_active"] is False
+        assert off.json()["deactivated_at"] is not None
+
+        # Still on the roster, still nameable in every picker — the two things revoking took away.
+        members = {m["email"]: m for m in (await c.get("/api/v1/members", headers=headers)).json()}
+        assert members["weg@example.com"]["is_active"] is False
+        rows = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        lookup = {m["email"]: m for m in rows}
+        assert lookup["weg@example.com"]["full_name"] == "Weg Gegaan"
+        assert lookup["weg@example.com"]["is_active"] is False
+
+        # And back, in one press. `deactivated_at` clears with it, or the roster keeps a date
+        # for something that is no longer true.
+        on = await c.patch(
+            f"/api/v1/members/{left['membership_id']}/account",
+            json={"active": True},
+            headers=headers,
+        )
+        assert on.status_code == 200, on.text
+        assert on.json()["is_active"] is True
+        assert on.json()["deactivated_at"] is None
+
+
+async def test_a_deactivated_member_can_neither_sign_in_nor_use_the_session_they_had(
+    client_for,
+) -> None:
+    """Both doors, because closing one leaves the other open in a way nobody would notice.
+
+    ``member_of_request_org`` stops the next sign-in and answers exactly as it would for an
+    address that was never here — a colleague who has left must not be able to confirm their
+    account still exists by watching the error change. ``require_context`` stops the tab already
+    open on their desk; without it the session in their browser keeps working until it expires.
+    """
+    t = await make_tenant("mem-deact-login")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        left = await _invite(c, headers, "sessie@example.com")
+
+        # An invite mints an unusable random password; give them a real one to log in with.
+        async with async_session_maker() as session:
+            user = await session.get(User, uuid.UUID(left["user_id"]))
+            assert user is not None
+            user.hashed_password = _password_hash.hash("secret1234")
+            await session.commit()
+
+        theirs = await auth_cookie(await _reload(uuid.UUID(left["user_id"])))
+        assert (await c.get("/api/v1/meta/me", headers=theirs)).status_code == 200
+        ok = await c.post(
+            "/api/v1/auth/login", data={"username": "sessie@example.com", "password": "secret1234"}
+        )
+        assert ok.status_code in (200, 204), ok.text
+
+        off = await c.patch(
+            f"/api/v1/members/{left['membership_id']}/account",
+            json={"active": False},
+            headers=headers,
+        )
+        assert off.status_code == 200, off.text
+
+        # The session they were holding stops serving...
+        assert (await c.get("/api/v1/meta/me", headers=theirs)).status_code == 403
+        # ...and the login answers the way it answers for an address it has never heard of.
+        refused = await c.post(
+            "/api/v1/auth/login", data={"username": "sessie@example.com", "password": "secret1234"}
+        )
+        assert refused.status_code == 400
+
+
+async def test_cannot_deactivate_self(client_for) -> None:
+    """Same reason ``cannot_remove_self`` exists, minus the drama: it would work, and the
+    admin's very next request would 403 with no way back in."""
+    t = await make_tenant("mem-deact-self")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        me = next(
+            m for m in (await c.get("/api/v1/members", headers=headers)).json() if m["is_self"]
+        )
+        r = await c.patch(
+            f"/api/v1/members/{me['membership_id']}/account",
+            json={"active": False},
+            headers=headers,
+        )
+        assert r.status_code == 400
+        assert r.json()["error"]["message"] == "errors.cannot_deactivate_self"
+
+
+async def test_cannot_deactivate_the_last_role_manager(client_for) -> None:
+    """An administrator who cannot sign in administers nothing.
+
+    ``role_manager_count`` used to count ``membership_roles`` alone, so it would have waved this
+    through and left an org whose only owner cannot log in — locked out exactly as thoroughly as
+    revoking them, which the same guard has always refused.
+    """
+    t = await make_tenant("mem-deact-last")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        owner = await _invite(c, headers, "tweede-eigenaar@example.com", role="owner")
+
+        # Two owners: deactivating one is fine.
+        first = await c.patch(
+            f"/api/v1/members/{owner['membership_id']}/account",
+            json={"active": False},
+            headers=headers,
+        )
+        assert first.status_code == 200, first.text
+
+        # Now the seeded owner is the only one who can still administer roles, and they are the
+        # caller — so the self guard catches it first. Prove the *count* half by handing the
+        # remaining seat to the deactivated account and trying again.
+        me = next(
+            m for m in (await c.get("/api/v1/members", headers=headers)).json() if m["is_self"]
+        )
+        demoted = await c.patch(
+            f"/api/v1/members/{me['membership_id']}",
+            json={"role": "member"},
+            headers=headers,
+        )
+        assert demoted.status_code == 409
+        assert demoted.json()["error"]["message"] == "errors.last_role_manager"
+
+
+async def test_rename_a_member_and_leave_their_status_alone(client_for) -> None:
+    """Absent means leave alone (§18).
+
+    The ⋯ Deactiveren item posts only ``active`` and the dialog posts only what it showed; a
+    field the caller did not send must never be written, or a rename quietly reactivates someone.
+    """
+    t = await make_tenant("mem-rename")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        person = await _invite(c, headers, "naamloos@example.com")
+        assert person["full_name"] is None
+
+        await c.patch(
+            f"/api/v1/members/{person['membership_id']}/account",
+            json={"active": False},
+            headers=headers,
+        )
+        named = await c.patch(
+            f"/api/v1/members/{person['membership_id']}/account",
+            json={"full_name": "  Pas Benoemd  "},
+            headers=headers,
+        )
+        assert named.status_code == 200, named.text
+        assert named.json()["full_name"] == "Pas Benoemd"
+        assert named.json()["is_active"] is False, "a rename must not reactivate the account"
+
+        # An emptied input posts a blank string, and that clears the name rather than storing "".
+        cleared = await c.patch(
+            f"/api/v1/members/{person['membership_id']}/account",
+            json={"full_name": ""},
+            headers=headers,
+        )
+        assert cleared.json()["full_name"] is None
+
+
+async def test_account_edit_is_tenant_isolated(client_for) -> None:
+    a = await make_tenant("mem-acct-iso-a")
+    b = await make_tenant("mem-acct-iso-b")
+    async with client_for(a.host) as ca, client_for(b.host) as cb:
+        theirs = await _invite(cb, await auth_cookie(b.user), "hunlid@example.com")
+        r = await ca.patch(
+            f"/api/v1/members/{theirs['membership_id']}/account",
+            json={"active": False},
+            headers=await auth_cookie(a.user),
+        )
+        assert r.status_code == 404
+
+
+async def _reload(user_id: uuid.UUID) -> User:
+    async with async_session_maker() as session:
+        user = await session.get(User, user_id)
+        assert user is not None
+        await session.refresh(user)
+        session.expunge(user)
+        return user
+
+
+async def test_activating_lifts_a_hand_set_instance_flag_for_staff_but_not_for_a_client(
+    client_for,
+) -> None:
+    """Activeren has to make "Actief" true, and for two accounts that means two different bits.
+
+    Before this endpoint existed the only way to retire a colleague was ``users.is_active`` in a
+    SQL prompt, so every instance carries a few accounts off through that column and none through
+    the new one. Clearing only ours would print Actief over somebody who still cannot sign in.
+
+    The exemption is the point of the test, not a footnote: the client portal uses that *same*
+    column as its "login enabled" flag, so lifting it for a ``client`` membership would switch a
+    client login the agency disabled back on — from a screen that does not even list them.
+    """
+    t = await make_tenant("mem-legacy-flag")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        staff = await _invite(c, headers, "oud-teamlid@example.com")
+        outsider = await _invite(c, headers, "klantlogin@example.com", role="client")
+
+        async with async_session_maker() as session:
+            for row in (staff, outsider):
+                user = await session.get(User, uuid.UUID(row["user_id"]))
+                assert user is not None
+                user.is_active = False
+            await session.commit()
+
+        revived = await c.patch(
+            f"/api/v1/members/{staff['membership_id']}/account",
+            json={"active": True},
+            headers=headers,
+        )
+        assert revived.status_code == 200, revived.text
+        assert revived.json()["is_active"] is True
+
+        still_off = await c.patch(
+            f"/api/v1/members/{outsider['membership_id']}/account",
+            json={"active": True},
+            headers=headers,
+        )
+        assert still_off.status_code == 200, still_off.text
+        assert still_off.json()["is_active"] is False, "the portal owns that column, not this one"
+
+        async with async_session_maker() as session:
+            assert (await session.get(User, uuid.UUID(staff["user_id"]))).is_active is True
+            assert (await session.get(User, uuid.UUID(outsider["user_id"]))).is_active is False

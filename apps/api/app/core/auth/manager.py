@@ -45,13 +45,21 @@ PASSWORD_MAX_LENGTH = 128
 
 
 async def member_of_request_org(request: Request | None, user: User) -> bool:
-    """Does ``user`` hold a membership in the org this request's hostname resolves to?
+    """Does ``user`` hold a **live** membership in the org this request's hostname resolves to?
 
     ``True`` when there is no request to resolve against, and when the host resolves to no org
     (the console apex, and any pre-tenant caller) — this narrows a lookup, it does not invent a
     tenant. Its own session, like every pre-auth read: ``memberships`` is RLS-forced, so the GUC
     goes on before the membership read. The org itself comes from ``request_org_id``, which the
     login route resolves anyway, so the two share one hostname lookup.
+
+    A **deactivated** membership answers exactly as a missing one does, and that is the point:
+    this is the lookup behind login, password reset and request-verify alike, so a colleague who
+    has left gets ``LOGIN_BAD_CREDENTIALS`` and a 202 — the same answers an address that was
+    never here gets. Refusing later, or more loudly, would confirm the account still exists to
+    somebody typing addresses at the login form. It is also the only place the *whole* sign-in
+    surface can be closed at once: ``require_context`` refuses the session that would follow, but
+    a check there alone would leave "the password was right" observable.
     """
     if request is None:
         return True
@@ -67,7 +75,9 @@ async def member_of_request_org(request: Request | None, user: User) -> bool:
         await set_current_org(session, org_id)
         found = await session.scalar(
             select(Membership.id).where(
-                Membership.org_id == org_id, Membership.user_id == user.id
+                Membership.org_id == org_id,
+                Membership.user_id == user.id,
+                Membership.deactivated_at.is_(None),
             )
         )
     return found is not None

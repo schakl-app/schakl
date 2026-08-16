@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { ShieldOff, UserMinus } from "@lucide/svelte";
+  import { Pencil, ShieldOff, UserCheck, UserMinus, UserX } from "@lucide/svelte";
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtMoney } from "$lib/core/format";
+  import { fmtDayMonthYear, fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
@@ -12,6 +12,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   // Employment editors (schedule, contracts, recurring, rate) as one shared surface, so this page
   // and the team leave roster can't drift.
@@ -31,6 +32,13 @@
   let resetTwoFactorId = $state("");
   let confirmResetTwoFactor = $state(false);
   let expanded = $state("");
+  // The account editor and the deactivate confirmation, both over one member at a time.
+  // Two variables rather than one: `Modal` closes by writing `open` itself (Escape, the backdrop,
+  // the ✕), so the open bit has to be the thing it owns, and the member is what the form reads.
+  let editing = $state<Member | null>(null);
+  let editOpen = $state(false);
+  let deactivateId = $state("");
+  let confirmDeactivate = $state(false);
 
   // The tenant's own roles, fetched once by `settings/+layout.server.ts`. There is no hard-coded
   // list of four any more: an agency defines its own (issue #19).
@@ -83,6 +91,17 @@
     ),
   );
 
+  /**
+   * An account is off for one of two reasons and only one of them is ours to undo.
+   *
+   * `deactivated_at` set means this org took them off the team — reversible from here.
+   * `is_active` false with no date is the *instance's* answer (an account disabled everywhere,
+   * or one retired by hand before this screen could do it), and the API deliberately does not
+   * let a tenant clear that on a client login. Offering Activeren for a state we cannot change
+   * would be #253's control that always refuses, so the row says which it is instead.
+   */
+  const leftTheTeam = (member: Member) => member.deactivated_at !== null;
+
   function memberActions(member: Member) {
     // Schedule, contracts, recurring and (rate, where permitted) come from the shared helper;
     // this page adds the trust actions (2FA reset, revoke) that only belong on the roster.
@@ -90,6 +109,16 @@
       schedules: data.schedules,
       availability: data.availability && freelancerIds.has(member.user_id),
       rates: data.rates,
+    });
+    // Bewerken first: a member has no detail page to send ?edit=1 to (docs/UX.md, #78), so the
+    // edit surface is a modal on this screen.
+    items.unshift({
+      label: t("common.edit"),
+      icon: Pencil,
+      onclick: () => {
+        editing = member;
+        editOpen = true;
+      },
     });
     if (!member.is_self) {
       // 2FA reset is the lost-phone escape hatch (docs/TWOFACTOR.md) — only offered where the
@@ -105,6 +134,25 @@
           },
         });
       }
+      // Deactiveren is the ordinary way somebody leaves, so it sits above Intrekken and is not
+      // red: it destroys nothing and one press puts it back. Activeren appears only where this
+      // org is the reason the account is off (see `leftTheTeam`).
+      if (leftTheTeam(member)) {
+        items.push({
+          label: t("settings.users.activate"),
+          icon: UserCheck,
+          onclick: () => activate(member),
+        });
+      } else if (member.is_active) {
+        items.push({
+          label: t("settings.users.deactivate"),
+          icon: UserX,
+          onclick: () => {
+            deactivateId = member.membership_id;
+            confirmDeactivate = true;
+          },
+        });
+      }
       items.push({
         label: t("settings.users.revoke"),
         icon: UserMinus,
@@ -116,6 +164,18 @@
       });
     }
     return items;
+  }
+
+  /**
+   * Activeren posts straight through — it hands access back, which destroys nothing, so it does
+   * not confirm (docs/UX.md: activate/deactivate is a reversible toggle). One shared hidden form,
+   * the automation/custom-fields pattern, because `ActionsMenu` takes handlers rather than forms.
+   */
+  let activateForm: HTMLFormElement | undefined = $state();
+  let activateId = $state("");
+  function activate(member: Member) {
+    activateId = member.membership_id;
+    setTimeout(() => activateForm?.requestSubmit(), 0);
   }
 
   const inputClass =
@@ -246,9 +306,18 @@
               >
             {/if}
             {#if !member.is_active}
+              <!-- Two reasons an account is off, and the admin can act on only one of them, so
+                   the badge says which (see `leftTheTeam`). -->
               <span
                 class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                >{t("settings.users.inactive")}</span
+                title={member.deactivated_at
+                  ? t("settings.users.deactivated_on", {
+                      date: fmtDayMonthYear(member.deactivated_at),
+                    })
+                  : t("settings.users.disabled_elsewhere_hint")}
+                >{member.deactivated_at
+                  ? t("settings.users.inactive")
+                  : t("settings.users.disabled_elsewhere")}</span
               >
             {/if}
             {#if data.restrictedMembershipIds.includes(member.membership_id)}
@@ -393,6 +462,129 @@
   </ul>
 {/if}
 
+<!-- Activeren: no dialog, one shared hidden form (see `activate`). -->
+<form
+  method="POST"
+  action="?/saveAccount"
+  use:enhance={busy.wrap(
+    "activate",
+    () =>
+      ({ update }) =>
+        update({ reset: true }),
+  )}
+  bind:this={activateForm}
+  class="hidden"
+>
+  <input type="hidden" name="membership_id" value={activateId} />
+  <input type="hidden" name="active" value="true" />
+</form>
+
+<!-- The account editor. A member has no detail page, so this is the edit surface (#78). -->
+{#if editing}
+  {@const member = editing}
+  <Modal bind:open={editOpen} title={t("settings.users.edit_account")}>
+    <form
+      method="POST"
+      action="?/saveAccount"
+      use:enhance={busy.wrap("account", () => async ({ update }) => {
+        // `reset: false` — this edits what exists (`keep`'s rule), and the dialog closes on
+        // success anyway; resetting would blank the name field on the way out.
+        await update({ reset: false });
+        editOpen = false;
+      })}
+      class="space-y-4"
+    >
+      <input type="hidden" name="membership_id" value={member.membership_id} />
+
+      <div>
+        <label for="account_name" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.users.name")}</label
+        >
+        <input
+          id="account_name"
+          name="full_name"
+          value={member.full_name ?? ""}
+          class={inputClass}
+          placeholder={member.email}
+        />
+      </div>
+
+      <div>
+        <p class="mb-1 block text-sm font-medium text-text">{t("settings.users.email")}</p>
+        <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
+          {member.email}
+        </p>
+        <!-- Read-only on purpose: the address is the account's identity across the whole
+             instance and the key an OIDC login matches on, so renaming it here can silently
+             detach somebody's Google sign-in. The API does not accept the field at all. -->
+        <p class="mt-1 text-xs text-text-muted">{t("settings.users.email_fixed_hint")}</p>
+      </div>
+
+      {#if !member.is_self}
+        <fieldset class="rounded-lg border border-border p-3">
+          <legend class="px-1 text-sm font-medium text-text">{t("settings.users.status")}</legend>
+          {#if !member.is_active && !member.deactivated_at}
+            <!-- Off through the instance's own bit: not this screen's to flip for every kind of
+                 account, so say so rather than draw a control that may refuse (#253). -->
+            <p class="text-sm text-text-muted">{t("settings.users.disabled_elsewhere_hint")}</p>
+          {:else}
+            <label class="flex items-start gap-3 py-1.5">
+              <input
+                type="radio"
+                name="active"
+                value="true"
+                checked={member.is_active}
+                class="mt-1 h-4 w-4"
+              />
+              <span class="text-sm text-text"
+                >{t("settings.users.status_active")}
+                <span class="block text-xs text-text-muted"
+                  >{t("settings.users.status_active_hint")}</span
+                ></span
+              >
+            </label>
+            <label class="flex items-start gap-3 py-1.5">
+              <input
+                type="radio"
+                name="active"
+                value="false"
+                checked={!member.is_active}
+                class="mt-1 h-4 w-4"
+              />
+              <span class="text-sm text-text"
+                >{t("settings.users.status_inactive")}
+                <span class="block text-xs text-text-muted"
+                  >{t("settings.users.status_inactive_hint")}</span
+                ></span
+              >
+            </label>
+            {#if member.deactivated_at}
+              <p class="mt-1 text-xs text-text-muted">
+                {t("settings.users.deactivated_on", {
+                  date: fmtDayMonthYear(member.deactivated_at),
+                })}
+              </p>
+            {/if}
+          {/if}
+        </fieldset>
+      {/if}
+
+      {#if form?.error}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+      {/if}
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (editOpen = false)}>{t("common.cancel")}</button
+        >
+        <Button loading={busy.is("account")}>{t("common.save")}</Button>
+      </div>
+    </form>
+  </Modal>
+{/if}
+
 <ConfirmDialog
   bind:open={confirmResetTwoFactor}
   title={t("settings.users.reset_two_factor")}
@@ -402,10 +594,36 @@
   fields={{ membership_id: resetTwoFactorId }}
 />
 
+<!-- Deactivating destroys nothing, so the button is not red — but it does end somebody's access,
+     which is worth pausing over, and the list is what makes the choice between this and Intrekken
+     an informed one. -->
+<ConfirmDialog
+  bind:open={confirmDeactivate}
+  title={t("settings.users.deactivate")}
+  message={t("settings.users.deactivate_confirm")}
+  consequences={[
+    t("settings.users.deactivate_effect_login"),
+    t("settings.users.deactivate_effect_history"),
+    t("settings.users.deactivate_effect_pickers"),
+    t("settings.users.deactivate_effect_kept"),
+    t("settings.users.deactivate_effect_reversible"),
+  ]}
+  confirmLabel={t("settings.users.deactivate")}
+  variant="primary"
+  action="?/saveAccount"
+  fields={{ membership_id: deactivateId, active: "false" }}
+/>
+
 <ConfirmDialog
   bind:open={confirmRevoke}
   title={t("settings.users.revoke")}
   message={t("settings.users.revoke_confirm")}
+  consequences={[
+    t("settings.users.revoke_effect_roles"),
+    t("settings.users.revoke_effect_history"),
+    t("settings.users.revoke_effect_irreversible"),
+    t("settings.users.revoke_effect_prefer_deactivate"),
+  ]}
   confirmLabel={t("settings.users.revoke")}
   action="?/revoke"
   fields={{ membership_id: revokeId }}
