@@ -1242,6 +1242,32 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   reachable through a proxy, assert the URL the proxy actually forwards, not the object behind
   it. `SCHAKL_API_DOCS_ENABLED=false` drops the HTTP surface while leaving the in-process spec
   that the tool builder and `scripts/gen-client.sh` both read.
+- **"May this caller?" and "is there a caller?" are different questions, and a codebase that
+  only ever asks the first answers the second by accident** (`app/core/apidocs.py`,
+  `tests/test_anonymous_denied.py`). Deny-by-default (§15) was enumerable, swept and enforced —
+  for *permissions*, against a member who was already signed in. Nothing ever asked what an
+  **unauthenticated** request reaches, so the one surface that could not be handed a dependency
+  was the one nobody noticed: a route FastAPI builds for its own docs takes no `Depends`, so
+  `/api/docs`, `/api/redoc` and `/api/openapi.json` answered 200 to the internet on every
+  instance ever shipped — 583 paths, 817 schemas, and the tenant's enabled module set. Not an
+  authorization hole (every operation behind them still travels `require_context`, so "Try it
+  out" collected 401s) but a **map**: which integrations this agency runs, and the exact shape of
+  every request body worth attacking. Three rules come out of fixing it. **A surface that cannot
+  carry the gate gets rewritten until it can** — the three paths are ours now, behind
+  `require_context` plus a portal refusal, because externality is its own axis (§15, #274) and
+  the agency's internal route table is not what a client signs in to see. **A sweep must cover
+  what the document cannot see**: both existing sweeps enumerate the OpenAPI paths, and the
+  reference, the edge error page and `/mcp` are all deliberately absent from it — so the new one
+  names them explicitly and pins the hidden-route set, `include_in_schema=False` being the single
+  flag that drops a route out of every guardrail at once. And **an authenticator is recognised by
+  identity, never by name**: fastapi-users builds `current_active_user` and its *optional* twin
+  from one factory, so both callables are named `current_user_dependency`, and matching that name
+  would accept the one that authenticates nobody — which is exactly what `require_context` uses
+  before deciding whether a session was required. The audit behind it found nothing else open:
+  the whole `/api/v1` surface, both MCP transports and every section refuse an anonymous caller,
+  and the routes that legitimately answer without one (the login surface, the first-run wizard,
+  four provider callbacks carrying tokens we minted ourselves, OAuth discovery, public branding)
+  are a list with a stated reason each instead of a property nobody had ever checked.
 - **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
   the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 

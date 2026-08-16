@@ -180,14 +180,23 @@ def test_every_route_kept_out_of_the_schema_is_named_here() -> None:
     """``include_in_schema=False`` removes a route from the count above **and** from the marker
     sweep, so it is the one flag that can make a route invisible to this whole file.
 
-    Exactly one route uses it: the edge's branded error page (``app/core/errorpage.py``), which
-    is not product API — it must not become an MCP tool or a method on the generated client
-    (CLAUDE.md §12), and it renders public branding with no session, in the situation where the
-    SSR app is unreachable. Anything else appearing here is a route that has slipped out of
-    deny-by-default, which is precisely the failure this module exists to make loud.
+    Four routes use it, and the reason is the same for all of them: this is not product API, so
+    it must not become an MCP tool or a method on the generated client (CLAUDE.md §12).
+
+    * the edge's branded error page (``app/core/errorpage.py``), which renders public branding
+      with no session, in the situation where the SSR web app is unreachable;
+    * the three interactive-reference routes (``app/core/apidocs.py``) — a document *about* the
+      API is not an operation on it, and publishing them would make the spec describe itself.
+
+    Being hidden costs them this file's marker sweep, so they pay for it elsewhere: all three
+    declare a reader gate that ``tests/test_api_docs.py`` asserts by status (401 to no
+    credential, 403 to a portal login), and ``tests/test_anonymous_denied.py`` sweeps them
+    beside every other surface reachable without one. Anything *else* appearing here is a route
+    that has slipped out of deny-by-default, which is precisely the failure this module exists
+    to make loud.
     """
     hidden = {route.name for route in _leaves() if not route.include_in_schema}
-    assert hidden == {"edge_error_page"}
+    assert hidden == {"edge_error_page", "openapi_document", "swagger_ui", "redoc"}
 
 
 def test_every_route_declares_a_permission_or_an_exemption() -> None:

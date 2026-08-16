@@ -16,12 +16,12 @@
   },
   "highlights": {
     "nl": [
-      "Swagger UI op /api/docs, ReDoc op /api/redoc, het document op /api/openapi.json",
+      "Swagger UI op /api/docs, ReDoc op /api/redoc, het document op /api/openapi.json (ingelogd, niet publiek)",
       "Persoonlijke sleutels per medewerker, service-accounts voor koppelingen die blijven draaien",
       "n8n is precies dit: een API-sleutel plus HTTP-nodes, geen aparte koppeling nodig"
     ],
     "en": [
-      "Swagger UI at /api/docs, ReDoc at /api/redoc, the document at /api/openapi.json",
+      "Swagger UI at /api/docs, ReDoc at /api/redoc, the document at /api/openapi.json (signed in, never public)",
       "Personal keys per employee, service accounts for integrations that keep running",
       "n8n is exactly this: an API key plus HTTP nodes, no separate connector needed"
     ]
@@ -52,7 +52,7 @@
     },
     "steps": {
       "nl": [
-        "Open de referentie op <code>https://&lt;je-host&gt;/api/docs</code> (Swagger UI) of <code>https://&lt;je-host&gt;/api/redoc</code>. Het document zelf staat op <code>/api/openapi.json</code>. Let op het pad: alles staat onder <code>/api/</code>, want dat is de enige prefix die de edge naar de API-service stuurt.",
+        "Log in en open de referentie op <code>https://&lt;je-host&gt;/api/docs</code> (Swagger UI) of <code>https://&lt;je-host&gt;/api/redoc</code>. Het document zelf staat op <code>/api/openapi.json</code>. Je moet ingelogd zijn: de referentie beschrijft je hele API-oppervlak, dus die staat achter dezelfde poort als de API zelf en is niet publiek. Let op het pad: alles staat onder <code>/api/</code>, want dat is de enige prefix die de edge naar de API-service stuurt.",
         "Maak een persoonlijke sleutel aan: <strong>Instellingen → Mijn account</strong>, sectie <strong>API-sleutels</strong>. Vul <strong>Naam</strong> in (bijvoorbeeld <code>n8n-automatisering</code>), kies eventueel een datum bij <strong>Verloopt op</strong> en vink onder <strong>Scopes</strong> aan wat het script nodig heeft. Minstens één scope is verplicht.",
         "Of maak een sleutel die niemands account nodig heeft: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, daarna <strong>Nieuwe sleutel</strong>. Zo'n sleutel draagt precies zijn eigen scopes en blijft werken als de aanmaker vertrekt.",
         "Kopieer de sleutel meteen: <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code>. Hij wordt één keer getoond, want alleen een hash van het geheim wordt bewaard; daarna geeft de API nog slechts <code>schakl_&lt;prefix&gt;_********</code> terug.",
@@ -61,7 +61,7 @@
         "Bouw je een echte client, genereer hem dan uit <code>/api/openapi.json</code>. De webapp doet precies dat, met <code>openapi-typescript</code>, zodat een endpoint dat verandert een typefout oplevert in plaats van een verrassing."
       ],
       "en": [
-        "Open the reference at <code>https://&lt;your-host&gt;/api/docs</code> (Swagger UI) or <code>https://&lt;your-host&gt;/api/redoc</code>. The document itself is at <code>/api/openapi.json</code>. Mind the path: everything sits under <code>/api/</code>, because that is the only prefix the edge routes to the API service.",
+        "Sign in, then open the reference at <code>https://&lt;your-host&gt;/api/docs</code> (Swagger UI) or <code>https://&lt;your-host&gt;/api/redoc</code>. The document itself is at <code>/api/openapi.json</code>. A session is required: the reference describes your whole API surface, so it sits behind the same gate as the API and is not public. Mind the path: everything sits under <code>/api/</code>, because that is the only prefix the edge routes to the API service.",
         "Mint a personal key: <strong>Instellingen → Mijn account</strong> (Settings → My account), section <strong>API-sleutels</strong> (API keys). Fill in <strong>Naam</strong> (Name), for example <code>n8n-automatisering</code>, optionally pick a date under <strong>Verloopt op</strong> (Expires on), and tick under <strong>Scopes</strong> what the script needs. At least one scope is required.",
         "Or mint a key that needs nobody's account: <strong>Instellingen → Service-accounts</strong> (Settings → Service accounts) → <strong>Service-account toevoegen</strong> (Add service account), then <strong>Nieuwe sleutel</strong> (New key). Such a key carries exactly its own scopes and keeps working after its creator leaves.",
         "Copy the key straight away: <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code>. It is shown exactly once, because only a hash of the secret is stored; afterwards the API returns nothing but <code>schakl_&lt;prefix&gt;_********</code>.",

@@ -8,9 +8,12 @@
 # Usage:
 #   scripts/gen-client.sh                 # export spec from the app, then generate
 #   OPENAPI_URL=http://api.localhost/api/openapi.json scripts/gen-client.sh   # fetch a running API
+#   OPENAPI_URL=… SCHAKL_API_KEY=schakl_… scripts/gen-client.sh                # …with a key
 #
 # The spec is served under /api/ — that is the prefix the edge routes to the API service
-# (infra/traefik/dynamic*.yml); FastAPI's root-level default was never reachable.
+# (infra/traefik/dynamic*.yml); FastAPI's root-level default was never reachable. The default
+# path above is offline and needs no credential. The OPENAPI_URL path is now an ordinary
+# authenticated read (app/core/apidocs.py — the reference is not public), so it takes a key.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +26,8 @@ mkdir -p "$(dirname "$CLIENT_OUT")"
 
 if [[ -n "${OPENAPI_URL:-}" ]]; then
   echo "→ fetching OpenAPI from $OPENAPI_URL"
-  curl -fsSL "$OPENAPI_URL" -o "$SPEC_OUT"
+  curl -fsSL ${SCHAKL_API_KEY:+-H "Authorization: Bearer $SCHAKL_API_KEY"} \
+    "$OPENAPI_URL" -o "$SPEC_OUT"
 else
   echo "→ exporting OpenAPI from apps/api (offline)"
   ( cd "$API_DIR" && uv run python -m app.openapi_export ) > "$SPEC_OUT"

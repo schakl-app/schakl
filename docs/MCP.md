@@ -155,12 +155,39 @@ was not disabled anywhere; it was **unroutable**, and the symptom was the web ap
 where the reference should have been. Serving it from inside the one prefix that reaches this
 service fixes it with no edge change on an existing install.
 
-`SCHAKL_API_DOCS_ENABLED=false` removes the HTTP surface. It does **not** remove the spec:
-`app.openapi()` builds the document from the route table and never reads `openapi_url`, so the
-tool builder above and `scripts/gen-client.sh` keep working on an instance that serves no docs
-at all. `apps/api/tests/test_api_docs.py` pins the paths rather than the mere existence of a
-document — a test that asserted `app.openapi()` returns something passed the entire time the
-reference was unreachable.
+**And it is not public.** Being reachable was only half the question, and the other half went
+unasked for exactly as long as the first one was wrong. A route FastAPI builds for its own docs
+carries no dependency and cannot be given one, so all three paths answered `200` to no
+credential at all — the full route table, every request and response schema, and the tenant's
+enabled module set, on every instance ever shipped. That was never an *authorization* hole: each
+operation behind those URLs still travels `require_context`, and Swagger UI's "Try it out" is a
+browser making the call `curl` would make, so a stranger pressing it collected 401s. What leaked
+was the **map** — which integrations this agency runs, and the exact shape of every request body
+worth attacking.
+
+So `app/core/apidocs.py` serves the three paths behind the gate of the API they describe: a
+session or an API key for *this* org, and never a client-portal login, because externality is
+its own axis (CLAUDE.md §15, #274) and the agency's internal route table is not something a
+client signs in to see. A browser reaches it on the cookie it already holds — same origin, so
+Swagger UI's own fetch of the document is authenticated too — and every response is `no-store`,
+because a body that exists only because a credential was presented must not be held by anything
+in front of us.
+
+The lesson generalises past this surface, and is why `apps/api/tests/test_anonymous_denied.py`
+now sits beside the permission sweep: **"may this caller?" and "is there a caller?" are
+different questions behind different gates**, and a repo that only ever asks the first will keep
+answering the second by accident. That file sweeps every operation with no credential at all,
+plus the two surfaces the OpenAPI document cannot see — this reference, and `/mcp` itself.
+
+`SCHAKL_API_DOCS_ENABLED=false` still removes the HTTP surface entirely. It does **not** remove
+the spec: `app.openapi()` builds the document from the route table and never reads
+`openapi_url`, so the tool builder above and `scripts/gen-client.sh` keep working on an instance
+that serves no docs at all — `gen-client.sh` defaults to the offline exporter, and only its
+optional `OPENAPI_URL=` path fetches over HTTP, which now needs a credential like any other
+read. `apps/api/tests/test_api_docs.py` pins the paths *and* the gate rather than the mere
+existence of a document: a test asserting `app.openapi()` returns something passed the entire
+time the reference was unreachable, and one fetching it without credentials would have passed
+the entire time it was open.
 
 ## Authentication: API keys, and OAuth mints one
 
