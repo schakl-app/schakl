@@ -1,0 +1,162 @@
+---
+title: WordPress
+description: "Eén applicatiewachtwoord per website opent vier oppervlakken op dezelfde host, en levert de AI-zichtbaarheidscijfers van Rank Math als marketingbron."
+sidebar:
+  order: 11
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+De meeste sites die een bureau beheert draaien op WordPress. Eén **applicatiewachtwoord** per
+website opent vier oppervlakken tegelijk op dezelfde host, en één daarvan levert een marketingbron
+die geen andere heeft: hoe vaak het merk van een klant opduikt, en gelinkt wordt, in AI-antwoorden.
+
+## Waar je het vindt
+
+De kaart **WordPress** op de detailpagina van een website (*Domeinen & websites → Websites → de
+site*). Er is bewust geen menu-item: WordPress is geen plek waar je naartoe gaat, het is iets wat
+een website heeft. Dezelfde redenering houdt Cloudflare op een domein in plaats van in de
+zijbalk.
+
+Zet de koppeling aan onder *Instellingen → Integraties*. Hij heeft de module **Websites** nodig,
+want daar hangt de koppeling aan.
+
+## De inloggegevens, en wat dat werkelijk is
+
+<Aside type="caution" title="Dit is een beheerderswachtwoord">
+Elke route van Rank Math voor AI-zichtbaarheid vraagt om `manage_options`, dus het
+applicatiewachtwoord dat je hier bewaart hoort bij een **WordPress-beheerder**. Een alleen-lezen
+variant bestaat niet.
+
+Dat is een aanzienlijk groter risico dan bijvoorbeeld een Cloudflare-token dat alleen DNS mag
+lezen, en de rechten zijn daarop ingericht: een koppeling beheren mag alleen een beheerder, het
+zit bewust niet in het gewone schrijfrecht op websites, en geen van beide rechten gaat ooit naar
+de rol Klant.
+</Aside>
+
+<Steps>
+1. Ga in WordPress naar *Gebruikers → Profiel* en scroll naar **Applicatiewachtwoorden**. Maak er
+   een aan en geef hem een naam die je later herkent ("schakl" bijvoorbeeld).
+2. Open de website in schakl. en vul op de kaart **WordPress** het adres van de site, de
+   WordPress-gebruikersnaam en dat wachtwoord in.
+3. Druk op **Controleren**.
+</Steps>
+
+Het wachtwoord gaat versleuteld de opslag in, is via de API alleen te schrijven en komt nooit voor
+in een antwoord, een logregel of het wijzigingsspoor. Het spoor legt vast *dat* het gewijzigd is,
+nooit waarin.
+
+## Wat Controleren werkelijk nagaat
+
+Er lopen vijf losse proeven, en **geen daarvan bepaalt de uitslag van een andere**, want in het
+echt zijn die toestanden onafhankelijk: Rank Math ontbreekt gewoon vaak op een site waarvan de
+berichten-API kerngezond is, en de MCP-plugin op een site waar Rank Math prima werkt.
+
+| Oppervlak | Wat een vinkje betekent | Wat een kruisje betekent |
+| --- | --- | --- |
+| `rest` | Het wachtwoord bereikt de REST-API van WordPress | De inlog zelf is geweigerd |
+| `admin` | Die gebruiker is beheerder | Geldige inlog, maar geen beheerder |
+| `abilities` | De Abilities-API van WordPress 6.9 is aanwezig | WordPress is ouder dan 6.9 |
+| `rankmath_aiv` | Rank Math antwoordt op AI-zichtbaarheid | Plugin afwezig, of geen Content AI-abonnement |
+| `mcp` | De MCP Adapter-plugin staat er | Die staat er niet |
+
+Daar volgen twee regels uit. **Een lezing die lukt weegt zwaarder dan een proef die weigert**: een
+inlog die de gewone REST-API haalde is *actief*, ook als de andere vier niets opleverden, en pas
+als álle vijf weigeren heet de inlog geweigerd. En **onbereikbaar** en **geen WordPress** worden
+apart gehouden van **geweigerd**, want geen van beide zegt iets over het wachtwoord: ze als
+inlogfout melden stuurt iemand een nieuw wachtwoord maken dat nooit fout was.
+
+Elk kruisje draagt de eigen fouttekst van de site, onvertaald, want het is een citaat:
+`rest_no_route`, `rest_forbidden`, `aiv_unauthorized`. Een kruisje zonder uitleg is de enige
+toestand waar niemand iets mee kan.
+
+<Aside type="tip" title="Een veelvoorkomend probleem bij gedeelde hosting">
+Sommige hosters halen de `Authorization`-header eruit voordat PHP hem ziet. Dat komt hier binnen
+als een geweigerde inlog met `rest_not_logged_in` ernaast: het wachtwoord klopt, de hoster eet het
+op.
+</Aside>
+
+## Vier oppervlakken, één sleutel
+
+Rank Math registreert zijn AI-zichtbaarheid als WordPress **Abilities**, met twee regels
+metagegevens erbij: toon in REST, en beschikbaar via MCP. Die twee regels zijn het hele verhaal.
+Ze zetten dezelfde functies op de gewone REST-route van WordPress én op de MCP-server van de MCP
+Adapter-plugin, en allebei authenticeren zoals iedere REST-aanroep dat doet.
+
+| Oppervlak | Wat het is |
+| --- | --- |
+| `wp/v2` | De gewone REST-API: berichten, media, gebruikers, plugins |
+| `wp-abilities/v1` | De Abilities-API van WordPress 6.9, per functie aan te zetten |
+| `mcp/<server>` | De MCP-server van de MCP Adapter-plugin |
+| `rankmath/v1/ai-visibility` | De eigen AI-zichtbaarheidsroute van Rank Math |
+
+## AI-zichtbaarheid als marketingbron
+
+Staat de inlog eenmaal, koppel dan onder *Marketing* op de klant een bron van het type **Rank
+Math** aan deze website. Zonder gekoppelde website wordt dat meteen geweigerd, in plaats van
+morgenochtend als een rode regel op te duiken.
+
+Vijf cijfers, en omdat geen ervan een getal is dat een marketeer al bezit, draagt elk zijn eigen
+zin op het scherm: uitgeschreven waar er ruimte is, als tooltip waar die er niet is, en in
+hetzelfde onderdeel voor jouw team en voor het portaal van de klant.
+
+| Cijfer | Wat het telt | Schaal |
+| --- | --- | --- |
+| AI-zichtbaarheidsscore | Rang, vermeldingen, bronvermeldingen en sentiment in één getal | 0 tot 100 |
+| Vermeldingen | Hoe vaak het merk genoemd werd in antwoorden op de gevolgde vragen | Aantal |
+| Bronvermeldingen | Het deel daarvan dat ook naar de site van het merk **linkte** | Aantal |
+| Gemiddeld sentiment | Hoe positief het merk beschreven wordt | Percentage |
+| Gemiddelde plaats | De gemiddelde positie tussen de merken die een antwoord noemt | 1 is het beste |
+
+<Aside type="note" title="Twee hiervan zijn geen tellingen">
+**Vermeldingen** en **bronvermeldingen** lijken tellingen en zijn lopende totalen op het moment
+van de laatste analyse. Twee dagmomentopnamen die "18 vermeldingen" zeggen betekenen achttien en
+niet zesendertig, dus ze worden over een periode gemiddeld en nooit opgeteld.
+</Aside>
+
+### Waarom de trendlijn van ons is en niet van Rank Math
+
+Rank Math houdt geen geschiedenis bij: elk pad daar antwoordt alleen met de laatste stand. Daarom
+schrijft de nachtelijke synchronisatie **één** momentopname per dag, en bestaat de trendlijn
+doordat wij die momentopnamen bewaren. Een venster van dertig dagen vullen met dertig identieke
+rijen zou een vlakke lijn opleveren die op meten lijkt.
+
+Analyses draaien bovendien op het tempo van jouw Rank Math-abonnement, standaard wekelijks, dus
+twee opeenvolgende momentopnamen mogen gerust hetzelfde getal bevatten. Wanneer er voor het laatst
+geanalyseerd is reist mee met de cijfers, zodat een rapportage kan zeggen wat het eigenlijk
+vergelijkt in plaats van een week van 0% aan te kondigen.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `wordpress.site.manage` | Koppelen, het wachtwoord wijzigen, controleren, ontkoppelen | Beheerder |
+| `wordpress.site.read` | Zien of de site van deze klant gekoppeld is en wat de laatste controle opleverde | Beheerder, Medewerker |
+
+Het leesrecht gaat naar medewerkers omdat "is de site van deze klant gekoppeld?" een vraag is die
+een accountmanager tijdens gewoon werk stelt. Het beheerrecht blijft bij beheerders en zit bewust
+**niet** in `websites.website.write`.
+
+## Goed om te weten
+
+- **Ontkoppelen vergeet het wachtwoord hier, maar trekt het niet in bij WordPress.** Dat doet de
+  eigenaar zelf op zijn profielpagina, en het als bijeffect van opruimen intrekken zou breken waar
+  dat wachtwoord verder nog voor gemaakt was.
+- **De kaart laadt meteen, gekoppeld of niet.** Hij leest opgeslagen gegevens en raakt geen enkele
+  dienst buiten schakl. aan, dus een websitepagina opent even snel of de WordPress van de klant nu
+  in de lucht is, plat ligt, achter een firewall staat of verdwenen is. Gaan kijken is precies wat
+  de knop Controleren doet.
+- **Een controle die lukt, wist de fout die een vorige zette.** Een statusvlag die alleen maar aan
+  kan gaan is een bug met een lange staart.
+- **Voorlopig alleen lezen.** Geen merk aanmaken, geen vragen bewerken, geen berichten publiceren.
+- **Collega's met een beperkte klantselectie zien alleen de sites van hun eigen klanten.** Een
+  website hoort bij de klant van zijn domein, twee stappen verderop, en dat wordt afgedwongen en
+  niet aangenomen.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Websites" href="/nl/docs/modules/websites/" description="Het record waar deze inlog aan hangt." />
+  <LinkCard title="Marketingbronnen" href="/nl/docs/integrations/marketing-sources/" description="De andere vier bronnen, en hoe de cijfers van een klant worden samengesteld." />
+  <LinkCard title="Uptime Kuma" href="/nl/docs/integrations/uptime-kuma/" description="Het andere dat een website heeft." />
+</CardGrid>

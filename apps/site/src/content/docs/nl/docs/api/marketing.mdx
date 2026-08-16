@@ -1,0 +1,1719 @@
+---
+title: "Marketing en rapportage"
+description: "De cijfers van de klant, de advertenties die ze bewegen, de container die ze meet, en het maandelijkse document dat ze uitlegt."
+sidebar:
+  order: 5
+---
+
+De cijfers van de klant, de advertenties die ze bewegen, de container die ze meet, en het maandelijkse document dat ze uitlegt.
+
+118 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `marketing`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/marketing/accounts` | Available Accounts | `marketing.link.manage` |
+| `GET` `/marketing/clients` | Linked Clients | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/drilldown` | Drilldown | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/metrics` | Company Metrics | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/settings` | Get Company Settings | `marketing.metrics.read` |
+| `PUT` `/marketing/companies/{company_id}/settings` | Set Company Settings | `marketing.link.manage` |
+| `GET` `/marketing/links` | List Links | `marketing.metrics.read` |
+| `POST` `/marketing/links` | Create Link | `marketing.link.manage` |
+| `DELETE` `/marketing/links/{link_id}` | Unlink | `marketing.link.manage` |
+| `GET` `/marketing/overview` | Overview | `marketing.overview.read` |
+| `GET` `/marketing/settings` | Get Settings | `marketing.link.manage` |
+| `PUT` `/marketing/settings` | Save Settings | `marketing.link.manage` |
+| `GET` `/marketing/summary` | Summary | `marketing.metrics.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/marketing/accounts`
+
+**Available Accounts** — The accounts/properties/sites the caller's connection can reach for ``source``.
+
+Recht: `marketing.link.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `source` | MarketingSource · verplicht |  |
+| `website_id` | string | Required for a source whose credential is per website (rankmath); ignored by every other source. |
+
+Antwoord: `200` · `AccountsResponse`
+
+#### `GET /api/v1/marketing/clients`
+
+**Linked Clients** — The clients that actually have a source linked, with which sources and how each is doing.
+
+Recht: `marketing.metrics.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `200`) |
+
+Antwoord: `200` · `MarketingClientList`
+
+#### `GET /api/v1/marketing/companies/{company_id}/drilldown`
+
+**Drilldown** — A live tier-2 drill-down (top pages/queries/campaigns), Redis-cached ~1h.
+
+Recht: `marketing.metrics.read`
+
+Padparameters: `company_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `link_id` | string · verplicht |  |
+| `kind` | string · verplicht |  |
+| `range_days` | integer |  (default `30`) |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. |
+
+Antwoord: `200` · `DrilldownResponse`
+
+#### `GET /api/v1/marketing/companies/{company_id}/metrics`
+
+**Company Metrics**
+
+Recht: `marketing.metrics.read`
+
+Padparameters: `company_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `range_days` | integer |  (default `30`) |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. |
+
+Antwoord: `200` · `CompanyMarketing`
+
+#### `GET /api/v1/marketing/companies/{company_id}/settings`
+
+**Get Company Settings** — This client's marketing preferences, and what they resolve to.
+
+Recht: `marketing.metrics.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `CompanySettingsRead`
+
+#### `PUT /api/v1/marketing/companies/{company_id}/settings`
+
+**Set Company Settings** — Per-client marketing preferences: the curated tab layout (#192), the comparison this client's dashboard measures against (#312) and the legacy key-events toggle (#134).
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Request body: `CompanySettingsUpdate`
+
+Antwoord: `200` · `CompanySettingsRead`
+
+#### `GET /api/v1/marketing/links`
+
+**List Links**
+
+Recht: `marketing.metrics.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string · verplicht |  |
+
+Antwoord: `200` · `app__modules__marketing__schemas__LinkRead[]`
+
+#### `POST /api/v1/marketing/links`
+
+**Create Link**
+
+Recht: `marketing.link.manage`
+
+Request body: `app__modules__marketing__schemas__LinkCreate`
+
+Antwoord: `201` · `app__modules__marketing__schemas__LinkRead`
+
+#### `DELETE /api/v1/marketing/links/{link_id}`
+
+**Unlink**
+
+Recht: `marketing.link.manage`
+
+Padparameters: `link_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/marketing/overview`
+
+**Overview** — The morning-coffee grid: one row per linked client, from stored data, server-sorted.
+
+Recht: `marketing.overview.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `range_days` | integer |  (default `30`) |
+| `sort` | string | company_name \| sessions \| clicks \| position \| cost \| conversions (- = desc) |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. |
+
+Antwoord: `200` · `OverviewResponse`
+
+#### `GET /api/v1/marketing/settings`
+
+**Get Settings** — The org's marketing settings — reports whether an Ads developer token is configured; the token itself is write-only and never returned (the Google client-secret pattern).
+
+Recht: `marketing.link.manage`
+
+Antwoord: `200` · `MarketingSettingsRead`
+
+#### `PUT /api/v1/marketing/settings`
+
+**Save Settings** — Store the encrypted Google Ads developer token (an empty value keeps the stored one).
+
+Recht: `marketing.link.manage`
+
+Request body: `MarketingSettingsWrite`
+
+Antwoord: `200` · `MarketingSettingsRead`
+
+#### `GET /api/v1/marketing/summary`
+
+**Summary** — The dashboard widget's compact digest: top linked clients by their headline KPI, from stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider than what the caller could fetch client-by-client.
+
+Recht: `marketing.metrics.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `range_days` | integer |  (default `30`) |
+| `limit` | integer |  (default `5`) |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. |
+
+Antwoord: `200` · `MarketingSummary`
+
+</details>
+
+## `google_ads`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/google-ads/accounts` | List Google Ads Accounts | `google_ads.account.read` |
+| `POST` `/google-ads/accounts` | Link Google Ads Account | `google_ads.settings.manage` |
+| `GET` `/google-ads/accounts/{account_id}` | Get Google Ads Account | `google_ads.account.read` |
+| `PATCH` `/google-ads/accounts/{account_id}` | Update Google Ads Account | `google_ads.settings.manage` |
+| `DELETE` `/google-ads/accounts/{account_id}` | Unlink Google Ads Account | `google_ads.settings.manage` |
+| `GET` `/google-ads/accounts/{account_id}/ad-groups` | Google Ads Ad Groups | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/ad-groups` | Create Google Ads Ad Group | `google_ads.campaign.write` |
+| `PATCH` `/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}` | Update Google Ads Ad Group | `google_ads.campaign.write` |
+| `DELETE` `/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}` | Remove Google Ads Ad Group | `google_ads.campaign.write` |
+| `DELETE` `/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}/ads/{ad_id}` | Remove Google Ads Ad | `google_ads.campaign.write` |
+| `GET` `/google-ads/accounts/{account_id}/ads` | Google Ads Ads | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/ads` | Create Google Ads Ad | `google_ads.campaign.write` |
+| `PATCH` `/google-ads/accounts/{account_id}/ads` | Update Google Ads Ad | `google_ads.campaign.write` |
+| `POST` `/google-ads/accounts/{account_id}/budgets` | Create Google Ads Budget | `google_ads.budget.write` |
+| `PATCH` `/google-ads/accounts/{account_id}/budgets/{budget_id}` | Update Google Ads Budget | `google_ads.budget.write` |
+| `DELETE` `/google-ads/accounts/{account_id}/budgets/{budget_id}` | Remove Google Ads Budget | `google_ads.budget.write` |
+| `GET` `/google-ads/accounts/{account_id}/campaigns` | Google Ads Campaigns | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/campaigns` | Create Google Ads Campaign | `google_ads.campaign.write` |
+| `PATCH` `/google-ads/accounts/{account_id}/campaigns/{campaign_id}` | Update Google Ads Campaign | `google_ads.campaign.write` |
+| `DELETE` `/google-ads/accounts/{account_id}/campaigns/{campaign_id}` | Remove Google Ads Campaign | `google_ads.campaign.write` |
+| `GET` `/google-ads/accounts/{account_id}/changes` | Google Ads Changes | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/conversions` | Google Ads Conversion Health | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/decisions` | List Google Ads Decisions | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/decisions` | Record Google Ads Decision | `google_ads.policy.manage` |
+| `DELETE` `/google-ads/accounts/{account_id}/decisions/{decision_id}` | Withdraw Google Ads Decision | `google_ads.policy.manage` |
+| `GET` `/google-ads/accounts/{account_id}/devices` | Google Ads Devices | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/geo` | Google Ads Geo | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/keyword-ideas` | Google Ads Keyword Ideas | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/keywords` | Google Ads Keywords | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/keywords` | Add Google Ads Keywords | `google_ads.keyword.write` |
+| `PATCH` `/google-ads/accounts/{account_id}/keywords` | Update Google Ads Keyword | `google_ads.keyword.write` |
+| `POST` `/google-ads/accounts/{account_id}/keywords/remove` | Remove Google Ads Keywords | `google_ads.keyword.write` |
+| `POST` `/google-ads/accounts/{account_id}/negative-lists` | Create Google Ads Negative List | `google_ads.negative.write` |
+| `DELETE` `/google-ads/accounts/{account_id}/negative-lists/{shared_set_id}` | Remove Google Ads Negative List | `google_ads.negative.write` |
+| `GET` `/google-ads/accounts/{account_id}/negatives` | Google Ads Negatives | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/negatives` | Add Google Ads Negatives | `google_ads.negative.write` |
+| `POST` `/google-ads/accounts/{account_id}/negatives/remove` | Remove Google Ads Negatives | `google_ads.negative.write` |
+| `GET` `/google-ads/accounts/{account_id}/policy` | Get Google Ads Policy | `google_ads.policy.manage` |
+| `PUT` `/google-ads/accounts/{account_id}/policy` | Save Google Ads Policy | `google_ads.policy.manage` |
+| `DELETE` `/google-ads/accounts/{account_id}/policy` | Clear Google Ads Policy | `google_ads.policy.manage` |
+| `POST` `/google-ads/accounts/{account_id}/query` | Google Ads Query | `google_ads.query.run` |
+| `GET` `/google-ads/accounts/{account_id}/recommendations` | Google Ads Recommendations | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/search-terms` | Google Ads Search Terms | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/snapshot` | Google Ads Snapshot | `google_ads.account.read` |
+| `GET` `/google-ads/accounts/{account_id}/trend` | Google Ads Trend | `google_ads.account.read` |
+| `POST` `/google-ads/accounts/{account_id}/verify` | Verify Google Ads Account | `google_ads.settings.manage` |
+| `GET` `/google-ads/accounts/available` | List Available Google Ads Accounts | `google_ads.settings.manage` |
+| `GET` `/google-ads/policy` | Get Google Ads House Policy | `google_ads.policy.manage` |
+| `PUT` `/google-ads/policy` | Save Google Ads House Policy | `google_ads.policy.manage` |
+| `DELETE` `/google-ads/policy` | Clear Google Ads House Policy | `google_ads.policy.manage` |
+| `GET` `/google-ads/settings` | Get Google Ads Settings | `google_ads.settings.manage` |
+| `PUT` `/google-ads/settings` | Save Google Ads Settings | `google_ads.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/google-ads/accounts`
+
+**List Google Ads Accounts** — Every linked Google Ads account this caller may see — **start here**.
+
+Recht: `google_ads.account.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `active_only` | boolean |  (default `false`) |
+
+Antwoord: `200` · `GoogleAdsAccountRead[]`
+
+#### `POST /api/v1/google-ads/accounts`
+
+**Link Google Ads Account** — Link an Ads account to a client.
+
+Recht: `google_ads.settings.manage`
+
+Request body: `GoogleAdsAccountCreate`
+
+Antwoord: `201` · `GoogleAdsAccountRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}`
+
+**Get Google Ads Account**
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `GoogleAdsAccountRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}`
+
+**Update Google Ads Account**
+
+Recht: `google_ads.settings.manage`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsAccountUpdate`
+
+Antwoord: `200` · `GoogleAdsAccountRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}`
+
+**Unlink Google Ads Account** — Deactivate the link. The row survives: history hangs off it, and a re-link must find the same account rather than collide with its own unique constraint.
+
+Recht: `google_ads.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/ad-groups`
+
+**Google Ads Ad Groups** — Ad-group performance, most expensive first. One level below campaigns.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `include_removed` | boolean |  (default `false`) |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `status` | string | Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/ad-groups`
+
+**Create Google Ads Ad Group** — Create an ad group inside an existing campaign. Paused, like everything created here.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsAdGroupCreate`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}`
+
+**Update Google Ads Ad Group** — Pause, resume, remove, rename or re-bid an ad group.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`, `ad_group_id`
+
+Request body: `GoogleAdsAdGroupUpdate`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}`
+
+**Remove Google Ads Ad Group** — Delete an ad group, with the keywords and ads inside it. Permanent at Google.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`, `ad_group_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `validate_only` | boolean | Check and change nothing. (default `false`) |
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}/ads/{ad_id}`
+
+**Remove Google Ads Ad** — Delete one ad. Permanent at Google — a replacement is a new ad with its own history.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`, `ad_group_id`, `ad_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `validate_only` | boolean | Check and change nothing. (default `false`) |
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/ads`
+
+**Google Ads Ads** — Ads with their ad strength and policy approval status, most expensive first.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `status` | string | Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/ads`
+
+**Create Google Ads Ad** — Create a responsive search ad. It is **paused** until somebody reads it and enables it.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsAdCreate`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}/ads`
+
+**Update Google Ads Ad** — Pause or resume one ad. `status` is ENABLED or PAUSED; to delete it, use DELETE.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsAdUpdate`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/budgets`
+
+**Create Google Ads Budget** — Create a daily budget, in the account's own currency.
+
+Recht: `google_ads.budget.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsBudgetCreate`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}/budgets/{budget_id}`
+
+**Update Google Ads Budget** — Change a daily budget — the one write where being wrong has already cost money.
+
+Recht: `google_ads.budget.write`
+
+Padparameters: `account_id`, `budget_id`
+
+Request body: `GoogleAdsBudgetUpdate`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/budgets/{budget_id}`
+
+**Remove Google Ads Budget** — Delete a daily budget.
+
+Recht: `google_ads.budget.write`
+
+Padparameters: `account_id`, `budget_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `validate_only` | boolean | Check and change nothing. (default `false`) |
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/campaigns`
+
+**Google Ads Campaigns** — Campaign performance and settings, most expensive first.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] | Filter by campaign name, case-insensitive substring match. |
+| `include_removed` | boolean | Include removed campaigns. Off by default: a list where a third of the rows cannot be acted on is a worse answer to 'what are we running'. Turn it on to ask what was spent on things since removed. (default `false`) |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `status` | string | Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/campaigns`
+
+**Create Google Ads Campaign** — Create a campaign. It is always **paused** and spends nothing until somebody enables it.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsCampaignCreate`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}/campaigns/{campaign_id}`
+
+**Update Google Ads Campaign** — Pause, resume, remove or rename a campaign. `status` is ENABLED, PAUSED or REMOVED.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`, `campaign_id`
+
+Request body: `GoogleAdsCampaignUpdate`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/campaigns/{campaign_id}`
+
+**Remove Google Ads Campaign** — Delete a campaign. **Permanent** at Google — it can be recreated, never restored.
+
+Recht: `google_ads.campaign.write`
+
+Padparameters: `account_id`, `campaign_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `validate_only` | boolean | Check and change nothing. (default `false`) |
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/changes`
+
+**Google Ads Changes** — What was changed in the account, with each field's old and new value.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/conversions`
+
+**Google Ads Conversion Health** — What this account optimises toward, and what each conversion action actually recorded.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/decisions`
+
+**List Google Ads Decisions** — What has already been decided about this account — **check this before proposing a change**.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `subject_type` | string |  |
+| `decision` | string |  |
+| `include_withdrawn` | boolean |  (default `false`) |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean | Set false to skip the total. (default `true`) |
+
+Antwoord: `200` · `GoogleAdsDecisionPage`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/decisions`
+
+**Record Google Ads Decision** — Write down a judgement that changes nothing in Google.
+
+Recht: `google_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsDecisionCreate`
+
+Antwoord: `201` · `GoogleAdsDecisionRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/decisions/{decision_id}`
+
+**Withdraw Google Ads Decision** — Unsay a decision. The row survives, marked withdrawn and by whom.
+
+Recht: `google_ads.policy.manage`
+
+Padparameters: `account_id`, `decision_id`
+
+Antwoord: `200` · `GoogleAdsDecisionRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/devices`
+
+**Google Ads Devices** — Performance per device, per campaign, plus an account-wide rollup in `extra.device_totals`.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/geo`
+
+**Google Ads Geo** — Where the people who saw the ads physically were — not where the campaign targets.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/keyword-ideas`
+
+**Google Ads Keyword Ideas** — Keyword ideas with search volume and competition, from seed terms or a landing page.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsKeywordIdeaRequest`
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/keywords`
+
+**Google Ads Keywords** — Positive keywords with match type, bid and Quality Score, most expensive first.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `include_removed` | boolean |  (default `false`) |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `status` | string | Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/keywords`
+
+**Add Google Ads Keywords** — Add positive keywords to one ad group. `match_type` is EXACT, PHRASE or BROAD.
+
+Recht: `google_ads.keyword.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsKeywordsAdd`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `PATCH /api/v1/google-ads/accounts/{account_id}/keywords`
+
+**Update Google Ads Keyword** — Pause, resume, remove or re-bid one keyword.
+
+Recht: `google_ads.keyword.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsKeywordUpdate`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/keywords/remove`
+
+**Remove Google Ads Keywords** — Remove keywords from an ad group, by criterion id.
+
+Recht: `google_ads.keyword.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsKeywordsRemove`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/negative-lists`
+
+**Create Google Ads Negative List** — Create a shared negative-keyword list and optionally attach it to campaigns.
+
+Recht: `google_ads.negative.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsNegativeListCreate`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/negative-lists/{shared_set_id}`
+
+**Remove Google Ads Negative List** — Delete a shared negative-keyword list.
+
+Recht: `google_ads.negative.write`
+
+Padparameters: `account_id`, `shared_set_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `validate_only` | boolean | Check and change nothing. (default `false`) |
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/negatives`
+
+**Google Ads Negatives** — Every negative keyword: ad-group level, campaign level, and shared negative lists.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/negatives`
+
+**Add Google Ads Negatives** — Exclude search terms — and record the ones you deliberately did **not** exclude.
+
+Recht: `google_ads.negative.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsNegativesAdd`
+
+Antwoord: `201` · `GoogleAdsMutationRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/negatives/remove`
+
+**Remove Google Ads Negatives** — Take exclusions back off, by criterion id, at the level they were added.
+
+Recht: `google_ads.negative.write`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsNegativesRemove`
+
+Antwoord: `200` · `GoogleAdsMutationRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/policy`
+
+**Get Google Ads Policy** — The rules that bind writes to this account — **read this before proposing anything**.
+
+Recht: `google_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `PUT /api/v1/google-ads/accounts/{account_id}/policy`
+
+**Save Google Ads Policy** — Set this account's own rules.
+
+Recht: `google_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsPolicyWrite`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `DELETE /api/v1/google-ads/accounts/{account_id}/policy`
+
+**Clear Google Ads Policy** — Drop this account's own rules, so it inherits the agency's house policy again.
+
+Recht: `google_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/query`
+
+**Google Ads Query** — Run a GAQL query against this account — the escape hatch for questions the other tools do not answer.
+
+Recht: `google_ads.query.run`
+
+Padparameters: `account_id`
+
+Request body: `GoogleAdsQueryRequest`
+
+Antwoord: `200` · `GoogleAdsQueryRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/recommendations`
+
+**Google Ads Recommendations** — Google's own suggestions for this account, with the impact it projects for each.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/search-terms`
+
+**Google Ads Search Terms** — What people actually typed, most expensive first.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaigns` | string[] |  |
+| `min_cost` | number | Only terms that cost at least this, in account currency. |
+| `min_clicks` | integer |  |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+| `q` | string | Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. |
+| `limit` | integer | How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. |
+| `offset` | integer | Where the page starts. `total_rows` is what it runs to. (default `0`) |
+
+Antwoord: `200` · `GoogleAdsReport`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/snapshot`
+
+**Google Ads Snapshot** — Account totals plus every campaign for the period — **start an analysis here**.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+
+Antwoord: `200` · `GoogleAdsSnapshotRead`
+
+#### `GET /api/v1/google-ads/accounts/{account_id}/trend`
+
+**Google Ads Trend** — A period against its comparison, with the change per metric already computed.
+
+Recht: `google_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `compare` | string | What to compare against: 'year' (the same period a year earlier, the default) or 'previous' (the period immediately before). |
+| `period` | string | A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. |
+| `date_from` | string | YYYY-MM-DD, inclusive. |
+| `date_to` | string | YYYY-MM-DD, inclusive. |
+
+Antwoord: `200` · `GoogleAdsTrendRead`
+
+#### `POST /api/v1/google-ads/accounts/{account_id}/verify`
+
+**Verify Google Ads Account** — Ask Google what it says about this account, and record the answer either way.
+
+Recht: `google_ads.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `GoogleAdsAccountRead`
+
+#### `GET /api/v1/google-ads/accounts/available`
+
+**List Available Google Ads Accounts** — Accounts the caller's own Google grant can reach, manager hierarchies expanded.
+
+Recht: `google_ads.settings.manage`
+
+Antwoord: `200` · `GoogleAdsPickerRead`
+
+#### `GET /api/v1/google-ads/policy`
+
+**Get Google Ads House Policy** — The agency's own standing Ads rules, applied to every account that does not override them.
+
+Recht: `google_ads.policy.manage`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `PUT /api/v1/google-ads/policy`
+
+**Save Google Ads House Policy** — Set the agency's standing rules. Fields you leave out are not touched.
+
+Recht: `google_ads.policy.manage`
+
+Request body: `GoogleAdsPolicyWrite`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `DELETE /api/v1/google-ads/policy`
+
+**Clear Google Ads House Policy** — Drop the agency's house rules, leaving only the built-in ceiling every account gets.
+
+Recht: `google_ads.policy.manage`
+
+Antwoord: `200` · `GoogleAdsPolicyRead`
+
+#### `GET /api/v1/google-ads/settings`
+
+**Get Google Ads Settings** — The org's Ads configuration. The developer token is never part of the response.
+
+Recht: `google_ads.settings.manage`
+
+Antwoord: `200` · `GoogleAdsSettingsRead`
+
+#### `PUT /api/v1/google-ads/settings`
+
+**Save Google Ads Settings**
+
+Recht: `google_ads.settings.manage`
+
+Request body: `GoogleAdsSettingsWrite`
+
+Antwoord: `200` · `GoogleAdsSettingsRead`
+
+</details>
+
+## `google_tag_manager`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/gtm/containers` | List Gtm Containers | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers` | Link Gtm Container | `google_tag_manager.settings.manage` |
+| `GET` `/gtm/containers/{container_id}` | Get Gtm Container | `google_tag_manager.container.read` |
+| `PATCH` `/gtm/containers/{container_id}` | Update Gtm Container | `google_tag_manager.settings.manage` |
+| `DELETE` `/gtm/containers/{container_id}` | Unlink Gtm Container | `google_tag_manager.settings.manage` |
+| `GET` `/gtm/containers/{container_id}/conversions` | List Gtm Conversions | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers/{container_id}/conversions` | Create Gtm Conversion | `google_tag_manager.tag.write` |
+| `GET` `/gtm/containers/{container_id}/snippet` | Gtm Container Snippet | `google_tag_manager.container.read` |
+| `GET` `/gtm/containers/{container_id}/status` | Gtm Workspace Status | `google_tag_manager.container.read` |
+| `GET` `/gtm/containers/{container_id}/tags` | List Gtm Tags | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers/{container_id}/tags` | Create Gtm Tag | `google_tag_manager.tag.write` |
+| `PATCH` `/gtm/containers/{container_id}/tags/{tag_id}` | Update Gtm Tag | `google_tag_manager.tag.write` |
+| `DELETE` `/gtm/containers/{container_id}/tags/{tag_id}` | Delete Gtm Tag | `google_tag_manager.tag.write` |
+| `GET` `/gtm/containers/{container_id}/triggers` | List Gtm Triggers | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers/{container_id}/triggers` | Create Gtm Trigger | `google_tag_manager.tag.write` |
+| `DELETE` `/gtm/containers/{container_id}/triggers/{trigger_id}` | Delete Gtm Trigger | `google_tag_manager.tag.write` |
+| `GET` `/gtm/containers/{container_id}/variables` | List Gtm Variables | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers/{container_id}/variables` | Create Gtm Variable | `google_tag_manager.tag.write` |
+| `DELETE` `/gtm/containers/{container_id}/variables/{variable_id}` | Delete Gtm Variable | `google_tag_manager.tag.write` |
+| `POST` `/gtm/containers/{container_id}/verify` | Verify Gtm Container | `google_tag_manager.settings.manage` |
+| `GET` `/gtm/containers/{container_id}/versions` | List Gtm Versions | `google_tag_manager.container.read` |
+| `POST` `/gtm/containers/{container_id}/versions` | Create Gtm Version | `google_tag_manager.tag.write` |
+| `POST` `/gtm/containers/{container_id}/versions/{version_id}/publish` | Publish Gtm Version | `google_tag_manager.version.publish` |
+| `GET` `/gtm/containers/{container_id}/workspaces` | List Gtm Workspaces | `google_tag_manager.container.read` |
+| `GET` `/gtm/containers/available` | List Available Gtm Containers | `google_tag_manager.settings.manage` |
+| `GET` `/gtm/settings` | Get Gtm Settings | `google_tag_manager.settings.manage` |
+| `PUT` `/gtm/settings` | Save Gtm Settings | `google_tag_manager.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/gtm/containers`
+
+**List Gtm Containers** — Every linked Tag Manager container this caller may see — **start here**.
+
+Recht: `google_tag_manager.container.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `active_only` | boolean |  (default `false`) |
+
+Antwoord: `200` · `GtmContainerRead[]`
+
+#### `POST /api/v1/gtm/containers`
+
+**Link Gtm Container** — Attach a container to this workspace, and say whose it is.
+
+Recht: `google_tag_manager.settings.manage`
+
+Request body: `GtmContainerCreate`
+
+Antwoord: `201` · `GtmContainerRead`
+
+#### `GET /api/v1/gtm/containers/{container_id}`
+
+**Get Gtm Container**
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmContainerRead`
+
+#### `PATCH /api/v1/gtm/containers/{container_id}`
+
+**Update Gtm Container**
+
+Recht: `google_tag_manager.settings.manage`
+
+Padparameters: `container_id`
+
+Request body: `GtmContainerUpdate`
+
+Antwoord: `200` · `GtmContainerRead`
+
+#### `DELETE /api/v1/gtm/containers/{container_id}`
+
+**Unlink Gtm Container** — Forget the container here. **Nothing is removed from Tag Manager** — an agency that stops working for a client does not thereby delete the tracking off their website.
+
+Recht: `google_tag_manager.settings.manage`
+
+Padparameters: `container_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/gtm/containers/{container_id}/conversions`
+
+**List Gtm Conversions** — The conversions schakl set up in this container, and whether each is live yet.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmConversionRead[]`
+
+#### `POST /api/v1/gtm/containers/{container_id}/conversions`
+
+**Create Gtm Conversion** — Set up one conversion: the trigger, the tag, and the record that they belong together.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`
+
+Request body: `GtmConversionCreate`
+
+Antwoord: `201` · `GtmConversionRead`
+
+#### `GET /api/v1/gtm/containers/{container_id}/snippet`
+
+**Gtm Container Snippet** — The install snippet, for the developer who has to put it on the site.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmSnippetRead`
+
+#### `GET /api/v1/gtm/containers/{container_id}/status`
+
+**Gtm Workspace Status** — What is staged in a workspace and not live — the question before every publish.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `200` · `GtmWorkspaceStatusRead`
+
+#### `GET /api/v1/gtm/containers/{container_id}/tags`
+
+**List Gtm Tags** — Every tag in a workspace — what is (or is about to be) measuring this client's site.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `200` · `GtmTagRead[]`
+
+#### `POST /api/v1/gtm/containers/{container_id}/tags`
+
+**Create Gtm Tag** — Create a tag from its own ``type`` and parameter array.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Request body: `GtmTagWrite`
+
+Antwoord: `201` · `GtmTagRead`
+
+#### `PATCH /api/v1/gtm/containers/{container_id}/tags/{tag_id}`
+
+**Update Gtm Tag** — Change one tag. Reads it first and writes back under its fingerprint, so an edit somebody made in Tag Manager meanwhile is a 409 rather than a silent overwrite of their work.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`, `tag_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Request body: `GtmTagUpdate`
+
+Antwoord: `200` · `GtmTagRead`
+
+#### `DELETE /api/v1/gtm/containers/{container_id}/tags/{tag_id}`
+
+**Delete Gtm Tag**
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`, `tag_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `204`
+
+#### `GET /api/v1/gtm/containers/{container_id}/triggers`
+
+**List Gtm Triggers**
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `200` · `GtmTriggerRead[]`
+
+#### `POST /api/v1/gtm/containers/{container_id}/triggers`
+
+**Create Gtm Trigger** — Create a trigger from six named kinds rather than from GTM's own vocabulary.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Request body: `GtmTriggerWrite`
+
+Antwoord: `201` · `GtmTriggerRead`
+
+#### `DELETE /api/v1/gtm/containers/{container_id}/triggers/{trigger_id}`
+
+**Delete Gtm Trigger**
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`, `trigger_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `204`
+
+#### `GET /api/v1/gtm/containers/{container_id}/variables`
+
+**List Gtm Variables**
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `200` · `GtmVariableRead[]`
+
+#### `POST /api/v1/gtm/containers/{container_id}/variables`
+
+**Create Gtm Variable** — Create a user-defined variable — a dataLayer read (``v``), a constant (``c``), a lookup.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Request body: `GtmVariableWrite`
+
+Antwoord: `201` · `GtmVariableRead`
+
+#### `DELETE /api/v1/gtm/containers/{container_id}/variables/{variable_id}`
+
+**Delete Gtm Variable**
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`, `variable_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `workspace_id` | string |  |
+
+Antwoord: `204`
+
+#### `POST /api/v1/gtm/containers/{container_id}/verify`
+
+**Verify Gtm Container** — Ask Google what it says about this container, and record the answer either way.
+
+Recht: `google_tag_manager.settings.manage`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmContainerRead`
+
+#### `GET /api/v1/gtm/containers/{container_id}/versions`
+
+**List Gtm Versions** — The container's version history, newest first, with the live one marked.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmVersionRead[]`
+
+#### `POST /api/v1/gtm/containers/{container_id}/versions`
+
+**Create Gtm Version** — Freeze what is staged into a version. **Still live for nobody** — publishing is separate.
+
+Recht: `google_tag_manager.tag.write`
+
+Padparameters: `container_id`
+
+Request body: `GtmVersionCreate`
+
+Antwoord: `201` · `GtmVersionCreated`
+
+#### `POST /api/v1/gtm/containers/{container_id}/versions/{version_id}/publish`
+
+**Publish Gtm Version** — Make this version live on the client's website, now, for every visitor.
+
+Recht: `google_tag_manager.version.publish`
+
+Padparameters: `container_id`, `version_id`
+
+Antwoord: `200` · `GtmPublishResult`
+
+#### `GET /api/v1/gtm/containers/{container_id}/workspaces`
+
+**List Gtm Workspaces** — The container's workspaces — its shared drafts. Usually one; sometimes one per person.
+
+Recht: `google_tag_manager.container.read`
+
+Padparameters: `container_id`
+
+Antwoord: `200` · `GtmWorkspaceRead[]`
+
+#### `GET /api/v1/gtm/containers/available`
+
+**List Available Gtm Containers** — Containers the caller's own Google grant can reach, across every Tag Manager account.
+
+Recht: `google_tag_manager.settings.manage`
+
+Antwoord: `200` · `GtmPickerRead`
+
+#### `GET /api/v1/gtm/settings`
+
+**Get Gtm Settings** — The org's Tag Manager posture: the write kill switch and the workspace schakl writes in.
+
+Recht: `google_tag_manager.settings.manage`
+
+Antwoord: `200` · `GtmSettingsRead`
+
+#### `PUT /api/v1/gtm/settings`
+
+**Save Gtm Settings**
+
+Recht: `google_tag_manager.settings.manage`
+
+Request body: `GtmSettingsWrite`
+
+Antwoord: `200` · `GtmSettingsRead`
+
+</details>
+
+## `reporting`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/reporting/companies/{company_id}/profile` | Get Profile | `reporting.profile.manage` |
+| `PUT` `/reporting/companies/{company_id}/profile` | Save Profile | `reporting.profile.manage` |
+| `GET` `/reporting/reports` | List Reports | `reporting.report.read` |
+| `GET` `/reporting/reports/{report_id}` | Get Report | `reporting.report.read` |
+| `DELETE` `/reporting/reports/{report_id}` | Delete Report | `reporting.report.write` |
+| `PUT` `/reporting/reports/{report_id}/narrative` | Edit Narrative | `reporting.report.write` |
+| `GET` `/reporting/reports/{report_id}/pdf` | Report Pdf | `reporting.report.read` |
+| `GET` `/reporting/reports/{report_id}/preview` | Preview Report | `reporting.report.read` |
+| `POST` `/reporting/reports/{report_id}/publish` | Publish Report | `reporting.report.send` |
+| `POST` `/reporting/reports/{report_id}/rewrite` | Rewrite Section | `reporting.report.write` |
+| `POST` `/reporting/reports/{report_id}/send` | Send Report | `reporting.report.send` |
+| `POST` `/reporting/reports/generate` | Generate Report | `reporting.report.write` |
+| `POST` `/reporting/reports/generate-batch` | Generate Batch | `reporting.report.write` |
+| `GET` `/reporting/settings` | Get Settings | `reporting.profile.manage` |
+| `PUT` `/reporting/settings` | Save Settings | `reporting.settings.manage` |
+| `GET` `/reporting/templates` | List Templates | `reporting.profile.manage` |
+| `POST` `/reporting/templates` | Create Template | `reporting.settings.manage` |
+| `PUT` `/reporting/templates/{template_id}` | Update Template | `reporting.settings.manage` |
+| `DELETE` `/reporting/templates/{template_id}` | Delete Template | `reporting.settings.manage` |
+| `GET` `/reporting/templates/designs/{design}/source` | Template Source | `reporting.settings.manage` |
+| `POST` `/reporting/templates/preview` | Preview Template | `reporting.settings.manage` |
+| `GET` `/reporting/templates/sections` | Section Catalog | `reporting.settings.manage` |
+| `GET` `/reporting/tones` | List Tones | `reporting.profile.manage` |
+| `POST` `/reporting/tones` | Create Tone | `reporting.settings.manage` |
+| `PUT` `/reporting/tones/{tone_id}` | Update Tone | `reporting.settings.manage` |
+| `DELETE` `/reporting/tones/{tone_id}` | Delete Tone | `reporting.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/reporting/companies/{company_id}/profile`
+
+**Get Profile** — The client's reporting setup. A company that has never had one answers with the inherited defaults rather than a 404 — the form is the same either way.
+
+Recht: `reporting.profile.manage`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `ReportProfileRead`
+
+#### `PUT /api/v1/reporting/companies/{company_id}/profile`
+
+**Save Profile**
+
+Recht: `reporting.profile.manage`
+
+Padparameters: `company_id`
+
+Request body: `ReportProfileWrite`
+
+Antwoord: `200` · `ReportProfileRead`
+
+#### `GET /api/v1/reporting/reports`
+
+**List Reports**
+
+Recht: `reporting.report.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `audience` | ReportAudience |  |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean |  (default `true`) |
+
+Antwoord: `200` · `ReportList`
+
+#### `GET /api/v1/reporting/reports/{report_id}`
+
+**Get Report**
+
+Recht: `reporting.report.read`
+
+Padparameters: `report_id`
+
+Antwoord: `200` · `ReportDetail`
+
+#### `DELETE /api/v1/reporting/reports/{report_id}`
+
+**Delete Report**
+
+Recht: `reporting.report.write`
+
+Padparameters: `report_id`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/reporting/reports/{report_id}/narrative`
+
+**Edit Narrative** — Hand-edit the prose before it goes out — the point of review-before-send.
+
+Recht: `reporting.report.write`
+
+Padparameters: `report_id`
+
+Request body: `ReportNarrativeUpdate`
+
+Antwoord: `200` · `ReportDetail`
+
+#### `GET /api/v1/reporting/reports/{report_id}/pdf`
+
+**Report Pdf** — The stored document. Loaded through the portal-aware repository, so a client can download exactly the reports they can open — and never the internal analysis.
+
+Recht: `reporting.report.read`
+
+Padparameters: `report_id`
+
+Antwoord: `200`
+
+#### `GET /api/v1/reporting/reports/{report_id}/preview`
+
+**Preview Report** — The document as HTML — the same artefact the PDF prints, so the two cannot drift.
+
+Recht: `reporting.report.read`
+
+Padparameters: `report_id`
+
+Antwoord: `200`
+
+#### `POST /api/v1/reporting/reports/{report_id}/publish`
+
+**Publish Report**
+
+Recht: `reporting.report.send`
+
+Padparameters: `report_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `published` | boolean |  (default `true`) |
+
+Antwoord: `200` · `ReportDetail`
+
+#### `POST /api/v1/reporting/reports/{report_id}/rewrite`
+
+**Rewrite Section**
+
+Recht: `reporting.report.write`
+
+Padparameters: `report_id`
+
+Request body: `ReportRewriteRequest`
+
+Antwoord: `200` · `ReportDetail`
+
+#### `POST /api/v1/reporting/reports/{report_id}/send`
+
+**Send Report**
+
+Recht: `reporting.report.send`
+
+Padparameters: `report_id`
+
+Request body: `ReportSendRequest`
+
+Antwoord: `200` · `ReportDetail`
+
+#### `POST /api/v1/reporting/reports/generate`
+
+**Generate Report** — Queue a run. Never generates inline — it calls several APIs and a model.
+
+Recht: `reporting.report.write`
+
+Request body: `ReportRunRequest`
+
+Antwoord: `200` · `ReportActionResult`
+
+#### `POST /api/v1/reporting/reports/generate-batch`
+
+**Generate Batch**
+
+Recht: `reporting.report.write`
+
+Request body: `ReportRunBatchRequest`
+
+Antwoord: `200` · `ReportRunBatchResult`
+
+#### `GET /api/v1/reporting/settings`
+
+**Get Settings**
+
+Recht: `reporting.profile.manage`
+
+Antwoord: `200` · `ReportingSettingsRead`
+
+#### `PUT /api/v1/reporting/settings`
+
+**Save Settings**
+
+Recht: `reporting.settings.manage`
+
+Request body: `ReportingSettingsWrite`
+
+Antwoord: `200` · `ReportingSettingsRead`
+
+#### `GET /api/v1/reporting/templates`
+
+**List Templates**
+
+Recht: `reporting.profile.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `audience` | ReportAudience |  |
+
+Antwoord: `200` · `ReportTemplateRead[]`
+
+#### `POST /api/v1/reporting/templates`
+
+**Create Template**
+
+Recht: `reporting.settings.manage`
+
+Request body: `ReportTemplateWrite`
+
+Antwoord: `201` · `ReportTemplateRead`
+
+#### `PUT /api/v1/reporting/templates/{template_id}`
+
+**Update Template**
+
+Recht: `reporting.settings.manage`
+
+Padparameters: `template_id`
+
+Request body: `ReportTemplateWrite`
+
+Antwoord: `200` · `ReportTemplateRead`
+
+#### `DELETE /api/v1/reporting/templates/{template_id}`
+
+**Delete Template**
+
+Recht: `reporting.settings.manage`
+
+Padparameters: `template_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/reporting/templates/designs/{design}/source`
+
+**Template Source** — A shipped design's own HTML and CSS, to start a custom report template from.
+
+Recht: `reporting.settings.manage`
+
+Padparameters: `design`
+
+Antwoord: `200` · `ReportTemplateSource`
+
+#### `POST /api/v1/reporting/templates/preview`
+
+**Preview Template** — Render an unsaved template — the editor's live preview.
+
+Recht: `reporting.settings.manage`
+
+Request body: `ReportTemplatePreviewRequest`
+
+Antwoord: `200`
+
+#### `GET /api/v1/reporting/templates/sections`
+
+**Section Catalog** — What a template may order or switch off — the registry, made visible (§15's "registry, not free text", applied to design).
+
+Recht: `reporting.settings.manage`
+
+Antwoord: `200` · `SectionCatalogEntry[]`
+
+#### `GET /api/v1/reporting/tones`
+
+**List Tones** — Readable by whoever assigns one to a client, editable only by an admin (the service re-checks) — a manager must be able to see what voice they are picking.
+
+Recht: `reporting.profile.manage`
+
+Antwoord: `200` · `ReportToneRead[]`
+
+#### `POST /api/v1/reporting/tones`
+
+**Create Tone**
+
+Recht: `reporting.settings.manage`
+
+Request body: `ReportToneWrite`
+
+Antwoord: `201` · `ReportToneRead`
+
+#### `PUT /api/v1/reporting/tones/{tone_id}`
+
+**Update Tone**
+
+Recht: `reporting.settings.manage`
+
+Padparameters: `tone_id`
+
+Request body: `ReportToneWrite`
+
+Antwoord: `200` · `ReportToneRead`
+
+#### `DELETE /api/v1/reporting/tones/{tone_id}`
+
+**Delete Tone**
+
+Recht: `reporting.settings.manage`
+
+Padparameters: `tone_id`
+
+Antwoord: `204`
+
+</details>
+

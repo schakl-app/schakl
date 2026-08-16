@@ -1,0 +1,185 @@
+{
+  "slug": "google-tag-manager",
+  "name": "Google Tag Manager",
+  "order": 54,
+  "category": "marketing",
+  "status": "live",
+  "lucide": "workflow",
+  "mark": {
+    "monogram": "GTM",
+    "color": "#246FDB"
+  },
+  "tagline": {
+    "nl": "De container van de klant, hier",
+    "en": "The client's container, here"
+  },
+  "summary": {
+    "nl": "De helft van het marketingwerk is zorgen dát er gemeten wordt: een conversie op een nieuw formulier, een event op een offerteaanvraag, een tag voor de campagne die maandag begint. Dat gebeurde tot nu toe in een browsertabblad waar schakl. niets van wist. Koppel de container van een klant en je ziet wat er live staat, wie wat wanneer heeft neergezet, en welke wijziging al drie weken klaarstaat zonder gepubliceerd te zijn.",
+    "en": "Half of an agency's marketing work is making the measuring happen: a conversion on a new form, an event on a quote request, a tag for the campaign that starts on Monday. Until now all of it happened in a browser tab schakl. knew nothing about. Link a client's container and you see what is live, who put it there and when, and which change has been staged for three weeks without ever being published."
+  },
+  "highlights": {
+    "nl": [
+      "Bewerken en publiceren zijn twee losse rechten: een sleutel mag de meting klaarzetten zonder hem uit te zenden",
+      "schakl. schrijft in een eigen werkruimte, dus half werk komt nooit in de conceptversie van de klant terecht",
+      "Wat je hier hebt aangemaakt blijft vastgelegd: welke tag en trigger samen 'offerte aangevraagd' zijn, opgezet vanaf hier, op een datum, door een persoon",
+      "Elke nacht wordt geteld hoeveel wijzigingen klaarstaan en niet gepubliceerd zijn"
+    ],
+    "en": [
+      "Editing and publishing are two separate permissions: a key can prepare the measurement without broadcasting it",
+      "schakl. writes in a workspace of its own, so unfinished work never lands in the client's own draft",
+      "What you created stays recorded: which tag and trigger together are \"quote requested\", set up from here, on a date, by a person",
+      "A nightly count of how many changes are staged and unpublished"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Tag Manager om containers te koppelen, en het menu-item Marketing → Tag Manager voor de containers zelf. Op een klantpagina staat de container naast het domein en de website waar hij op draait.",
+    "en": "Instellingen → Tag Manager (Settings → Tag Manager) to link containers, and the Marketing → Tag Manager menu item for the containers themselves. On a client page the container sits beside the domain and website it runs on."
+  },
+  "docs": "/docs/integrations/google-tag-manager/",
+  "page": {
+    "lead": {
+      "nl": "Tag Manager is waar de belofte aan een klant, wij meten je offerteaanvragen, ook echt wordt waargemaakt. Deze koppeling brengt die container binnen bereik: lezen wat er live staat, klaarzetten wat er moet veranderen, en pas publiceren als iemand met dat recht ernaar heeft gekeken.",
+      "en": "Tag Manager is where an agency's promise to a client, we measure your quote requests, is actually kept. This integration brings that container within reach: read what is live, stage what needs to change, and publish only once somebody holding that permission has looked at it."
+    },
+    "requirements": {
+      "nl": [
+        "De koppeling Google Workspace aan, met een Google-account dat toegang heeft tot de Tag Manager van de klant",
+        "De Tag Manager API aangezet in hetzelfde Google Cloud-project als de rest van de Google-koppeling",
+        "Een licentie die de module Tag Manager dekt",
+        "Het recht google_tag_manager.settings.manage om een container te koppelen"
+      ],
+      "en": [
+        "The Google Workspace integration switched on, with a Google account that has access to the client's Tag Manager",
+        "The Tag Manager API enabled in the same Google Cloud project as the rest of the Google integration",
+        "A licence covering the Tag Manager module",
+        "The google_tag_manager.settings.manage permission to link a container"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <strong>Tag Manager</strong> aan onder <strong>Instellingen → Integraties</strong>. Hij heeft de koppeling Google Workspace nodig en zet die zo nodig meteen aan; het scherm vertelt je dat voordat je opslaat.",
+        "Ga naar <strong>Instellingen → Tag Manager</strong> en druk op <strong>Google koppelen</strong>. Dit vraagt vier extra rechten die bewust niet in de gewone marketingkoppeling zitten: lezen, een werkruimte bewerken, een versie vastleggen en publiceren. Iemand die alleen een bezoekersgrafiek wilde, hoort niet gevraagd te worden of hij op de website van een klant mag publiceren.",
+        "Koppel per klant de container. Je plakt de <strong>GTM-code</strong> van de website (<code>GTM-XXXXXXX</code>) of kiest uit de lijst met containers waar je Google-account bij kan. Kies er de klant en, als je wilt, de website bij.",
+        "Kies onder welke naam schakl. werkt. Standaard krijgt de container een <strong>eigen werkruimte</strong> met de naam van jouw bureau. Een werkruimte in Tag Manager is namelijk geen eigen kopie maar een gedeeld concept: schrijf je in de standaardwerkruimte, dan staat jouw halve werk voor de neus van de marketeer van de klant, en zijn eerstvolgende Publiceren stuurt het de deur uit.",
+        "Bekijk de container. Je ziet de live versie, de tags, triggers en variabelen, het versieverleden en het codefragment dat op de website hoort te staan.",
+        "Leg een conversie vast. Kies een <strong>GA4-event</strong> of een <strong>Google Ads-conversie</strong>, geef aan waar hij op moet vuren (paginaweergave, formulierverzending, klik op een link of element, zichtbaarheid van een element, of een eigen event) en geef hem de naam die de klant gebruikt. schakl. verzint nooit een meet-ID of een conversie-ID: die vul je zelf in, want een verkeerde stuurt de conversies van je klant naar de property van iemand anders zonder dat enig scherm dat zegt.",
+        "Publiceer wanneer het klopt. Vastleggen als versie mag met het schrijfrecht; live zetten vraagt <strong>google_tag_manager.version.publish</strong>, en dat is precies de knip die je apart wilt kunnen uitdelen."
+      ],
+      "en": [
+        "Switch <strong>Tag Manager</strong> on under <strong>Instellingen → Integraties</strong> (Settings → Integrations). It needs the Google Workspace integration and pulls it in for you; the screen says so before you save.",
+        "Go to <strong>Instellingen → Tag Manager</strong> and press <strong>Google koppelen</strong> (Connect Google). This asks for four extra scopes that are deliberately kept out of the ordinary marketing connection: read, edit a workspace, freeze a version and publish. Somebody who only wanted a traffic chart should not be asked whether they may publish to a client's website.",
+        "Link the container per client. Paste the website's <strong>GTM tag id</strong> (<code>GTM-XXXXXXX</code>) or pick from the list of containers your Google account can reach. Attach the client and, if you like, the website.",
+        "Choose the name schakl. works under. By default the container gets a <strong>workspace of its own</strong>, named after your agency. A Tag Manager workspace is not a private branch but a shared draft: write into the default one and your half-finished work sits in front of the client's own marketeer, whose next Publish ships it.",
+        "Read the container. You get the live version, the tags, triggers and variables, the version history, and the snippet that belongs on the website.",
+        "Record a conversion. Pick a <strong>GA4 event</strong> or a <strong>Google Ads conversion</strong>, say what it fires on (page view, form submission, link or element click, element visibility, or a custom event) and give it the name the client uses. schakl. never invents a measurement id or a conversion id: you supply them, because a wrong one sends your client's conversions to somebody else's property and nothing on any screen would say so.",
+        "Publish when it is right. Freezing a version rides the write permission; going live needs <strong>google_tag_manager.version.publish</strong>, which is exactly the split you want to hand out separately."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Een concept en een uitzending zijn niet dezelfde handeling",
+          "en": "A draft and a broadcast are not the same act"
+        },
+        "body": {
+          "nl": "Een werkruimte bewerken verandert een concept: het is echt, het wordt vastgelegd, en niemand ziet het. Publiceren verandert wat er draait in de browser van elke bezoeker, meteen, zonder tussenstap. Dat zijn twee handelingen met een compleet ander publiek, en daarom zijn het twee rechten. Met één gezamenlijk schrijfrecht is de zin 'laat de assistent de meting voor de nieuwe campagne klaarzetten, dan kijk ik er zelf naar' onmogelijk te maken; met deze knip is het een API-sleutel die tag.write heeft en verder niets. Een versie aanmaken hoort bewust bij het eerste recht: een versie vastleggen is niets anders dan opschrijven wat er klaarstaat, en dat achter het publicatierecht zetten zou de helft die klaarzet haar eigen werk niet laten afmaken.",
+          "en": "Editing a workspace changes a draft: it is real, it is recorded, and nobody is served it. Publishing changes what runs in every visitor's browser, immediately, with no review step behind it. Those are two acts with completely different audiences, so they are two permissions. With one combined write permission the sentence \"let the assistant prepare the tracking for the new campaign and I will look it over\" is impossible to express; with this split it is an API key holding tag.write and nothing else. Creating a version deliberately rides the first: a version is the act of writing down what was staged, and gating it behind the publish permission would leave the staging half unable to finish its own work."
+        },
+        "bullets": {
+          "nl": [
+            "google_tag_manager.settings.manage: containers koppelen en ontkoppelen, en de noodstop",
+            "google_tag_manager.container.read: containers, tags, triggers, variabelen, versies en het codefragment",
+            "google_tag_manager.tag.write: de werkruimte bewerken en vastleggen als versie",
+            "google_tag_manager.version.publish: een versie live zetten op de website van de klant"
+          ],
+          "en": [
+            "google_tag_manager.settings.manage: link and unlink containers, and the kill switch",
+            "google_tag_manager.container.read: containers, tags, triggers, variables, versions and the snippet",
+            "google_tag_manager.tag.write: edit the workspace and freeze it into a version",
+            "google_tag_manager.version.publish: make a version live on the client's website"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een recept voor wat je steeds doet, en de eigen weg voor de rest",
+          "en": "A recipe for what you do over and over, and the raw path for the rest"
+        },
+        "body": {
+          "nl": "Een tag is een type plus een lijst parameters, en welke parameternamen mogen hangt af van het tagsjabloon. Er zijn er honderden en de API vertelt niet welke. Wie dat uit zijn hoofd samenstelt heeft het soms mis, en de vervelende helft van 'mis' is stil: een tag die nergens op vuurt ziet er precies zo uit als een tag die werkt. Daarom zijn twee tagsoorten en zes triggersoorten uitgeschreven, precies de soorten die een bureau keer op keer opzet. Alles daarbuiten stuur je met het type en de parameters van Tag Manager zelf, en dan is de validator van Google de scheidsrechter: een zelfgeschreven body die niet klopt wordt luid geweigerd, terwijl een half nagebouwd recept stilletjes iets zou uitrollen.",
+          "en": "A tag is a type plus a list of parameters, and which parameter names are legal depends on the tag template. There are hundreds of templates and the API does not say. Composing that from first principles goes wrong sometimes, and the unpleasant half of \"wrong\" is silent: a tag firing into nothing looks exactly like a tag that works. So two tag kinds and six trigger kinds are written out, precisely the ones an agency sets up over and over. Everything else goes through Tag Manager's own type and parameter array, judged by Google's own validator: a hand-written body that is wrong fails loudly, where a half-modelled recipe would deploy quietly."
+        },
+        "bullets": {
+          "nl": [
+            "Tags: GA4-event en Google Ads-conversie (met de conversiekoppelaar altijd aan, want zonder telt hij conversies die hij niet aan een klik kan koppelen)",
+            "Triggers: paginaweergave, formulierverzending, klik op link, klik op element, zichtbaarheid van element en eigen event, elk te versmallen op een stuk van de URL",
+            "Alles daarbuiten: het type en de parameters van Tag Manager zelf, beoordeeld door Google"
+          ],
+          "en": [
+            "Tags: GA4 event and Google Ads conversion (with the conversion linker always on, since without it the tag reports conversions it cannot attribute to a click)",
+            "Triggers: page view, form submission, link click, element click, element visibility and custom event, each narrowable on part of the URL",
+            "Anything else: Tag Manager's own type and parameter array, judged by Google"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat Google niet opschrijft, schrijven wij op",
+          "en": "What Google does not record, we do"
+        },
+        "body": {
+          "nl": "Google legt vast dát er een trigger en een tag bestaan. Het legt nergens vast dat die twee samen 'offerte aangevraagd' van deze klant zijn, dat een bureau heeft beloofd hem werkend te houden, of dat hij vanaf hier is opgezet en niet met de hand. Zonder die regel moet de volgende die kijkt de container lezen en raden. Daarom bewaart schakl. per conversie wat er gevraagd is én wat er als laatste is waargenomen, in aparte velden: een conversie waarvan iemand de tag in Tag Manager heeft weggegooid is dan een toestand die je kunt zien, in plaats van een regel die stilzwijgend blijft beweren dat hij werkt. Van de container zelf wordt alleen bewaard wat een paneel nodig heeft; de taglijst en het versieverleden worden live opgehaald, want de helft van de wijzigingen daarin wordt gemaakt door mensen die niet bij jou werken.",
+          "en": "Google records that a trigger and a tag exist. It records nowhere that together they are this client's \"quote requested\", that an agency promised to keep it working, or that it was set up from here rather than by hand. Without that row, the next person to look has to read the container and guess. So schakl. stores per conversion both what was asked for and what was last observed, in separate fields: a conversion whose tag somebody deleted in Tag Manager is then a state you can see, rather than a row that quietly keeps claiming to work. Of the container itself only what a panel needs is mirrored; the tag list and version history are fetched live, because half the edits to them are made by people who do not work for you."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De nachtelijke telling waar het eigenlijk om gaat",
+          "en": "The nightly count this exists for"
+        },
+        "body": {
+          "nl": "Elke nacht om 05:35 wordt per container opgehaald wat er gespiegeld wordt: de naam, de live versie, de aantallen daaruit, en hoeveel wijzigingen er klaarstaan zonder gepubliceerd te zijn. Dat laatste getal is de reden dat deze taak bestaat. Een wijziging die weken geleden is klaargezet en nooit is gepubliceerd is de gewoonste manier waarop de meting van een klant stilletjes iets anders wordt dan wat hem beloofd is, en niets anders brengt dat aan het licht: niemand opent een container waar hij geen reden voor heeft. Gaat er bij één container iets mis, dan blijft dat op die ene regel staan en halen de andere negentien gewoon hun cijfers op.",
+          "en": "Every night at 05:35 each container's mirror is refreshed: the name, the live version, the counts off it, and how many changes are staged and unpublished. That last number is why the job exists. A change staged weeks ago and never published is the commonest way a client's tracking quietly stops being what they were told it is, and nothing else surfaces it: nobody opens a container they have no reason to open. If one container fails, that failure stays on its own row and the other nineteen refresh as normal."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "google_tag_manager.settings.manage",
+        "nl": "Containers koppelen en ontkoppelen, een koppeling controleren en de noodstop bedienen. Standaard alleen beheerders.",
+        "en": "Link and unlink containers, verify a link and operate the kill switch. Admin only by default."
+      },
+      {
+        "key": "google_tag_manager.container.read",
+        "nl": "Containers, werkruimtes, tags, triggers, variabelen, versies, het codefragment en de vastgelegde conversies lezen. Standaard beheerder en medewerker.",
+        "en": "Read containers, workspaces, tags, triggers, variables, versions, the snippet and the recorded conversions. Admin and member by default."
+      },
+      {
+        "key": "google_tag_manager.tag.write",
+        "nl": "De werkruimte bewerken en vastleggen als versie. Verandert een concept dat aan niemand wordt geserveerd.",
+        "en": "Edit the workspace and freeze it into a version. Changes a draft that is served to nobody."
+      },
+      {
+        "key": "google_tag_manager.version.publish",
+        "nl": "Een versie live zetten op de website van de klant. Bewust een apart recht.",
+        "en": "Make a version live on the client's website. Deliberately its own permission."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Geen van de vier rechten gaat ooit naar de rol Klant. Alleen al lezen dekt elke tag in de container, en daar zitten conversiewaarden, remarketing-ID's en wat de vorige bureau heeft achtergelaten tussen.",
+        "Ontkoppelen raakt niets bij Google. Een bureau dat stopt voor een klant gooit daarmee niet de meting van diens website weg.",
+        "schakl. verzint geen waarden. Een meet-ID, een conversie-ID en een CSS-selector komen allemaal van jou; er is geen stap die 'de GA4-property wel even opzoekt'.",
+        "Containers verwijderen, gebruikers beheren en accounts beheren zitten er niet in, en die rechten worden ook niet gevraagd op het toestemmingsscherm.",
+        "Heeft iemand de container in Tag Manager bewerkt terwijl jij hem open had, dan wordt je opslag geweigerd in plaats van dat zijn wijziging overschreven wordt. Opnieuw openen lost het op."
+      ],
+      "en": [
+        "None of the four permissions ever goes to the Client role. The read alone covers every tag in the container, which includes conversion values, remarketing ids and whatever the previous agency left behind.",
+        "Unlinking touches nothing at Google. An agency that stops working for a client does not thereby delete the tracking off their website.",
+        "schakl. invents no values. A measurement id, a conversion id and a CSS selector all come from you; there is no step that \"finds the GA4 property for you\".",
+        "Deleting containers, managing users and managing accounts are not included, and those scopes are not asked for on the consent screen either.",
+        "If somebody edited the container in Tag Manager while you had it open, your save is refused rather than overwriting their change. Opening it again resolves it."
+      ]
+    }
+  }
+}

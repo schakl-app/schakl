@@ -1,0 +1,138 @@
+---
+title: Uptime Kuma
+description: "Koppel de open-source monitor die je al draait, zodat een monitor een record wordt met een klant, een website, een geschiedenis en zichtbare afwijking."
+sidebar:
+  order: 12
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Elke website in schakl. heeft al jaren een vinkje **monitoren**, met niets erachter. Dit is wat er
+eindelijk op reageert, en het is een module geworden in plaats van een berichtje naar een
+automatiseringsflow, om een reden die het waard is om uit te spreken: een monitor wordt een
+*record*. Hij heeft een klant, een website, een profiel, een wijzigingsspoor en een plek op de
+klantpagina naast het domein en het hostingaccount waar hij van afhangt.
+
+## Waar je het vindt
+
+- **Instellingen → Uptime**: de servers waarmee je koppelt, en de monitorprofielen.
+- De kaart **Uptime** op een website of een domein.
+- Op een **klantpagina** staat de status naast al het andere dat voor die klant draait.
+
+Zet de koppeling aan onder *Instellingen → Integraties*.
+
+## Twee soorten koppeling
+
+Dit is de eerste keuze die je maakt, en hij bepaalt wat al het andere betekent.
+
+| | **Beheerd** | **Gekoppeld** |
+| --- | --- | --- |
+| Wij hebben een sessie | Ja | Nee |
+| Uitgaand verkeer nodig | Ja | **Nee** |
+| Monitors lezen, overnemen, spiegelen | Ja | Alleen wat hij zelf meldt |
+| Monitors aanmaken, wijzigen, pauzeren | Ja | Nee |
+| Ontvangt status | Webhook **en** navragen | Alleen webhook |
+
+<Aside type="note" title="Gekoppeld is geen uitgeklede beheerde server">
+Het is de stand voor een server van een klant achter een firewall waarvan de eigenaar je nooit een
+tunnel gaat geven, en hij levert het grootste deel van de waarde (een statustijdlijn op de pagina
+van de klant, een melding, een automatiseringstrigger) **zonder ook maar iets aan infrastructuur**,
+want het verkeer loopt de andere kant op.
+
+Ontwerpen alsof beheerd de enige echte soort is, is precies hoe je een functie bouwt die het in een
+demo doet en bij één klant.
+</Aside>
+
+## Een beheerde server koppelen
+
+<Steps>
+1. Voeg onder *Instellingen → Uptime* een server toe en kies **Beheerd**.
+2. Vul het adres en je Uptime Kuma-inloggegevens in. Er wordt een **sessietoken** bewaard, nooit
+   een wachtwoord en nooit een tweestapsgeheim. Het token gaat versleuteld de opslag in en wordt
+   niet door de API teruggegeven.
+3. Staat de server achter Cloudflare Access of een proxy, vul dan de extra **verbindingsheaders**
+   in. Een servicetoken, een gedeeld geheim van een proxy of een `Host`-override zijn allemaal
+   datzelfde veld met een andere waarde, en het wordt om dezelfde reden versleuteld als het token.
+4. Draaide er al een Kuma, kies dan **Overnemen**: de bestaande monitors worden gelezen en jij
+   koppelt ze aan de website of het domein waar ze bij horen, in plaats van ze allemaal opnieuw
+   aan te maken en een tijd lang dubbel te meten.
+</Steps>
+
+<Aside type="caution" title="Een server op een privéadres wordt standaard geweigerd">
+Net als elk uitgaand doel in schakl. wordt een adres als `10.x`, `192.168.x` of `localhost`
+geweigerd, tenzij een beheerder privédoelen op deze installatie bewust toestaat. Dat is wat
+voorkomt dat iemand met het recht om regels te schrijven jouw interne netwerk kan aftasten.
+</Aside>
+
+## Profielen, en de drie lagen
+
+Niemand typt driehonderd keer `interval=60, pogingen=3, herhaal=30, geaccepteerd=[200-299]` over.
+Een **profiel** draagt die instellingen, plus de meldkanalen: *"Standaard website"*, *"Klant met
+SLA"*, *"Interne tooling"*.
+
+Drie lagen, en ze mogen niet versmelten:
+
+1. **Productgrenzen** staan in de code: een interval onder wat jouw server accepteert, of een
+   monitorsoort die deze versie niet kent, wordt hoe dan ook rechtgetrokken.
+2. **De huisstandaard van je bureau** is een profiel. Een beleid dat in de broncode gebakken zit,
+   zou een beslissing zijn die wij voor jou genomen hebben.
+3. **Wat er waar is over déze ene monitor** staat op de monitor zelf.
+
+Leeg betekent *erven*, een waarde betekent *overschrijven*, en een veld bewust leegmaken is hoe je
+"volg de standaard" terugzet. De grenzen worden als **laatste** toegepast, ná het profiel en ná de
+monitor, zodat niets wat jij instelt onder een bodem kan zakken die de server toch zou weigeren.
+
+<Aside type="tip" title="Laat de getalvelden leeg">
+De getalvelden van een profiel beginnen met opzet leeg, want leeg betekent erven. Er alvast `60`
+in zetten zou een beslissing zijn die jij nooit genomen hebt, en een `0` die voor een leeg vakje
+gepost wordt zou elke volgende monitor op de ondergrens vastzetten: een plausibel verkeerd getal
+dat niemand opmerkt tot een klant vraagt waarom zijn site elke twintig seconden wordt aangeklopt.
+</Aside>
+
+Een profiel kan nooit een **URL** zetten. Een profiel dat dat wel kon, kon veertig monitors in één
+keer op de verkeerde host richten.
+
+Levert het opzoeken *geen* profiel op, dan wordt teruggevallen op het oudste actieve profiel van
+dat monitortype, en heb je precies één profiel, dan **is** dat de standaard: niemand maakt één
+profiel en bedoelt "gebruik er niets van".
+
+## Afwijking: wat wij besloten, en wat we voor het laatst zagen
+
+Uptime Kuma heeft een eigen webinterface, en die is goed, dus iemand gaat er een monitor in
+aanpassen. Een webhook die één keer afgaat kan dat niet merken; een spiegel wel.
+
+Daarom staan wat schakl. **besloten** heeft en wat het als laatste **waargenomen** heeft in aparte
+velden, en meldt een controle een afwijking in plaats van hem stilzwijgend te overschrijven.
+Monitorgegevens kunnen geheimen bevatten (een header met een token, een basisauthenticatie), dus
+daarvan wordt een *vingerafdruk* bewaard en niet de waarde: genoeg om te zien dát er iets
+veranderd is, zonder er een tweede plek van te maken waar het geheim staat.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `uptime.instance.manage` | Servers en profielen toevoegen, wijzigen en verwijderen | Beheerder |
+| `uptime.monitor.read` | Monitors en hun status zien op een website, domein of klantpagina | Beheerder, Medewerker |
+| `uptime.monitor.write` | Monitors aanmaken, wijzigen, pauzeren en koppelen (alleen beheerde servers) | Beheerder |
+
+## Goed om te weten
+
+- **Op een gekoppelde server kan niets aangemaakt of gewijzigd worden.** Dat is de afspraak van
+  die soort en geen tekortkoming: wij sturen er niets naartoe.
+- **Een vervallen sessie vraagt om opnieuw koppelen**, in plaats van gemeld te worden als een
+  storing. Dat zijn verschillende problemen, met verschillende mensen die ze kunnen oplossen.
+- **Uptime Kuma heeft geen echte REST-API.** De verbinding loopt over de socketverbinding die zijn
+  eigen webinterface ook gebruikt, en daarom is het bereik aan ondersteunde versies iets om in de
+  gaten te houden in plaats van iets wat vanzelf goed gaat. Getest tegen 2.5.0; 1.23 en nieuwer
+  worden ondersteund.
+- **Wat je ziet is de status die de server meldt.** Het is geen tweede monitor: ligt de Kuma zelf
+  eruit, dan weet schakl. dat niet uit zichzelf.
+- **Een storing kan een melding worden** in schakl., en een automatiseringsregel kan erop reageren.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Websites" href="/nl/docs/modules/websites/" description="Het record waar een monitor aan hangt." />
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het andere dat een monitor kan bewaken." />
+  <LinkCard title="Meldingen" href="/nl/docs/modules/notifications/" description="Waar een storing terechtkomt." />
+</CardGrid>

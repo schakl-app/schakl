@@ -1,0 +1,1328 @@
+---
+title: "Money: invoices, quotes, retainers"
+description: "Invoices and quotes built from the work that produced them, recurring agreements, the payment provider that settles them and the bookkeeping package they end up in."
+sidebar:
+  order: 3
+---
+
+Invoices and quotes built from the work that produced them, recurring agreements, the payment provider that settles them and the bookkeeping package they end up in.
+
+106 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+
+## `invoicing`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/invoicing/invoices` | List Invoices | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices` | Create Invoice | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/{invoice_id}` | Get Invoice | `invoicing.invoice.read` |
+| `PATCH` `/invoicing/invoices/{invoice_id}` | Update Invoice | `invoicing.invoice.write` |
+| `DELETE` `/invoicing/invoices/{invoice_id}` | Delete Invoice | `invoicing.invoice.delete` |
+| `POST` `/invoicing/invoices/{invoice_id}/cancel` | Cancel Invoice | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/credit` | Credit Invoice | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/export` | Export Invoice | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/issue` | Issue Invoice | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/{invoice_id}/payment-intents` | List Payment Intents | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents` | Start Payment | `invoicing.payment.link` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync` | Sync Payment Intent | `invoicing.payment.link:any` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/refresh` | Refresh Payments | `invoicing.payment.link` |
+| `POST` `/invoicing/invoices/{invoice_id}/payments` | Add Payment | `invoicing.payment.write` |
+| `DELETE` `/invoicing/invoices/{invoice_id}/payments/{payment_id}` | Delete Payment | `invoicing.payment.write` |
+| `GET` `/invoicing/invoices/{invoice_id}/pdf` | Download Invoice Pdf | `invoicing.invoice.read` |
+| `GET` `/invoicing/invoices/{invoice_id}/preview` | Preview Invoice | `invoicing.invoice.read` |
+| `GET` `/invoicing/invoices/{invoice_id}/refs` | Invoice Refs | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/invoices/{invoice_id}/remind` | Remind Invoice | `invoicing.invoice.send` |
+| `POST` `/invoicing/invoices/{invoice_id}/send` | Send Invoice | `invoicing.invoice.send` |
+| `GET` `/invoicing/invoices/{invoice_id}/ubl` | Download Ubl | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices/from-time` | Invoice From Time | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/pdf` | Download Invoices Zip | `invoicing.invoice.read` |
+| `GET` `/invoicing/outstanding` | Outstanding | `invoicing.invoice.write` |
+| `GET` `/invoicing/payment-accounts` | List Payment Accounts | `invoicing.payment.link:any` |
+| `POST` `/invoicing/payments/webhook/{provider}/{token}` | Payment Webhook | _Deliberately open_ |
+| `GET` `/invoicing/products` | List Products | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/products` | Create Product | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/products/{product_id}` | Update Product | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/products/{product_id}` | Delete Product | `invoicing.settings.manage` |
+| `GET` `/invoicing/providers` | List Providers | `invoicing.settings.manage` |
+| `GET` `/invoicing/public/invoices/{token}` | Public Invoice | _Deliberately open_ |
+| `POST` `/invoicing/public/invoices/{token}/payment-intents` | Public Start Payment | _Deliberately open_ |
+| `GET` `/invoicing/public/invoices/{token}/pdf` | Public Invoice Pdf | _Deliberately open_ |
+| `GET` `/invoicing/public/invoices/{token}/preview` | Public Invoice Preview | _Deliberately open_ |
+| `POST` `/invoicing/public/invoices/{token}/refresh` | Public Refresh Payments | _Deliberately open_ |
+| `GET` `/invoicing/quotes` | List Quotes | `invoicing.quote.read` |
+| `POST` `/invoicing/quotes` | Create Quote | `invoicing.quote.write` |
+| `GET` `/invoicing/quotes/{quote_id}` | Get Quote | `invoicing.quote.read` |
+| `PATCH` `/invoicing/quotes/{quote_id}` | Update Quote | `invoicing.quote.write` |
+| `DELETE` `/invoicing/quotes/{quote_id}` | Delete Quote | `invoicing.quote.delete` |
+| `POST` `/invoicing/quotes/{quote_id}/accept` | Accept Quote | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/convert` | Convert Quote | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/issue` | Issue Quote | `invoicing.quote.write` |
+| `GET` `/invoicing/quotes/{quote_id}/pdf` | Download Quote Pdf | `invoicing.quote.read` |
+| `GET` `/invoicing/quotes/{quote_id}/preview` | Preview Quote | `invoicing.quote.read` |
+| `POST` `/invoicing/quotes/{quote_id}/reject` | Reject Quote | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/send` | Send Quote | `invoicing.quote.send` |
+| `GET` `/invoicing/recurring-backlog` | Recurring Backlog | `invoicing.invoice.read:any` |
+| `GET` `/invoicing/settings` | Get Settings | `invoicing.invoice.read:any` |
+| `PUT` `/invoicing/settings` | Save Settings | `invoicing.settings.manage` |
+| `GET` `/invoicing/summary` | Summary | `invoicing.invoice.read` |
+| `GET` `/invoicing/tax-rates` | List Tax Rates | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/tax-rates` | Create Tax Rate | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/tax-rates/{tax_rate_id}` | Update Tax Rate | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/tax-rates/{tax_rate_id}` | Delete Tax Rate | `invoicing.settings.manage` |
+| `GET` `/invoicing/template-blocks` | Template Blocks | `invoicing.settings.manage` |
+| `GET` `/invoicing/template-blocks/{design}/source` | Template Source | `invoicing.template.author` |
+| `GET` `/invoicing/templates` | List Templates | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/templates` | Create Template | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/templates/{template_id}` | Update Template | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/templates/{template_id}` | Delete Template | `invoicing.settings.manage` |
+| `POST` `/invoicing/templates/preview` | Preview Template | `invoicing.settings.manage` |
+| `POST` `/invoicing/templates/qr-preview` | Preview Template Qr | `invoicing.settings.manage` |
+| `GET` `/invoicing/unbilled` | Unbilled | `invoicing.invoice.write` |
+| `GET` `/invoicing/uninvoiced` | Uninvoiced | `invoicing.invoice.read:any` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/invoicing/invoices`
+
+**List Invoices**
+
+Permission: `invoicing.invoice.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `100`) |
+| `offset` | integer |  (default `0`) |
+| `status` | string | draft \| open \| paid \| cancelled |
+| `company_id` | string |  |
+| `kind` | string | invoice \| credit_note |
+| `overdue` | boolean | only open invoices past their due date (default `false`) |
+| `q` | string | matches number and reference |
+| `sort` | string | number \| status \| issue_date \| due_date \| total \| created_at |
+| `lines` | boolean | Include each row's lines and tax groups. False for list views (#290). (default `true`) |
+
+Returns: `200` · `Page_InvoiceRead_`
+
+#### `POST /api/v1/invoicing/invoices`
+
+**Create Invoice**
+
+Permission: `invoicing.invoice.write`
+
+Request body: `InvoiceCreate`
+
+Returns: `201` · `InvoiceRead`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}`
+
+**Get Invoice**
+
+Permission: `invoicing.invoice.read`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `InvoiceRead`
+
+#### `PATCH /api/v1/invoicing/invoices/{invoice_id}`
+
+**Update Invoice**
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Request body: `InvoiceUpdate`
+
+Returns: `200` · `InvoiceRead`
+
+#### `DELETE /api/v1/invoicing/invoices/{invoice_id}`
+
+**Delete Invoice**
+
+Permission: `invoicing.invoice.delete`
+
+Path parameters: `invoice_id`
+
+Returns: `204`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/cancel`
+
+**Cancel Invoice**
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `InvoiceRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/credit`
+
+**Credit Invoice** — Draft credit note mirroring this invoice with negated prices.
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Returns: `201` · `InvoiceRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/export`
+
+**Export Invoice** — Push this invoice to a live accounting provider (#31). Until an adapter module is installed the registry is empty and this reports the provider as unknown — UBL download is the always-available path.
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `provider` | string · required | a registered accounting provider key |
+
+Returns: `200` · `ExternalRefRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/issue`
+
+**Issue Invoice** — Assign the number, freeze the bill-to, open the invoice.
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Request body: `InvoiceIssue`
+
+Returns: `200` · `InvoiceRead`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}/payment-intents`
+
+**List Payment Intents** — This invoice's payment attempts. ``_READ``'s floor, not ``_MODULE``: a client must be able to see the state of the payment they just made.
+
+Permission: `invoicing.invoice.read`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `InvoicePaymentIntentRead[]`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/payment-intents`
+
+**Start Payment** — Open a hosted checkout for this invoice's outstanding balance.
+
+Permission: `invoicing.payment.link`
+
+Path parameters: `invoice_id`
+
+Request body: `InvoicePaymentIntentCreate`
+
+Returns: `200` · `InvoicePaymentIntentRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync`
+
+**Sync Payment Intent** — Re-ask the provider about one attempt, by hand.
+
+Permission: `invoicing.payment.link:any`
+
+Path parameters: `invoice_id`, `intent_id`
+
+Returns: `200` · `InvoicePaymentIntentRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/payment-intents/refresh`
+
+**Refresh Payments** — "Did my payment land?" — asked by the page a payer returns to (#304).
+
+Permission: `invoicing.payment.link`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `InvoicePaymentRefresh`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/payments`
+
+**Add Payment**
+
+Permission: `invoicing.payment.write`
+
+Path parameters: `invoice_id`
+
+Request body: `PaymentWrite`
+
+Returns: `200` · `InvoiceRead`
+
+#### `DELETE /api/v1/invoicing/invoices/{invoice_id}/payments/{payment_id}`
+
+**Delete Payment**
+
+Permission: `invoicing.payment.write`
+
+Path parameters: `invoice_id`, `payment_id`
+
+Returns: `200` · `InvoiceRead`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}/pdf`
+
+**Download Invoice Pdf** — The rendered invoice document (owner feedback): the same PDF the send path attaches.
+
+Permission: `invoicing.invoice.read`
+
+Path parameters: `invoice_id`
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}/preview`
+
+**Preview Invoice** — The invoice as HTML — **the same artefact** ``/pdf`` prints.
+
+Permission: `invoicing.invoice.read`
+
+Path parameters: `invoice_id`
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}/refs`
+
+**Invoice Refs** — What accounting packages know about this invoice (the #31 sync bookkeeping).
+
+Permission: `invoicing.invoice.read:any`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `ExternalRefRead[]`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/remind`
+
+**Remind Invoice** — A payment reminder on demand — same mail, same bookkeeping as the daily cron.
+
+Permission: `invoicing.invoice.send`
+
+Path parameters: `invoice_id`
+
+Returns: `200` · `InvoiceRead`
+
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/send`
+
+**Send Invoice**
+
+Permission: `invoicing.invoice.send`
+
+Path parameters: `invoice_id`
+
+Request body: `DocumentSend`
+
+Returns: `200` · `InvoiceRead`
+
+#### `GET /api/v1/invoicing/invoices/{invoice_id}/ubl`
+
+**Download Ubl** — UBL 2.1 XML — importable by Exact Online, SnelStart, Moneybird, e-Boekhouden.
+
+Permission: `invoicing.invoice.read`
+
+Path parameters: `invoice_id`
+
+Returns: `200`
+
+#### `POST /api/v1/invoicing/invoices/from-time`
+
+**Invoice From Time** — Draft invoice from unbilled approved billable time; stamps the entries invoiced.
+
+Permission: `invoicing.invoice.write`
+
+Request body: `InvoiceFromTime`
+
+Returns: `201` · `InvoiceRead`
+
+#### `GET /api/v1/invoicing/invoices/pdf`
+
+**Download Invoices Zip** — A selection of invoices as one zip of PDFs — the bulk half of ``/&#123;invoice_id&#125;/pdf``.
+
+Permission: `invoicing.invoice.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `ids` | string[] · required | The invoices to pack, by id — the list screen's ✎ selection (#307). |
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/outstanding`
+
+**Outstanding** — Everything a client still has to be invoiced for: hours, agreement periods, renewals.
+
+Permission: `invoicing.invoice.write`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `company_id` | string · required |  |
+
+Returns: `200` · `OutstandingRead`
+
+#### `GET /api/v1/invoicing/payment-accounts`
+
+**List Payment Accounts** — Which payment credentials this org has connected, across every enabled provider module.
+
+Permission: `invoicing.payment.link:any`
+
+Returns: `200` · `InvoicePaymentAccountRead[]`
+
+#### `POST /api/v1/invoicing/payments/webhook/{provider}/{token}`
+
+**Payment Webhook** — The provider's callback. Returns bare statuses and no body, by design.
+
+Permission: _Deliberately open_
+
+Path parameters: `provider`, `token`
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/products`
+
+**List Products**
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `ProductRead[]`
+
+#### `POST /api/v1/invoicing/products`
+
+**Create Product**
+
+Permission: `invoicing.settings.manage`
+
+Request body: `ProductCreate`
+
+Returns: `201` · `ProductRead`
+
+#### `PATCH /api/v1/invoicing/products/{product_id}`
+
+**Update Product**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `product_id`
+
+Request body: `ProductUpdate`
+
+Returns: `200` · `ProductRead`
+
+#### `DELETE /api/v1/invoicing/products/{product_id}`
+
+**Delete Product**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `product_id`
+
+Returns: `204`
+
+#### `GET /api/v1/invoicing/providers`
+
+**List Providers** — The registered accounting adapters (#31). UBL export is always available and is not a provider — it's a download, listed by the web from its own knowledge.
+
+Permission: `invoicing.settings.manage`
+
+Returns: `200` · `array`
+
+#### `GET /api/v1/invoicing/public/invoices/{token}`
+
+**Public Invoice** — This invoice, as the person holding its link sees it.
+
+Permission: _Deliberately open_
+
+Path parameters: `token`
+
+Returns: `200` · `PublicInvoiceRead`
+
+#### `POST /api/v1/invoicing/public/invoices/{token}/payment-intents`
+
+**Public Start Payment** — Open a checkout for what this invoice still owes, and hand back where to go.
+
+Permission: _Deliberately open_
+
+Path parameters: `token`
+
+Returns: `200` · `PublicCheckout`
+
+#### `GET /api/v1/invoicing/public/invoices/{token}/pdf`
+
+**Public Invoice Pdf** — The PDF, for the client who wants it in their own bookkeeping.
+
+Permission: _Deliberately open_
+
+Path parameters: `token`
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/public/invoices/{token}/preview`
+
+**Public Invoice Preview** — The rendered document — **the same HTML** the signed-in preview and the PDF produce.
+
+Permission: _Deliberately open_
+
+Path parameters: `token`
+
+Returns: `200`
+
+#### `POST /api/v1/invoicing/public/invoices/{token}/refresh`
+
+**Public Refresh Payments** — "Did my payment land?", for the payer coming back from a checkout (#304).
+
+Permission: _Deliberately open_
+
+Path parameters: `token`
+
+Returns: `200` · `InvoicePaymentRefresh`
+
+#### `GET /api/v1/invoicing/quotes`
+
+**List Quotes**
+
+Permission: `invoicing.quote.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `100`) |
+| `offset` | integer |  (default `0`) |
+| `status` | string | draft \| open \| accepted \| rejected \| expired \| invoiced |
+| `company_id` | string |  |
+| `q` | string | matches number and reference |
+| `sort` | string | number \| status \| issue_date \| valid_until \| total \| created_at |
+| `lines` | boolean | Include each row's lines and tax groups. False for list views (#290). (default `true`) |
+
+Returns: `200` · `Page_QuoteRead_`
+
+#### `POST /api/v1/invoicing/quotes`
+
+**Create Quote**
+
+Permission: `invoicing.quote.write`
+
+Request body: `QuoteCreate`
+
+Returns: `201` · `QuoteRead`
+
+#### `GET /api/v1/invoicing/quotes/{quote_id}`
+
+**Get Quote**
+
+Permission: `invoicing.quote.read`
+
+Path parameters: `quote_id`
+
+Returns: `200` · `QuoteRead`
+
+#### `PATCH /api/v1/invoicing/quotes/{quote_id}`
+
+**Update Quote**
+
+Permission: `invoicing.quote.write`
+
+Path parameters: `quote_id`
+
+Request body: `QuoteUpdate`
+
+Returns: `200` · `QuoteRead`
+
+#### `DELETE /api/v1/invoicing/quotes/{quote_id}`
+
+**Delete Quote**
+
+Permission: `invoicing.quote.delete`
+
+Path parameters: `quote_id`
+
+Returns: `204`
+
+#### `POST /api/v1/invoicing/quotes/{quote_id}/accept`
+
+**Accept Quote**
+
+Permission: `invoicing.quote.write`
+
+Path parameters: `quote_id`
+
+Request body: `QuoteDecision`
+
+Returns: `200` · `QuoteRead`
+
+#### `POST /api/v1/invoicing/quotes/{quote_id}/convert`
+
+**Convert Quote** — Accepted quote → draft invoice carrying the lines at their accepted prices.
+
+Permission: `invoicing.quote.write`
+
+Path parameters: `quote_id`
+
+Returns: `201` · `InvoiceRead`
+
+#### `POST /api/v1/invoicing/quotes/{quote_id}/issue`
+
+**Issue Quote**
+
+Permission: `invoicing.quote.write`
+
+Path parameters: `quote_id`
+
+Request body: `InvoiceIssue`
+
+Returns: `200` · `QuoteRead`
+
+#### `GET /api/v1/invoicing/quotes/{quote_id}/pdf`
+
+**Download Quote Pdf**
+
+Permission: `invoicing.quote.read`
+
+Path parameters: `quote_id`
+
+Returns: `200`
+
+#### `GET /api/v1/invoicing/quotes/{quote_id}/preview`
+
+**Preview Quote**
+
+Permission: `invoicing.quote.read`
+
+Path parameters: `quote_id`
+
+Returns: `200`
+
+#### `POST /api/v1/invoicing/quotes/{quote_id}/reject`
+
+**Reject Quote**
+
+Permission: `invoicing.quote.write`
+
+Path parameters: `quote_id`
+
+Request body: `QuoteDecision`
+
+Returns: `200` · `QuoteRead`
+
+#### `POST /api/v1/invoicing/quotes/{quote_id}/send`
+
+**Send Quote**
+
+Permission: `invoicing.quote.send`
+
+Path parameters: `quote_id`
+
+Request body: `DocumentSend`
+
+Returns: `200` · `QuoteRead`
+
+#### `GET /api/v1/invoicing/recurring-backlog`
+
+**Recurring Backlog** — Org-wide recurring work still to invoice (#302): agreement periods and domain renewals that no document claims yet.
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `group` | `company` · `month` · `source` | company \| month \| source (default `company`) |
+| `source` | `all` · `subscription` · `domain` | all \| subscription \| domain (default `all`) |
+| `limit` | integer | cap on the item detail, not the totals (default `500`) |
+
+Returns: `200` · `RecurringBacklogReport`
+
+#### `GET /api/v1/invoicing/settings`
+
+**Get Settings** — Read by the editor too (defaults, numbering preview) — not only by admins.
+
+Permission: `invoicing.invoice.read:any`
+
+Returns: `200` · `InvoicingSettingsRead`
+
+#### `PUT /api/v1/invoicing/settings`
+
+**Save Settings**
+
+Permission: `invoicing.settings.manage`
+
+Request body: `InvoicingSettingsWrite`
+
+Returns: `200` · `InvoicingSettingsRead`
+
+#### `GET /api/v1/invoicing/summary`
+
+**Summary**
+
+Permission: `invoicing.invoice.read`
+
+Returns: `200` · `InvoicingSummary`
+
+#### `GET /api/v1/invoicing/tax-rates`
+
+**List Tax Rates**
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `TaxRateRead[]`
+
+#### `POST /api/v1/invoicing/tax-rates`
+
+**Create Tax Rate**
+
+Permission: `invoicing.settings.manage`
+
+Request body: `TaxRateCreate`
+
+Returns: `201` · `TaxRateRead`
+
+#### `PATCH /api/v1/invoicing/tax-rates/{tax_rate_id}`
+
+**Update Tax Rate**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `tax_rate_id`
+
+Request body: `TaxRateUpdate`
+
+Returns: `200` · `TaxRateRead`
+
+#### `DELETE /api/v1/invoicing/tax-rates/{tax_rate_id}`
+
+**Delete Tax Rate**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `tax_rate_id`
+
+Returns: `204`
+
+#### `GET /api/v1/invoicing/template-blocks`
+
+**Template Blocks** — What a template may rearrange: the block/field catalog plus the shipped designs.
+
+Permission: `invoicing.settings.manage`
+
+Returns: `200` · `TemplateCatalog`
+
+#### `GET /api/v1/invoicing/template-blocks/{design}/source`
+
+**Template Source** — A shipped design's own HTML and CSS, to start a custom template from.
+
+Permission: `invoicing.template.author`
+
+Path parameters: `design`
+
+Returns: `200` · `TemplateSource`
+
+#### `GET /api/v1/invoicing/templates`
+
+**List Templates**
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `app__modules__invoicing__schemas__TemplateRead[]`
+
+#### `POST /api/v1/invoicing/templates`
+
+**Create Template**
+
+Permission: `invoicing.settings.manage`
+
+Request body: `app__modules__invoicing__schemas__TemplateCreate`
+
+Returns: `201` · `app__modules__invoicing__schemas__TemplateRead`
+
+#### `PATCH /api/v1/invoicing/templates/{template_id}`
+
+**Update Template**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `template_id`
+
+Request body: `app__modules__invoicing__schemas__TemplateUpdate`
+
+Returns: `200` · `app__modules__invoicing__schemas__TemplateRead`
+
+#### `DELETE /api/v1/invoicing/templates/{template_id}`
+
+**Delete Template**
+
+Permission: `invoicing.settings.manage`
+
+Path parameters: `template_id`
+
+Returns: `204`
+
+#### `POST /api/v1/invoicing/templates/preview`
+
+**Preview Template** — Render a **sample** document with an unsaved config — the editor's live preview.
+
+Permission: `invoicing.settings.manage`
+
+Request body: `TemplatePreview`
+
+Returns: `200`
+
+#### `POST /api/v1/invoicing/templates/qr-preview`
+
+**Preview Template Qr** — The payment QR alone, as an unsaved config would draw it (#305).
+
+Permission: `invoicing.settings.manage`
+
+Request body: `TemplatePreview`
+
+Returns: `200` · `QrPreview`
+
+#### `GET /api/v1/invoicing/unbilled`
+
+**Unbilled**
+
+Permission: `invoicing.invoice.write`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `company_id` | string · required |  |
+| `project_id` | string |  |
+| `until` | string | org-local date (YYYY-MM-DD), inclusive |
+
+Returns: `200` · `UnbilledRead`
+
+#### `GET /api/v1/invoicing/uninvoiced`
+
+**Uninvoiced** — Org-wide report of approved + billable + not-yet-invoiced hours (#277), bucketed server-side with exact per-group subtotals. Read-only: the per-company ``/unbilled`` stays the invoice-build preview, and building happens via ``/invoices/from-time``.
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `group` | `day` · `week` · `month` · `year` · `company` · `project` · `user` | day \| week \| month \| year \| company \| project \| user (default `company`) |
+| `limit` | integer | cap on the entry detail, not the totals (default `500`) |
+
+Returns: `200` · `UninvoicedReport`
+
+</details>
+
+## `subscriptions`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/subscriptions` | List Subscriptions | `subscriptions.subscription.read` |
+| `POST` `/subscriptions` | Create Subscription | `subscriptions.subscription.write` |
+| `GET` `/subscriptions/{subscription_id}` | Get Subscription | `subscriptions.subscription.read` |
+| `PATCH` `/subscriptions/{subscription_id}` | Update Subscription | `subscriptions.subscription.write` |
+| `DELETE` `/subscriptions/{subscription_id}` | Delete Subscription | `subscriptions.subscription.delete` |
+| `GET` `/subscriptions/{subscription_id}/prices` | Price History | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/price-increase` | Apply Price Increase | `subscriptions.subscription.write` |
+| `POST` `/subscriptions/price-increase/preview` | Preview Price Increase | `subscriptions.subscription.write` |
+| `GET` `/subscriptions/summary` | Summary | `subscriptions.subscription.read` |
+| `GET` `/subscriptions/templates` | List Subscription Templates | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/templates` | Create Subscription Template | `subscriptions.template.manage` |
+| `PATCH` `/subscriptions/templates/{template_id}` | Update Subscription Template | `subscriptions.template.manage` |
+| `DELETE` `/subscriptions/templates/{template_id}` | Delete Subscription Template | `subscriptions.template.manage` |
+| `GET` `/subscriptions/types` | List Subscription Types | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/types` | Create Subscription Type | `subscriptions.type.manage` |
+| `PATCH` `/subscriptions/types/{type_id}` | Update Subscription Type | `subscriptions.type.manage` |
+| `DELETE` `/subscriptions/types/{type_id}` | Delete Subscription Type | `subscriptions.type.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/subscriptions`
+
+**List Subscriptions**
+
+Permission: `subscriptions.subscription.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `100`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `status` | string |  |
+| `subscription_type_id` | string |  |
+| `sort` | string | name \| status \| next_invoice_date \| start_date \| company \| type \| amount \| included_hours |
+| `entity_type` | string | with entity_id: linked-entity filter |
+| `entity_id` | string |  |
+| `usage` | boolean | include current-period usage per row (default `false`) |
+
+Returns: `200` · `Page_SubscriptionRead_`
+
+#### `POST /api/v1/subscriptions`
+
+**Create Subscription**
+
+Permission: `subscriptions.subscription.write`
+
+Request body: `SubscriptionCreate`
+
+Returns: `201` · `SubscriptionRead`
+
+#### `GET /api/v1/subscriptions/{subscription_id}`
+
+**Get Subscription**
+
+Permission: `subscriptions.subscription.read`
+
+Path parameters: `subscription_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `usage` | boolean | Include current-period included-hours usage (default `false`) |
+
+Returns: `200` · `SubscriptionRead`
+
+#### `PATCH /api/v1/subscriptions/{subscription_id}`
+
+**Update Subscription**
+
+Permission: `subscriptions.subscription.write`
+
+Path parameters: `subscription_id`
+
+Request body: `SubscriptionUpdate`
+
+Returns: `200` · `SubscriptionRead`
+
+#### `DELETE /api/v1/subscriptions/{subscription_id}`
+
+**Delete Subscription**
+
+Permission: `subscriptions.subscription.delete`
+
+Path parameters: `subscription_id`
+
+Returns: `204`
+
+#### `GET /api/v1/subscriptions/{subscription_id}/prices`
+
+**Price History** — The append-only price history, newest first.
+
+Permission: `subscriptions.subscription.read`
+
+Path parameters: `subscription_id`
+
+Returns: `200` · `PriceRead[]`
+
+#### `POST /api/v1/subscriptions/price-increase`
+
+**Apply Price Increase** — Apply the increase: one price-history row per subscription (and optionally the matching templates' default amounts).
+
+Permission: `subscriptions.subscription.write`
+
+Request body: `PriceIncreaseRequest`
+
+Returns: `200` · `PriceIncreaseResult`
+
+#### `POST /api/v1/subscriptions/price-increase/preview`
+
+**Preview Price Increase** — Every in-scope subscription with its current and would-be amount — nothing written.
+
+Permission: `subscriptions.subscription.write`
+
+Request body: `PriceIncreaseRequest`
+
+Returns: `200` · `PriceIncreaseResult`
+
+#### `GET /api/v1/subscriptions/summary`
+
+**Summary** — MRR/ARR + the invoices due within a month, for Overzicht → Omzet.
+
+Permission: `subscriptions.subscription.read`
+
+Returns: `200` · `SubscriptionSummary`
+
+#### `GET /api/v1/subscriptions/templates`
+
+**List Subscription Templates**
+
+Permission: `subscriptions.subscription.read`
+
+Returns: `200` · `SubscriptionTemplateRead[]`
+
+#### `POST /api/v1/subscriptions/templates`
+
+**Create Subscription Template**
+
+Permission: `subscriptions.template.manage`
+
+Request body: `SubscriptionTemplateCreate`
+
+Returns: `201` · `SubscriptionTemplateRead`
+
+#### `PATCH /api/v1/subscriptions/templates/{template_id}`
+
+**Update Subscription Template** — A rename carries over to the agreements made from this preset that still bear its old name; ``renamed_subscriptions`` reports how many, so the screen can say so.
+
+Permission: `subscriptions.template.manage`
+
+Path parameters: `template_id`
+
+Request body: `SubscriptionTemplateUpdate`
+
+Returns: `200` · `SubscriptionTemplateSaved`
+
+#### `DELETE /api/v1/subscriptions/templates/{template_id}`
+
+**Delete Subscription Template**
+
+Permission: `subscriptions.template.manage`
+
+Path parameters: `template_id`
+
+Returns: `204`
+
+#### `GET /api/v1/subscriptions/types`
+
+**List Subscription Types**
+
+Permission: `subscriptions.subscription.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `SubscriptionTypeRead[]`
+
+#### `POST /api/v1/subscriptions/types`
+
+**Create Subscription Type**
+
+Permission: `subscriptions.type.manage`
+
+Request body: `SubscriptionTypeCreate`
+
+Returns: `201` · `SubscriptionTypeRead`
+
+#### `PATCH /api/v1/subscriptions/types/{type_id}`
+
+**Update Subscription Type**
+
+Permission: `subscriptions.type.manage`
+
+Path parameters: `type_id`
+
+Request body: `SubscriptionTypeUpdate`
+
+Returns: `200` · `SubscriptionTypeRead`
+
+#### `DELETE /api/v1/subscriptions/types/{type_id}`
+
+**Delete Subscription Type**
+
+Permission: `subscriptions.type.manage`
+
+Path parameters: `type_id`
+
+Returns: `204`
+
+</details>
+
+## `mollie`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/mollie/accounts` | List Accounts | `mollie.settings.manage` |
+| `POST` `/mollie/accounts` | Create Account | `mollie.settings.manage` |
+| `PATCH` `/mollie/accounts/{account_id}` | Update Account | `mollie.settings.manage` |
+| `DELETE` `/mollie/accounts/{account_id}` | Delete Account | `mollie.settings.manage` |
+| `POST` `/mollie/accounts/{account_id}/verify` | Verify Account | `mollie.settings.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/mollie/accounts`
+
+**List Accounts** — Connected Mollie keys. The key itself is never part of the response.
+
+Permission: `mollie.settings.manage`
+
+Returns: `200` · `MollieAccountRead[]`
+
+#### `POST /api/v1/mollie/accounts`
+
+**Create Account** — Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so a typo is reported on the settings screen rather than as a failed save.
+
+Permission: `mollie.settings.manage`
+
+Request body: `MollieAccountCreate`
+
+Returns: `201` · `MollieAccountRead`
+
+#### `PATCH /api/v1/mollie/accounts/{account_id}`
+
+**Update Account** — Rename, re-link or rotate. An omitted ``api_key`` keeps the stored one.
+
+Permission: `mollie.settings.manage`
+
+Path parameters: `account_id`
+
+Request body: `MollieAccountUpdate`
+
+Returns: `200` · `MollieAccountRead`
+
+#### `DELETE /api/v1/mollie/accounts/{account_id}`
+
+**Delete Account**
+
+Permission: `mollie.settings.manage`
+
+Path parameters: `account_id`
+
+Returns: `204`
+
+#### `POST /api/v1/mollie/accounts/{account_id}/verify`
+
+**Verify Account** — Ask Mollie whether this key works, and which methods it can take.
+
+Permission: `mollie.settings.manage`
+
+Path parameters: `account_id`
+
+Returns: `200` · `MollieAccountVerifyResult`
+
+</details>
+
+## `snelstart`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/snelstart/accounts` | List Accounts | `snelstart.settings.manage` |
+| `POST` `/snelstart/accounts` | Create Account | `snelstart.settings.manage` |
+| `PATCH` `/snelstart/accounts/{account_id}` | Update Account | `snelstart.settings.manage` |
+| `DELETE` `/snelstart/accounts/{account_id}` | Delete Account | `snelstart.settings.manage` |
+| `GET` `/snelstart/accounts/{account_id}/ledgers` | Ledger Options | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/links/{link_id}/adopt` | Adopt Link | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/push/articles` | Push Articles | `snelstart.ledger.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/invoices` | Push Invoices | `snelstart.ledger.write`, `invoicing.invoice.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/invoices/{invoice_id}` | Push Invoice | `snelstart.ledger.write`, `invoicing.invoice.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/relations` | Push Relations | `snelstart.ledger.write` |
+| `GET` `/snelstart/accounts/{account_id}/relations` | Relation Candidates | `snelstart.sync.run` |
+| `GET` `/snelstart/accounts/{account_id}/runs` | List Runs | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/payments` | Sync Payments | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/reference` | Sync Reference | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/relations` | Link Relations | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/verify` | Verify Account | `snelstart.settings.manage` |
+| `GET` `/snelstart/accounts/options` | Account Options | `snelstart.sync.run` |
+| `POST` `/snelstart/coupling/callback` | Coupling Callback | _Deliberately open_ |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/snelstart/accounts`
+
+**List Accounts** — Connected administrations. The koppelsleutel is never part of the response.
+
+Permission: `snelstart.settings.manage`
+
+Returns: `200` · `SnelstartAccountRead[]`
+
+#### `POST /api/v1/snelstart/accounts`
+
+**Create Account** — Store a credential, or open a pending one for the activation flow to fill.
+
+Permission: `snelstart.settings.manage`
+
+Request body: `SnelstartAccountCreate`
+
+Returns: `201` · `SnelstartAccountRead`
+
+#### `PATCH /api/v1/snelstart/accounts/{account_id}`
+
+**Update Account** — Rename, rotate, or change what this connection does. An omitted key keeps the stored one.
+
+Permission: `snelstart.settings.manage`
+
+Path parameters: `account_id`
+
+Request body: `SnelstartAccountUpdate`
+
+Returns: `200` · `SnelstartAccountRead`
+
+#### `DELETE /api/v1/snelstart/accounts/{account_id}`
+
+**Delete Account**
+
+Permission: `snelstart.settings.manage`
+
+Path parameters: `account_id`
+
+Returns: `204`
+
+#### `GET /api/v1/snelstart/accounts/{account_id}/ledgers`
+
+**Ledger Options** — The revenue accounts a line may book to — the picker behind the per-rate mapping.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartLedgerOption[]`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/links/{link_id}/adopt`
+
+**Adopt Link** — Pair a SnelStart row with a schakl record by hand — the reviewer's one click.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`, `link_id`
+
+Request body: `SnelstartLinkAdopt`
+
+Returns: `200` · `SnelstartLinkRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/push/articles`
+
+**Push Articles** — schakl's products into SnelStart's article file, matched on the article code.
+
+Permission: `snelstart.ledger.write`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/push/invoices`
+
+**Push Invoices** — Every issued invoice not yet in SnelStart, or a named selection.
+
+Permission: `snelstart.ledger.write`, `invoicing.invoice.write`
+
+Path parameters: `account_id`
+
+Request body: `Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/push/invoices/{invoice_id}`
+
+**Push Invoice** — One invoice, from its own detail page.
+
+Permission: `snelstart.ledger.write`, `invoicing.invoice.write`
+
+Path parameters: `account_id`, `invoice_id`
+
+Returns: `200` · `SnelstartPushResult`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/push/relations`
+
+**Push Relations** — Push paired and invoiced companies into SnelStart's relation file.
+
+Permission: `snelstart.ledger.write`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `GET /api/v1/snelstart/accounts/{account_id}/relations`
+
+**Relation Candidates** — Every SnelStart customer and what schakl believes it is. Writes nothing.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartRelationCandidate[]`
+
+#### `GET /api/v1/snelstart/accounts/{account_id}/runs`
+
+**List Runs** — What the last syncs did, and what they could not do (#31: failures are visible).
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `20`) |
+
+Returns: `200` · `SnelstartSyncRunRead[]`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/sync/payments`
+
+**Sync Payments** — Fold SnelStart's outstanding balances back into schakl as payments.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/sync/reference`
+
+**Sync Reference** — Pull the administration's chart of accounts, journals, countries and article groups.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/sync/relations`
+
+**Link Relations** — Adopt every SnelStart customer schakl can identify without guessing.
+
+Permission: `snelstart.sync.run`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartSyncRunRead`
+
+#### `POST /api/v1/snelstart/accounts/{account_id}/verify`
+
+**Verify Account** — Ask SnelStart which administration this key opens, and what it may do there.
+
+Permission: `snelstart.settings.manage`
+
+Path parameters: `account_id`
+
+Returns: `200` · `SnelstartVerifyResult`
+
+#### `GET /api/v1/snelstart/accounts/options`
+
+**Account Options** — The accounts a sync or push may run against.
+
+Permission: `snelstart.sync.run`
+
+Returns: `200` · `SnelstartAccountRead[]`
+
+#### `POST /api/v1/snelstart/coupling/callback`
+
+**Coupling Callback** — Receive a koppelsleutel SnelStart has just granted.
+
+Permission: _Deliberately open_
+
+Returns: `200` · `object`
+
+</details>
+

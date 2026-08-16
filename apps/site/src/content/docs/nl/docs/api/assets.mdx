@@ -1,0 +1,1209 @@
+---
+title: "Assets: domeinen, sites, hosting"
+description: "Wat een bureau voor een klant beheert, en de vier diensten waar dat uit gelezen wordt: de registrar, de DNS-zone, de monitor en de site zelf."
+sidebar:
+  order: 4
+---
+
+Wat een bureau voor een klant beheert, en de vier diensten waar dat uit gelezen wordt: de registrar, de DNS-zone, de monitor en de site zelf.
+
+91 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `domains`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/domains` | List Domains | `domains.domain.read` |
+| `POST` `/domains` | Create Domain | `domains.domain.write` |
+| `GET` `/domains/{domain_id}` | Get Domain | `domains.domain.read` |
+| `PATCH` `/domains/{domain_id}` | Update Domain | `domains.domain.write` |
+| `DELETE` `/domains/{domain_id}` | Delete Domain | `domains.domain.delete` |
+| `POST` `/domains/{domain_id}/refresh` | Refresh Domain Dns | `domains.domain.write` |
+| `GET` `/domains/tld-prices` | List Tld Prices | `domains.tld_price.read` |
+| `POST` `/domains/tld-prices` | Set Tld Price | `domains.tld_price.manage` |
+| `DELETE` `/domains/tld-prices/{price_id}` | Delete Tld Price | `domains.tld_price.manage` |
+| `POST` `/domains/tld-prices/price-increase` | Apply Tld Price Increase | `domains.tld_price.manage` |
+| `POST` `/domains/tld-prices/price-increase/preview` | Preview Tld Price Increase | `domains.tld_price.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/domains`
+
+**List Domains**
+
+Recht: `domains.domain.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `q` | string |  |
+| `sort` | string | name \| company \| status \| registrar \| dns \| dnssec \| email_enabled \| start_date \| next_invoice_date \| created_at \| updated_at, '-' desc |
+| `invoiceable` | boolean | Filter on the *resolved* billing answer (#298), not the stored flag: false lists what is registered elsewhere and therefore never invoiced. |
+| `status` | string | active \| redirect \| parked \| expired \| inactive |
+| `registrar_provider_id` | string |  |
+| `dns_provider_id` | string |  |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+| `meta` | boolean | Resolve the display fields a picker discards — client/provider names, party labels, the register facts and the resolved price. False leaves them at their empty values. (default `true`) |
+
+Antwoord: `200` · `Page_DomainRead_`
+
+#### `POST /api/v1/domains`
+
+**Create Domain**
+
+Recht: `domains.domain.write`
+
+Request body: `DomainCreate`
+
+Antwoord: `201` · `DomainRead`
+
+#### `GET /api/v1/domains/{domain_id}`
+
+**Get Domain**
+
+Recht: `domains.domain.read`
+
+Padparameters: `domain_id`
+
+Antwoord: `200` · `DomainRead`
+
+#### `PATCH /api/v1/domains/{domain_id}`
+
+**Update Domain**
+
+Recht: `domains.domain.write`
+
+Padparameters: `domain_id`
+
+Request body: `DomainUpdate`
+
+Antwoord: `200` · `DomainRead`
+
+#### `DELETE /api/v1/domains/{domain_id}`
+
+**Delete Domain**
+
+Recht: `domains.domain.delete`
+
+Padparameters: `domain_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/domains/{domain_id}/refresh`
+
+**Refresh Domain Dns** — Re-query public DNS for this domain's nameservers + DNSSEC now (#92).
+
+Recht: `domains.domain.write`
+
+Padparameters: `domain_id`
+
+Antwoord: `200` · `DomainRead`
+
+#### `GET /api/v1/domains/tld-prices`
+
+**List Tld Prices** — The per-TLD price list: current, scheduled and past rows, plus unpriced TLDs.
+
+Recht: `domains.tld_price.read`
+
+Antwoord: `200` · `TldPriceGroup[]`
+
+#### `POST /api/v1/domains/tld-prices`
+
+**Set Tld Price** — Append a price row for a TLD (a same-day row is corrected in place).
+
+Recht: `domains.tld_price.manage`
+
+Request body: `TldPriceUpsert`
+
+Antwoord: `200` · `TldPriceRow`
+
+#### `DELETE /api/v1/domains/tld-prices/{price_id}`
+
+**Delete Tld Price** — Remove one history row (undo a scheduled increase or a mistake).
+
+Recht: `domains.tld_price.manage`
+
+Padparameters: `price_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/domains/tld-prices/price-increase`
+
+**Apply Tld Price Increase** — Apply a price change: one history row per TLD, effective ``valid_from``.
+
+Recht: `domains.tld_price.manage`
+
+Request body: `TldPriceIncreaseRequest`
+
+Antwoord: `200` · `TldPriceIncreaseResult`
+
+#### `POST /api/v1/domains/tld-prices/price-increase/preview`
+
+**Preview Tld Price Increase** — What a price change would do — nothing is written (#231's preview-then-apply).
+
+Recht: `domains.tld_price.manage`
+
+Request body: `TldPriceIncreaseRequest`
+
+Antwoord: `200` · `TldPriceIncreaseResult`
+
+</details>
+
+## `websites`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/websites` | List Websites | `websites.website.read` |
+| `POST` `/websites` | Create Website | `websites.website.write` |
+| `GET` `/websites/{website_id}` | Get Website | `websites.website.read` |
+| `PATCH` `/websites/{website_id}` | Update Website | `websites.website.write` |
+| `DELETE` `/websites/{website_id}` | Delete Website | `websites.website.delete` |
+| `GET` `/websites/available-domains` | List Available Domains | `websites.website.write` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/websites`
+
+**List Websites**
+
+Recht: `websites.website.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `domain_id` | string |  |
+| `company_id` | string |  |
+| `q` | string | Matches the parent domain's name |
+| `hosting_id` | string |  |
+| `uptime_enabled` | boolean |  |
+| `sort` | string | name \| company \| hosting \| uptime \| created_at \| updated_at, '-' desc |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+| `meta` | boolean | Resolve the display fields a picker discards — the parent domain's name and client, the hosting account's name and the technical owner's label. (default `true`) |
+
+Antwoord: `200` · `Page_WebsiteRead_`
+
+#### `POST /api/v1/websites`
+
+**Create Website**
+
+Recht: `websites.website.write`
+
+Request body: `WebsiteCreate`
+
+Antwoord: `201` · `WebsiteRead`
+
+#### `GET /api/v1/websites/{website_id}`
+
+**Get Website**
+
+Recht: `websites.website.read`
+
+Padparameters: `website_id`
+
+Antwoord: `200` · `WebsiteRead`
+
+#### `PATCH /api/v1/websites/{website_id}`
+
+**Update Website**
+
+Recht: `websites.website.write`
+
+Padparameters: `website_id`
+
+Request body: `WebsiteUpdate`
+
+Antwoord: `200` · `WebsiteRead`
+
+#### `DELETE /api/v1/websites/{website_id}`
+
+**Delete Website**
+
+Recht: `websites.website.delete`
+
+Padparameters: `website_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/websites/available-domains`
+
+**List Available Domains** — The domains that do not have a website yet — the create picker's options.
+
+Recht: `websites.website.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `200`) |
+
+Antwoord: `200` · `AvailableDomain[]`
+
+</details>
+
+## `hosting`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/hosting` | List Hosting | `hosting.hosting.read` |
+| `POST` `/hosting` | Create Hosting | `hosting.hosting.write` |
+| `GET` `/hosting/{hosting_id}` | Get Hosting | `hosting.hosting.read` |
+| `PATCH` `/hosting/{hosting_id}` | Update Hosting | `hosting.hosting.write` |
+| `DELETE` `/hosting/{hosting_id}` | Delete Hosting | `hosting.hosting.delete` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/hosting`
+
+**List Hosting**
+
+Recht: `hosting.hosting.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `q` | string |  |
+| `sort` | string | name \| ip_address \| created_at \| updated_at, '-' desc |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+| `meta` | boolean | Resolve the display fields a picker discards — the client's and provider's names and the contact's label. (default `true`) |
+
+Antwoord: `200` · `Page_HostingRead_`
+
+#### `POST /api/v1/hosting`
+
+**Create Hosting**
+
+Recht: `hosting.hosting.write`
+
+Request body: `HostingCreate`
+
+Antwoord: `201` · `HostingRead`
+
+#### `GET /api/v1/hosting/{hosting_id}`
+
+**Get Hosting**
+
+Recht: `hosting.hosting.read`
+
+Padparameters: `hosting_id`
+
+Antwoord: `200` · `HostingRead`
+
+#### `PATCH /api/v1/hosting/{hosting_id}`
+
+**Update Hosting**
+
+Recht: `hosting.hosting.write`
+
+Padparameters: `hosting_id`
+
+Request body: `HostingUpdate`
+
+Antwoord: `200` · `HostingRead`
+
+#### `DELETE /api/v1/hosting/{hosting_id}`
+
+**Delete Hosting**
+
+Recht: `hosting.hosting.delete`
+
+Padparameters: `hosting_id`
+
+Antwoord: `204`
+
+</details>
+
+## `cloudflare`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/cloudflare/accounts` | List Accounts | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts` | Create Account | `cloudflare.settings.manage` |
+| `PATCH` `/cloudflare/accounts/{account_id}` | Update Account | `cloudflare.settings.manage` |
+| `DELETE` `/cloudflare/accounts/{account_id}` | Delete Account | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts/{account_id}/sync` | Sync Account | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts/{account_id}/verify` | Verify Account | `cloudflare.settings.manage` |
+| `GET` `/cloudflare/accounts/options` | List Account Options | `cloudflare.dns.read` |
+| `POST` `/cloudflare/domains/{domain_id}/check` | Cloudflare Check Domain | `cloudflare.dns.read` |
+| `POST` `/cloudflare/domains/{domain_id}/connect` | Connect Domain | `cloudflare.zone.manage` |
+| `POST` `/cloudflare/domains/{domain_id}/pages` | Link Pages Project | `cloudflare.zone.manage` |
+| `PUT` `/cloudflare/domains/{domain_id}/redirect` | Set Redirect | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/domains/{domain_id}/redirect` | Remove Redirect | `cloudflare.zone.manage` |
+| `POST` `/cloudflare/domains/{domain_id}/redirect/adopt` | Adopt Redirect | `cloudflare.zone.manage` |
+| `PUT` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | Edit Zone Redirect | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | Delete Zone Redirect | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/domains/{domain_id}/status` | Cloudflare Domain Status | `cloudflare.dns.read` |
+| `DELETE` `/cloudflare/pages/links/{link_id}` | Unlink Pages Project | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/pages/projects` | List Pages Projects | `cloudflare.dns.read` |
+| `GET` `/cloudflare/zones` | List Zones | `cloudflare.dns.read` |
+| `GET` `/cloudflare/zones/{zone_id}/dns` | List Dns | `cloudflare.dns.read` |
+| `POST` `/cloudflare/zones/{zone_id}/dns` | Create Dns Record | `cloudflare.zone.manage` |
+| `PATCH` `/cloudflare/zones/{zone_id}/dns/{record_id}` | Update Dns Record | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/zones/{zone_id}/dns/{record_id}` | Delete Dns Record | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/zones/{zone_id}/dns/export` | Export Dns | `cloudflare.dns.read` |
+| `POST` `/cloudflare/zones/{zone_id}/link` | Link Zone | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/zones/{zone_id}/link` | Unlink Zone | `cloudflare.zone.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/cloudflare/accounts`
+
+**List Accounts** — Configured Cloudflare accounts. The API token is never part of the response.
+
+Recht: `cloudflare.settings.manage`
+
+Antwoord: `200` · `AccountRead[]`
+
+#### `POST /api/v1/cloudflare/accounts`
+
+**Create Account**
+
+Recht: `cloudflare.settings.manage`
+
+Request body: `AccountCreate`
+
+Antwoord: `201` · `AccountRead`
+
+#### `PATCH /api/v1/cloudflare/accounts/{account_id}`
+
+**Update Account** — Rename, repoint or rotate. An omitted ``api_token`` keeps the stored one.
+
+Recht: `cloudflare.settings.manage`
+
+Padparameters: `account_id`
+
+Request body: `AccountUpdate`
+
+Antwoord: `200` · `AccountRead`
+
+#### `DELETE /api/v1/cloudflare/accounts/{account_id}`
+
+**Delete Account** — Forget the credential and its synced inventory. Nothing at Cloudflare is deleted.
+
+Recht: `cloudflare.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/cloudflare/accounts/{account_id}/sync`
+
+**Sync Account** — Pull the account's zones and Pages projects, matching zones to domains by apex.
+
+Recht: `cloudflare.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `AccountSyncResult`
+
+#### `POST /api/v1/cloudflare/accounts/{account_id}/verify`
+
+**Verify Account** — Probe what this token can do and store the answer, so the UI can name a missing scope.
+
+Recht: `cloudflare.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `AccountVerifyResult`
+
+#### `GET /api/v1/cloudflare/accounts/options`
+
+**List Account Options** — Names only, for the "which account" picker — choosing one is ``zone.manage``'s job, and should not require holding the credential screen's permission.
+
+Recht: `cloudflare.dns.read`
+
+Antwoord: `200` · `AccountOption[]`
+
+#### `POST /api/v1/cloudflare/domains/{domain_id}/check`
+
+**Cloudflare Check Domain** — Ask Cloudflare what it actually has: drift, conflicting redirects, whether the apex is proxied at all. Persists the observation; every probe fails softly and names itself.
+
+Recht: `cloudflare.dns.read`
+
+Padparameters: `domain_id`
+
+Antwoord: `200` · `DomainStatusRead`
+
+#### `POST /api/v1/cloudflare/domains/{domain_id}/connect`
+
+**Connect Domain** — Adopt this domain's existing Cloudflare zone, or create one. Adoption always wins.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`
+
+Request body: `ConnectRequest`
+
+Antwoord: `200` · `ZoneRead`
+
+#### `POST /api/v1/cloudflare/domains/{domain_id}/pages`
+
+**Link Pages Project** — Serve a hostname of this domain from a Pages project (registers it *and* points DNS).
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`
+
+Request body: `PagesLinkCreate`
+
+Antwoord: `201` · `PagesLinkRead`
+
+#### `PUT /api/v1/cloudflare/domains/{domain_id}/redirect`
+
+**Set Redirect** — Set the domain-wide redirect and push it to Cloudflare as a Redirect Rule.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`
+
+Request body: `RedirectWrite`
+
+Antwoord: `200` · `RedirectRead`
+
+#### `DELETE /api/v1/cloudflare/domains/{domain_id}/redirect`
+
+**Remove Redirect** — Delete the rule we created at Cloudflare. Rules we did not create are never touched.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/cloudflare/domains/{domain_id}/redirect/adopt`
+
+**Adopt Redirect** — Take ownership of a Redirect Rule the zone already has. Writes nothing at Cloudflare.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`
+
+Request body: `RedirectAdopt`
+
+Antwoord: `200` · `RedirectRead`
+
+#### `PUT /api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}`
+
+**Edit Zone Redirect** — Change where an existing Redirect Rule sends traffic. Never changes what it matches.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`, `rule_id`
+
+Request body: `RedirectRuleEdit`
+
+Antwoord: `200` · `DomainStatusRead`
+
+#### `DELETE /api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}`
+
+**Delete Zone Redirect** — Delete one Redirect Rule from this zone by id, resolved inside the zone's own ruleset.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `domain_id`, `rule_id`
+
+Antwoord: `200` · `DomainStatusRead`
+
+#### `GET /api/v1/cloudflare/domains/{domain_id}/status`
+
+**Cloudflare Domain Status** — Stored state only — no Cloudflare call, so this is safe on a page load.
+
+Recht: `cloudflare.dns.read`
+
+Padparameters: `domain_id`
+
+Antwoord: `200` · `DomainStatusRead`
+
+#### `DELETE /api/v1/cloudflare/pages/links/{link_id}`
+
+**Unlink Pages Project** — Detach the hostname from the project. Its DNS record is left alone on purpose.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `link_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/cloudflare/pages/projects`
+
+**List Pages Projects** — Synced Pages projects — the picker's source, so it never waits on Cloudflare.
+
+Recht: `cloudflare.dns.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+
+Antwoord: `200` · `PagesProjectRead[]`
+
+#### `GET /api/v1/cloudflare/zones`
+
+**List Zones**
+
+Recht: `cloudflare.dns.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `account_id` | string |  |
+| `domain_id` | string |  |
+| `linked` | boolean | true: matched to a domain; false: orphans |
+| `q` | string |  |
+| `count` | boolean | Compute the total. False for pickers. (default `true`) |
+
+Antwoord: `200` · `Page_ZoneRead_`
+
+#### `GET /api/v1/cloudflare/zones/{zone_id}/dns`
+
+**List Dns** — The zone's records, read live from Cloudflare — never a cached copy (see schemas).
+
+Recht: `cloudflare.dns.read`
+
+Padparameters: `zone_id`
+
+Antwoord: `200` · `ZoneRecords`
+
+#### `POST /api/v1/cloudflare/zones/{zone_id}/dns`
+
+**Create Dns Record**
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `zone_id`
+
+Request body: `DnsRecordWrite`
+
+Antwoord: `201` · `DnsRecordRead`
+
+#### `PATCH /api/v1/cloudflare/zones/{zone_id}/dns/{record_id}`
+
+**Update Dns Record**
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `zone_id`, `record_id`
+
+Request body: `DnsRecordWrite`
+
+Antwoord: `200` · `DnsRecordRead`
+
+#### `DELETE /api/v1/cloudflare/zones/{zone_id}/dns/{record_id}`
+
+**Delete Dns Record**
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `zone_id`, `record_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/cloudflare/zones/{zone_id}/dns/export`
+
+**Export Dns** — The zone as a BIND file (Cloudflare's own export) or a CSV built here.
+
+Recht: `cloudflare.dns.read`
+
+Padparameters: `zone_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `format` | string |  (default `bind`) |
+
+Antwoord: `200` · `DnsExport`
+
+#### `POST /api/v1/cloudflare/zones/{zone_id}/link`
+
+**Link Zone** — Match a synced zone to a domain by hand, where the apex did not match automatically.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `zone_id`
+
+Request body: `ZoneLink`
+
+Antwoord: `200` · `ZoneRead`
+
+#### `DELETE /api/v1/cloudflare/zones/{zone_id}/link`
+
+**Unlink Zone** — Forget the match. The zone keeps serving at Cloudflare.
+
+Recht: `cloudflare.zone.manage`
+
+Padparameters: `zone_id`
+
+Antwoord: `200` · `ZoneRead`
+
+</details>
+
+## `oxxa`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/oxxa/accounts` | List Accounts | `oxxa.settings.manage` |
+| `POST` `/oxxa/accounts` | Create Account | `oxxa.settings.manage` |
+| `PATCH` `/oxxa/accounts/{account_id}` | Update Account | `oxxa.settings.manage` |
+| `DELETE` `/oxxa/accounts/{account_id}` | Delete Account | `oxxa.settings.manage` |
+| `POST` `/oxxa/accounts/{account_id}/sync` | Sync Account | `oxxa.registrar.sync` |
+| `POST` `/oxxa/accounts/{account_id}/verify` | Verify Account | `oxxa.settings.manage` |
+| `GET` `/oxxa/accounts/options` | List Account Options | `oxxa.registrar.sync` |
+| `GET` `/oxxa/domains` | List Register | `oxxa.registrar.sync` |
+| `POST` `/oxxa/domains/{domain_id}/nameservers` | Push Nameservers | `oxxa.registrar.manage` |
+| `POST` `/oxxa/domains/{domain_id}/refresh` | Refresh Domain | `oxxa.registrar.sync` |
+| `GET` `/oxxa/domains/{domain_id}/status` | Domain Status | `oxxa.registrar.sync` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/oxxa/accounts`
+
+**List Accounts** — Configured OXXA logins. The API password is never part of the response.
+
+Recht: `oxxa.settings.manage`
+
+Antwoord: `200` · `OxxaAccountRead[]`
+
+#### `POST /api/v1/oxxa/accounts`
+
+**Create Account** — Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so a typo is reported on the settings screen rather than as a failed save.
+
+Recht: `oxxa.settings.manage`
+
+Request body: `OxxaAccountCreate`
+
+Antwoord: `201` · `OxxaAccountRead`
+
+#### `PATCH /api/v1/oxxa/accounts/{account_id}`
+
+**Update Account** — Rename, repoint or rotate. An omitted ``api_password`` keeps the stored one.
+
+Recht: `oxxa.settings.manage`
+
+Padparameters: `account_id`
+
+Request body: `OxxaAccountUpdate`
+
+Antwoord: `200` · `OxxaAccountRead`
+
+#### `DELETE /api/v1/oxxa/accounts/{account_id}`
+
+**Delete Account** — Forget the credential and the register synced from it. Nothing at OXXA is deleted.
+
+Recht: `oxxa.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/oxxa/accounts/{account_id}/sync`
+
+**Sync Account** — Pull the whole register and reconcile it. One request to OXXA, not one per domain.
+
+Recht: `oxxa.registrar.sync`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `OxxaAccountSyncResult`
+
+#### `POST /api/v1/oxxa/accounts/{account_id}/verify`
+
+**Verify Account** — Probe the credential and cache the TLDs it may operate on.
+
+Recht: `oxxa.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `OxxaAccountVerifyResult`
+
+#### `GET /api/v1/oxxa/accounts/options`
+
+**List Account Options** — Names only, for the "which register" picker — choosing one is the sync/push caller's job, and should not require holding the credential screen's permission.
+
+Recht: `oxxa.registrar.sync`
+
+Antwoord: `200` · `OxxaAccountOption[]`
+
+#### `GET /api/v1/oxxa/domains`
+
+**List Register** — The stored register. ``linked=false`` is the one worth looking at: domains the agency is paying to renew that no schakl record — and therefore no invoice — knows about.
+
+Recht: `oxxa.registrar.sync`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `account_id` | string |  |
+| `linked` | boolean | true = matched to a schakl domain, false = only the unmatched |
+| `q` | string |  |
+| `count` | boolean | false skips the count query (docs/PERFORMANCE.md) (default `true`) |
+
+Antwoord: `200` · `Page_RegistrarDomainRead_`
+
+#### `POST /api/v1/oxxa/domains/{domain_id}/nameservers`
+
+**Push Nameservers** — Repoint the domain's delegation at the registrar.
+
+Recht: `oxxa.registrar.manage`
+
+Padparameters: `domain_id`
+
+Request body: `NameserverPush`
+
+Antwoord: `200` · `NameserverPushResult`
+
+#### `POST /api/v1/oxxa/domains/{domain_id}/refresh`
+
+**Refresh Domain** — Re-read one domain from the registrar, including DNSSEC and the registrant's name.
+
+Recht: `oxxa.registrar.sync`
+
+Padparameters: `domain_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+
+Antwoord: `200` · `DomainRegistrarStatus`
+
+#### `GET /api/v1/oxxa/domains/{domain_id}/status`
+
+**Domain Status** — Stored rows only — never calls OXXA, so the domain page renders when OXXA is down.
+
+Recht: `oxxa.registrar.sync`
+
+Padparameters: `domain_id`
+
+Antwoord: `200` · `DomainRegistrarStatus`
+
+</details>
+
+## `uptime`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `POST` `/uptime/hook/{token}` | Uptime Hook | _Bewust open_ |
+| `GET` `/uptime/instances` | List Instances | `uptime.instance.manage` |
+| `POST` `/uptime/instances` | Create Instance | `uptime.instance.manage` |
+| `GET` `/uptime/instances/{instance_id}` | Get Instance | `uptime.instance.manage` |
+| `PATCH` `/uptime/instances/{instance_id}` | Update Instance | `uptime.instance.manage` |
+| `DELETE` `/uptime/instances/{instance_id}` | Delete Instance | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/enrol` | Enrol Instance | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/links/apply` | Apply Links | `uptime.monitor.write` |
+| `POST` `/uptime/instances/{instance_id}/probe` | Probe Instance | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/sync` | Sync Instance | `uptime.instance.manage` |
+| `GET` `/uptime/instances/selectable` | List Selectable Instances | `uptime.monitor.read` |
+| `GET` `/uptime/monitors` | List Monitors | `uptime.monitor.read` |
+| `POST` `/uptime/monitors` | Create Monitor | `uptime.monitor.write` |
+| `GET` `/uptime/monitors/{monitor_id}` | Get Monitor | `uptime.monitor.read` |
+| `PATCH` `/uptime/monitors/{monitor_id}` | Update Monitor | `uptime.monitor.write` |
+| `DELETE` `/uptime/monitors/{monitor_id}` | Delete Monitor | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/link` | Link Monitor | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/pause` | Pause Monitor | `uptime.monitor.pause` |
+| `POST` `/uptime/monitors/{monitor_id}/reconcile` | Reconcile Monitor | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/resume` | Resume Monitor | `uptime.monitor.pause` |
+| `GET` `/uptime/profiles` | List Profiles | `uptime.monitor.read` |
+| `POST` `/uptime/profiles` | Create Profile | `uptime.profile.manage` |
+| `PATCH` `/uptime/profiles/{profile_id}` | Update Profile | `uptime.profile.manage` |
+| `DELETE` `/uptime/profiles/{profile_id}` | Delete Profile | `uptime.profile.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `POST /api/v1/uptime/hook/{token}`
+
+**Uptime Hook** — Ingest one reported heartbeat.
+
+Recht: _Bewust open_
+
+Padparameters: `token`
+
+Antwoord: `200`
+
+#### `GET /api/v1/uptime/instances`
+
+**List Instances**
+
+Recht: `uptime.instance.manage`
+
+Antwoord: `200` · `UptimeInstanceRead[]`
+
+#### `POST /api/v1/uptime/instances`
+
+**Create Instance**
+
+Recht: `uptime.instance.manage`
+
+Request body: `UptimeInstanceCreate`
+
+Antwoord: `201` · `UptimeInstanceRead`
+
+#### `GET /api/v1/uptime/instances/{instance_id}`
+
+**Get Instance**
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Antwoord: `200` · `UptimeInstanceRead`
+
+#### `PATCH /api/v1/uptime/instances/{instance_id}`
+
+**Update Instance**
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Request body: `UptimeInstanceUpdate`
+
+Antwoord: `200` · `UptimeInstanceRead`
+
+#### `DELETE /api/v1/uptime/instances/{instance_id}`
+
+**Delete Instance**
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/uptime/instances/{instance_id}/enrol`
+
+**Enrol Instance** — Authenticate once and store the token. The password never reaches the database.
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Request body: `UptimeEnrol`
+
+Antwoord: `200` · `UptimeProbeResult`
+
+#### `POST /api/v1/uptime/instances/{instance_id}/links/apply`
+
+**Apply Links** — Confirm every unambiguous proposal on this instance; report what was left.
+
+Recht: `uptime.monitor.write`
+
+Padparameters: `instance_id`
+
+Antwoord: `200` · `UptimeLinkApplyResult`
+
+#### `POST /api/v1/uptime/instances/{instance_id}/probe`
+
+**Probe Instance**
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Antwoord: `200` · `UptimeProbeResult`
+
+#### `POST /api/v1/uptime/instances/{instance_id}/sync`
+
+**Sync Instance** — Read every monitor into the mirror. Writes nothing to Uptime Kuma.
+
+Recht: `uptime.instance.manage`
+
+Padparameters: `instance_id`
+
+Antwoord: `200` · `UptimeSyncReport`
+
+#### `GET /api/v1/uptime/instances/selectable`
+
+**List Selectable Instances** — Which Uptime Kumas a monitor may be created on — the create form's picker (#366).
+
+Recht: `uptime.monitor.read`
+
+Antwoord: `200` · `UptimeInstanceOption[]`
+
+#### `GET /api/v1/uptime/monitors`
+
+**List Monitors**
+
+Recht: `uptime.monitor.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `instance_id` | string |  |
+| `company_id` | string |  |
+| `website_id` | string |  |
+| `domain_id` | string |  |
+| `hosting_id` | string |  |
+| `sync_status` | string |  |
+| `monitor_type` | string | Filter by type; 'group' lists the groups an instance has |
+| `link_status` | string | linked / matched / ambiguous / unmatched, 'proposed' for everything a sync found a candidate for and nobody has confirmed yet, or 'unlinked' for everything still attachable |
+| `count` | boolean | Compute total; set false for pickers (default `true`) |
+| `meta` | boolean | Resolve display names; skip it for pickers (default `false`) |
+
+Antwoord: `200` · `Page_UptimeMonitorRead_`
+
+#### `POST /api/v1/uptime/monitors`
+
+**Create Monitor** — Create the monitor here and push it to Uptime Kuma.
+
+Recht: `uptime.monitor.write`
+
+Request body: `UptimeMonitorCreate`
+
+Antwoord: `201` · `UptimeMonitorRead`
+
+#### `GET /api/v1/uptime/monitors/{monitor_id}`
+
+**Get Monitor**
+
+Recht: `uptime.monitor.read`
+
+Padparameters: `monitor_id`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `PATCH /api/v1/uptime/monitors/{monitor_id}`
+
+**Update Monitor**
+
+Recht: `uptime.monitor.write`
+
+Padparameters: `monitor_id`
+
+Request body: `UptimeMonitorUpdate`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `DELETE /api/v1/uptime/monitors/{monitor_id}`
+
+**Delete Monitor**
+
+Recht: `uptime.monitor.write`
+
+Padparameters: `monitor_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `at_kuma` | boolean | Also delete the monitor in Uptime Kuma. Defaults to false: 'stop tracking this here' and 'stop watching this client's site' are different decisions. (default `false`) |
+
+Antwoord: `204`
+
+#### `POST /api/v1/uptime/monitors/{monitor_id}/link`
+
+**Link Monitor** — Attach a found monitor to the website, domain or hosting it watches (#321).
+
+Recht: `uptime.monitor.write`
+
+Padparameters: `monitor_id`
+
+Request body: `UptimeMonitorLink`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `POST /api/v1/uptime/monitors/{monitor_id}/pause`
+
+**Pause Monitor** — Its own permission: silencing an alert during a planned migration is an ordinary act, and repointing a monitor is not.
+
+Recht: `uptime.monitor.pause`
+
+Padparameters: `monitor_id`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `POST /api/v1/uptime/monitors/{monitor_id}/reconcile`
+
+**Reconcile Monitor** — Resolve a drift in the direction the caller names. There is no default direction: one overwrites a colleague's edit in Uptime Kuma, the other overwrites schakl's record.
+
+Recht: `uptime.monitor.write`
+
+Padparameters: `monitor_id`
+
+Request body: `UptimeReconcile`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `POST /api/v1/uptime/monitors/{monitor_id}/resume`
+
+**Resume Monitor**
+
+Recht: `uptime.monitor.pause`
+
+Padparameters: `monitor_id`
+
+Antwoord: `200` · `UptimeMonitorRead`
+
+#### `GET /api/v1/uptime/profiles`
+
+**List Profiles** — Readable on `monitor.read`, writable on `profile.manage`.
+
+Recht: `uptime.monitor.read`
+
+Antwoord: `200` · `UptimeProfileRead[]`
+
+#### `POST /api/v1/uptime/profiles`
+
+**Create Profile**
+
+Recht: `uptime.profile.manage`
+
+Request body: `UptimeProfileCreate`
+
+Antwoord: `201` · `UptimeProfileRead`
+
+#### `PATCH /api/v1/uptime/profiles/{profile_id}`
+
+**Update Profile**
+
+Recht: `uptime.profile.manage`
+
+Padparameters: `profile_id`
+
+Request body: `UptimeProfileUpdate`
+
+Antwoord: `200` · `UptimeProfileRead`
+
+#### `DELETE /api/v1/uptime/profiles/{profile_id}`
+
+**Delete Profile**
+
+Recht: `uptime.profile.manage`
+
+Padparameters: `profile_id`
+
+Antwoord: `204`
+
+</details>
+
+## `wordpress`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/wordpress/sites` | List Sites | `wordpress.site.read` |
+| `POST` `/wordpress/sites` | Connect Site | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/{site_id}` | Get Site | `wordpress.site.read` |
+| `PATCH` `/wordpress/sites/{site_id}` | Update Site | `wordpress.site.manage` |
+| `DELETE` `/wordpress/sites/{site_id}` | Disconnect Site | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/{site_id}/brands` | List Brands | `wordpress.site.read` |
+| `POST` `/wordpress/sites/{site_id}/verify` | Verify Site | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/by-website/{website_id}` | Site For Website | `wordpress.site.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/wordpress/sites`
+
+**List Sites**
+
+Recht: `wordpress.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `website_id` | string |  |
+
+Antwoord: `200` · `WordPressSiteRead[]`
+
+#### `POST /api/v1/wordpress/sites`
+
+**Connect Site**
+
+Recht: `wordpress.site.manage`
+
+Request body: `WordPressSiteCreate`
+
+Antwoord: `201` · `WordPressSiteRead`
+
+#### `GET /api/v1/wordpress/sites/{site_id}`
+
+**Get Site**
+
+Recht: `wordpress.site.read`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressSiteRead`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}`
+
+**Update Site**
+
+Recht: `wordpress.site.manage`
+
+Padparameters: `site_id`
+
+Request body: `WordPressSiteUpdate`
+
+Antwoord: `200` · `WordPressSiteRead`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}`
+
+**Disconnect Site**
+
+Recht: `wordpress.site.manage`
+
+Padparameters: `site_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/brands`
+
+**List Brands** — The Rank Math brands this site tracks — the marketing link picker's options.
+
+Recht: `wordpress.site.read`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressBrand[]`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/verify`
+
+**Verify Site** — Probe the site and store what was observed.
+
+Recht: `wordpress.site.manage`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressVerifyResult`
+
+#### `GET /api/v1/wordpress/sites/by-website/{website_id}`
+
+**Site For Website** — The one credential a website has, or ``null``.
+
+Recht: `wordpress.site.read`
+
+Padparameters: `website_id`
+
+Antwoord: `200` · `WordPressSiteRead`
+
+</details>
+

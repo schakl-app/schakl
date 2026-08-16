@@ -1,0 +1,191 @@
+---
+title: Google Tag Manager
+description: "Link a client's container: read what is live, stage the tracking they asked for, and publish only when somebody with that permission has looked at it."
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Half of an agency's marketing work is *making the measuring happen*: a conversion on a new form,
+an event on a quote request, a tag for the campaign that starts on Monday. Until now all of that
+lived in a browser tab schakl. knew nothing about. Which container is this client's, what is live
+in it, who put that tag there, and whether the change somebody staged three weeks ago was ever
+published — none of it had an answer here.
+
+## Where to find it
+
+- **Instellingen → Tag Manager** (Settings → Tag Manager) — connect Google, link containers,
+  choose the workspace schakl. writes in, and the kill switch.
+- **Marketing → Tag Manager** — the containers themselves: the live version, the tags, triggers
+  and variables, the version history and the snippet.
+- On a **client page**, the container sits beside the domain and the website it runs on.
+
+Tag Manager needs the **Google Workspace** integration; switching it on under
+*Instellingen → Integraties* (Settings → Integrations) pulls that in for you, and the screen says
+so before you save.
+
+## Before you start
+
+<Steps>
+1. In **Google Cloud**, in the same project as the rest of your Google integration, enable the
+   **Tag Manager API**. Without it every call answers "the API is switched off in the Cloud
+   project", which is an operator's job and not something a reconnect fixes.
+2. Make sure the Google account you will connect with has access to the client's container in
+   Tag Manager. schakl. never asks for more than that account already has.
+3. Have the container's **tag id** to hand (`GTM-XXXXXXX`), or be ready to pick from the list of
+   containers your account can reach.
+</Steps>
+
+## Connecting
+
+<Steps>
+1. Go to *Instellingen → Tag Manager* and press **Google koppelen** (Connect Google).
+2. Grant the four scopes. They are asked for **separately from** the ordinary marketing
+   connection, on purpose: the dashboard's three sources are read-only measurement, and asking
+   somebody who wanted a traffic chart whether they may publish to a client's website is how
+   people learn to click through consent screens without reading them.
+3. Link a container per client: paste the tag id, or pick from the list, then attach the client
+   and — optionally — the website it runs on.
+4. Leave **Eigen werkruimte** (Own workspace) on, and give it your agency's name. See below for
+   why this matters more than it looks.
+</Steps>
+
+| Scope | What it buys |
+| --- | --- |
+| `tagmanager.readonly` | List and read containers, workspaces, tags, triggers, variables, versions |
+| `tagmanager.edit.containers` | Change a workspace |
+| `tagmanager.edit.containerversions` | Freeze a workspace into a version |
+| `tagmanager.publish` | Make a version live on the client's website |
+
+Not requested: deleting containers, managing users, managing accounts. A scope nobody's code
+needs is a scope frightening an agency on a consent screen for nothing.
+
+<Aside type="tip" title="If a call says permission denied">
+Two very different things wear that sentence. Either this Google account genuinely has no access
+to that container — which is the client's Tag Manager admin's job — or your connection was made
+*before* your organisation asked for the Tag Manager scopes, which is one reconnect. schakl.
+checks the scope before it calls, so it can tell you which of the two you are looking at.
+</Aside>
+
+## A workspace is a shared draft, not a branch
+
+This is the single most surprising thing about Tag Manager, and it is worth a paragraph.
+
+A GTM workspace looks like a private branch and is not. Writing into "Default Workspace" puts
+your half-finished change in front of whoever else is mid-edit in that container — usually the
+client's own marketeer — and **their** next Publish ships it.
+
+So schakl. creates and writes in a workspace of its own, named by you rather than by us: the
+client sees that name in Tag Manager, so an agency wants their own name on it. Reads use the same
+workspace, and a read never brings one into existence as a side effect of somebody opening a
+screen.
+
+## Editing and publishing are two permissions
+
+Editing a workspace changes a **draft**: real, recorded, served to nobody. Publishing changes what
+runs in every visitor's browser, immediately, with no review step behind it. Two acts, two
+audiences, two permissions.
+
+That split is what makes *"let the assistant prepare the tracking for the new campaign and I will
+look it over"* expressible: it is an API key holding `google_tag_manager.tag.write` and nothing
+else. A single combined write permission would make that sentence impossible.
+
+Creating a **version** deliberately rides the write permission rather than earning a fifth key: a
+version is the act of writing down what was staged, and gating it behind publish would leave the
+staging half unable to finish its own work.
+
+## Setting up a conversion
+
+The two things an agency sets up over and over have a stated recipe; everything else goes through
+Tag Manager's own vocabulary.
+
+- **GA4 event** — fires an event into a GA4 property. You supply the measurement id.
+- **Google Ads conversion** — fires a conversion. You supply the conversion id and label. The
+  conversion linker is always on: without it the tag reports conversions it cannot attribute to a
+  click, which is a number that looks right and is not.
+
+Six trigger kinds: page view, form submission, link click, element click, element visibility and
+custom event, each narrowable on part of the URL.
+
+<Aside type="caution" title="schakl. never guesses a value">
+A measurement id, a conversion id and a CSS selector all come from you. There is no step that
+"finds the GA4 property for you", because picking the wrong one sends your client's conversions
+to somebody else's property and nothing on any screen would say so.
+</Aside>
+
+Anything the recipe does not cover you post with Tag Manager's own `type` and parameter array,
+and **Google's own validator** judges it. That is deliberately better than a half-modelled recipe:
+a hand-written body that is wrong fails loudly, where a wrong recipe deploys quietly and a tag
+that fires into nothing looks exactly like a tag that works.
+
+## What is stored here, and what is read live
+
+| Read live, every time | Mirrored here |
+| --- | --- |
+| Tags, triggers, variables | The container name |
+| Version history | The live version and the counts off it |
+| Workspace status | How many changes are staged and unpublished |
+| The snippet | Which client and website it belongs to |
+
+The tag list is fetched live because half the edits to it are made in the Tag Manager interface by
+people who do not work for you; a mirror of it would answer the wrong question. The counts are
+mirrored so a client page renders without waiting for Google.
+
+### Conversions are recorded because Google does not record them
+
+Google records that a trigger and a tag exist. It records nowhere that together they are this
+client's *"offerte aangevraagd"*, that your agency promised to keep it working, or that it was set
+up from here rather than by hand. Without that, the next person to look has to read the container
+and guess.
+
+So a conversion keeps **what was asked for** and **what was last observed** in separate fields. A
+conversion whose tag somebody deleted in Tag Manager is then a state you can see, instead of a row
+that quietly keeps claiming to work.
+
+## The nightly count
+
+Every night at 05:35 each linked container's mirror is refreshed. If one container fails, that
+failure stays on its own row and the others refresh as normal.
+
+The number this job exists for is **staged and unpublished changes**. A change staged weeks ago
+and never published is the commonest way a client's tracking quietly stops being what they were
+told it is, and nothing else surfaces it — nobody opens a container they have no reason to open.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `google_tag_manager.settings.manage` | Link and unlink containers, verify, the kill switch | Administrator |
+| `google_tag_manager.container.read` | Containers, tags, triggers, variables, versions, the snippet, the recorded conversions | Administrator, Member |
+| `google_tag_manager.tag.write` | Edit the workspace, and freeze it into a version | Administrator |
+| `google_tag_manager.version.publish` | Make a version live on the client's website | Administrator |
+
+None of the four is ever granted to the **Client** role. The read alone covers every tag in the
+container, which includes conversion values, remarketing ids and whatever the previous agency left
+behind.
+
+Beside the permissions sits an instance-wide **kill switch**. The permission decides *who*; the
+switch decides *whether*, in one place an owner can reach in a hurry after watching something
+surprising appear on a client's website.
+
+## Good to know
+
+- **Unlinking touches nothing at Google.** An agency that stops working for a client does not
+  thereby delete the tracking off their website.
+- **A concurrent edit is refused, not overwritten.** If somebody changed the container in Tag
+  Manager while you had it open, your save is refused. Open it again and redo the change.
+- **A container that has never been published is not broken.** It simply has no live version yet.
+- **A retry is safe for a read and never for a write.** Creating a tag is not repeatable — a
+  retried create is a second tag firing a second time on somebody's website — so only reads are
+  retried.
+- **Errors arrive in your language.** Google's own sentence is kept on the container row where an
+  administrator can read it; the message the app shows you is translated like every other one.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Google Ads" href="/en/docs/integrations/google-ads/" description="The campaigns the conversions you set up here are measured against." />
+  <LinkCard title="Marketing sources" href="/en/docs/integrations/marketing-sources/" description="The figures the container feeds into." />
+  <LinkCard title="Google Workspace" href="/en/docs/integrations/google-workspace/" description="The connection Tag Manager rides on." />
+</CardGrid>

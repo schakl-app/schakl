@@ -1,0 +1,462 @@
+---
+title: "Clients and contacts"
+description: "The hub every other module attaches to: the client record, the people at that client, the paper trail of what changed, and the address lookup the forms use."
+sidebar:
+  order: 1
+---
+
+The hub every other module attaches to: the client record, the people at that client, the paper trail of what changed, and the address lookup the forms use.
+
+33 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+
+## `companies`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/companies` | List Companies | `companies.company.read` |
+| `POST` `/companies` | Create Company | `companies.company.write` |
+| `GET` `/companies/{company_id}` | Get Company | `companies.company.read` |
+| `PATCH` `/companies/{company_id}` | Update Company | `companies.company.write` |
+| `DELETE` `/companies/{company_id}` | Delete Company | `companies.company.delete` |
+| `GET` `/companies/{company_id}/logo` | Serve Company Logo | `companies.company.read` |
+| `POST` `/companies/{company_id}/logo` | Upload Company Logo | `companies.company.write` |
+| `DELETE` `/companies/{company_id}/logo` | Remove Company Logo | `companies.company.write` |
+| `GET` `/companies/{company_id}/panels` | Company Panels | `companies.company.read` |
+| `GET` `/companies/{company_id}/summary` | Company Summary | `companies.company.read` |
+| `GET` `/companies/groups` | List Groups | `companies.group.manage` |
+| `POST` `/companies/groups` | Create Group | `companies.group.manage` |
+| `PATCH` `/companies/groups/{group_id}` | Update Group | `companies.group.manage` |
+| `DELETE` `/companies/groups/{group_id}` | Delete Group | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/companies` | Set Group Companies | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/memberships` | Set Group Memberships | `companies.group.manage` |
+| `GET` `/companies/settings` | Get Company Settings | `companies.settings.manage` |
+| `PUT` `/companies/settings` | Update Company Settings | `companies.settings.manage` |
+| `POST` `/companies/settings/backfill-client-numbers` | Backfill Client Numbers | `companies.settings.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/companies`
+
+**List Companies**
+
+Permission: `companies.company.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `q` | string |  |
+| `status` | string | Lifecycle status; comma-separate for several ('lead,onboarding,active'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. |
+| `mine` | boolean | Only clients I'm assigned to (primary or not) (default `false`) |
+| `sort` | string | name \| client_number \| status \| created_at \| updated_at, '-' desc. Default: name |
+| `hours` | boolean | Include the budget roll-up; costs three grouped queries (default `false`) |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+
+Returns: `200` · `Page_CompanyRead_`
+
+#### `POST /api/v1/companies`
+
+**Create Company**
+
+Permission: `companies.company.write`
+
+Request body: `CompanyCreate`
+
+Returns: `201` · `CompanyRead`
+
+#### `GET /api/v1/companies/{company_id}`
+
+**Get Company**
+
+Permission: `companies.company.read`
+
+Path parameters: `company_id`
+
+Returns: `200` · `CompanyRead`
+
+#### `PATCH /api/v1/companies/{company_id}`
+
+**Update Company**
+
+Permission: `companies.company.write`
+
+Path parameters: `company_id`
+
+Request body: `CompanyUpdate`
+
+Returns: `200` · `CompanyRead`
+
+#### `DELETE /api/v1/companies/{company_id}`
+
+**Delete Company**
+
+Permission: `companies.company.delete`
+
+Path parameters: `company_id`
+
+Returns: `204`
+
+#### `GET /api/v1/companies/{company_id}/logo`
+
+**Serve Company Logo** — The logo bytes — behind the same tenant + horizon check as the company itself, so a portal login only ever sees logos of companies in their horizon (#191/#193).
+
+Permission: `companies.company.read`
+
+Path parameters: `company_id`
+
+Returns: `200`
+
+#### `POST /api/v1/companies/{company_id}/logo`
+
+**Upload Company Logo** — Upload or replace the client's logo. Images only, bounded by the instance caps.
+
+Permission: `companies.company.write`
+
+Path parameters: `company_id`
+
+Request body: `Body_upload_company_logo_api_v1_companies__company_id__logo_post`
+
+Returns: `200` · `CompanyRead`
+
+#### `DELETE /api/v1/companies/{company_id}/logo`
+
+**Remove Company Logo**
+
+Permission: `companies.company.write`
+
+Path parameters: `company_id`
+
+Returns: `200` · `CompanyRead`
+
+#### `GET /api/v1/companies/{company_id}/panels`
+
+**Company Panels** — Compose the detail-view panels contributed by every enabled module (the hub).
+
+Permission: `companies.company.read`
+
+Path parameters: `company_id`
+
+Returns: `200` · `PanelData[]`
+
+#### `GET /api/v1/companies/{company_id}/summary`
+
+**Company Summary** — The client's vital signs (#364) — openstaand, uren, open taken, laatste contact, verlenging.
+
+Permission: `companies.company.read`
+
+Path parameters: `company_id`
+
+Returns: `200` · `SummaryData[]`
+
+#### `GET /api/v1/companies/groups`
+
+**List Groups**
+
+Permission: `companies.group.manage`
+
+Returns: `200` · `GroupRead[]`
+
+#### `POST /api/v1/companies/groups`
+
+**Create Group**
+
+Permission: `companies.group.manage`
+
+Request body: `GroupCreate`
+
+Returns: `201` · `GroupRead`
+
+#### `PATCH /api/v1/companies/groups/{group_id}`
+
+**Update Group**
+
+Permission: `companies.group.manage`
+
+Path parameters: `group_id`
+
+Request body: `GroupUpdate`
+
+Returns: `200` · `GroupRead`
+
+#### `DELETE /api/v1/companies/groups/{group_id}`
+
+**Delete Group**
+
+Permission: `companies.group.manage`
+
+Path parameters: `group_id`
+
+Returns: `204`
+
+#### `PUT /api/v1/companies/groups/{group_id}/companies`
+
+**Set Group Companies**
+
+Permission: `companies.group.manage`
+
+Path parameters: `group_id`
+
+Request body: `GroupCompanies`
+
+Returns: `204`
+
+#### `PUT /api/v1/companies/groups/{group_id}/memberships`
+
+**Set Group Memberships**
+
+Permission: `companies.group.manage`
+
+Path parameters: `group_id`
+
+Request body: `GroupMemberships`
+
+Returns: `204`
+
+#### `GET /api/v1/companies/settings`
+
+**Get Company Settings** — How this organisation numbers its clients (klantnummer format + sequence).
+
+Permission: `companies.settings.manage`
+
+Returns: `200` · `CompanyNumberingRead`
+
+#### `PUT /api/v1/companies/settings`
+
+**Update Company Settings**
+
+Permission: `companies.settings.manage`
+
+Request body: `CompanyNumberingWrite`
+
+Returns: `200` · `CompanyNumberingRead`
+
+#### `POST /api/v1/companies/settings/backfill-client-numbers`
+
+**Backfill Client Numbers** — Number every client that has no number yet, oldest first.
+
+Permission: `companies.settings.manage`
+
+Returns: `200` · `ClientNumberBackfillResult`
+
+</details>
+
+## `contacts`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/contacts` | List Contacts | `contacts.contact.read` |
+| `POST` `/contacts` | Create Contact | `contacts.contact.write` |
+| `GET` `/contacts/{contact_id}` | Get Contact | `contacts.contact.read` |
+| `PATCH` `/contacts/{contact_id}` | Update Contact | `contacts.contact.write` |
+| `DELETE` `/contacts/{contact_id}` | Delete Contact | `contacts.contact.delete` |
+| `POST` `/contacts/{contact_id}/links` | Link Contact To Company | `contacts.link.write` |
+| `PATCH` `/contacts/{contact_id}/links/{company_id}` | Update Contact Company Link | `contacts.link.write` |
+| `DELETE` `/contacts/{contact_id}/links/{company_id}` | Unlink Contact From Company | `contacts.link.write` |
+| `GET` `/contacts/types` | List Contact Types | `contacts.type.read` |
+| `POST` `/contacts/types` | Create Contact Type | `contacts.type.manage` |
+| `PATCH` `/contacts/types/{type_id}` | Update Contact Type | `contacts.type.manage` |
+| `DELETE` `/contacts/types/{type_id}` | Delete Contact Type | `contacts.type.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/contacts`
+
+**List Contacts**
+
+Permission: `contacts.contact.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `contact_type_id` | string |  |
+| `q` | string |  |
+| `sort` | string | first_name \| last_name \| email \| job_title \| company \| …, '-' desc |
+| `count` | boolean | Compute the total. False for pickers and name-only lookups. (default `true`) |
+
+Returns: `200` · `Page_ContactRead_`
+
+#### `POST /api/v1/contacts`
+
+**Create Contact**
+
+Permission: `contacts.contact.write`
+
+Request body: `ContactCreate`
+
+Returns: `201` · `ContactRead`
+
+#### `GET /api/v1/contacts/{contact_id}`
+
+**Get Contact**
+
+Permission: `contacts.contact.read`
+
+Path parameters: `contact_id`
+
+Returns: `200` · `ContactRead`
+
+#### `PATCH /api/v1/contacts/{contact_id}`
+
+**Update Contact**
+
+Permission: `contacts.contact.write`
+
+Path parameters: `contact_id`
+
+Request body: `ContactUpdate`
+
+Returns: `200` · `ContactRead`
+
+#### `DELETE /api/v1/contacts/{contact_id}`
+
+**Delete Contact**
+
+Permission: `contacts.contact.delete`
+
+Path parameters: `contact_id`
+
+Returns: `204`
+
+#### `POST /api/v1/contacts/{contact_id}/links`
+
+**Link Contact To Company**
+
+Permission: `contacts.link.write`
+
+Path parameters: `contact_id`
+
+Request body: `ContactLinkCreate`
+
+Returns: `201` · `ContactRead`
+
+#### `PATCH /api/v1/contacts/{contact_id}/links/{company_id}`
+
+**Update Contact Company Link**
+
+Permission: `contacts.link.write`
+
+Path parameters: `contact_id`, `company_id`
+
+Request body: `ContactLinkUpdate`
+
+Returns: `200` · `ContactRead`
+
+#### `DELETE /api/v1/contacts/{contact_id}/links/{company_id}`
+
+**Unlink Contact From Company**
+
+Permission: `contacts.link.write`
+
+Path parameters: `contact_id`, `company_id`
+
+Returns: `204`
+
+#### `GET /api/v1/contacts/types`
+
+**List Contact Types**
+
+Permission: `contacts.type.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Returns: `200` · `ContactTypeRead[]`
+
+#### `POST /api/v1/contacts/types`
+
+**Create Contact Type**
+
+Permission: `contacts.type.manage`
+
+Request body: `ContactTypeCreate`
+
+Returns: `201` · `ContactTypeRead`
+
+#### `PATCH /api/v1/contacts/types/{type_id}`
+
+**Update Contact Type**
+
+Permission: `contacts.type.manage`
+
+Path parameters: `type_id`
+
+Request body: `ContactTypeUpdate`
+
+Returns: `200` · `ContactTypeRead`
+
+#### `DELETE /api/v1/contacts/types/{type_id}`
+
+**Delete Contact Type**
+
+Permission: `contacts.type.manage`
+
+Path parameters: `type_id`
+
+Returns: `204`
+
+</details>
+
+## `activity`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/activity` | Entity Activity | `activity.read` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/activity`
+
+**Entity Activity**
+
+Permission: `activity.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `entity_type` | string · required |  |
+| `entity_id` | string · required |  |
+| `limit` | integer |  (default `20`) |
+
+Returns: `200` · `app__core__activity__schemas__ActivityItem[]`
+
+</details>
+
+## `addresslookup`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/addresslookup` | Lookup Address | `addresslookup.lookup` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/addresslookup`
+
+**Lookup Address**
+
+Permission: `addresslookup.lookup`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `postal_code` | string · required |  |
+| `house_number` | string · required |  |
+
+Returns: `200` · `AddressLookupResponse`
+
+</details>
+

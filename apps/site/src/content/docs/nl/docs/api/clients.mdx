@@ -1,0 +1,462 @@
+---
+title: "Klanten en contactpersonen"
+description: "De spil waar elke andere module aan hangt: het klantrecord, de mensen bij die klant, het spoor van wat er veranderd is, en de adresopzoeker die de formulieren gebruiken."
+sidebar:
+  order: 1
+---
+
+De spil waar elke andere module aan hangt: het klantrecord, de mensen bij die klant, het spoor van wat er veranderd is, en de adresopzoeker die de formulieren gebruiken.
+
+33 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `companies`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/companies` | List Companies | `companies.company.read` |
+| `POST` `/companies` | Create Company | `companies.company.write` |
+| `GET` `/companies/{company_id}` | Get Company | `companies.company.read` |
+| `PATCH` `/companies/{company_id}` | Update Company | `companies.company.write` |
+| `DELETE` `/companies/{company_id}` | Delete Company | `companies.company.delete` |
+| `GET` `/companies/{company_id}/logo` | Serve Company Logo | `companies.company.read` |
+| `POST` `/companies/{company_id}/logo` | Upload Company Logo | `companies.company.write` |
+| `DELETE` `/companies/{company_id}/logo` | Remove Company Logo | `companies.company.write` |
+| `GET` `/companies/{company_id}/panels` | Company Panels | `companies.company.read` |
+| `GET` `/companies/{company_id}/summary` | Company Summary | `companies.company.read` |
+| `GET` `/companies/groups` | List Groups | `companies.group.manage` |
+| `POST` `/companies/groups` | Create Group | `companies.group.manage` |
+| `PATCH` `/companies/groups/{group_id}` | Update Group | `companies.group.manage` |
+| `DELETE` `/companies/groups/{group_id}` | Delete Group | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/companies` | Set Group Companies | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/memberships` | Set Group Memberships | `companies.group.manage` |
+| `GET` `/companies/settings` | Get Company Settings | `companies.settings.manage` |
+| `PUT` `/companies/settings` | Update Company Settings | `companies.settings.manage` |
+| `POST` `/companies/settings/backfill-client-numbers` | Backfill Client Numbers | `companies.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/companies`
+
+**List Companies**
+
+Recht: `companies.company.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `q` | string |  |
+| `status` | string | Lifecycle status; comma-separate for several ('lead,onboarding,active'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. |
+| `mine` | boolean | Only clients I'm assigned to (primary or not) (default `false`) |
+| `sort` | string | name \| client_number \| status \| created_at \| updated_at, '-' desc. Default: name |
+| `hours` | boolean | Include the budget roll-up; costs three grouped queries (default `false`) |
+| `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+
+Antwoord: `200` · `Page_CompanyRead_`
+
+#### `POST /api/v1/companies`
+
+**Create Company**
+
+Recht: `companies.company.write`
+
+Request body: `CompanyCreate`
+
+Antwoord: `201` · `CompanyRead`
+
+#### `GET /api/v1/companies/{company_id}`
+
+**Get Company**
+
+Recht: `companies.company.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `CompanyRead`
+
+#### `PATCH /api/v1/companies/{company_id}`
+
+**Update Company**
+
+Recht: `companies.company.write`
+
+Padparameters: `company_id`
+
+Request body: `CompanyUpdate`
+
+Antwoord: `200` · `CompanyRead`
+
+#### `DELETE /api/v1/companies/{company_id}`
+
+**Delete Company**
+
+Recht: `companies.company.delete`
+
+Padparameters: `company_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/companies/{company_id}/logo`
+
+**Serve Company Logo** — The logo bytes — behind the same tenant + horizon check as the company itself, so a portal login only ever sees logos of companies in their horizon (#191/#193).
+
+Recht: `companies.company.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200`
+
+#### `POST /api/v1/companies/{company_id}/logo`
+
+**Upload Company Logo** — Upload or replace the client's logo. Images only, bounded by the instance caps.
+
+Recht: `companies.company.write`
+
+Padparameters: `company_id`
+
+Request body: `Body_upload_company_logo_api_v1_companies__company_id__logo_post`
+
+Antwoord: `200` · `CompanyRead`
+
+#### `DELETE /api/v1/companies/{company_id}/logo`
+
+**Remove Company Logo**
+
+Recht: `companies.company.write`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `CompanyRead`
+
+#### `GET /api/v1/companies/{company_id}/panels`
+
+**Company Panels** — Compose the detail-view panels contributed by every enabled module (the hub).
+
+Recht: `companies.company.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `PanelData[]`
+
+#### `GET /api/v1/companies/{company_id}/summary`
+
+**Company Summary** — The client's vital signs (#364) — openstaand, uren, open taken, laatste contact, verlenging.
+
+Recht: `companies.company.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `SummaryData[]`
+
+#### `GET /api/v1/companies/groups`
+
+**List Groups**
+
+Recht: `companies.group.manage`
+
+Antwoord: `200` · `GroupRead[]`
+
+#### `POST /api/v1/companies/groups`
+
+**Create Group**
+
+Recht: `companies.group.manage`
+
+Request body: `GroupCreate`
+
+Antwoord: `201` · `GroupRead`
+
+#### `PATCH /api/v1/companies/groups/{group_id}`
+
+**Update Group**
+
+Recht: `companies.group.manage`
+
+Padparameters: `group_id`
+
+Request body: `GroupUpdate`
+
+Antwoord: `200` · `GroupRead`
+
+#### `DELETE /api/v1/companies/groups/{group_id}`
+
+**Delete Group**
+
+Recht: `companies.group.manage`
+
+Padparameters: `group_id`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/companies/groups/{group_id}/companies`
+
+**Set Group Companies**
+
+Recht: `companies.group.manage`
+
+Padparameters: `group_id`
+
+Request body: `GroupCompanies`
+
+Antwoord: `204`
+
+#### `PUT /api/v1/companies/groups/{group_id}/memberships`
+
+**Set Group Memberships**
+
+Recht: `companies.group.manage`
+
+Padparameters: `group_id`
+
+Request body: `GroupMemberships`
+
+Antwoord: `204`
+
+#### `GET /api/v1/companies/settings`
+
+**Get Company Settings** — How this organisation numbers its clients (klantnummer format + sequence).
+
+Recht: `companies.settings.manage`
+
+Antwoord: `200` · `CompanyNumberingRead`
+
+#### `PUT /api/v1/companies/settings`
+
+**Update Company Settings**
+
+Recht: `companies.settings.manage`
+
+Request body: `CompanyNumberingWrite`
+
+Antwoord: `200` · `CompanyNumberingRead`
+
+#### `POST /api/v1/companies/settings/backfill-client-numbers`
+
+**Backfill Client Numbers** — Number every client that has no number yet, oldest first.
+
+Recht: `companies.settings.manage`
+
+Antwoord: `200` · `ClientNumberBackfillResult`
+
+</details>
+
+## `contacts`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/contacts` | List Contacts | `contacts.contact.read` |
+| `POST` `/contacts` | Create Contact | `contacts.contact.write` |
+| `GET` `/contacts/{contact_id}` | Get Contact | `contacts.contact.read` |
+| `PATCH` `/contacts/{contact_id}` | Update Contact | `contacts.contact.write` |
+| `DELETE` `/contacts/{contact_id}` | Delete Contact | `contacts.contact.delete` |
+| `POST` `/contacts/{contact_id}/links` | Link Contact To Company | `contacts.link.write` |
+| `PATCH` `/contacts/{contact_id}/links/{company_id}` | Update Contact Company Link | `contacts.link.write` |
+| `DELETE` `/contacts/{contact_id}/links/{company_id}` | Unlink Contact From Company | `contacts.link.write` |
+| `GET` `/contacts/types` | List Contact Types | `contacts.type.read` |
+| `POST` `/contacts/types` | Create Contact Type | `contacts.type.manage` |
+| `PATCH` `/contacts/types/{type_id}` | Update Contact Type | `contacts.type.manage` |
+| `DELETE` `/contacts/types/{type_id}` | Delete Contact Type | `contacts.type.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/contacts`
+
+**List Contacts**
+
+Recht: `contacts.contact.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `company_id` | string |  |
+| `contact_type_id` | string |  |
+| `q` | string |  |
+| `sort` | string | first_name \| last_name \| email \| job_title \| company \| …, '-' desc |
+| `count` | boolean | Compute the total. False for pickers and name-only lookups. (default `true`) |
+
+Antwoord: `200` · `Page_ContactRead_`
+
+#### `POST /api/v1/contacts`
+
+**Create Contact**
+
+Recht: `contacts.contact.write`
+
+Request body: `ContactCreate`
+
+Antwoord: `201` · `ContactRead`
+
+#### `GET /api/v1/contacts/{contact_id}`
+
+**Get Contact**
+
+Recht: `contacts.contact.read`
+
+Padparameters: `contact_id`
+
+Antwoord: `200` · `ContactRead`
+
+#### `PATCH /api/v1/contacts/{contact_id}`
+
+**Update Contact**
+
+Recht: `contacts.contact.write`
+
+Padparameters: `contact_id`
+
+Request body: `ContactUpdate`
+
+Antwoord: `200` · `ContactRead`
+
+#### `DELETE /api/v1/contacts/{contact_id}`
+
+**Delete Contact**
+
+Recht: `contacts.contact.delete`
+
+Padparameters: `contact_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/contacts/{contact_id}/links`
+
+**Link Contact To Company**
+
+Recht: `contacts.link.write`
+
+Padparameters: `contact_id`
+
+Request body: `ContactLinkCreate`
+
+Antwoord: `201` · `ContactRead`
+
+#### `PATCH /api/v1/contacts/{contact_id}/links/{company_id}`
+
+**Update Contact Company Link**
+
+Recht: `contacts.link.write`
+
+Padparameters: `contact_id`, `company_id`
+
+Request body: `ContactLinkUpdate`
+
+Antwoord: `200` · `ContactRead`
+
+#### `DELETE /api/v1/contacts/{contact_id}/links/{company_id}`
+
+**Unlink Contact From Company**
+
+Recht: `contacts.link.write`
+
+Padparameters: `contact_id`, `company_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/contacts/types`
+
+**List Contact Types**
+
+Recht: `contacts.type.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `include_inactive` | boolean |  (default `false`) |
+
+Antwoord: `200` · `ContactTypeRead[]`
+
+#### `POST /api/v1/contacts/types`
+
+**Create Contact Type**
+
+Recht: `contacts.type.manage`
+
+Request body: `ContactTypeCreate`
+
+Antwoord: `201` · `ContactTypeRead`
+
+#### `PATCH /api/v1/contacts/types/{type_id}`
+
+**Update Contact Type**
+
+Recht: `contacts.type.manage`
+
+Padparameters: `type_id`
+
+Request body: `ContactTypeUpdate`
+
+Antwoord: `200` · `ContactTypeRead`
+
+#### `DELETE /api/v1/contacts/types/{type_id}`
+
+**Delete Contact Type**
+
+Recht: `contacts.type.manage`
+
+Padparameters: `type_id`
+
+Antwoord: `204`
+
+</details>
+
+## `activity`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/activity` | Entity Activity | `activity.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/activity`
+
+**Entity Activity**
+
+Recht: `activity.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string · verplicht |  |
+| `entity_id` | string · verplicht |  |
+| `limit` | integer |  (default `20`) |
+
+Antwoord: `200` · `app__core__activity__schemas__ActivityItem[]`
+
+</details>
+
+## `addresslookup`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/addresslookup` | Lookup Address | `addresslookup.lookup` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/addresslookup`
+
+**Lookup Address**
+
+Recht: `addresslookup.lookup`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `postal_code` | string · verplicht |  |
+| `house_number` | string · verplicht |  |
+
+Antwoord: `200` · `AddressLookupResponse`
+
+</details>
+

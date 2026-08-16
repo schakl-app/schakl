@@ -1,0 +1,316 @@
+---
+title: "Google Workspace"
+description: "Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet."
+sidebar:
+  order: 7
+---
+
+Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet.
+
+25 endpoints, verdeeld over 1 groep. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+
+## `google`
+
+| Endpoint | Wat het doet | Recht |
+| --- | --- | --- |
+| `GET` `/google/calendar/events` | Calendar Events | `google.calendar.read` |
+| `POST` `/google/calendar/webhook` | Calendar Webhook | _Bewust open_ |
+| `GET` `/google/connections` | List Connections | `google.settings.manage` |
+| `GET` `/google/connections/me` | My Connection | `google.connection.manage` |
+| `PATCH` `/google/connections/me` | Update My Connection | `google.connection.manage` |
+| `POST` `/google/connections/me/disconnect` | Disconnect My Connection | `google.connection.manage` |
+| `GET` `/google/drive/browse` | Browse | `google.drive.read` |
+| `PUT` `/google/drive/folder` | Set Folder | `google.drive.write` |
+| `POST` `/google/drive/folders` | Create Folder | `google.drive.write` |
+| `GET` `/google/drive/links` | List Links | `google.drive.read` |
+| `POST` `/google/drive/links` | Create Link | `google.drive.write` |
+| `DELETE` `/google/drive/links/{link_id}` | Delete Link | `google.drive.write` |
+| `POST` `/google/drive/provision` | Provision Entity | `google.drive.write` |
+| `POST` `/google/drive/provision-all` | Provision All | `google.settings.manage` |
+| `POST` `/google/drive/upload-session` | Create Upload Session | `google.drive.write` |
+| `POST` `/google/gmail/import` | Import Gmail Message | `interactions.interaction.write` |
+| `GET` `/google/gmail/lookup` | Lookup Gmail Message | `google.connection.manage` |
+| `POST` `/google/gmail/refresh` | Refresh Gmail | `google.connection.manage` |
+| `GET` `/google/gmail/search` | Search Gmail | `google.connection.manage` |
+| `GET` `/google/gmail/status` | Read Gmail Status | `google.connection.manage` |
+| `GET` `/google/gmail/threads/{thread_id}` | Read Gmail Thread | `google.connection.manage` |
+| `GET` `/google/oauth/callback` | Google Oauth Callback | `google.connection.manage` |
+| `GET` `/google/oauth/connect` | Oauth Connect | `google.connection.manage` |
+| `GET` `/google/settings` | Get Settings | `google.settings.manage` |
+| `PUT` `/google/settings` | Save Settings | `google.settings.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/google/calendar/events`
+
+**Calendar Events** — The viewer's own cached Google events. Reads the local cache, never Google live.
+
+Recht: `google.calendar.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date_from` | string · verplicht |  |
+| `date_to` | string · verplicht |  |
+
+Antwoord: `200` · `CalendarFeedItem[]`
+
+#### `POST /api/v1/google/calendar/webhook`
+
+**Calendar Webhook**
+
+Recht: _Bewust open_
+
+Antwoord: `200`
+
+#### `GET /api/v1/google/connections`
+
+**List Connections**
+
+Recht: `google.settings.manage`
+
+Antwoord: `200` · `app__integrations__google__schemas__ConnectionRead[]`
+
+#### `GET /api/v1/google/connections/me`
+
+**My Connection**
+
+Recht: `google.connection.manage`
+
+Antwoord: `200` · `MyConnectionRead`
+
+#### `PATCH /api/v1/google/connections/me`
+
+**Update My Connection**
+
+Recht: `google.connection.manage`
+
+Request body: `MyConnectionUpdate`
+
+Antwoord: `200` · `MyConnectionRead`
+
+#### `POST /api/v1/google/connections/me/disconnect`
+
+**Disconnect My Connection**
+
+Recht: `google.connection.manage`
+
+Antwoord: `204`
+
+#### `GET /api/v1/google/drive/browse`
+
+**Browse** — Live folder contents **as the viewing user** — Drive's permissions are authoritative.
+
+Recht: `google.drive.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `folder_id` | string |  |
+| `q` | string |  |
+| `refresh` | boolean |  (default `false`) |
+
+Antwoord: `200` · `DriveBrowseResult`
+
+#### `PUT /api/v1/google/drive/folder`
+
+**Set Folder** — Point a record at an existing Drive folder — the picker's target.
+
+Recht: `google.drive.write`
+
+Request body: `DriveFolderSet`
+
+Antwoord: `200` · `DriveLinkRead`
+
+#### `POST /api/v1/google/drive/folders`
+
+**Create Folder** — Create a subfolder inside the folder being browsed, as the viewing user (issue #21).
+
+Recht: `google.drive.write`
+
+Request body: `DriveFolderCreate`
+
+Antwoord: `201` · `DriveFolder`
+
+#### `GET /api/v1/google/drive/links`
+
+**List Links**
+
+Recht: `google.drive.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string · verplicht |  |
+| `entity_id` | string · verplicht |  |
+| `rollup` | boolean |  (default `false`) |
+
+Antwoord: `200` · `DriveLinkRead[]`
+
+#### `POST /api/v1/google/drive/links`
+
+**Create Link**
+
+Recht: `google.drive.write`
+
+Request body: `DriveLinkCreate`
+
+Antwoord: `201` · `DriveLinkRead`
+
+#### `DELETE /api/v1/google/drive/links/{link_id}`
+
+**Delete Link** — Unlink only. The Drive file is never touched (issue #21 — the dialog says so too).
+
+Recht: `google.drive.write`
+
+Padparameters: `link_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/google/drive/provision`
+
+**Provision Entity** — Queue one entity's folder — the panel's "create folder" button.
+
+Recht: `google.drive.write`
+
+Request body: `DriveProvisionRequest`
+
+Antwoord: `202`
+
+#### `POST /api/v1/google/drive/provision-all`
+
+**Provision All** — Backfill: a folder for every client that has none (Instellingen → Google).
+
+Recht: `google.settings.manage`
+
+Antwoord: `200` · `DriveBulkProvisionResult`
+
+#### `POST /api/v1/google/drive/upload-session`
+
+**Create Upload Session**
+
+Recht: `google.drive.write`
+
+Request body: `DriveUploadSessionCreate`
+
+Antwoord: `200` · `DriveUploadSession`
+
+#### `POST /api/v1/google/gmail/import`
+
+**Import Gmail Message** — Log one message the poller skipped, filed where the caller says.
+
+Recht: `interactions.interaction.write`
+
+Request body: `GmailImportRequest`
+
+Antwoord: `201` · `GmailImportResult`
+
+#### `GET /api/v1/google/gmail/lookup`
+
+**Lookup Gmail Message** — Resolve a pasted reference to the message(s) it names, in the caller's own mailbox.
+
+Recht: `google.connection.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `reference` | string · verplicht | A Gmail link, a message/thread id, or an RFC-822 Message-ID |
+
+Antwoord: `200` · `GmailLookupResult`
+
+#### `POST /api/v1/google/gmail/refresh`
+
+**Refresh Gmail** — Poll this mailbox once, now — rate-limited to one manual poll per minute.
+
+Recht: `google.connection.manage`
+
+Antwoord: `200` · `GmailRefreshResult`
+
+#### `GET /api/v1/google/gmail/search`
+
+**Search Gmail** — Find a message in the caller's **own** mailbox, by who it was with and when (#372).
+
+Recht: `google.connection.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `participant` | string |  |
+| `subject` | string |  |
+| `after` | string |  |
+| `before` | string |  |
+
+Antwoord: `200` · `GmailSearchResult`
+
+#### `GET /api/v1/google/gmail/status`
+
+**Read Gmail Status** — When this mailbox was last polled, and whether asking for another one is worth it.
+
+Recht: `google.connection.manage`
+
+Antwoord: `200` · `GmailSyncStatus`
+
+#### `GET /api/v1/google/gmail/threads/{thread_id}`
+
+**Read Gmail Thread** — Every message of one conversation, marked with what is already on the timeline.
+
+Recht: `google.connection.manage`
+
+Padparameters: `thread_id`
+
+Antwoord: `200` · `GmailLookupResult`
+
+#### `GET /api/v1/google/oauth/callback`
+
+**Google Oauth Callback** — Store the grant and land the browser back where the connect started.
+
+Recht: `google.connection.manage`
+
+Antwoord: `200`
+
+#### `GET /api/v1/google/oauth/connect`
+
+**Oauth Connect** — 302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
+
+Recht: `google.connection.manage`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `include_gmail` | boolean |  (default `false`) |
+| `include_marketing` | boolean |  (default `false`) |
+| `include_analytics` | boolean |  (default `false`) |
+| `include_search_console` | boolean |  (default `false`) |
+| `include_ads` | boolean |  (default `false`) |
+| `include_tag_manager` | boolean |  (default `false`) |
+| `next` | string |  (default ``) |
+
+Antwoord: `200`
+
+#### `GET /api/v1/google/settings`
+
+**Get Settings**
+
+Recht: `google.settings.manage`
+
+Antwoord: `200` · `GoogleSettingsRead`
+
+#### `PUT /api/v1/google/settings`
+
+**Save Settings**
+
+Recht: `google.settings.manage`
+
+Request body: `GoogleSettingsWrite`
+
+Antwoord: `200` · `GoogleSettingsRead`
+
+</details>
+

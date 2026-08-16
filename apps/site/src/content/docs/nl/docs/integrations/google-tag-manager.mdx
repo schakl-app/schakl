@@ -1,0 +1,199 @@
+---
+title: Google Tag Manager
+description: "Koppel de container van een klant: lees wat er live staat, zet de meting klaar waar ze om vroegen, en publiceer pas als iemand met dat recht ernaar gekeken heeft."
+sidebar:
+  order: 10
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+De helft van het marketingwerk van een bureau is zorgen *dát* er gemeten wordt: een conversie op
+een nieuw formulier, een event op een offerteaanvraag, een tag voor de campagne die maandag
+begint. Tot nu toe gebeurde dat allemaal in een browsertabblad waar schakl. niets van wist. Welke
+container van deze klant is, wat erin live staat, wie die tag heeft neergezet, en of de wijziging
+die iemand drie weken geleden klaarzette ooit gepubliceerd is: daar was hier geen antwoord op.
+
+## Waar je het vindt
+
+- **Instellingen → Tag Manager**: Google koppelen, containers koppelen, kiezen in welke
+  werkruimte schakl. schrijft, en de noodstop.
+- **Marketing → Tag Manager**: de containers zelf, met de live versie, de tags, triggers en
+  variabelen, het versieverleden en het codefragment.
+- Op een **klantpagina** staat de container naast het domein en de website waar hij op draait.
+
+Tag Manager heeft de koppeling **Google Workspace** nodig. Zet je hem aan onder
+*Instellingen → Integraties*, dan wordt die er meteen bij gezet, en het scherm vertelt je dat
+voordat je opslaat.
+
+## Voordat je begint
+
+<Steps>
+1. Zet in **Google Cloud**, in hetzelfde project als de rest van je Google-koppeling, de
+   **Tag Manager API** aan. Zonder die stap antwoordt elke aanroep dat de API uitstaat in het
+   Cloud-project, en dat is werk voor een beheerder en niet iets wat opnieuw koppelen oplost.
+2. Zorg dat het Google-account waarmee je koppelt toegang heeft tot de container van de klant in
+   Tag Manager. schakl. vraagt nooit meer dan dat account al heeft.
+3. Houd de **GTM-code** van de container bij de hand (`GTM-XXXXXXX`), of kies straks uit de lijst
+   met containers waar je account bij kan.
+</Steps>
+
+## Koppelen
+
+<Steps>
+1. Ga naar *Instellingen → Tag Manager* en druk op **Google koppelen**.
+2. Geef de vier rechten. Ze worden **los van** de gewone marketingkoppeling gevraagd, en dat is
+   met opzet: de drie bronnen van het dashboard zijn alleen-lezen meting, en iemand die een
+   bezoekersgrafiek wilde vragen of hij op de website van een klant mag publiceren is precies hoe
+   mensen leren om toestemmingsschermen weg te klikken zonder ze te lezen.
+3. Koppel per klant een container: plak de GTM-code, of kies uit de lijst, en hang er de klant
+   aan en eventueel de website waar hij op draait.
+4. Laat **Eigen werkruimte** aanstaan en zet er de naam van je bureau in. Hieronder staat waarom
+   dat belangrijker is dan het lijkt.
+</Steps>
+
+| Recht | Wat het oplevert |
+| --- | --- |
+| `tagmanager.readonly` | Containers, werkruimtes, tags, triggers, variabelen en versies lezen |
+| `tagmanager.edit.containers` | Een werkruimte wijzigen |
+| `tagmanager.edit.containerversions` | Een werkruimte vastleggen als versie |
+| `tagmanager.publish` | Een versie live zetten op de website van de klant |
+
+Niet gevraagd: containers verwijderen, gebruikers beheren, accounts beheren. Een recht dat geen
+enkele coderegel nodig heeft, is een recht dat een bureau voor niets laat schrikken op een
+toestemmingsscherm.
+
+<Aside type="tip" title="Als een aanroep zegt dat toegang geweigerd is">
+Twee heel verschillende dingen dragen die zin. Of dit Google-account heeft echt geen toegang tot
+die container, en dan is het werk voor de Tag Manager-beheerder van de klant; of je koppeling is
+gemaakt *voordat* je organisatie de Tag Manager-rechten vroeg, en dan is het één keer opnieuw
+koppelen. schakl. controleert het recht vóór de aanroep, dus het kan je vertellen welke van de
+twee je voor je hebt.
+</Aside>
+
+## Een werkruimte is een gedeeld concept, geen eigen kopie
+
+Dit is het meest verrassende aan Tag Manager, en het is een alinea waard.
+
+Een GTM-werkruimte lijkt een eigen aftakking en is dat niet. Schrijf je in "Default Workspace",
+dan staat jouw halfafgemaakte wijziging voor de neus van iedereen die daar op dat moment aan het
+werk is (meestal de marketeer van de klant zelf), en **diens** eerstvolgende Publiceren stuurt hem
+de deur uit.
+
+Daarom maakt schakl. een eigen werkruimte aan en schrijft daarin, met een naam die jij kiest en
+niet wij: de klant ziet die naam in Tag Manager, dus een bureau wil er zijn eigen naam op. Lezen
+gebeurt in diezelfde werkruimte, en een leesactie maakt er nooit een aan als bijeffect van iemand
+die een scherm opent.
+
+## Bewerken en publiceren zijn twee rechten
+
+Een werkruimte bewerken verandert een **concept**: het is echt, het wordt vastgelegd, en niemand
+krijgt het te zien. Publiceren verandert wat er draait in de browser van elke bezoeker, meteen,
+zonder tussenstap. Twee handelingen, twee soorten publiek, twee rechten.
+
+Die knip is wat de zin *"laat de assistent de meting voor de nieuwe campagne klaarzetten, dan kijk
+ik er zelf naar"* mogelijk maakt: het is een API-sleutel met `google_tag_manager.tag.write` en
+verder niets. Eén gezamenlijk schrijfrecht zou die zin onuitspreekbaar maken.
+
+Een **versie** aanmaken hoort bewust bij het schrijfrecht en niet bij een vijfde recht: een versie
+vastleggen is niets anders dan opschrijven wat er klaarstaat, en dat achter het publicatierecht
+zetten zou de helft die klaarzet haar eigen werk niet laten afmaken.
+
+## Een conversie opzetten
+
+De twee dingen die een bureau steeds opnieuw opzet hebben een uitgeschreven recept; al het andere
+gaat met de eigen woordenschat van Tag Manager.
+
+- **GA4-event**: vuurt een event af naar een GA4-property. Het meet-ID geef jij op.
+- **Google Ads-conversie**: vuurt een conversie af. Het conversie-ID en het label geef jij op. De
+  conversiekoppelaar staat altijd aan: zonder hem meldt de tag conversies die hij niet aan een
+  klik kan koppelen, en dat is een getal dat klopt lijkt te zijn en het niet is.
+
+Zes soorten trigger: paginaweergave, formulierverzending, klik op een link, klik op een element,
+zichtbaarheid van een element en een eigen event, elk te versmallen op een stuk van de URL.
+
+<Aside type="caution" title="schakl. verzint nooit een waarde">
+Een meet-ID, een conversie-ID en een CSS-selector komen allemaal van jou. Er is geen stap die "de
+GA4-property wel even opzoekt", want de verkeerde kiezen stuurt de conversies van je klant naar de
+property van iemand anders zonder dat enig scherm dat zegt.
+</Aside>
+
+Alles wat het recept niet dekt post je met het eigen `type` en de eigen parameterlijst van Tag
+Manager, en dan is **de validator van Google zelf** de scheidsrechter. Dat is bewust beter dan een
+half nagebouwd recept: een zelfgeschreven body die niet klopt wordt luid geweigerd, terwijl een
+verkeerd recept stilletjes uitrolt en een tag die nergens op vuurt er precies zo uitziet als een
+tag die werkt.
+
+## Wat hier bewaard wordt, en wat live wordt gelezen
+
+| Elke keer live gelezen | Hier gespiegeld |
+| --- | --- |
+| Tags, triggers, variabelen | De naam van de container |
+| Versieverleden | De live versie en de aantallen daaruit |
+| Status van de werkruimte | Hoeveel wijzigingen klaarstaan en niet gepubliceerd zijn |
+| Het codefragment | Bij welke klant en website hij hoort |
+
+De taglijst wordt live opgehaald omdat de helft van de wijzigingen erin in Tag Manager wordt
+gemaakt door mensen die niet bij jou werken; een spiegel daarvan zou de verkeerde vraag
+beantwoorden. De aantallen worden wel gespiegeld, zodat een klantpagina niet op Google hoeft te
+wachten.
+
+### Conversies worden vastgelegd omdat Google dat niet doet
+
+Google legt vast dát er een trigger en een tag bestaan. Het legt nergens vast dat die twee samen
+de *"offerte aangevraagd"* van deze klant zijn, dat jouw bureau beloofd heeft hem werkend te
+houden, of dat hij vanaf hier is opgezet en niet met de hand. Zonder dat moet de volgende die
+kijkt de container lezen en raden.
+
+Daarom bewaart een conversie **wat er gevraagd is** en **wat er als laatste is waargenomen** in
+aparte velden. Een conversie waarvan iemand de tag in Tag Manager heeft weggegooid is dan een
+toestand die je kunt zien, in plaats van een regel die stilzwijgend blijft beweren dat hij werkt.
+
+## De nachtelijke telling
+
+Elke nacht om 05:35 wordt de spiegel van elke gekoppelde container ververst. Gaat er bij één
+container iets mis, dan blijft dat op die ene regel staan en verversen de andere gewoon.
+
+Het getal waar deze taak voor bestaat is **klaarstaande, niet-gepubliceerde wijzigingen**. Een
+wijziging die weken geleden is klaargezet en nooit gepubliceerd is de gewoonste manier waarop de
+meting van een klant stilletjes iets anders wordt dan wat hem beloofd is, en niets anders brengt
+dat aan het licht: niemand opent een container waar hij geen reden voor heeft.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `google_tag_manager.settings.manage` | Containers koppelen en ontkoppelen, controleren, de noodstop | Beheerder |
+| `google_tag_manager.container.read` | Containers, tags, triggers, variabelen, versies, het codefragment, de vastgelegde conversies | Beheerder, Medewerker |
+| `google_tag_manager.tag.write` | De werkruimte bewerken en vastleggen als versie | Beheerder |
+| `google_tag_manager.version.publish` | Een versie live zetten op de website van de klant | Beheerder |
+
+Geen van de vier gaat ooit naar de rol **Klant**. Alleen al lezen dekt elke tag in de container, en
+daar zitten conversiewaarden, remarketing-ID's en wat het vorige bureau heeft achtergelaten tussen.
+
+Naast de rechten staat een **noodstop** voor de hele installatie. Het recht bepaalt *wie*; de
+noodstop bepaalt *of*, op één plek die een eigenaar snel kan vinden nadat er iets verrassends op
+de website van een klant is verschenen.
+
+## Goed om te weten
+
+- **Ontkoppelen raakt niets bij Google.** Een bureau dat stopt voor een klant gooit daarmee niet
+  de meting van diens website weg.
+- **Een gelijktijdige wijziging wordt geweigerd, niet overschreven.** Heeft iemand de container in
+  Tag Manager aangepast terwijl jij hem open had, dan wordt je opslag geweigerd. Open hem opnieuw
+  en voer de wijziging nog een keer door.
+- **Een container die nooit gepubliceerd is, is niet kapot.** Hij heeft simpelweg nog geen live
+  versie.
+- **Opnieuw proberen is veilig bij lezen en nooit bij schrijven.** Een tag aanmaken is niet
+  herhaalbaar: een herhaalde aanmaak is een tweede tag die een tweede keer vuurt op de website van
+  iemand. Alleen leesacties worden herhaald.
+- **Foutmeldingen komen in jouw taal binnen.** De eigen zin van Google blijft op de containerregel
+  staan waar een beheerder hem kan lezen; de melding die de app je toont wordt vertaald zoals elke
+  andere.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Google Ads" href="/nl/docs/integrations/google-ads/" description="De campagnes waartegen de conversies die je hier opzet worden afgemeten." />
+  <LinkCard title="Marketingbronnen" href="/nl/docs/integrations/marketing-sources/" description="De cijfers waar de container aan bijdraagt." />
+  <LinkCard title="Google Workspace" href="/nl/docs/integrations/google-workspace/" description="De koppeling waar Tag Manager op meerijdt." />
+</CardGrid>

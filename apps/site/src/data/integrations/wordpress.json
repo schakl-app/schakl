@@ -1,0 +1,179 @@
+{
+  "slug": "wordpress",
+  "name": "WordPress",
+  "order": 35,
+  "category": "websites",
+  "status": "live",
+  "lucide": "globe",
+  "mark": {
+    "monogram": "WP",
+    "color": "#21759B"
+  },
+  "tagline": {
+    "nl": "Eén wachtwoord per website, vier deuren",
+    "en": "One password per website, four doors"
+  },
+  "summary": {
+    "nl": "Eén WordPress-applicatiewachtwoord per website opent vier oppervlakken op dezelfde host: de gewone REST-API, de Abilities-API van WordPress 6.9, de MCP-server als die plugin er staat, en de eigen route van Rank Math voor AI-zichtbaarheid. Die laatste levert de vijfde marketingbron: hoe vaak een merk in AI-antwoorden genoemd en gelinkt wordt.",
+    "en": "One WordPress Application Password per website opens four surfaces on the same host: the ordinary REST API, WordPress 6.9's Abilities API, the MCP server where that plugin is installed, and Rank Math's own AI Visibility route. The last of those supplies the fifth marketing source: how often a brand is named and linked in AI answers."
+  },
+  "highlights": {
+    "nl": [
+      "De koppeling hangt aan de website, niet aan de organisatie: elk klantsite heeft zijn eigen wachtwoord",
+      "Vijf losse proeven bij het controleren, en geen daarvan bepaalt de uitslag van de andere",
+      "Rank Math AI-zichtbaarheid als marketingbron: score, vermeldingen, bronvermeldingen, sentiment en gemiddelde plaats",
+      "Elk cijfer draagt zijn eigen uitleg op het scherm, want geen marketeer kende deze vijf al"
+    ],
+    "en": [
+      "The connection hangs off the website, not off the organisation: every client site has its own password",
+      "Five independent probes on verify, and none of them decides the verdict of the others",
+      "Rank Math AI Visibility as a marketing source: score, mentions, citations, sentiment and average rank",
+      "Every figure carries its own sentence on screen, because no marketeer already knew these five"
+    ]
+  },
+  "where": {
+    "nl": "De kaart WordPress op de detailpagina van een website. Er is bewust geen menu-item: WordPress is geen plek waar je naartoe gaat.",
+    "en": "The WordPress card on a website's detail page. There is deliberately no menu item: WordPress is not a place you go."
+  },
+  "docs": "/docs/integrations/wordpress/",
+  "page": {
+    "lead": {
+      "nl": "De vraag was er twee: lees de AI-zichtbaarheid van Rank Math in de marketingmodule, en houd een WordPress-inlog per website vast zodat we die site later ook op andere manieren kunnen aansturen. Dat bleek hetzelfde wachtwoord tegen dezelfde host te zijn, en daarom is het één koppeling geworden in plaats van twee.",
+      "en": "The ask was two things: read Rank Math's AI Visibility into the marketing module, and hold a WordPress login per website so the site can be driven other ways later. Those turned out to be the same credential against the same host, which is why this is one integration rather than two."
+    },
+    "requirements": {
+      "nl": [
+        "Een WordPress-site van 6.9 of nieuwer voor de Abilities-API (ouder werkt gewoon, alleen die ene deur blijft dicht)",
+        "Een applicatiewachtwoord van een gebruiker met beheerdersrechten op die site",
+        "Voor de AI-zichtbaarheid: de plugin Rank Math met de module AI Visibility aan, en een site die aan een Rank Math-account met Content AI is gekoppeld",
+        "Het recht wordpress.site.manage om een site te koppelen; standaard alleen beheerders"
+      ],
+      "en": [
+        "A WordPress site on 6.9 or newer for the Abilities API (older works fine, only that one door stays shut)",
+        "An Application Password from a user with administrator rights on that site",
+        "For AI Visibility: the Rank Math plugin with its AI Visibility module active, and a site connected to a Rank Math account with Content AI",
+        "The wordpress.site.manage permission to connect a site; admin only by default"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Maak in WordPress een <strong>applicatiewachtwoord</strong> aan onder <em>Gebruikers → Profiel</em>, onderaan. Geef het een naam waaraan je het later herkent. Let op wat dit is: elke route van Rank Math voor AI-zichtbaarheid vraagt om <code>manage_options</code>, dus dit wachtwoord hoort bij een beheerder. Een alleen-lezen variant bestaat niet.",
+        "Zet <strong>WordPress</strong> aan onder <strong>Instellingen → Integraties</strong>. Hij heeft de module Websites nodig, want daar hangt de koppeling aan.",
+        "Open de website in schakl. en vul op de kaart <strong>WordPress</strong> het adres van de site, de gebruikersnaam en het applicatiewachtwoord in. Het wachtwoord gaat versleuteld de opslag in en komt nooit meer terug uit de API, uit een logregel of uit het wijzigingsspoor.",
+        "Druk op <strong>Controleren</strong>. Er lopen vijf losse proeven: bereikt het wachtwoord de REST-API, is de gebruiker beheerder, kent deze site de Abilities-API, antwoordt Rank Math op AI-zichtbaarheid, en staat de MCP-plugin er. Elke uitkomst blijft staan met de eigen foutregel van de site erbij, onvertaald, want dat is een citaat.",
+        "Wil je de AI-zichtbaarheid op het dashboard, koppel dan onder <strong>Marketing</strong> op de klant een bron van het type <strong>Rank Math</strong> aan deze website. Zonder gekoppelde website weigert dat meteen, in plaats van pas de volgende ochtend als een rode regel.",
+        "Vanaf dan haalt de nachtelijke synchronisatie één momentopname per dag op en groeit de trendlijn vanzelf."
+      ],
+      "en": [
+        "In WordPress, create an <strong>Application Password</strong> under <em>Users → Profile</em>, at the bottom. Give it a name you will recognise later. Note what this is: every Rank Math AI Visibility route requires <code>manage_options</code>, so this password belongs to an administrator. There is no read-only shape to ask for.",
+        "Switch <strong>WordPress</strong> on under <strong>Instellingen → Integraties</strong> (Settings → Integrations). It needs the Websites module, because that is what the connection hangs off.",
+        "Open the website in schakl. and fill in the site address, the username and the application password on the <strong>WordPress</strong> card. The password is stored encrypted and never comes back out of the API, a log line or the activity trail.",
+        "Press <strong>Controleren</strong> (Verify). Five independent probes run: does the password reach the REST API, is the user an administrator, does this site know the Abilities API, does Rank Math answer on AI Visibility, and is the MCP plugin installed. Every outcome is kept, carrying the site's own error text untranslated, because it is a quote.",
+        "For AI Visibility on the dashboard, link a source of type <strong>Rank Math</strong> to this website under <strong>Marketing</strong> on the client. Without a connected website it is refused straight away, rather than turning up as a red line the next morning.",
+        "From then on the nightly sync takes one snapshot a day and the trend line grows by itself."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Vier deuren, één sleutel",
+          "en": "Four doors, one key"
+        },
+        "body": {
+          "nl": "Rank Math registreert zijn AI-zichtbaarheid als WordPress Abilities, met twee regels erbij: toon in REST, en beschikbaar via MCP. Die twee regels zijn het hele verhaal. Ze zetten dezelfde functies op de gewone REST-route van WordPress én op de MCP-server van de MCP Adapter-plugin, en allebei authenticeren zoals iedere REST-aanroep dat doet, wat voor ons een applicatiewachtwoord betekent. Daarmee opent één inlog vier oppervlakken op dezelfde host, en daarom is dit een eigen koppeling en geen verborgen veldje van een marketingbron: er staan meer dingen in de rij voor die sleutel.",
+          "en": "Rank Math registers its AI Visibility features as WordPress Abilities, with two lines of metadata: show in REST, and expose over MCP. Those two lines are the whole story. They put the same functions on WordPress core's REST route and on the MCP Adapter plugin's MCP server, and both authenticate the way any REST caller does, which for us means an Application Password. So one login opens four surfaces on the same host, and that is why this is an integration of its own rather than a hidden field on a marketing source: more things are queuing up for that key."
+        },
+        "bullets": {
+          "nl": [
+            "De gewone REST-API: berichten, media, gebruikers, plugins",
+            "De Abilities-API van WordPress 6.9, per functie aan te zetten",
+            "De MCP-server, als de MCP Adapter-plugin geïnstalleerd is",
+            "De eigen route van Rank Math voor AI-zichtbaarheid"
+          ],
+          "en": [
+            "The ordinary REST API: posts, media, users, plugins",
+            "WordPress 6.9's Abilities API, opt-in per ability",
+            "The MCP server, where the MCP Adapter plugin is installed",
+            "Rank Math's own AI Visibility route"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een proef is bewijs, nooit de poort",
+          "en": "A probe is evidence, never the gate"
+        },
+        "body": {
+          "nl": "De vijf proeven bepalen elkaars uitslag niet, want in het echt zijn die toestanden onafhankelijk: Rank Math ontbreekt gewoon vaak op een site waarvan de berichten-API kerngezond is, en MCP op een site waar Rank Math prima werkt. Een lezing die lukt weegt zwaarder dan een controle die weigert: een wachtwoord dat de gewone REST-API haalde is actief, ook als de andere vier niets opleverden, en pas als álle vijf weigeren heet de inlog geweigerd. Onbereikbaar en geen-WordPress zijn bovendien iets anders dan geweigerd, want die twee zeggen niets over het wachtwoord, en ze als inlogfout melden stuurt iemand een nieuw wachtwoord maken dat nooit fout was. Elk kruisje draagt de eigen fouttekst van de site, want een kruisje zonder uitleg is de enige toestand waar niemand iets mee kan.",
+          "en": "None of the five probes gates another, because in reality those states are independent: Rank Math is routinely absent from a site whose posts API is perfectly healthy, and MCP from a site where Rank Math works fine. A read that succeeds outranks a probe that refuses: a credential that reached the ordinary REST API is active even if the other four failed, and only one refused by every probe is called refused. Unreachable and not-WordPress are separate from refused as well, because neither says anything about the password, and reporting them as auth failures sends somebody off to re-mint a credential that was never wrong. Every ✗ carries the site's own error text, because a ✗ with no explanation is the one state nobody can act on."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het nieuwere oppervlak is niet automatisch het juiste",
+          "en": "A newer surface is not automatically the right one"
+        },
+        "body": {
+          "nl": "Rank Math heeft twee manieren om dezelfde cijfers te geven, en maar één ervan meet iets. De Ability leest een cache van twaalf uur en kan niet afdwingen dat er opnieuw wordt opgehaald: zijn eigen vernieuwingsoptie is alleen telemetrie. De REST-route kan dat wel. Wie de Ability had gekozen omdat het het modernere oppervlak is, had een grafiek gebouwd die alleen beweegt als er een mens in het WordPress-dashboard kijkt: een grafiek van wanneer iemand voor het laatst heeft ingelogd, getekend alsof het de AI-zichtbaarheid van een klant is. De nachtelijke synchronisatie roept daarom de REST-route aan met vernieuwen aan, en een test houdt dat vast.",
+          "en": "Rank Math has two ways to hand over the same figures, and only one of them measures anything. The ability reads a twelve-hour cache and cannot force an upstream fetch: its own refresh input is telemetry. The REST route can. Anyone who reached for the ability because it is the newer surface would have built a chart that moves only when a human opens the WordPress dashboard: a chart of when somebody last logged in, drawn as a chart of a client's AI visibility. So the nightly sync calls the REST route with refresh on, and a test pins it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vijf cijfers die niemand al kende",
+          "en": "Five figures nobody already knew"
+        },
+        "body": {
+          "nl": "De andere marketingbronnen spreken een taal die een marketeer al bezit: iedereen weet wat een sessie is. Deze vijf zijn nieuw voor het bureau én voor de klant, en de labels zijn zo kort als een tegel toelaat. Zo stond 'Bronvermeldingen 6' naast 'Vermeldingen 18' zonder dat ergens op het scherm stond dat het eerste de deelverzameling van het tweede is die ook een link bevatte. Het bureau kon het dashboard dat het gebouwd had niet uitleggen en de klant kon het dashboard dat hij gekregen had niet lezen. Elk cijfer draagt daarom zijn eigen zin: uitgeschreven waar er ruimte is, als tooltip waar die er niet is, en in precies hetzelfde onderdeel voor het bureau en voor het portaal, zodat er geen versie bestaat die de cijfers wel aan de een en niet aan de ander uitlegt.",
+          "en": "The other marketing sources speak a vocabulary a marketeer already owns: everyone knows what a session is. These five are new to the agency and to the client alike, and the labels are as short as a tile allows. So \"Citations 6\" sat next to \"Mentions 18\" with nothing on the screen saying that the first is the subset of the second that carried a link. The agency could not explain the dashboard it had built and the client could not read the one it had been given. So every figure carries its own sentence: written out where there is room, as a tooltip where there is not, and in exactly the same component for the agency and for the portal, so no version exists that explains the numbers to one audience and not the other."
+        },
+        "bullets": {
+          "nl": [
+            "AI-zichtbaarheidsscore: rang, vermeldingen, bronvermeldingen en sentiment samengevouwen tot één getal van 0 tot 100",
+            "Vermeldingen: hoe vaak het merk genoemd werd in de antwoorden op de gevolgde vragen",
+            "Bronvermeldingen: het deel daarvan dat ook naar de site van het merk linkte",
+            "Gemiddeld sentiment: hoe positief het merk beschreven wordt, als percentage",
+            "Gemiddelde plaats: de gemiddelde positie tussen de merken die een antwoord noemt, waarbij 1 het beste is"
+          ],
+          "en": [
+            "AI visibility score: rank, mentions, citations and sentiment folded into one figure from 0 to 100",
+            "Mentions: how often the brand was named in the answers to the tracked prompts",
+            "Citations: the subset of those that also linked to the brand's site",
+            "Average sentiment: how positively the brand is described, as a percentage",
+            "Average rank: the brand's mean place among the brands an answer names, where 1 is best"
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "wordpress.site.manage",
+        "nl": "Een site koppelen, het wachtwoord wijzigen, controleren en ontkoppelen. Standaard alleen beheerders, en bewust niet samengevoegd met het schrijfrecht op websites.",
+        "en": "Connect a site, change the password, verify and disconnect. Admin only by default, and deliberately not folded into the website write permission."
+      },
+      {
+        "key": "wordpress.site.read",
+        "nl": "Zien of de site van deze klant gekoppeld is en wat de laatste controle opleverde. Ook voor medewerkers, want dat is een vraag die een accountmanager tijdens gewoon werk stelt.",
+        "en": "See whether this client's site is connected and what the last verify found. Members too, because that is a question an account manager asks while doing ordinary work."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Dit is een tabel met beheerderswachtwoorden van klantsites. Dat is een groter risico dan een Cloudflare-token dat alleen DNS mag lezen, en daarom is het beheerrecht alleen voor beheerders en gaat geen van beide rechten ooit naar de rol Klant.",
+        "Ontkoppelen vergeet het wachtwoord hier, maar trekt het niet in bij WordPress. Dat doet de eigenaar zelf op zijn profielpagina, en het als bijeffect van opruimen intrekken zou breken waar dat wachtwoord verder nog voor gemaakt was.",
+        "Rank Math houdt geen geschiedenis bij. Elk pad levert alleen de laatste stand, dus de trendlijn bestaat doordat wij momentopnamen bewaren. Er wordt één rij per dag geschreven en geen reeks identieke rijen, want een vlakke lijn die op meten lijkt is erger dan geen lijn.",
+        "Analyses draaien op het tempo van het abonnement van Rank Math, standaard wekelijks. Twee opeenvolgende momentopnamen mogen dus gewoon hetzelfde getal bevatten; wanneer er voor het laatst geanalyseerd is, reist mee zodat een rapportage kan zeggen wat het eigenlijk vergelijkt.",
+        "Vermeldingen en bronvermeldingen lijken tellingen en zijn het niet: het zijn lopende totalen op het moment van de laatste analyse. Ze worden daarom gemiddeld en nooit opgeteld.",
+        "Schrijven naar WordPress zit er nog niet in: geen merk aanmaken, geen vragen bewerken. Alleen lezen."
+      ],
+      "en": [
+        "This is a table of administrator credentials for client sites. That is a bigger blast radius than a Cloudflare token scoped to DNS reads, so the manage permission is admin only and neither permission ever goes to the Client role.",
+        "Disconnecting forgets the password here but does not revoke it at WordPress. That is the owner's act on their own profile screen, and doing it as a side effect of tidying a list would break whatever else that password was minted for.",
+        "Rank Math keeps no history. Every upstream path answers \"latest\" only, so the trend line exists because we store snapshots. One row is written per day rather than a range of identical rows, because a flat line that looks like measurement is worse than no line.",
+        "Analyses run on the cadence of the Rank Math plan, weekly by default. Two consecutive snapshots may legitimately carry the same number; when it was last analysed travels with the figures so a report can say what it is actually comparing.",
+        "Mentions and citations look like counts and are not: they are running totals as at the last analysis. So they are averaged and never summed.",
+        "Writing to WordPress is not included yet: no creating a brand, no editing prompts. Reading only."
+      ]
+    }
+  }
+}

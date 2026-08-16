@@ -1,6 +1,6 @@
 ---
 title: Integrations
-description: "Where schakl. talks to outside services: payments, domains, Google, marketing figures and your own scripts, each with your own account."
+description: "Where schakl. talks to outside services: payments, accounting, domains, Google, the sites you host and your own scripts, each with your own account."
 sidebar:
   order: 0
 ---
@@ -8,89 +8,134 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 schakl. runs on your own server and talks from there to the services your agency already uses:
-your payment provider, your registrar, your DNS, Google Workspace, your marketing sources and
-your own scripts. Every integration uses **your own account at that service**. The key or token
-is stored encrypted against your organisation in the database rather than in a configuration
-file on the server, and you can replace or remove it at any time.
+your payment provider, your bookkeeping package, your registrar, your DNS, Google Workspace, your
+marketing sources, the sites you host and your own scripts. Every integration uses **your own
+account at that service**. The key or token is stored encrypted against your organisation in the
+database rather than in a configuration file on the server, and you can replace or remove it at
+any time.
 
-## Where to find it
+## A module and an integration are different things
 
-Everything you connect lives under *Instellingen* (Settings), in the group **Communicatie &
-koppelingen** (Communication & integrations): E-mail, Standaardmeldingen (notification defaults),
-Google Workspace, AI, Marketing, Rapportage (Reporting), Cloudflare, OXXA and Mollie. Keys for
-your own scripts sit apart from those: personal keys under *Instellingen → Mijn account* (Settings
-→ My account), section **API-sleutels** (API keys), and keys that outlive somebody's departure
-under *Instellingen → Service-accounts* (Settings → Service accounts).
+The two words are used precisely, and the difference decides where a setting lives.
 
-If an integration is not listed, its module is switched off or not licensed; that is settled under
-*Instellingen → Modules*. The search box at the top of Settings also matches the words you would
-actually type when something goes wrong, such as "ideal", "webhook" or "nameservers".
+- **A module is a capability schakl. itself provides.** It owns records and screens, and it is
+  worth having with every third-party account in the world cancelled: clients, contacts, tasks,
+  projects, hours, invoicing, domains, reporting.
+- **An integration is a conversation with somebody else's service.** It holds a credential for an
+  outside account, and what it stores is a mirror of — or a pointer into — state that lives over
+  there.
 
-## Available, beta or roadmap
+The test is one sentence: *if the vendor went out of business tomorrow, is the thing gone, or is
+it merely poorer?* Gone means integration. Poorer means module. Marketing is a module by that test
+even though every figure on it arrives through Google: the dashboard, the periods and the
+narratives are ours, and with the links removed it is an empty screen rather than an absent one.
 
-Integrations are not all equally far along, and each one says where it stands. Three words, with
-exactly these meanings:
+That is why there are two screens, each first in the group of settings it governs:
+
+- **Instellingen → Modules** (Settings → Modules) — what schakl. does for this workspace.
+- **Instellingen → Integraties** (Settings → Integrations) — which services schakl. talks to.
+
+Ticking an integration pulls in the modules it has nowhere to put its data without, and unticking
+a module tells you by name which integrations go with it — before you save, on a screen that does
+not list them.
+
+Keys for your own scripts sit apart from both: personal keys under *Instellingen → Mijn account*
+(Settings → My account), section **API en MCP**, and keys that outlive somebody's departure under
+*Instellingen → Service-accounts* (Settings → Service accounts).
+
+## Available, or on the roadmap
+
+Every card says where it stands, and there are only two answers that matter:
 
 | Status | What it means |
 | --- | --- |
-| **Available** | You can connect it today, and it has been exercised end to end against the service itself. |
-| **Beta** | It ships and is connectable, but the code has never met a real account at that provider: it is built from the vendor's official API documentation and tested against a stand-in cut from it. |
-| **On the roadmap** | There is nothing to connect yet. Those get no page here. |
+| **Available** | There is a settings screen, a credential to fill in and a guide here. You can connect it today. |
+| **On the roadmap** | There is nothing to connect. No screen, no field, no callback address. Those cards exist so you do not go hunting for something that is not there, and each says what to use instead. |
 
-<Aside type="caution" title="What beta means in practice">
-A beta integration proves that our code agrees with the vendor's documentation, not that it
-agrees with their servers. So run a rehearsal of your own — a test key, or a single domain —
-before you send clients or money through it. Today **Mollie** and **OXXA** are beta.
-
-**SnelStart** is beta for a different reason and is worth reading separately: it *was* built and
-driven against a real administration with a real connection key. What is unfinished there is the
-one-click connect, which waits on certification by SnelStart, and the mileage: it has not yet run
-in dozens of administrations, and administrations differ. Start with a handful of invoices.
-
-**SE Ranking** is a separate case and does not fit that definition: it was written against SE
-Ranking's live API and those responses are pinned in our tests. Two things about it have never
-been tried with a real key: the exact `Authorization` header scheme and the path the project
-list is fetched from. Both come from SE Ranking's documentation, so start there with a single
-project too.
+<Aside type="tip" title="What a green settings screen proves, and what it does not">
+Connecting proves your credential is valid. It does not prove that the payment method you want is
+switched on at the provider, that your host forwards the header the API needs, or that the amount
+on the first real invoice is right. Every guide here ends with a short first-run walk for exactly
+that reason — do it once, on a test key or a single domain, before you point clients at it.
 </Aside>
 
-## The integrations
+## Payments and accounting
 
 <CardGrid>
   <LinkCard
-    title="Mollie (beta)"
+    title="Mollie"
     href="/en/docs/integrations/mollie/"
     description="Let clients pay an open invoice online with iDEAL, cards, Bancontact or PayPal; the confirmed payment becomes a payment line on that invoice by itself."
   />
   <LinkCard
-    title="SnelStart (beta)"
+    title="SnelStart"
     href="/en/docs/integrations/snelstart/"
     description="Clients, issued invoices and articles into your books; who has paid comes back as an ordinary payment on the invoice."
   />
+</CardGrid>
+
+## Domains, sites and hosting
+
+<CardGrid>
   <LinkCard
     title="Cloudflare"
     href="/en/docs/integrations/cloudflare/"
     description="Read your clients' zones and DNS records, and put a real mechanism behind the domain status Doorverwijzing (redirect)."
   />
   <LinkCard
-    title="OXXA (beta)"
+    title="OXXA"
     href="/en/docs/integrations/oxxa/"
     description="Pull the register from your registrar — expiry date, lock and nameservers — and write nameservers back."
   />
   <LinkCard
+    title="WordPress"
+    href="/en/docs/integrations/wordpress/"
+    description="One Application Password per website, and Rank Math's AI Visibility figures as a fifth marketing source."
+  />
+  <LinkCard
+    title="Uptime Kuma"
+    href="/en/docs/integrations/uptime-kuma/"
+    description="The open-source monitor you already run, with monitors that become records instead of alerts."
+  />
+</CardGrid>
+
+## Google
+
+<CardGrid>
+  <LinkCard
     title="Google Workspace"
     href="/en/docs/integrations/google-workspace/"
-    description="Calendar, Drive and Gmail, connected per organisation with your own OAuth client and switched on per employee."
+    description="Calendar, Drive, Gmail and Contacts, connected per organisation with your own OAuth client and switched on per employee."
+  />
+  <LinkCard
+    title="Google Ads"
+    href="/en/docs/integrations/google-ads/"
+    description="Campaigns, spend and search terms — and, behind a policy, the budgets, keywords and exclusions you change."
+  />
+  <LinkCard
+    title="Google Tag Manager"
+    href="/en/docs/integrations/google-tag-manager/"
+    description="A client's container: what is live, what is staged, and a publish that is its own permission."
   />
   <LinkCard
     title="Marketing sources"
     href="/en/docs/integrations/marketing-sources/"
-    description="Google Analytics, Search Console, Google Ads and SE Ranking as figures per client, on the client file and in your reports."
+    description="Analytics, Search Console, Google Ads, SE Ranking and Rank Math as figures per client, on the client file and in your reports."
   />
+</CardGrid>
+
+## Your own scripts and assistants
+
+<CardGrid>
   <LinkCard
     title="REST API"
     href="/en/docs/integrations/rest-api/"
     description="Anything the app can do, a script can too: one typed API with permissions per key."
+  />
+  <LinkCard
+    title="API reference"
+    href="/en/docs/api/"
+    description="Every endpoint, grouped by area, with the permission each one requires."
   />
   <LinkCard
     title="MCP server"
@@ -106,24 +151,19 @@ project too.
   produces. A client with a portal login can never reach a connection screen.
 - **You connect per organisation, not per installation.** There is deliberately no environment
   variable to put a Mollie or Cloudflare key in: it belongs to the organisation that uses it.
-- **What comes from outside is kept as an observation.** The integrations that mirror state
-  outside schakl. (Cloudflare and OXXA) store separately what schakl. set itself and what it last
-  found at the service, so "somebody changed this in the provider's dashboard" becomes visible
-  instead of being silently overwritten.
+- **A credential is a row, not a setting.** An agency holds its own Cloudflare account and its
+  clients bring theirs; one client site's WordPress password is not "the" WordPress password. So
+  nothing ever picks an account for you — with two, you are asked which.
+- **What comes from outside is kept as an observation.** The integrations that mirror outside state
+  store separately what schakl. decided and what it last found at the service, so "somebody changed
+  this in the provider's dashboard" becomes visible instead of being silently overwritten.
 - **Deleting a connected account changes nothing at that service.** What the integration already
-  produced, such as payments received, stays where it belongs.
+  produced — payments received, monitors created, tags published — stays where it belongs.
 
 ## Read next
 
 <CardGrid>
-  <LinkCard
-    title="Invoicing"
-    href="/en/docs/modules/invoicing/"
-    description="The module an online payment lands in."
-  />
-  <LinkCard
-    title="Domains"
-    href="/en/docs/modules/domains/"
-    description="The register and the zone that Cloudflare and OXXA fill."
-  />
+  <LinkCard title="Modules" href="/en/docs/admin/modules/" description="What to switch on, and what a licence covers." />
+  <LinkCard title="Invoicing" href="/en/docs/modules/invoicing/" description="The module an online payment lands in." />
+  <LinkCard title="Domains" href="/en/docs/modules/domains/" description="The register and the zone that Cloudflare and OXXA fill." />
 </CardGrid>

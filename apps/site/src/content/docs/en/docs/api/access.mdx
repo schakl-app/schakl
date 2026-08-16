@@ -1,0 +1,750 @@
+---
+title: "Access: members, roles, keys"
+description: "Who may sign in, what they may do once they have, which clients they may see, and the keys that let a script act on their behalf."
+sidebar:
+  order: 8
+---
+
+Who may sign in, what they may do once they have, which clients they may see, and the keys that let a script act on their behalf.
+
+61 endpoints across 8 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+
+## `members`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/members` | List Members | `members.member.read` |
+| `PATCH` `/members/{membership_id}` | Update Member Role | `members.member.write` |
+| `DELETE` `/members/{membership_id}` | Revoke Member | `members.member.write` |
+| `GET` `/members/{membership_id}/permissions` | Member Permissions | `members.member.read` |
+| `PUT` `/members/{membership_id}/roles` | Set Member Roles | `settings.roles.manage` |
+| `DELETE` `/members/{membership_id}/two-factor` | Reset Member Two Factor | `members.member.write` |
+| `POST` `/members/invite` | Invite Member | `members.member.write` |
+| `GET` `/members/lookup` | Lookup Members | _Deliberately open_ |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/members`
+
+**List Members** — The team, for Instellingen → Gebruikers — **staff only**.
+
+Permission: `members.member.read`
+
+Returns: `200` · `MemberRead[]`
+
+#### `PATCH /api/v1/members/{membership_id}`
+
+**Update Member Role** — Swap this membership's **system** role; any custom roles it also holds are untouched.
+
+Permission: `members.member.write`
+
+Path parameters: `membership_id`
+
+Request body: `MemberRoleUpdate`
+
+Returns: `200` · `MemberRead`
+
+#### `DELETE /api/v1/members/{membership_id}`
+
+**Revoke Member**
+
+Permission: `members.member.write`
+
+Path parameters: `membership_id`
+
+Returns: `204`
+
+#### `GET /api/v1/members/{membership_id}/permissions`
+
+**Member Permissions** — A member's effective permissions — the union over every role they hold.
+
+Permission: `members.member.read`
+
+Path parameters: `membership_id`
+
+Returns: `200` · `EffectivePermissions`
+
+#### `PUT /api/v1/members/{membership_id}/roles`
+
+**Set Member Roles** — Replace a membership's whole role set in one save. A user may hold several roles.
+
+Permission: `settings.roles.manage`
+
+Path parameters: `membership_id`
+
+Request body: `MembershipRolesUpdate`
+
+Returns: `200` · `EffectivePermissions`
+
+#### `DELETE /api/v1/members/{membership_id}/two-factor`
+
+**Reset Member Two Factor** — Reset a member's 2FA — the lost-phone escape hatch (docs/TWOFACTOR.md).
+
+Permission: `members.member.write`
+
+Path parameters: `membership_id`
+
+Returns: `204`
+
+#### `POST /api/v1/members/invite`
+
+**Invite Member**
+
+Permission: `members.member.write`
+
+Request body: `MemberInvite`
+
+Returns: `201` · `MemberRead`
+
+#### `GET /api/v1/members/lookup`
+
+**Lookup Members** — Name/email of org **staff**, for assignee/approver pickers. Open to every member.
+
+Permission: _Deliberately open_
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `permission` | string | Only members who hold this permission at some scope — e.g. `tasks.task.write` for an assignee picker, `leave.request.approve` for an approver picker. Omit for everyone in the org. |
+| `include_clients` | boolean | Also return client-role memberships (portal users). Off by default: every picker built on this endpoint means *staff*. (default `false`) |
+
+Returns: `200` · `MemberLookup[]`
+
+</details>
+
+## `roles`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/permissions/catalog` | Permission Catalog | _Deliberately open_ |
+| `GET` `/roles` | List Roles | `settings.roles.manage` |
+| `POST` `/roles` | Create Role | `settings.roles.manage` |
+| `PATCH` `/roles/{role_id}` | Update Role | `settings.roles.manage` |
+| `DELETE` `/roles/{role_id}` | Delete Role | `settings.roles.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/permissions/catalog`
+
+**Permission Catalog**
+
+Permission: _Deliberately open_
+
+Returns: `200` · `PermissionCatalog`
+
+#### `GET /api/v1/roles`
+
+**List Roles**
+
+Permission: `settings.roles.manage`
+
+Returns: `200` · `RoleRead[]`
+
+#### `POST /api/v1/roles`
+
+**Create Role** — Create a custom role, optionally seeded from an existing one.
+
+Permission: `settings.roles.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `from` | string | Duplicate this role's permissions into the new one. |
+
+Request body: `RoleCreate`
+
+Returns: `201` · `RoleRead`
+
+#### `PATCH /api/v1/roles/{role_id}`
+
+**Update Role** — Rename, reposition, or replace the whole permission set in one save.
+
+Permission: `settings.roles.manage`
+
+Path parameters: `role_id`
+
+Request body: `RoleUpdate`
+
+Returns: `200` · `RoleRead`
+
+#### `DELETE /api/v1/roles/{role_id}`
+
+**Delete Role** — System roles are not deletable — they are what ``memberships.role`` still collapses to.
+
+Permission: `settings.roles.manage`
+
+Path parameters: `role_id`
+
+Returns: `204`
+
+</details>
+
+## `users`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/users/{id}` | Users:User | _Deliberately open_ |
+| `PATCH` `/users/{id}` | Users:Patch User | _Deliberately open_ |
+| `DELETE` `/users/{id}` | Users:Delete User | _Deliberately open_ |
+| `GET` `/users/me` | Users:Current User | _Deliberately open_ |
+| `PATCH` `/users/me` | Users:Patch Current User | _Deliberately open_ |
+| `POST` `/users/me/email` | Users:Change Email | _Deliberately open_ |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/users/{id}`
+
+**Users:User**
+
+Permission: _Deliberately open_
+
+Path parameters: `id`
+
+Returns: `200` · `UserRead`
+
+#### `PATCH /api/v1/users/{id}`
+
+**Users:Patch User**
+
+Permission: _Deliberately open_
+
+Path parameters: `id`
+
+Request body: `UserUpdate`
+
+Returns: `200` · `UserRead`
+
+#### `DELETE /api/v1/users/{id}`
+
+**Users:Delete User**
+
+Permission: _Deliberately open_
+
+Path parameters: `id`
+
+Returns: `204`
+
+#### `GET /api/v1/users/me`
+
+**Users:Current User**
+
+Permission: _Deliberately open_
+
+Returns: `200` · `UserRead`
+
+#### `PATCH /api/v1/users/me`
+
+**Users:Patch Current User**
+
+Permission: _Deliberately open_
+
+Request body: `UserUpdate`
+
+Returns: `200` · `UserRead`
+
+#### `POST /api/v1/users/me/email`
+
+**Users:Change Email** — Change the caller's own sign-in address. Costs the current password; the new address must be free (emails are unique case-insensitively and stored lowercase, like invites). Verification state resets — the new address has never been proven.
+
+Permission: _Deliberately open_
+
+Request body: `EmailChange`
+
+Returns: `200` · `UserRead`
+
+</details>
+
+## `api-keys`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/api-keys` | List Personal Keys | `apikeys.personal.manage` |
+| `POST` `/api-keys` | Create Personal Key | `apikeys.personal.manage` |
+| `POST` `/api-keys/{key_id}/revoke` | Revoke Key | `apikeys.personal.manage` |
+| `GET` `/service-accounts` | List Service Accounts | `apikeys.service_account.manage` |
+| `POST` `/service-accounts` | Create Service Account | `apikeys.service_account.manage` |
+| `DELETE` `/service-accounts/{account_id}` | Delete Service Account | `apikeys.service_account.manage` |
+| `GET` `/service-accounts/{account_id}/keys` | List Service Account Keys | `apikeys.service_account.manage` |
+| `POST` `/service-accounts/{account_id}/keys` | Create Service Account Key | `apikeys.service_account.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/api-keys`
+
+**List Personal Keys**
+
+Permission: `apikeys.personal.manage`
+
+Returns: `200` · `ApiKeyRead[]`
+
+#### `POST /api/v1/api-keys`
+
+**Create Personal Key**
+
+Permission: `apikeys.personal.manage`
+
+Request body: `ApiKeyCreate`
+
+Returns: `201` · `ApiKeyCreated`
+
+#### `POST /api/v1/api-keys/{key_id}/revoke`
+
+**Revoke Key** — Revoke a key. Own personal keys need ``apikeys.personal.manage``; the service refines to ``apikeys.service_account.manage`` for a service-account key.
+
+Permission: `apikeys.personal.manage`
+
+Path parameters: `key_id`
+
+Returns: `200` · `ApiKeyRead`
+
+#### `GET /api/v1/service-accounts`
+
+**List Service Accounts** — Each account with its keys — one grouped read, not one request per account (#290).
+
+Permission: `apikeys.service_account.manage`
+
+Returns: `200` · `ServiceAccountRead[]`
+
+#### `POST /api/v1/service-accounts`
+
+**Create Service Account**
+
+Permission: `apikeys.service_account.manage`
+
+Request body: `ServiceAccountCreate`
+
+Returns: `201` · `ServiceAccountRead`
+
+#### `DELETE /api/v1/service-accounts/{account_id}`
+
+**Delete Service Account**
+
+Permission: `apikeys.service_account.manage`
+
+Path parameters: `account_id`
+
+Returns: `204`
+
+#### `GET /api/v1/service-accounts/{account_id}/keys`
+
+**List Service Account Keys**
+
+Permission: `apikeys.service_account.manage`
+
+Path parameters: `account_id`
+
+Returns: `200` · `ApiKeyRead[]`
+
+#### `POST /api/v1/service-accounts/{account_id}/keys`
+
+**Create Service Account Key**
+
+Permission: `apikeys.service_account.manage`
+
+Path parameters: `account_id`
+
+Request body: `ApiKeyCreate`
+
+Returns: `201` · `ApiKeyCreated`
+
+</details>
+
+## `oauth`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/oauth/connections` | List Connections | `apikeys.personal.manage` |
+| `DELETE` `/oauth/connections/{client_pk}` | Disconnect | `apikeys.personal.manage` |
+| `GET` `/oauth/consent` | Consent Request | _Deliberately open_ |
+| `POST` `/oauth/consent` | Approve Consent | `apikeys.personal.manage` |
+| `GET` `/oauth/metadata/authorization-server` | Authorization Server Metadata | _Deliberately open_ |
+| `GET` `/oauth/metadata/protected-resource` | Protected Resource Metadata | _Deliberately open_ |
+| `POST` `/oauth/register` | Register Client | _Deliberately open_ |
+| `POST` `/oauth/revoke` | Revoke | _Deliberately open_ |
+| `POST` `/oauth/token` | Token | _Deliberately open_ |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/oauth/connections`
+
+**List Connections** — The clients this user has connected. Counted in one grouped read, not one query per row.
+
+Permission: `apikeys.personal.manage`
+
+Returns: `200` · `app__core__oauth__router__ConnectionRead[]`
+
+#### `DELETE /api/v1/oauth/connections/{client_pk}`
+
+**Disconnect** — Disconnect a client: revoke it, and every key it ever issued goes with it.
+
+Permission: `apikeys.personal.manage`
+
+Path parameters: `client_pk`
+
+Returns: `204`
+
+#### `GET /api/v1/oauth/consent`
+
+**Consent Request** — Validate an authorization request and describe it, without writing anything.
+
+Permission: _Deliberately open_
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `client_id` | string · required |  |
+| `redirect_uri` | string · required |  |
+| `scope` | string |  (default ``) |
+| `resource` | string |  |
+
+Returns: `200` · `ConsentRequest`
+
+#### `POST /api/v1/oauth/consent`
+
+**Approve Consent** — Approve, and get the URL to send the browser back to.
+
+Permission: `apikeys.personal.manage`
+
+Request body: `ConsentApproval`
+
+Returns: `200` · `ConsentResult`
+
+#### `GET /api/v1/oauth/metadata/authorization-server`
+
+**Authorization Server Metadata** — Served here and *proxied* by the web app at ``/.well-known/oauth-authorization-server``.
+
+Permission: _Deliberately open_
+
+Returns: `200` · `object`
+
+#### `GET /api/v1/oauth/metadata/protected-resource`
+
+**Protected Resource Metadata** — One document per ``/mcp`` URL, section segment included.
+
+Permission: _Deliberately open_
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `resource_path` | string |  (default `/mcp`) |
+
+Returns: `200` · `object`
+
+#### `POST /api/v1/oauth/register`
+
+**Register Client** — Register a client. Registering grants **nothing** — it names a thing a person may later consent to, and until somebody does, the row can read no byte of tenant data.
+
+Permission: _Deliberately open_
+
+Request body: `ClientRegistration`
+
+Returns: `201`
+
+#### `POST /api/v1/oauth/revoke`
+
+**Revoke** — Always 200. A revocation endpoint that distinguishes "revoked" from "no such token" is a token oracle, and the caller can do nothing with the difference anyway (RFC 7009 §2.2).
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+#### `POST /api/v1/oauth/token`
+
+**Token** — ``authorization_code`` and ``refresh_token``. Form-encoded, per the RFC.
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+</details>
+
+## `auth`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/auth/2fa` | Auth:Twofactor.Status | _Deliberately open_ |
+| `POST` `/auth/2fa/backup-codes` | Auth:Twofactor.Backup Codes | _Deliberately open_ |
+| `POST` `/auth/2fa/challenge/sms` | Auth:Twofactor.Challenge Sms | _Deliberately open_ |
+| `POST` `/auth/2fa/confirm` | Auth:Twofactor.Confirm | _Deliberately open_ |
+| `POST` `/auth/2fa/disable` | Auth:Twofactor.Disable | _Deliberately open_ |
+| `POST` `/auth/2fa/setup` | Auth:Twofactor.Setup | _Deliberately open_ |
+| `DELETE` `/auth/2fa/sms` | Auth:Twofactor.Sms Disable | _Deliberately open_ |
+| `POST` `/auth/2fa/sms/confirm` | Auth:Twofactor.Sms Confirm | _Deliberately open_ |
+| `POST` `/auth/2fa/sms/setup` | Auth:Twofactor.Sms Setup | _Deliberately open_ |
+| `POST` `/auth/2fa/verify` | Auth:Twofactor.Verify | _Deliberately open_ |
+| `POST` `/auth/forgot-password` | Reset:Forgot Password | _Deliberately open_ |
+| `POST` `/auth/login` | Auth:Cookie.Login | _Deliberately open_ |
+| `POST` `/auth/logout` | Auth:Cookie.Logout | _Deliberately open_ |
+| `GET` `/auth/oidc/callback` | Oidc Callback | _Deliberately open_ |
+| `GET` `/auth/oidc/login` | Oidc Login | _Deliberately open_ |
+| `POST` `/auth/register` | Register:Register | _Deliberately open_ |
+| `POST` `/auth/request-verify-token` | Verify:Request-Token | _Deliberately open_ |
+| `POST` `/auth/reset-password` | Reset:Reset Password | _Deliberately open_ |
+| `POST` `/auth/verify` | Verify:Verify | _Deliberately open_ |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/auth/2fa`
+
+**Auth:Twofactor.Status**
+
+Permission: _Deliberately open_
+
+Returns: `200` · `TwoFactorStatus`
+
+#### `POST /api/v1/auth/2fa/backup-codes`
+
+**Auth:Twofactor.Backup Codes** — A fresh set (shown once), invalidating every previous code. Costs a current TOTP code — a stolen session alone must not be able to mint recovery codes.
+
+Permission: _Deliberately open_
+
+Request body: `CodeIn`
+
+Returns: `200` · `BackupCodesOut`
+
+#### `POST /api/v1/auth/2fa/challenge/sms`
+
+**Auth:Twofactor.Challenge Sms** — Text a login code to the enrolled number — only for accounts that confirmed one.
+
+Permission: _Deliberately open_
+
+Request body: `ChallengeSms`
+
+Returns: `200` · `SmsSendOut`
+
+#### `POST /api/v1/auth/2fa/confirm`
+
+**Auth:Twofactor.Confirm** — A valid code from the freshly-scanned app is what turns 2FA on — and mints the backup codes, returned exactly once.
+
+Permission: _Deliberately open_
+
+Request body: `CodeIn`
+
+Returns: `200` · `BackupCodesOut`
+
+#### `POST /api/v1/auth/2fa/disable`
+
+**Auth:Twofactor.Disable** — Turn 2FA off for the caller's own account. A **confirmed** setup costs the password (a stolen session must not be able to strip the second factor); abandoning an unconfirmed setup is free. Lost everything? That is what the org admin's reset is for (members.py).
+
+Permission: _Deliberately open_
+
+Request body: `DisableIn`
+
+Returns: `204`
+
+#### `POST /api/v1/auth/2fa/setup`
+
+**Auth:Twofactor.Setup** — Start (or restart) enrollment: mint a secret, return it as QR + manual key.
+
+Permission: _Deliberately open_
+
+Returns: `200` · `TwoFactorSetupOut`
+
+#### `DELETE /api/v1/auth/2fa/sms`
+
+**Auth:Twofactor.Sms Disable** — Drop the SMS factor (TOTP + backup codes remain — never leaves the account factor-less).
+
+Permission: _Deliberately open_
+
+Returns: `204`
+
+#### `POST /api/v1/auth/2fa/sms/confirm`
+
+**Auth:Twofactor.Sms Confirm**
+
+Permission: _Deliberately open_
+
+Request body: `CodeIn`
+
+Returns: `204`
+
+#### `POST /api/v1/auth/2fa/sms/setup`
+
+**Auth:Twofactor.Sms Setup** — Register a number for SMS codes: it becomes usable only after echoing a code sent to it. SMS is an *additional* factor on a confirmed TOTP setup, never the only one — a number can be re-registered, but 2FA cannot start out SMS-only.
+
+Permission: _Deliberately open_
+
+Request body: `SmsSetupIn`
+
+Returns: `200` · `SmsSendOut`
+
+#### `POST /api/v1/auth/2fa/verify`
+
+**Auth:Twofactor.Verify** — Redeem a login challenge with a code from any enrolled factor → session cookie.
+
+Permission: _Deliberately open_
+
+Request body: `ChallengeVerify`
+
+Returns: `200`
+
+#### `POST /api/v1/auth/forgot-password`
+
+**Reset:Forgot Password**
+
+Permission: _Deliberately open_
+
+Request body: `Body_reset_forgot_password_api_v1_auth_forgot_password_post`
+
+Returns: `202`
+
+#### `POST /api/v1/auth/login`
+
+**Auth:Cookie.Login** — Password login, **for the org this hostname resolves to**.
+
+Permission: _Deliberately open_
+
+Returns: `200` · `LoginChallenge`
+
+#### `POST /api/v1/auth/logout`
+
+**Auth:Cookie.Logout**
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+#### `GET /api/v1/auth/oidc/callback`
+
+**Oidc Callback**
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+#### `GET /api/v1/auth/oidc/login`
+
+**Oidc Login**
+
+Permission: _Deliberately open_
+
+Returns: `200`
+
+#### `POST /api/v1/auth/register`
+
+**Register:Register**
+
+Permission: _Deliberately open_
+
+Request body: `UserCreate`
+
+Returns: `201` · `UserRead`
+
+#### `POST /api/v1/auth/request-verify-token`
+
+**Verify:Request-Token**
+
+Permission: _Deliberately open_
+
+Request body: `Body_verify_request_token_api_v1_auth_request_verify_token_post`
+
+Returns: `202`
+
+#### `POST /api/v1/auth/reset-password`
+
+**Reset:Reset Password**
+
+Permission: _Deliberately open_
+
+Request body: `Body_reset_reset_password_api_v1_auth_reset_password_post`
+
+Returns: `200`
+
+#### `POST /api/v1/auth/verify`
+
+**Verify:Verify**
+
+Permission: _Deliberately open_
+
+Request body: `Body_verify_verify_api_v1_auth_verify_post`
+
+Returns: `200` · `UserRead`
+
+</details>
+
+## `sso-settings`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/settings/sso` | Get Sso Settings | `settings.auth.manage` |
+| `PUT` `/settings/sso` | Save Sso Settings | `settings.auth.manage` |
+| `POST` `/settings/sso/test` | Test Sso Settings | `settings.auth.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/settings/sso`
+
+**Get Sso Settings**
+
+Permission: `settings.auth.manage`
+
+Returns: `200` · `SsoSettingsRead`
+
+#### `PUT /api/v1/settings/sso`
+
+**Save Sso Settings**
+
+Permission: `settings.auth.manage`
+
+Request body: `SsoSettingsWrite`
+
+Returns: `200` · `SsoSettingsRead`
+
+#### `POST /api/v1/settings/sso/test`
+
+**Test Sso Settings**
+
+Permission: `settings.auth.manage`
+
+Returns: `200` · `SsoTestResult`
+
+</details>
+
+## `service-access`
+
+| Endpoint | What it does | Permission |
+| --- | --- | --- |
+| `GET` `/settings/service-access` | Service Access Status | `settings.service_access.manage` |
+| `POST` `/settings/service-access` | Issue Service Pin | `settings.service_access.manage` |
+| `DELETE` `/settings/service-access` | Revoke Service Pin | `settings.service_access.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/settings/service-access`
+
+**Service Access Status**
+
+Permission: `settings.service_access.manage`
+
+Returns: `200` · `ServiceAccessStatus`
+
+#### `POST /api/v1/settings/service-access`
+
+**Issue Service Pin**
+
+Permission: `settings.service_access.manage`
+
+Returns: `201` · `ServiceAccessIssued`
+
+#### `DELETE /api/v1/settings/service-access`
+
+**Revoke Service Pin**
+
+Permission: `settings.service_access.manage`
+
+Returns: `200` · `ServiceAccessStatus`
+
+</details>
+

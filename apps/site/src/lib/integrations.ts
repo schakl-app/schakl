@@ -5,22 +5,21 @@
 // not a field on the card: putting it in the JSON would let the CMS invent a fourteenth
 // category with one item in it, and the page's shape is a design decision, not an editorial one.
 //
-// `status` is the one thing this page exists to be honest about, and it has three values
-// rather than two on purpose:
+// `status` is the one thing this page exists to be honest about, and the line it draws is
+// between what you can connect and what you cannot:
 //
-//   live    — connect it today; it has been exercised end to end.
-//   beta    — it ships, it is connectable, and the code has never met a live credential from
-//             that provider. Mollie and OXXA are both written from the vendor's own published
-//             API documentation and tested against fakes cut from that same document, which
-//             proves the parser agrees with the document and not with the provider (see
-//             docs/MOLLIE.md §1 and docs/OXXA.md §1, each of which carries a first-credential
-//             checklist). Selling that as "available" would be a claim the repository itself
-//             contradicts, and the first person to find out would be a paying agency with a
-//             client's invoice in the balance.
-//   planned — on the roadmap, connects to nothing yet.
+//   live    — it ships, it is connectable, there is a settings screen and a guide.
+//   beta    — reserved. No card carries it today; it stays in the vocabulary because the CMS
+//             offers it and because a future integration may want to ship behind it.
+//   planned — on the roadmap, connects to nothing at all. Stripe, Adyen, Exact Online and
+//             outbound event webhooks are the four, and each carries a `roadmapNote` saying
+//             what exists instead. This is the value that must never be softened: a card
+//             reading "Available" over an integration with no screen behind it is a promise
+//             the first agency to try it discovers is false.
 //
-// A page that shows all three without saying which is which is a page that lies, so the badge
-// is never optional and roadmap cards are never mixed in among the working ones.
+// Every card carries its badge, and roadmap cards are never mixed in among the working ones —
+// `groupedIntegrations` splits them, and site-content-check.mjs enforces the two invariants a
+// roadmap card has (it explains itself; it links to no guide that cannot exist).
 export type Locale = 'nl' | 'en';
 export type IntegrationStatus = 'live' | 'beta' | 'planned';
 
@@ -71,6 +70,16 @@ export const categories: IntegrationCategory[] = [
     intro: {
       nl: 'Het register weet wie een domein betaalt, de zone weet waar het heen wijst. schakl leest allebei.',
       en: 'The registrar knows who pays for a domain, the zone knows where it points. schakl reads both.',
+    },
+  },
+  {
+    key: 'websites',
+    nl: 'Websites & monitoring',
+    en: 'Websites & monitoring',
+    lucide: 'server',
+    intro: {
+      nl: 'Wat er op de site van een klant draait, en of hij overeind staat. Allebei hangen ze aan de website, niet aan het domein.',
+      en: "What runs on a client's site, and whether it is up. Both hang off the website, not off the domain.",
     },
   },
   {

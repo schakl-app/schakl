@@ -56,8 +56,8 @@
           "en": "What you cannot do today"
         },
         "body": {
-          "nl": "Er is geen Adyen-scherm, geen plek voor gegevens en geen meldingsadres. Wil je nu online laten betalen, dan is Mollie de enige koppeling die er staat, en die is zelf nog bèta. Reken deze kaart dus niet mee bij een keuze die je deze maand moet maken.",
-          "en": "There is no Adyen screen, no place for credentials and no callback address. If you want to collect online today, Mollie is the only connection that exists, and that one is itself still in beta. So do not count this card towards a decision you have to make this month."
+          "nl": "Er is geen Adyen-scherm, geen plek voor gegevens en geen meldingsadres. Wil je vandaag online laten betalen, dan is Mollie de enige koppeling die er staat. Reken deze kaart dus niet mee bij een keuze die je deze maand moet maken.",
+          "en": "There is no Adyen screen, no place for credentials and no callback address. If you want to collect online today, Mollie is the only connection that exists. So do not count this card towards a decision you have to make this month."
         }
       }
     ],

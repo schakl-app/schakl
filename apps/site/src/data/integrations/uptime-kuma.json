@@ -1,0 +1,144 @@
+{
+  "slug": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "order": 36,
+  "category": "websites",
+  "status": "live",
+  "lucide": "activity",
+  "mark": {
+    "monogram": "UK",
+    "color": "#5CDD8B"
+  },
+  "tagline": {
+    "nl": "Ligt de site eruit, en sinds wanneer",
+    "en": "Is the site down, and since when"
+  },
+  "summary": {
+    "nl": "Uptime Kuma is de open-source monitor die de meeste bureaus al draaien. Koppel hem en een monitor wordt een echt record: met een klant, een website, een profiel, een wijzigingsspoor en een plek op de klantpagina naast het domein en het hostingaccount waar hij van afhangt. Draait de Kuma van de klant achter een firewall, dan werkt het nog steeds: dan komt het verkeer de andere kant op.",
+    "en": "Uptime Kuma is the open-source monitor most agencies already run. Connect it and a monitor becomes a real record: with a client, a website, a profile, an activity trail and a place on the client page beside the domain and the hosting account it depends on. If the client's own Kuma sits behind a firewall it still works: the traffic simply runs the other way."
+  },
+  "highlights": {
+    "nl": [
+      "Twee soorten koppeling: eentje die wij beheren, en eentje die alleen naar ons meldt",
+      "Profielen in plaats van driehonderd keer dezelfde instellingen overtypen",
+      "Wat wij besloten en wat we voor het laatst zagen staan apart, dus afwijking is zichtbaar in plaats van stilletjes overschreven",
+      "Bestaande monitors overnemen in plaats van ze opnieuw aanmaken"
+    ],
+    "en": [
+      "Two kinds of connection: one we manage, and one that only reports to us",
+      "Profiles instead of retyping the same settings three hundred times",
+      "What we decided and what we last observed are stored apart, so drift is visible rather than silently overwritten",
+      "Adopt the monitors that already exist instead of recreating them"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Uptime voor de servers en de profielen, en de kaart Uptime op een website of een domein. Op de klantpagina staat de status naast de rest van wat er voor die klant draait.",
+    "en": "Instellingen → Uptime (Settings → Uptime) for the servers and the profiles, and the Uptime card on a website or a domain. On the client page the status sits beside the rest of what runs for that client."
+  },
+  "docs": "/docs/integrations/uptime-kuma/",
+  "page": {
+    "lead": {
+      "nl": "Elke website in schakl. heeft al jaren een vinkje 'monitoren'. Dit is wat er achter dat vinkje is komen te zitten: niet een berichtje naar een automatiseringsflow, maar een monitor die een record is, met een geschiedenis die je kunt teruglezen en een afwijking die je kunt zien.",
+      "en": "Every website in schakl. has had a \"monitor this\" checkbox for years. This is what finally sits behind it: not a message fired into an automation flow, but a monitor that is a record, with a history you can read back and drift you can see."
+    },
+    "requirements": {
+      "nl": [
+        "Een Uptime Kuma-server, versie 1.23 of nieuwer; getest tegen 2.5.0",
+        "Voor een beheerde koppeling: een account op die server, en dat schakl. de server kan bereiken",
+        "Voor een gekoppelde server: alleen dat de server ons kan bereiken. Verder niets",
+        "De module Websites of Domeinen aan, want daar hangen de panelen aan"
+      ],
+      "en": [
+        "An Uptime Kuma server, version 1.23 or newer; tested against 2.5.0",
+        "For a managed connection: an account on that server, and outbound reach from schakl. to it",
+        "For a linked server: only that the server can reach us. Nothing else",
+        "The Websites or Domains module switched on, since that is what the panels attach to"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <strong>Uptime Kuma</strong> aan onder <strong>Instellingen → Integraties</strong>.",
+        "Voeg onder <strong>Instellingen → Uptime</strong> een server toe en kies de soort. <strong>Beheerd</strong> betekent dat schakl. inlogt en monitors mag aanmaken, wijzigen en pauzeren. <strong>Gekoppeld</strong> betekent dat wij niets bij die server naar binnen sturen en alleen ontvangen wat hij ons meldt. Gekoppeld is geen uitgeklede versie van beheerd: het is de stand voor een server van een klant achter een firewall, en het levert het grootste deel van de waarde op zonder dat er ook maar iets aan infrastructuur bij hoeft.",
+        "Bij een beheerde server vul je het adres en je inloggegevens in. Er wordt een sessietoken bewaard en nooit een wachtwoord; het token gaat versleuteld de opslag in en komt niet terug uit de API. Staat de server achter Cloudflare Access of een proxy, vul dan de extra <strong>verbindingsheaders</strong> in: een servicetoken of een gedeeld geheim is precies dat veld met een andere waarde, en het wordt om dezelfde reden versleuteld.",
+        "Maak een of meer <strong>profielen</strong>. Niemand typt driehonderd keer interval, aantal pogingen, herhaalinterval, geaccepteerde statuscodes en de meldkanalen over. Laat de getalvelden leeg die je wilt laten erven: leeg betekent volg de standaard, en er een getal in zetten dat niemand gekozen heeft is precies hoe een klant zich later afvraagt waarom zijn site elke twintig seconden wordt aangeklopt.",
+        "Draaide er al een Kuma, kies dan <strong>Overnemen</strong>. De bestaande monitors worden gelezen en je koppelt ze aan de website of het domein waar ze bij horen, in plaats van ze allemaal opnieuw aan te maken en tijdelijk dubbel te meten.",
+        "Zet daarna op een website het vinkje <strong>monitoren</strong> aan om er zelf een te laten aanmaken, of koppel met de hand aan een monitor die er al is.",
+        "Richt tot slot de melding in: een uitval kan een melding in schakl. worden, en een automatiseringsregel kan erop reageren."
+      ],
+      "en": [
+        "Switch <strong>Uptime Kuma</strong> on under <strong>Instellingen → Integraties</strong> (Settings → Integrations).",
+        "Add a server under <strong>Instellingen → Uptime</strong> and choose its kind. <strong>Managed</strong> means schakl. signs in and may create, change and pause monitors. <strong>Linked</strong> means we send nothing into that server and only receive what it reports. Linked is not a degraded managed: it is the mode for a client-hosted server behind a firewall, and it delivers most of the value at no infrastructure cost at all.",
+        "For a managed server, fill in the address and your credentials. A session token is stored and never a password; the token is encrypted at rest and does not come back out of the API. If the server sits behind Cloudflare Access or a proxy, fill in the extra <strong>connect headers</strong>: a service token or a shared secret is exactly that field with a different value, and it is encrypted for the same reason.",
+        "Create one or more <strong>profiles</strong>. Nobody types interval, retries, resend interval, accepted status codes and notification channels three hundred times. Leave blank the numeric boxes you want to inherit: blank means follow the default, and prefilling a number nobody chose is exactly how a client later asks why their site is polled every twenty seconds.",
+        "If a Kuma was already running, choose <strong>Adopt</strong>. Its existing monitors are read and you attach them to the website or domain they belong to, instead of recreating all of them and measuring twice for a while.",
+        "Then tick <strong>monitor this</strong> on a website to have one created, or link by hand to a monitor that already exists.",
+        "Finally set up the alert: an outage can become a notification in schakl., and an automation rule can react to it."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Gekoppeld is geen uitgeklede beheerde server",
+          "en": "Linked is not a degraded managed"
+        },
+        "body": {
+          "nl": "Een bureau draait er zelf een, en een klant draait er soms zelf een die wij mogen bijhouden. Voor dat tweede geval bestaat de gekoppelde soort: wij hebben geen sessie, geen uitgaand verkeer en geen mogelijkheid om er iets te wijzigen, en toch krijgt de klantpagina een statustijdlijn, kan er een melding komen en kan een automatiseringsregel erop reageren, want het verkeer loopt de andere kant op. Ontwerpen alsof beheerd de enige echte soort is, is precies hoe je een functie bouwt die het in een demo doet en bij één klant.",
+          "en": "An agency runs one for itself, and a client sometimes runs one we are asked to look after. The linked kind exists for the second case: we hold no session, need no outbound reach and cannot change anything, and yet the client page still gets a status timeline, an alert can still fire and an automation rule can still react, because the traffic runs the other way. Designing as if managed were the only real kind is exactly how you build a feature that works in a demo and for one client."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat besloten is en wat waargenomen is, staan apart",
+          "en": "What was decided and what was observed are kept apart"
+        },
+        "body": {
+          "nl": "Uptime Kuma heeft een eigen webinterface, en die is goed, dus iemand gaat er een monitor in aanpassen. Een berichtje dat één keer afgevuurd wordt kan dat niet merken; een spiegel wel. Daarom wordt bewaard wat schakl. heeft besloten én wat er als laatste is waargenomen, in aparte velden, en meldt een controle een afwijking in plaats van hem stilzwijgend te overschrijven. Monitorgegevens kunnen bovendien geheimen bevatten (een header met een token, een basisauthenticatie), dus daarvan wordt een vingerafdruk bewaard en niet de waarde: genoeg om te zien dát er iets veranderd is, zonder er een tweede plek van te maken waar het geheim staat.",
+          "en": "Uptime Kuma has a web interface of its own, and it is good, so somebody will edit a monitor in it. A message fired once cannot notice that; a mirror can. So both what schakl. decided and what was last observed are stored, in separate fields, and a check reports drift instead of silently overwriting it. Monitor payloads can also carry secrets (a header with a token, a basic-auth pair), so a fingerprint of those is kept rather than the value: enough to see that something changed, without becoming a second place the secret lives."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Profielen, en de drie lagen die niet mogen versmelten",
+          "en": "Profiles, and the three layers that must not fuse"
+        },
+        "body": {
+          "nl": "Er zijn drie lagen en ze doen elk iets anders. Productgrenzen staan in de code: een interval onder wat de server accepteert, of een type dat deze versie niet kent, wordt hoe dan ook rechtgetrokken. De huisstandaard van het bureau is een profiel, want een beleid dat in de broncode gebakken zit is een beslissing die wij voor jou genomen hebben. En wat er waar is over déze ene monitor staat op de monitor zelf. Leeg betekent erven, een waarde betekent overschrijven, en expliciet leegmaken is hoe je 'volg de standaard' terugzet. De grenzen worden als laatste toegepast, ná het profiel en ná de monitor, zodat niets wat een bureau instelt onder een bodem kan zakken die de server toch zou weigeren. En een profiel kan nooit een URL zetten: een profiel dat dat wel kon, kon veertig monitors in één keer op de verkeerde host richten.",
+          "en": "There are three layers and each does something different. Product invariants live in code: an interval below what the server accepts, or a type this version does not have, is clamped whatever happens. The agency's house default is a profile, because a policy compiled into the source is a decision we took for you. And what is true about this one monitor lives on the monitor. Blank means inherit, a value means override, and explicitly clearing it is how you put \"follow the default\" back. The invariants clamp last, after both the profile and the monitor, so nothing configured can slip under a floor the server would refuse anyway. And a profile can never set a URL: a profile that could would be able to point forty monitors at the wrong host in one save."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "uptime.instance.manage",
+        "nl": "Servers en profielen toevoegen, wijzigen en verwijderen. Standaard alleen beheerders, want hier staan inloggegevens.",
+        "en": "Add, change and remove servers and profiles. Admin only by default, since credentials live here."
+      },
+      {
+        "key": "uptime.monitor.read",
+        "nl": "Monitors en hun status zien op een website, een domein of een klantpagina.",
+        "en": "See monitors and their status on a website, a domain or a client page."
+      },
+      {
+        "key": "uptime.monitor.write",
+        "nl": "Monitors aanmaken, wijzigen, pauzeren en koppelen. Alleen mogelijk op een beheerde server.",
+        "en": "Create, change, pause and link monitors. Only possible on a managed server."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Op een gekoppelde server kan schakl. niets aanmaken of wijzigen. Dat is de afspraak van die soort en geen tekortkoming: wij sturen daar niets naar binnen.",
+        "Er wordt een sessietoken bewaard en nooit een wachtwoord, en ook nooit een tweestapsgeheim. Vervalt het token, dan vraagt het scherm om opnieuw koppelen in plaats van het als een storing te melden.",
+        "Uptime Kuma heeft geen echte REST-API. De verbinding loopt over de socketverbinding die zijn eigen webinterface ook gebruikt, en daarom is het aantal ondersteunde versies iets waar we op letten in plaats van iets wat vanzelf goed gaat.",
+        "Een server op een privéadres wordt standaard geweigerd, zoals elk uitgaand doel in schakl. Draait je Kuma op je eigen LAN, dan zet een beheerder dat bewust aan.",
+        "Wat je hier ziet is de status van de server; het is geen tweede monitor. Ligt de Kuma zelf eruit, dan weet schakl. dat niet uit zichzelf."
+      ],
+      "en": [
+        "On a linked server schakl. can create nothing and change nothing. That is the contract of that kind, not a shortcoming: we send nothing into it.",
+        "A session token is stored and never a password, and never a two-factor secret. If the token expires the screen asks you to reconnect rather than reporting it as an outage.",
+        "Uptime Kuma has no real REST API. The connection runs over the socket its own web interface uses, which is why the range of supported versions is something we watch rather than something that takes care of itself.",
+        "A server on a private address is refused by default, like every outbound target in schakl. If your Kuma runs on your own LAN, an administrator switches that on deliberately.",
+        "What you see here is the status the server reports; it is not a second monitor. If the Kuma itself goes down, schakl. does not know that by itself."
+      ]
+    }
+  }
+}

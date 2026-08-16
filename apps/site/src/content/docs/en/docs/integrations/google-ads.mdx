@@ -1,0 +1,181 @@
+---
+title: Google Ads
+description: "Read a client's campaigns, spend and search terms, and — with a policy holding the guardrails — change budgets, keywords and exclusions from here or from an AI assistant."
+sidebar:
+  order: 9
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Google Ads started here as one more number on the marketing dashboard. It is now a module of its
+own, because an agency does more with an advertising account than look at it: campaigns get
+paused, search terms get excluded, budgets get raised for a fortnight in December. All of that is
+here, split into permissions fine enough that you can hand out *"tidy the search terms overnight"*
+without also handing out *"change what this client spends"*.
+
+## Where to find it
+
+- **Instellingen → Google Ads** (Settings → Google Ads) — the developer token, your manager
+  account, and the advertiser accounts you link per client.
+- **Marketing → Google Ads** — the working surface: campaigns, ad groups, ads, keywords, search
+  terms, negatives, devices, geography and recommendations.
+- The **Marketing** tab on a client, and the marketing dashboard, for the figures.
+
+## Before you start
+
+<Steps>
+1. A **Google Ads manager account** (MCC), which is the ordinary shape for an agency: your
+   clients' accounts sit under it.
+2. A **developer token** from that manager account's **API Center**. Apply early — Google reviews
+   the application itself, and a freshly issued token starts with test access only.
+3. The **Google Workspace** integration connected, with a Google account that has access to the
+   manager. Google Ads rides that grant; there is no second sign-in.
+4. The **Google Ads API** enabled in the same Google Cloud project as the rest of your Google
+   integration.
+</Steps>
+
+<Aside type="tip" title="Your manager account is the point, not an edge case">
+Google's own "which accounts can I reach" call answers with *direct* grants only, and your user is
+granted the **manager**, not the twenty clients under it. So a naive integration shows you one
+account and none of your clients. schakl. expands each manager and tags every child with the
+manager it has to be reached through — which is also why linking asks you to pick from a list
+rather than type an id.
+</Aside>
+
+## Linking an account to a client
+
+<Steps>
+1. Go to *Instellingen → Google Ads*, paste the developer token and save. It is stored encrypted
+   and never handed back to the browser.
+2. Pick the advertiser account from the list and attach it to a client.
+3. Press **Controleren** (Verify) to confirm the grant actually reaches it.
+</Steps>
+
+The link is the truth; the marketing module keeps a copy of the account id beside it purely so a
+client page can draw its tile without a second lookup. Unlinking never touches anything at Google.
+
+## What you can read
+
+| Screen | What it answers |
+| --- | --- |
+| Campaigns, ad groups, ads | What is running, and what it costs |
+| Keywords and search terms | What people actually typed, versus what you bid on |
+| Negatives and shared lists | What is excluded, and where |
+| Devices and geography | Where the spend goes |
+| Recommendations | What Google suggests, without applying any of it |
+| Change history | What changed in the account, and when |
+| Conversion health | Whether the conversions being counted are actually arriving |
+
+There is also a **query passthrough** for anything the screens do not cover. It is gated on its own
+permission, bounded to an allow-list of resources and a cost ceiling, and it is structurally
+read-only: the query language has no write syntax, and the account id comes from your own linked
+row rather than from the caller.
+
+## What you can change, and the four keys
+
+The obvious design is one `google_ads.write` permission, and it is wrong for the reason this module
+exists: the surface is reached over MCP by an assistant holding an API key, and a key carries
+permission scopes. One write key means the only key you can mint may do everything.
+
+| Permission | Gates | Default |
+| --- | --- | --- |
+| `google_ads.settings.manage` | Developer token, linking, verifying | Administrator |
+| `google_ads.account.read` | Every read | Administrator, Member |
+| `google_ads.policy.manage` | The per-client policy and the decisions log | Administrator |
+| `google_ads.query.run` | The query passthrough | Administrator |
+| `google_ads.campaign.write` | Campaigns, ad groups, ads | Administrator |
+| `google_ads.budget.write` | Budgets — separate, because this is the money | Administrator |
+| `google_ads.keyword.write` | Keywords | Administrator |
+| `google_ads.negative.write` | Negatives and shared lists | Administrator |
+
+None is ever granted to the **Client** role: the read alone covers cost-per-click and your own
+spend, and no client selection narrows that into something safe to show a client.
+
+Beside the permissions sits an instance-wide **kill switch** for writes. The permission decides
+*who*; the switch decides *whether*, in one place an owner can reach in a hurry without editing
+eight role grants.
+
+<Aside type="note" title="Everything is created paused">
+A new campaign, ad group or ad arrives **PAUSED**. Nothing this integration creates starts
+spending money before a person looks at it and starts it.
+</Aside>
+
+## The policy: guardrails an assistant cannot argue with
+
+A policy per advertiser account (with your agency's own as the house default) holds what may never
+happen, whatever anybody asks for.
+
+- **Protected terms** — brand words that must never be excluded.
+- **Banned phrases** — wording that may not appear in an ad.
+- **A daily budget ceiling**, and **a maximum cost per click**.
+- **A maximum budget increase**, built in at 100%: a budget may at most double in one change.
+- **Steering** — your standing house instructions, and what is true about this one advertiser,
+  kept as two separate paragraphs.
+
+Three layers, and they must not fuse: product invariants are code, your agency's standing rules are
+the house policy, and what is true about one advertiser is that account's policy. Lists **union**,
+numbers **inherit**, and the two steering texts stay separate — a house rule of *"we never bid on
+competitor names"* concatenated onto a client's *"this client sells competitor parts"* is one
+contradictory instruction nobody wrote.
+
+<Aside type="tip" title="Why the one built-in limit is relative">
+A *relative* ceiling needs no knowledge of your accounts, so it can be defaulted honestly: doubling
+is an ordinary seasonal change and 10× is the extra zero somebody typed. Any absolute figure
+invented in software would refuse a legitimate budget on one account and wave a mistake through on
+another. The consequence is worth knowing: a budget **create** has no previous amount, so nothing
+relative can bound it — set `max_daily_budget` on accounts where that matters.
+</Aside>
+
+### A refusal that cries wolf gets switched off
+
+A protected term is only enforced where the exclusion **would actually block it**. The naive
+version refuses any exclusion containing a protected word, and it is wrong in the direction that
+matters: an exact-match negative on "beugel kosten" cannot stop "beugel" from serving, so refusing
+it teaches an agency that the guard is noise — and the next thing they do is turn it off. So
+Google's own matching rules are reproduced, and an unknown match type is read as the widest one, so
+the failure direction is "refused something harmless" rather than "let a client's brand go dark".
+
+### A bad call is refused; a bad row is reported
+
+A budget over the ceiling **is** the call — one budget, one answer — so it is refused outright,
+naming the field and the limit. One protected term inside a batch of twelve exclusions is one row:
+refusing all twelve because the guard did its job on one of them punishes you for something that
+worked. So that row is skipped, reported, and **named** — "refused" invites an argument with the
+software; "would also block *beugel*" invites a fix.
+
+### The decisions log
+
+`kept` is the entry that exists nowhere else. Google records that you excluded a term; it records
+nothing at all about the terms you looked at and deliberately left alone — which is exactly why the
+same shortlist comes back every month until nobody reads it. So one review pass records both
+halves: what you excluded, and what you decided to keep, with the reason.
+
+## Good to know
+
+- **A retry is safe for a read and never for a write.** A retried campaign create is a second
+  campaign spending a second budget, so only reads are retried, and Google's own suggested delay
+  outranks any schedule we might invent.
+- **Every write can be dry-run.** Google validates against the account's *actual* structure and
+  applies nothing — better than a test account, which serves no ads and therefore has nothing
+  worth validating against.
+- **Deleting is its own action.** In Google's API "removed" is a state you can read and not one you
+  can set, so removal is a separate call. Removing a campaign does not cascade to its ad groups,
+  and afterwards they cannot be removed at all — so delete leaf-first.
+- **Creating a campaign takes an existing budget.** A campaign route that could conjure a budget
+  would make `campaign.write` a budget key with extra steps.
+- **A refusal is a diagnosis, not a status code.** "This login has no grant", "the API Center
+  application was never finished" and "the client's account is suspended" all arrive as 403 from
+  Google, with three different people who can fix them. They are told apart and reported
+  separately.
+- **The browser does what a person does; the assistant does the rest.** Reviewing a search-terms
+  list and pausing or resuming a campaign are on screen. Building a campaign from nothing is four
+  dependent calls with a budget decision in the middle, and that belongs to the API and MCP
+  surface.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Google Tag Manager" href="/en/docs/integrations/google-tag-manager/" description="Where the conversions these campaigns are measured against get set up." />
+  <LinkCard title="Marketing sources" href="/en/docs/integrations/marketing-sources/" description="Google Ads as one of five sources of client figures." />
+  <LinkCard title="MCP server" href="/en/docs/integrations/mcp/" description="How an assistant reaches this surface, and with which scopes." />
+</CardGrid>
