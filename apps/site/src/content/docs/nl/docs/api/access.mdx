@@ -11,16 +11,16 @@ Wie er mag inloggen, wat diegene daarna mag, welke klanten diegene ziet, en de s
 
 ## `members`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/members` | List Members | `members.member.read` |
-| `PATCH` `/members/{membership_id}` | Update Member Role | `members.member.write` |
-| `DELETE` `/members/{membership_id}` | Revoke Member | `members.member.write` |
-| `GET` `/members/{membership_id}/permissions` | Member Permissions | `members.member.read` |
-| `PUT` `/members/{membership_id}/roles` | Set Member Roles | `settings.roles.manage` |
-| `DELETE` `/members/{membership_id}/two-factor` | Reset Member Two Factor | `members.member.write` |
-| `POST` `/members/invite` | Invite Member | `members.member.write` |
-| `GET` `/members/lookup` | Lookup Members | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/members` | `members.member.read` |
+| `PATCH` `/members/{membership_id}` | `members.member.write` |
+| `DELETE` `/members/{membership_id}` | `members.member.write` |
+| `GET` `/members/{membership_id}/permissions` | `members.member.read` |
+| `PUT` `/members/{membership_id}/roles` | `settings.roles.manage` |
+| `DELETE` `/members/{membership_id}/two-factor` | `members.member.write` |
+| `POST` `/members/invite` | `members.member.write` |
+| `GET` `/members/lookup` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -116,13 +116,13 @@ Antwoord: `200` · `MemberLookup[]`
 
 ## `roles`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/permissions/catalog` | Permission Catalog | _Bewust open_ |
-| `GET` `/roles` | List Roles | `settings.roles.manage` |
-| `POST` `/roles` | Create Role | `settings.roles.manage` |
-| `PATCH` `/roles/{role_id}` | Update Role | `settings.roles.manage` |
-| `DELETE` `/roles/{role_id}` | Delete Role | `settings.roles.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/permissions/catalog` | _Bewust open_ |
+| `GET` `/roles` | `settings.roles.manage` |
+| `POST` `/roles` | `settings.roles.manage` |
+| `PATCH` `/roles/{role_id}` | `settings.roles.manage` |
+| `DELETE` `/roles/{role_id}` | `settings.roles.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -185,14 +185,14 @@ Antwoord: `204`
 
 ## `users`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/users/{id}` | Users:User | _Bewust open_ |
-| `PATCH` `/users/{id}` | Users:Patch User | _Bewust open_ |
-| `DELETE` `/users/{id}` | Users:Delete User | _Bewust open_ |
-| `GET` `/users/me` | Users:Current User | _Bewust open_ |
-| `PATCH` `/users/me` | Users:Patch Current User | _Bewust open_ |
-| `POST` `/users/me/email` | Users:Change Email | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/users/{id}` | _Bewust open_ |
+| `PATCH` `/users/{id}` | _Bewust open_ |
+| `DELETE` `/users/{id}` | _Bewust open_ |
+| `GET` `/users/me` | _Bewust open_ |
+| `PATCH` `/users/me` | _Bewust open_ |
+| `POST` `/users/me/email` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -261,16 +261,16 @@ Antwoord: `200` · `UserRead`
 
 ## `api-keys`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/api-keys` | List Personal Keys | `apikeys.personal.manage` |
-| `POST` `/api-keys` | Create Personal Key | `apikeys.personal.manage` |
-| `POST` `/api-keys/{key_id}/revoke` | Revoke Key | `apikeys.personal.manage` |
-| `GET` `/service-accounts` | List Service Accounts | `apikeys.service_account.manage` |
-| `POST` `/service-accounts` | Create Service Account | `apikeys.service_account.manage` |
-| `DELETE` `/service-accounts/{account_id}` | Delete Service Account | `apikeys.service_account.manage` |
-| `GET` `/service-accounts/{account_id}/keys` | List Service Account Keys | `apikeys.service_account.manage` |
-| `POST` `/service-accounts/{account_id}/keys` | Create Service Account Key | `apikeys.service_account.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/api-keys` | `apikeys.personal.manage` |
+| `POST` `/api-keys` | `apikeys.personal.manage` |
+| `POST` `/api-keys/{key_id}/revoke` | `apikeys.personal.manage` |
+| `GET` `/service-accounts` | `apikeys.service_account.manage` |
+| `POST` `/service-accounts` | `apikeys.service_account.manage` |
+| `DELETE` `/service-accounts/{account_id}` | `apikeys.service_account.manage` |
+| `GET` `/service-accounts/{account_id}/keys` | `apikeys.service_account.manage` |
+| `POST` `/service-accounts/{account_id}/keys` | `apikeys.service_account.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -357,17 +357,17 @@ Antwoord: `201` · `ApiKeyCreated`
 
 ## `oauth`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/oauth/connections` | List Connections | `apikeys.personal.manage` |
-| `DELETE` `/oauth/connections/{client_pk}` | Disconnect | `apikeys.personal.manage` |
-| `GET` `/oauth/consent` | Consent Request | _Bewust open_ |
-| `POST` `/oauth/consent` | Approve Consent | `apikeys.personal.manage` |
-| `GET` `/oauth/metadata/authorization-server` | Authorization Server Metadata | _Bewust open_ |
-| `GET` `/oauth/metadata/protected-resource` | Protected Resource Metadata | _Bewust open_ |
-| `POST` `/oauth/register` | Register Client | _Bewust open_ |
-| `POST` `/oauth/revoke` | Revoke | _Bewust open_ |
-| `POST` `/oauth/token` | Token | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/oauth/connections` | `apikeys.personal.manage` |
+| `DELETE` `/oauth/connections/{client_pk}` | `apikeys.personal.manage` |
+| `GET` `/oauth/consent` | _Bewust open_ |
+| `POST` `/oauth/consent` | `apikeys.personal.manage` |
+| `GET` `/oauth/metadata/authorization-server` | _Bewust open_ |
+| `GET` `/oauth/metadata/protected-resource` | _Bewust open_ |
+| `POST` `/oauth/register` | _Bewust open_ |
+| `POST` `/oauth/revoke` | _Bewust open_ |
+| `POST` `/oauth/token` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -469,27 +469,27 @@ Antwoord: `200`
 
 ## `auth`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/auth/2fa` | Auth:Twofactor.Status | _Bewust open_ |
-| `POST` `/auth/2fa/backup-codes` | Auth:Twofactor.Backup Codes | _Bewust open_ |
-| `POST` `/auth/2fa/challenge/sms` | Auth:Twofactor.Challenge Sms | _Bewust open_ |
-| `POST` `/auth/2fa/confirm` | Auth:Twofactor.Confirm | _Bewust open_ |
-| `POST` `/auth/2fa/disable` | Auth:Twofactor.Disable | _Bewust open_ |
-| `POST` `/auth/2fa/setup` | Auth:Twofactor.Setup | _Bewust open_ |
-| `DELETE` `/auth/2fa/sms` | Auth:Twofactor.Sms Disable | _Bewust open_ |
-| `POST` `/auth/2fa/sms/confirm` | Auth:Twofactor.Sms Confirm | _Bewust open_ |
-| `POST` `/auth/2fa/sms/setup` | Auth:Twofactor.Sms Setup | _Bewust open_ |
-| `POST` `/auth/2fa/verify` | Auth:Twofactor.Verify | _Bewust open_ |
-| `POST` `/auth/forgot-password` | Reset:Forgot Password | _Bewust open_ |
-| `POST` `/auth/login` | Auth:Cookie.Login | _Bewust open_ |
-| `POST` `/auth/logout` | Auth:Cookie.Logout | _Bewust open_ |
-| `GET` `/auth/oidc/callback` | Oidc Callback | _Bewust open_ |
-| `GET` `/auth/oidc/login` | Oidc Login | _Bewust open_ |
-| `POST` `/auth/register` | Register:Register | _Bewust open_ |
-| `POST` `/auth/request-verify-token` | Verify:Request-Token | _Bewust open_ |
-| `POST` `/auth/reset-password` | Reset:Reset Password | _Bewust open_ |
-| `POST` `/auth/verify` | Verify:Verify | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/auth/2fa` | _Bewust open_ |
+| `POST` `/auth/2fa/backup-codes` | _Bewust open_ |
+| `POST` `/auth/2fa/challenge/sms` | _Bewust open_ |
+| `POST` `/auth/2fa/confirm` | _Bewust open_ |
+| `POST` `/auth/2fa/disable` | _Bewust open_ |
+| `POST` `/auth/2fa/setup` | _Bewust open_ |
+| `DELETE` `/auth/2fa/sms` | _Bewust open_ |
+| `POST` `/auth/2fa/sms/confirm` | _Bewust open_ |
+| `POST` `/auth/2fa/sms/setup` | _Bewust open_ |
+| `POST` `/auth/2fa/verify` | _Bewust open_ |
+| `POST` `/auth/forgot-password` | _Bewust open_ |
+| `POST` `/auth/login` | _Bewust open_ |
+| `POST` `/auth/logout` | _Bewust open_ |
+| `GET` `/auth/oidc/callback` | _Bewust open_ |
+| `GET` `/auth/oidc/login` | _Bewust open_ |
+| `POST` `/auth/register` | _Bewust open_ |
+| `POST` `/auth/request-verify-token` | _Bewust open_ |
+| `POST` `/auth/reset-password` | _Bewust open_ |
+| `POST` `/auth/verify` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -674,11 +674,11 @@ Antwoord: `200` · `UserRead`
 
 ## `sso-settings`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/settings/sso` | Get Sso Settings | `settings.auth.manage` |
-| `PUT` `/settings/sso` | Save Sso Settings | `settings.auth.manage` |
-| `POST` `/settings/sso/test` | Test Sso Settings | `settings.auth.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/settings/sso` | `settings.auth.manage` |
+| `PUT` `/settings/sso` | `settings.auth.manage` |
+| `POST` `/settings/sso/test` | `settings.auth.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -713,11 +713,11 @@ Antwoord: `200` · `SsoTestResult`
 
 ## `service-access`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/settings/service-access` | Service Access Status | `settings.service_access.manage` |
-| `POST` `/settings/service-access` | Issue Service Pin | `settings.service_access.manage` |
-| `DELETE` `/settings/service-access` | Revoke Service Pin | `settings.service_access.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/settings/service-access` | `settings.service_access.manage` |
+| `POST` `/settings/service-access` | `settings.service_access.manage` |
+| `DELETE` `/settings/service-access` | `settings.service_access.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>

@@ -11,19 +11,19 @@ What an agency looks after on a client's behalf, and the four services it reads 
 
 ## `domains`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/domains` | List Domains | `domains.domain.read` |
-| `POST` `/domains` | Create Domain | `domains.domain.write` |
-| `GET` `/domains/{domain_id}` | Get Domain | `domains.domain.read` |
-| `PATCH` `/domains/{domain_id}` | Update Domain | `domains.domain.write` |
-| `DELETE` `/domains/{domain_id}` | Delete Domain | `domains.domain.delete` |
-| `POST` `/domains/{domain_id}/refresh` | Refresh Domain Dns | `domains.domain.write` |
-| `GET` `/domains/tld-prices` | List Tld Prices | `domains.tld_price.read` |
-| `POST` `/domains/tld-prices` | Set Tld Price | `domains.tld_price.manage` |
-| `DELETE` `/domains/tld-prices/{price_id}` | Delete Tld Price | `domains.tld_price.manage` |
-| `POST` `/domains/tld-prices/price-increase` | Apply Tld Price Increase | `domains.tld_price.manage` |
-| `POST` `/domains/tld-prices/price-increase/preview` | Preview Tld Price Increase | `domains.tld_price.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/domains` | `domains.domain.read` |
+| `POST` `/domains` | `domains.domain.write` |
+| `GET` `/domains/{domain_id}` | `domains.domain.read` |
+| `PATCH` `/domains/{domain_id}` | `domains.domain.write` |
+| `DELETE` `/domains/{domain_id}` | `domains.domain.delete` |
+| `POST` `/domains/{domain_id}/refresh` | `domains.domain.write` |
+| `GET` `/domains/tld-prices` | `domains.tld_price.read` |
+| `POST` `/domains/tld-prices` | `domains.tld_price.manage` |
+| `DELETE` `/domains/tld-prices/{price_id}` | `domains.tld_price.manage` |
+| `POST` `/domains/tld-prices/price-increase` | `domains.tld_price.manage` |
+| `POST` `/domains/tld-prices/price-increase/preview` | `domains.tld_price.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -156,14 +156,14 @@ Returns: `200` · `TldPriceIncreaseResult`
 
 ## `websites`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/websites` | List Websites | `websites.website.read` |
-| `POST` `/websites` | Create Website | `websites.website.write` |
-| `GET` `/websites/{website_id}` | Get Website | `websites.website.read` |
-| `PATCH` `/websites/{website_id}` | Update Website | `websites.website.write` |
-| `DELETE` `/websites/{website_id}` | Delete Website | `websites.website.delete` |
-| `GET` `/websites/available-domains` | List Available Domains | `websites.website.write` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/websites` | `websites.website.read` |
+| `POST` `/websites` | `websites.website.write` |
+| `GET` `/websites/{website_id}` | `websites.website.read` |
+| `PATCH` `/websites/{website_id}` | `websites.website.write` |
+| `DELETE` `/websites/{website_id}` | `websites.website.delete` |
+| `GET` `/websites/available-domains` | `websites.website.write` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -251,13 +251,13 @@ Returns: `200` · `AvailableDomain[]`
 
 ## `hosting`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/hosting` | List Hosting | `hosting.hosting.read` |
-| `POST` `/hosting` | Create Hosting | `hosting.hosting.write` |
-| `GET` `/hosting/{hosting_id}` | Get Hosting | `hosting.hosting.read` |
-| `PATCH` `/hosting/{hosting_id}` | Update Hosting | `hosting.hosting.write` |
-| `DELETE` `/hosting/{hosting_id}` | Delete Hosting | `hosting.hosting.delete` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/hosting` | `hosting.hosting.read` |
+| `POST` `/hosting` | `hosting.hosting.write` |
+| `GET` `/hosting/{hosting_id}` | `hosting.hosting.read` |
+| `PATCH` `/hosting/{hosting_id}` | `hosting.hosting.write` |
+| `DELETE` `/hosting/{hosting_id}` | `hosting.hosting.delete` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -328,34 +328,34 @@ Returns: `204`
 
 ## `cloudflare`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/cloudflare/accounts` | List Accounts | `cloudflare.settings.manage` |
-| `POST` `/cloudflare/accounts` | Create Account | `cloudflare.settings.manage` |
-| `PATCH` `/cloudflare/accounts/{account_id}` | Update Account | `cloudflare.settings.manage` |
-| `DELETE` `/cloudflare/accounts/{account_id}` | Delete Account | `cloudflare.settings.manage` |
-| `POST` `/cloudflare/accounts/{account_id}/sync` | Sync Account | `cloudflare.settings.manage` |
-| `POST` `/cloudflare/accounts/{account_id}/verify` | Verify Account | `cloudflare.settings.manage` |
-| `GET` `/cloudflare/accounts/options` | List Account Options | `cloudflare.dns.read` |
-| `POST` `/cloudflare/domains/{domain_id}/check` | Cloudflare Check Domain | `cloudflare.dns.read` |
-| `POST` `/cloudflare/domains/{domain_id}/connect` | Connect Domain | `cloudflare.zone.manage` |
-| `POST` `/cloudflare/domains/{domain_id}/pages` | Link Pages Project | `cloudflare.zone.manage` |
-| `PUT` `/cloudflare/domains/{domain_id}/redirect` | Set Redirect | `cloudflare.zone.manage` |
-| `DELETE` `/cloudflare/domains/{domain_id}/redirect` | Remove Redirect | `cloudflare.zone.manage` |
-| `POST` `/cloudflare/domains/{domain_id}/redirect/adopt` | Adopt Redirect | `cloudflare.zone.manage` |
-| `PUT` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | Edit Zone Redirect | `cloudflare.zone.manage` |
-| `DELETE` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | Delete Zone Redirect | `cloudflare.zone.manage` |
-| `GET` `/cloudflare/domains/{domain_id}/status` | Cloudflare Domain Status | `cloudflare.dns.read` |
-| `DELETE` `/cloudflare/pages/links/{link_id}` | Unlink Pages Project | `cloudflare.zone.manage` |
-| `GET` `/cloudflare/pages/projects` | List Pages Projects | `cloudflare.dns.read` |
-| `GET` `/cloudflare/zones` | List Zones | `cloudflare.dns.read` |
-| `GET` `/cloudflare/zones/{zone_id}/dns` | List Dns | `cloudflare.dns.read` |
-| `POST` `/cloudflare/zones/{zone_id}/dns` | Create Dns Record | `cloudflare.zone.manage` |
-| `PATCH` `/cloudflare/zones/{zone_id}/dns/{record_id}` | Update Dns Record | `cloudflare.zone.manage` |
-| `DELETE` `/cloudflare/zones/{zone_id}/dns/{record_id}` | Delete Dns Record | `cloudflare.zone.manage` |
-| `GET` `/cloudflare/zones/{zone_id}/dns/export` | Export Dns | `cloudflare.dns.read` |
-| `POST` `/cloudflare/zones/{zone_id}/link` | Link Zone | `cloudflare.zone.manage` |
-| `DELETE` `/cloudflare/zones/{zone_id}/link` | Unlink Zone | `cloudflare.zone.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/cloudflare/accounts` | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts` | `cloudflare.settings.manage` |
+| `PATCH` `/cloudflare/accounts/{account_id}` | `cloudflare.settings.manage` |
+| `DELETE` `/cloudflare/accounts/{account_id}` | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts/{account_id}/sync` | `cloudflare.settings.manage` |
+| `POST` `/cloudflare/accounts/{account_id}/verify` | `cloudflare.settings.manage` |
+| `GET` `/cloudflare/accounts/options` | `cloudflare.dns.read` |
+| `POST` `/cloudflare/domains/{domain_id}/check` | `cloudflare.dns.read` |
+| `POST` `/cloudflare/domains/{domain_id}/connect` | `cloudflare.zone.manage` |
+| `POST` `/cloudflare/domains/{domain_id}/pages` | `cloudflare.zone.manage` |
+| `PUT` `/cloudflare/domains/{domain_id}/redirect` | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/domains/{domain_id}/redirect` | `cloudflare.zone.manage` |
+| `POST` `/cloudflare/domains/{domain_id}/redirect/adopt` | `cloudflare.zone.manage` |
+| `PUT` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}` | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/domains/{domain_id}/status` | `cloudflare.dns.read` |
+| `DELETE` `/cloudflare/pages/links/{link_id}` | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/pages/projects` | `cloudflare.dns.read` |
+| `GET` `/cloudflare/zones` | `cloudflare.dns.read` |
+| `GET` `/cloudflare/zones/{zone_id}/dns` | `cloudflare.dns.read` |
+| `POST` `/cloudflare/zones/{zone_id}/dns` | `cloudflare.zone.manage` |
+| `PATCH` `/cloudflare/zones/{zone_id}/dns/{record_id}` | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/zones/{zone_id}/dns/{record_id}` | `cloudflare.zone.manage` |
+| `GET` `/cloudflare/zones/{zone_id}/dns/export` | `cloudflare.dns.read` |
+| `POST` `/cloudflare/zones/{zone_id}/link` | `cloudflare.zone.manage` |
+| `DELETE` `/cloudflare/zones/{zone_id}/link` | `cloudflare.zone.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -658,19 +658,19 @@ Returns: `200` · `ZoneRead`
 
 ## `oxxa`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/oxxa/accounts` | List Accounts | `oxxa.settings.manage` |
-| `POST` `/oxxa/accounts` | Create Account | `oxxa.settings.manage` |
-| `PATCH` `/oxxa/accounts/{account_id}` | Update Account | `oxxa.settings.manage` |
-| `DELETE` `/oxxa/accounts/{account_id}` | Delete Account | `oxxa.settings.manage` |
-| `POST` `/oxxa/accounts/{account_id}/sync` | Sync Account | `oxxa.registrar.sync` |
-| `POST` `/oxxa/accounts/{account_id}/verify` | Verify Account | `oxxa.settings.manage` |
-| `GET` `/oxxa/accounts/options` | List Account Options | `oxxa.registrar.sync` |
-| `GET` `/oxxa/domains` | List Register | `oxxa.registrar.sync` |
-| `POST` `/oxxa/domains/{domain_id}/nameservers` | Push Nameservers | `oxxa.registrar.manage` |
-| `POST` `/oxxa/domains/{domain_id}/refresh` | Refresh Domain | `oxxa.registrar.sync` |
-| `GET` `/oxxa/domains/{domain_id}/status` | Domain Status | `oxxa.registrar.sync` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/oxxa/accounts` | `oxxa.settings.manage` |
+| `POST` `/oxxa/accounts` | `oxxa.settings.manage` |
+| `PATCH` `/oxxa/accounts/{account_id}` | `oxxa.settings.manage` |
+| `DELETE` `/oxxa/accounts/{account_id}` | `oxxa.settings.manage` |
+| `POST` `/oxxa/accounts/{account_id}/sync` | `oxxa.registrar.sync` |
+| `POST` `/oxxa/accounts/{account_id}/verify` | `oxxa.settings.manage` |
+| `GET` `/oxxa/accounts/options` | `oxxa.registrar.sync` |
+| `GET` `/oxxa/domains` | `oxxa.registrar.sync` |
+| `POST` `/oxxa/domains/{domain_id}/nameservers` | `oxxa.registrar.manage` |
+| `POST` `/oxxa/domains/{domain_id}/refresh` | `oxxa.registrar.sync` |
+| `GET` `/oxxa/domains/{domain_id}/status` | `oxxa.registrar.sync` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -804,32 +804,32 @@ Returns: `200` · `DomainRegistrarStatus`
 
 ## `uptime`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `POST` `/uptime/hook/{token}` | Uptime Hook | _Deliberately open_ |
-| `GET` `/uptime/instances` | List Instances | `uptime.instance.manage` |
-| `POST` `/uptime/instances` | Create Instance | `uptime.instance.manage` |
-| `GET` `/uptime/instances/{instance_id}` | Get Instance | `uptime.instance.manage` |
-| `PATCH` `/uptime/instances/{instance_id}` | Update Instance | `uptime.instance.manage` |
-| `DELETE` `/uptime/instances/{instance_id}` | Delete Instance | `uptime.instance.manage` |
-| `POST` `/uptime/instances/{instance_id}/enrol` | Enrol Instance | `uptime.instance.manage` |
-| `POST` `/uptime/instances/{instance_id}/links/apply` | Apply Links | `uptime.monitor.write` |
-| `POST` `/uptime/instances/{instance_id}/probe` | Probe Instance | `uptime.instance.manage` |
-| `POST` `/uptime/instances/{instance_id}/sync` | Sync Instance | `uptime.instance.manage` |
-| `GET` `/uptime/instances/selectable` | List Selectable Instances | `uptime.monitor.read` |
-| `GET` `/uptime/monitors` | List Monitors | `uptime.monitor.read` |
-| `POST` `/uptime/monitors` | Create Monitor | `uptime.monitor.write` |
-| `GET` `/uptime/monitors/{monitor_id}` | Get Monitor | `uptime.monitor.read` |
-| `PATCH` `/uptime/monitors/{monitor_id}` | Update Monitor | `uptime.monitor.write` |
-| `DELETE` `/uptime/monitors/{monitor_id}` | Delete Monitor | `uptime.monitor.write` |
-| `POST` `/uptime/monitors/{monitor_id}/link` | Link Monitor | `uptime.monitor.write` |
-| `POST` `/uptime/monitors/{monitor_id}/pause` | Pause Monitor | `uptime.monitor.pause` |
-| `POST` `/uptime/monitors/{monitor_id}/reconcile` | Reconcile Monitor | `uptime.monitor.write` |
-| `POST` `/uptime/monitors/{monitor_id}/resume` | Resume Monitor | `uptime.monitor.pause` |
-| `GET` `/uptime/profiles` | List Profiles | `uptime.monitor.read` |
-| `POST` `/uptime/profiles` | Create Profile | `uptime.profile.manage` |
-| `PATCH` `/uptime/profiles/{profile_id}` | Update Profile | `uptime.profile.manage` |
-| `DELETE` `/uptime/profiles/{profile_id}` | Delete Profile | `uptime.profile.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `POST` `/uptime/hook/{token}` | _Deliberately open_ |
+| `GET` `/uptime/instances` | `uptime.instance.manage` |
+| `POST` `/uptime/instances` | `uptime.instance.manage` |
+| `GET` `/uptime/instances/{instance_id}` | `uptime.instance.manage` |
+| `PATCH` `/uptime/instances/{instance_id}` | `uptime.instance.manage` |
+| `DELETE` `/uptime/instances/{instance_id}` | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/enrol` | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/links/apply` | `uptime.monitor.write` |
+| `POST` `/uptime/instances/{instance_id}/probe` | `uptime.instance.manage` |
+| `POST` `/uptime/instances/{instance_id}/sync` | `uptime.instance.manage` |
+| `GET` `/uptime/instances/selectable` | `uptime.monitor.read` |
+| `GET` `/uptime/monitors` | `uptime.monitor.read` |
+| `POST` `/uptime/monitors` | `uptime.monitor.write` |
+| `GET` `/uptime/monitors/{monitor_id}` | `uptime.monitor.read` |
+| `PATCH` `/uptime/monitors/{monitor_id}` | `uptime.monitor.write` |
+| `DELETE` `/uptime/monitors/{monitor_id}` | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/link` | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/pause` | `uptime.monitor.pause` |
+| `POST` `/uptime/monitors/{monitor_id}/reconcile` | `uptime.monitor.write` |
+| `POST` `/uptime/monitors/{monitor_id}/resume` | `uptime.monitor.pause` |
+| `GET` `/uptime/profiles` | `uptime.monitor.read` |
+| `POST` `/uptime/profiles` | `uptime.profile.manage` |
+| `PATCH` `/uptime/profiles/{profile_id}` | `uptime.profile.manage` |
+| `DELETE` `/uptime/profiles/{profile_id}` | `uptime.profile.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -1105,16 +1105,16 @@ Returns: `204`
 
 ## `wordpress`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/wordpress/sites` | List Sites | `wordpress.site.read` |
-| `POST` `/wordpress/sites` | Connect Site | `wordpress.site.manage` |
-| `GET` `/wordpress/sites/{site_id}` | Get Site | `wordpress.site.read` |
-| `PATCH` `/wordpress/sites/{site_id}` | Update Site | `wordpress.site.manage` |
-| `DELETE` `/wordpress/sites/{site_id}` | Disconnect Site | `wordpress.site.manage` |
-| `GET` `/wordpress/sites/{site_id}/brands` | List Brands | `wordpress.site.read` |
-| `POST` `/wordpress/sites/{site_id}/verify` | Verify Site | `wordpress.site.manage` |
-| `GET` `/wordpress/sites/by-website/{website_id}` | Site For Website | `wordpress.site.read` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/wordpress/sites` | `wordpress.site.read` |
+| `POST` `/wordpress/sites` | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/{site_id}` | `wordpress.site.read` |
+| `PATCH` `/wordpress/sites/{site_id}` | `wordpress.site.manage` |
+| `DELETE` `/wordpress/sites/{site_id}` | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/{site_id}/brands` | `wordpress.site.read` |
+| `POST` `/wordpress/sites/{site_id}/verify` | `wordpress.site.manage` |
+| `GET` `/wordpress/sites/by-website/{website_id}` | `wordpress.site.read` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>

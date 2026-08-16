@@ -82,7 +82,18 @@
         "anchor": "koppelingen",
         "title": "Praat met wat je al gebruikt",
         "intro": "Elke koppeling draait op jouw eigen account en jouw eigen sleutels, per organisatie ingesteld en versleuteld opgeslagen. Er zit geen tussenpartij in: je draait de installatie zelf.",
-        "slugs": ["mollie", "cloudflare", "oxxa", "google-workspace", "anthropic", "oidc"],
+        "slugs": [
+          "mollie",
+          "snelstart",
+          "cloudflare",
+          "oxxa",
+          "google-workspace",
+          "google-ads",
+          "google-tag-manager",
+          "wordpress",
+          "anthropic",
+          "oidc"
+        ],
         "label": "Bekijk alle koppelingen"
       },
       {
@@ -192,7 +203,18 @@
         "anchor": "integrations",
         "title": "Talks to what you already use",
         "intro": "Every integration runs on your own account and your own keys, configured per organisation and stored encrypted. There is no middleman in the path — you run the install yourself.",
-        "slugs": ["mollie", "cloudflare", "oxxa", "google-workspace", "anthropic", "oidc"],
+        "slugs": [
+          "mollie",
+          "snelstart",
+          "cloudflare",
+          "oxxa",
+          "google-workspace",
+          "google-ads",
+          "google-tag-manager",
+          "wordpress",
+          "anthropic",
+          "oidc"
+        ],
         "label": "See all integrations"
       },
       {

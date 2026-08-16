@@ -11,74 +11,74 @@ Invoices and quotes built from the work that produced them, recurring agreements
 
 ## `invoicing`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/invoicing/invoices` | List Invoices | `invoicing.invoice.read` |
-| `POST` `/invoicing/invoices` | Create Invoice | `invoicing.invoice.write` |
-| `GET` `/invoicing/invoices/{invoice_id}` | Get Invoice | `invoicing.invoice.read` |
-| `PATCH` `/invoicing/invoices/{invoice_id}` | Update Invoice | `invoicing.invoice.write` |
-| `DELETE` `/invoicing/invoices/{invoice_id}` | Delete Invoice | `invoicing.invoice.delete` |
-| `POST` `/invoicing/invoices/{invoice_id}/cancel` | Cancel Invoice | `invoicing.invoice.write` |
-| `POST` `/invoicing/invoices/{invoice_id}/credit` | Credit Invoice | `invoicing.invoice.write` |
-| `POST` `/invoicing/invoices/{invoice_id}/export` | Export Invoice | `invoicing.invoice.write` |
-| `POST` `/invoicing/invoices/{invoice_id}/issue` | Issue Invoice | `invoicing.invoice.write` |
-| `GET` `/invoicing/invoices/{invoice_id}/payment-intents` | List Payment Intents | `invoicing.invoice.read` |
-| `POST` `/invoicing/invoices/{invoice_id}/payment-intents` | Start Payment | `invoicing.payment.link` |
-| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync` | Sync Payment Intent | `invoicing.payment.link:any` |
-| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/refresh` | Refresh Payments | `invoicing.payment.link` |
-| `POST` `/invoicing/invoices/{invoice_id}/payments` | Add Payment | `invoicing.payment.write` |
-| `DELETE` `/invoicing/invoices/{invoice_id}/payments/{payment_id}` | Delete Payment | `invoicing.payment.write` |
-| `GET` `/invoicing/invoices/{invoice_id}/pdf` | Download Invoice Pdf | `invoicing.invoice.read` |
-| `GET` `/invoicing/invoices/{invoice_id}/preview` | Preview Invoice | `invoicing.invoice.read` |
-| `GET` `/invoicing/invoices/{invoice_id}/refs` | Invoice Refs | `invoicing.invoice.read:any` |
-| `POST` `/invoicing/invoices/{invoice_id}/remind` | Remind Invoice | `invoicing.invoice.send` |
-| `POST` `/invoicing/invoices/{invoice_id}/send` | Send Invoice | `invoicing.invoice.send` |
-| `GET` `/invoicing/invoices/{invoice_id}/ubl` | Download Ubl | `invoicing.invoice.read` |
-| `POST` `/invoicing/invoices/from-time` | Invoice From Time | `invoicing.invoice.write` |
-| `GET` `/invoicing/invoices/pdf` | Download Invoices Zip | `invoicing.invoice.read` |
-| `GET` `/invoicing/outstanding` | Outstanding | `invoicing.invoice.write` |
-| `GET` `/invoicing/payment-accounts` | List Payment Accounts | `invoicing.payment.link:any` |
-| `POST` `/invoicing/payments/webhook/{provider}/{token}` | Payment Webhook | _Deliberately open_ |
-| `GET` `/invoicing/products` | List Products | `invoicing.invoice.read:any` |
-| `POST` `/invoicing/products` | Create Product | `invoicing.settings.manage` |
-| `PATCH` `/invoicing/products/{product_id}` | Update Product | `invoicing.settings.manage` |
-| `DELETE` `/invoicing/products/{product_id}` | Delete Product | `invoicing.settings.manage` |
-| `GET` `/invoicing/providers` | List Providers | `invoicing.settings.manage` |
-| `GET` `/invoicing/public/invoices/{token}` | Public Invoice | _Deliberately open_ |
-| `POST` `/invoicing/public/invoices/{token}/payment-intents` | Public Start Payment | _Deliberately open_ |
-| `GET` `/invoicing/public/invoices/{token}/pdf` | Public Invoice Pdf | _Deliberately open_ |
-| `GET` `/invoicing/public/invoices/{token}/preview` | Public Invoice Preview | _Deliberately open_ |
-| `POST` `/invoicing/public/invoices/{token}/refresh` | Public Refresh Payments | _Deliberately open_ |
-| `GET` `/invoicing/quotes` | List Quotes | `invoicing.quote.read` |
-| `POST` `/invoicing/quotes` | Create Quote | `invoicing.quote.write` |
-| `GET` `/invoicing/quotes/{quote_id}` | Get Quote | `invoicing.quote.read` |
-| `PATCH` `/invoicing/quotes/{quote_id}` | Update Quote | `invoicing.quote.write` |
-| `DELETE` `/invoicing/quotes/{quote_id}` | Delete Quote | `invoicing.quote.delete` |
-| `POST` `/invoicing/quotes/{quote_id}/accept` | Accept Quote | `invoicing.quote.write` |
-| `POST` `/invoicing/quotes/{quote_id}/convert` | Convert Quote | `invoicing.quote.write` |
-| `POST` `/invoicing/quotes/{quote_id}/issue` | Issue Quote | `invoicing.quote.write` |
-| `GET` `/invoicing/quotes/{quote_id}/pdf` | Download Quote Pdf | `invoicing.quote.read` |
-| `GET` `/invoicing/quotes/{quote_id}/preview` | Preview Quote | `invoicing.quote.read` |
-| `POST` `/invoicing/quotes/{quote_id}/reject` | Reject Quote | `invoicing.quote.write` |
-| `POST` `/invoicing/quotes/{quote_id}/send` | Send Quote | `invoicing.quote.send` |
-| `GET` `/invoicing/recurring-backlog` | Recurring Backlog | `invoicing.invoice.read:any` |
-| `GET` `/invoicing/settings` | Get Settings | `invoicing.invoice.read:any` |
-| `PUT` `/invoicing/settings` | Save Settings | `invoicing.settings.manage` |
-| `GET` `/invoicing/summary` | Summary | `invoicing.invoice.read` |
-| `GET` `/invoicing/tax-rates` | List Tax Rates | `invoicing.invoice.read:any` |
-| `POST` `/invoicing/tax-rates` | Create Tax Rate | `invoicing.settings.manage` |
-| `PATCH` `/invoicing/tax-rates/{tax_rate_id}` | Update Tax Rate | `invoicing.settings.manage` |
-| `DELETE` `/invoicing/tax-rates/{tax_rate_id}` | Delete Tax Rate | `invoicing.settings.manage` |
-| `GET` `/invoicing/template-blocks` | Template Blocks | `invoicing.settings.manage` |
-| `GET` `/invoicing/template-blocks/{design}/source` | Template Source | `invoicing.template.author` |
-| `GET` `/invoicing/templates` | List Templates | `invoicing.invoice.read:any` |
-| `POST` `/invoicing/templates` | Create Template | `invoicing.settings.manage` |
-| `PATCH` `/invoicing/templates/{template_id}` | Update Template | `invoicing.settings.manage` |
-| `DELETE` `/invoicing/templates/{template_id}` | Delete Template | `invoicing.settings.manage` |
-| `POST` `/invoicing/templates/preview` | Preview Template | `invoicing.settings.manage` |
-| `POST` `/invoicing/templates/qr-preview` | Preview Template Qr | `invoicing.settings.manage` |
-| `GET` `/invoicing/unbilled` | Unbilled | `invoicing.invoice.write` |
-| `GET` `/invoicing/uninvoiced` | Uninvoiced | `invoicing.invoice.read:any` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/invoicing/invoices` | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices` | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/{invoice_id}` | `invoicing.invoice.read` |
+| `PATCH` `/invoicing/invoices/{invoice_id}` | `invoicing.invoice.write` |
+| `DELETE` `/invoicing/invoices/{invoice_id}` | `invoicing.invoice.delete` |
+| `POST` `/invoicing/invoices/{invoice_id}/cancel` | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/credit` | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/export` | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/issue` | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/{invoice_id}/payment-intents` | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents` | `invoicing.payment.link` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync` | `invoicing.payment.link:any` |
+| `POST` `/invoicing/invoices/{invoice_id}/payment-intents/refresh` | `invoicing.payment.link` |
+| `POST` `/invoicing/invoices/{invoice_id}/payments` | `invoicing.payment.write` |
+| `DELETE` `/invoicing/invoices/{invoice_id}/payments/{payment_id}` | `invoicing.payment.write` |
+| `GET` `/invoicing/invoices/{invoice_id}/pdf` | `invoicing.invoice.read` |
+| `GET` `/invoicing/invoices/{invoice_id}/preview` | `invoicing.invoice.read` |
+| `GET` `/invoicing/invoices/{invoice_id}/refs` | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/invoices/{invoice_id}/remind` | `invoicing.invoice.send` |
+| `POST` `/invoicing/invoices/{invoice_id}/send` | `invoicing.invoice.send` |
+| `GET` `/invoicing/invoices/{invoice_id}/ubl` | `invoicing.invoice.read` |
+| `POST` `/invoicing/invoices/from-time` | `invoicing.invoice.write` |
+| `GET` `/invoicing/invoices/pdf` | `invoicing.invoice.read` |
+| `GET` `/invoicing/outstanding` | `invoicing.invoice.write` |
+| `GET` `/invoicing/payment-accounts` | `invoicing.payment.link:any` |
+| `POST` `/invoicing/payments/webhook/{provider}/{token}` | _Deliberately open_ |
+| `GET` `/invoicing/products` | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/products` | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/products/{product_id}` | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/products/{product_id}` | `invoicing.settings.manage` |
+| `GET` `/invoicing/providers` | `invoicing.settings.manage` |
+| `GET` `/invoicing/public/invoices/{token}` | _Deliberately open_ |
+| `POST` `/invoicing/public/invoices/{token}/payment-intents` | _Deliberately open_ |
+| `GET` `/invoicing/public/invoices/{token}/pdf` | _Deliberately open_ |
+| `GET` `/invoicing/public/invoices/{token}/preview` | _Deliberately open_ |
+| `POST` `/invoicing/public/invoices/{token}/refresh` | _Deliberately open_ |
+| `GET` `/invoicing/quotes` | `invoicing.quote.read` |
+| `POST` `/invoicing/quotes` | `invoicing.quote.write` |
+| `GET` `/invoicing/quotes/{quote_id}` | `invoicing.quote.read` |
+| `PATCH` `/invoicing/quotes/{quote_id}` | `invoicing.quote.write` |
+| `DELETE` `/invoicing/quotes/{quote_id}` | `invoicing.quote.delete` |
+| `POST` `/invoicing/quotes/{quote_id}/accept` | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/convert` | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/issue` | `invoicing.quote.write` |
+| `GET` `/invoicing/quotes/{quote_id}/pdf` | `invoicing.quote.read` |
+| `GET` `/invoicing/quotes/{quote_id}/preview` | `invoicing.quote.read` |
+| `POST` `/invoicing/quotes/{quote_id}/reject` | `invoicing.quote.write` |
+| `POST` `/invoicing/quotes/{quote_id}/send` | `invoicing.quote.send` |
+| `GET` `/invoicing/recurring-backlog` | `invoicing.invoice.read:any` |
+| `GET` `/invoicing/settings` | `invoicing.invoice.read:any` |
+| `PUT` `/invoicing/settings` | `invoicing.settings.manage` |
+| `GET` `/invoicing/summary` | `invoicing.invoice.read` |
+| `GET` `/invoicing/tax-rates` | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/tax-rates` | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/tax-rates/{tax_rate_id}` | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/tax-rates/{tax_rate_id}` | `invoicing.settings.manage` |
+| `GET` `/invoicing/template-blocks` | `invoicing.settings.manage` |
+| `GET` `/invoicing/template-blocks/{design}/source` | `invoicing.template.author` |
+| `GET` `/invoicing/templates` | `invoicing.invoice.read:any` |
+| `POST` `/invoicing/templates` | `invoicing.settings.manage` |
+| `PATCH` `/invoicing/templates/{template_id}` | `invoicing.settings.manage` |
+| `DELETE` `/invoicing/templates/{template_id}` | `invoicing.settings.manage` |
+| `POST` `/invoicing/templates/preview` | `invoicing.settings.manage` |
+| `POST` `/invoicing/templates/qr-preview` | `invoicing.settings.manage` |
+| `GET` `/invoicing/unbilled` | `invoicing.invoice.write` |
+| `GET` `/invoicing/uninvoiced` | `invoicing.invoice.read:any` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -828,25 +828,25 @@ Returns: `200` · `UninvoicedReport`
 
 ## `subscriptions`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/subscriptions` | List Subscriptions | `subscriptions.subscription.read` |
-| `POST` `/subscriptions` | Create Subscription | `subscriptions.subscription.write` |
-| `GET` `/subscriptions/{subscription_id}` | Get Subscription | `subscriptions.subscription.read` |
-| `PATCH` `/subscriptions/{subscription_id}` | Update Subscription | `subscriptions.subscription.write` |
-| `DELETE` `/subscriptions/{subscription_id}` | Delete Subscription | `subscriptions.subscription.delete` |
-| `GET` `/subscriptions/{subscription_id}/prices` | Price History | `subscriptions.subscription.read` |
-| `POST` `/subscriptions/price-increase` | Apply Price Increase | `subscriptions.subscription.write` |
-| `POST` `/subscriptions/price-increase/preview` | Preview Price Increase | `subscriptions.subscription.write` |
-| `GET` `/subscriptions/summary` | Summary | `subscriptions.subscription.read` |
-| `GET` `/subscriptions/templates` | List Subscription Templates | `subscriptions.subscription.read` |
-| `POST` `/subscriptions/templates` | Create Subscription Template | `subscriptions.template.manage` |
-| `PATCH` `/subscriptions/templates/{template_id}` | Update Subscription Template | `subscriptions.template.manage` |
-| `DELETE` `/subscriptions/templates/{template_id}` | Delete Subscription Template | `subscriptions.template.manage` |
-| `GET` `/subscriptions/types` | List Subscription Types | `subscriptions.subscription.read` |
-| `POST` `/subscriptions/types` | Create Subscription Type | `subscriptions.type.manage` |
-| `PATCH` `/subscriptions/types/{type_id}` | Update Subscription Type | `subscriptions.type.manage` |
-| `DELETE` `/subscriptions/types/{type_id}` | Delete Subscription Type | `subscriptions.type.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/subscriptions` | `subscriptions.subscription.read` |
+| `POST` `/subscriptions` | `subscriptions.subscription.write` |
+| `GET` `/subscriptions/{subscription_id}` | `subscriptions.subscription.read` |
+| `PATCH` `/subscriptions/{subscription_id}` | `subscriptions.subscription.write` |
+| `DELETE` `/subscriptions/{subscription_id}` | `subscriptions.subscription.delete` |
+| `GET` `/subscriptions/{subscription_id}/prices` | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/price-increase` | `subscriptions.subscription.write` |
+| `POST` `/subscriptions/price-increase/preview` | `subscriptions.subscription.write` |
+| `GET` `/subscriptions/summary` | `subscriptions.subscription.read` |
+| `GET` `/subscriptions/templates` | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/templates` | `subscriptions.template.manage` |
+| `PATCH` `/subscriptions/templates/{template_id}` | `subscriptions.template.manage` |
+| `DELETE` `/subscriptions/templates/{template_id}` | `subscriptions.template.manage` |
+| `GET` `/subscriptions/types` | `subscriptions.subscription.read` |
+| `POST` `/subscriptions/types` | `subscriptions.type.manage` |
+| `PATCH` `/subscriptions/types/{type_id}` | `subscriptions.type.manage` |
+| `DELETE` `/subscriptions/types/{type_id}` | `subscriptions.type.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -1049,13 +1049,13 @@ Returns: `204`
 
 ## `mollie`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/mollie/accounts` | List Accounts | `mollie.settings.manage` |
-| `POST` `/mollie/accounts` | Create Account | `mollie.settings.manage` |
-| `PATCH` `/mollie/accounts/{account_id}` | Update Account | `mollie.settings.manage` |
-| `DELETE` `/mollie/accounts/{account_id}` | Delete Account | `mollie.settings.manage` |
-| `POST` `/mollie/accounts/{account_id}/verify` | Verify Account | `mollie.settings.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/mollie/accounts` | `mollie.settings.manage` |
+| `POST` `/mollie/accounts` | `mollie.settings.manage` |
+| `PATCH` `/mollie/accounts/{account_id}` | `mollie.settings.manage` |
+| `DELETE` `/mollie/accounts/{account_id}` | `mollie.settings.manage` |
+| `POST` `/mollie/accounts/{account_id}/verify` | `mollie.settings.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -1114,26 +1114,26 @@ Returns: `200` · `MollieAccountVerifyResult`
 
 ## `snelstart`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/snelstart/accounts` | List Accounts | `snelstart.settings.manage` |
-| `POST` `/snelstart/accounts` | Create Account | `snelstart.settings.manage` |
-| `PATCH` `/snelstart/accounts/{account_id}` | Update Account | `snelstart.settings.manage` |
-| `DELETE` `/snelstart/accounts/{account_id}` | Delete Account | `snelstart.settings.manage` |
-| `GET` `/snelstart/accounts/{account_id}/ledgers` | Ledger Options | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/links/{link_id}/adopt` | Adopt Link | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/push/articles` | Push Articles | `snelstart.ledger.write` |
-| `POST` `/snelstart/accounts/{account_id}/push/invoices` | Push Invoices | `snelstart.ledger.write`, `invoicing.invoice.write` |
-| `POST` `/snelstart/accounts/{account_id}/push/invoices/{invoice_id}` | Push Invoice | `snelstart.ledger.write`, `invoicing.invoice.write` |
-| `POST` `/snelstart/accounts/{account_id}/push/relations` | Push Relations | `snelstart.ledger.write` |
-| `GET` `/snelstart/accounts/{account_id}/relations` | Relation Candidates | `snelstart.sync.run` |
-| `GET` `/snelstart/accounts/{account_id}/runs` | List Runs | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/sync/payments` | Sync Payments | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/sync/reference` | Sync Reference | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/sync/relations` | Link Relations | `snelstart.sync.run` |
-| `POST` `/snelstart/accounts/{account_id}/verify` | Verify Account | `snelstart.settings.manage` |
-| `GET` `/snelstart/accounts/options` | Account Options | `snelstart.sync.run` |
-| `POST` `/snelstart/coupling/callback` | Coupling Callback | _Deliberately open_ |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/snelstart/accounts` | `snelstart.settings.manage` |
+| `POST` `/snelstart/accounts` | `snelstart.settings.manage` |
+| `PATCH` `/snelstart/accounts/{account_id}` | `snelstart.settings.manage` |
+| `DELETE` `/snelstart/accounts/{account_id}` | `snelstart.settings.manage` |
+| `GET` `/snelstart/accounts/{account_id}/ledgers` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/links/{link_id}/adopt` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/push/articles` | `snelstart.ledger.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/invoices` | `snelstart.ledger.write`, `invoicing.invoice.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/invoices/{invoice_id}` | `snelstart.ledger.write`, `invoicing.invoice.write` |
+| `POST` `/snelstart/accounts/{account_id}/push/relations` | `snelstart.ledger.write` |
+| `GET` `/snelstart/accounts/{account_id}/relations` | `snelstart.sync.run` |
+| `GET` `/snelstart/accounts/{account_id}/runs` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/payments` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/reference` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/sync/relations` | `snelstart.sync.run` |
+| `POST` `/snelstart/accounts/{account_id}/verify` | `snelstart.settings.manage` |
+| `GET` `/snelstart/accounts/options` | `snelstart.sync.run` |
+| `POST` `/snelstart/coupling/callback` | _Deliberately open_ |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>

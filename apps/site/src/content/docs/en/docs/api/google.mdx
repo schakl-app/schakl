@@ -11,33 +11,33 @@ Calendar, Drive, Gmail and Contacts, connected per organisation with your own OA
 
 ## `google`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/google/calendar/events` | Calendar Events | `google.calendar.read` |
-| `POST` `/google/calendar/webhook` | Calendar Webhook | _Deliberately open_ |
-| `GET` `/google/connections` | List Connections | `google.settings.manage` |
-| `GET` `/google/connections/me` | My Connection | `google.connection.manage` |
-| `PATCH` `/google/connections/me` | Update My Connection | `google.connection.manage` |
-| `POST` `/google/connections/me/disconnect` | Disconnect My Connection | `google.connection.manage` |
-| `GET` `/google/drive/browse` | Browse | `google.drive.read` |
-| `PUT` `/google/drive/folder` | Set Folder | `google.drive.write` |
-| `POST` `/google/drive/folders` | Create Folder | `google.drive.write` |
-| `GET` `/google/drive/links` | List Links | `google.drive.read` |
-| `POST` `/google/drive/links` | Create Link | `google.drive.write` |
-| `DELETE` `/google/drive/links/{link_id}` | Delete Link | `google.drive.write` |
-| `POST` `/google/drive/provision` | Provision Entity | `google.drive.write` |
-| `POST` `/google/drive/provision-all` | Provision All | `google.settings.manage` |
-| `POST` `/google/drive/upload-session` | Create Upload Session | `google.drive.write` |
-| `POST` `/google/gmail/import` | Import Gmail Message | `interactions.interaction.write` |
-| `GET` `/google/gmail/lookup` | Lookup Gmail Message | `google.connection.manage` |
-| `POST` `/google/gmail/refresh` | Refresh Gmail | `google.connection.manage` |
-| `GET` `/google/gmail/search` | Search Gmail | `google.connection.manage` |
-| `GET` `/google/gmail/status` | Read Gmail Status | `google.connection.manage` |
-| `GET` `/google/gmail/threads/{thread_id}` | Read Gmail Thread | `google.connection.manage` |
-| `GET` `/google/oauth/callback` | Google Oauth Callback | `google.connection.manage` |
-| `GET` `/google/oauth/connect` | Oauth Connect | `google.connection.manage` |
-| `GET` `/google/settings` | Get Settings | `google.settings.manage` |
-| `PUT` `/google/settings` | Save Settings | `google.settings.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/google/calendar/events` | `google.calendar.read` |
+| `POST` `/google/calendar/webhook` | _Deliberately open_ |
+| `GET` `/google/connections` | `google.settings.manage` |
+| `GET` `/google/connections/me` | `google.connection.manage` |
+| `PATCH` `/google/connections/me` | `google.connection.manage` |
+| `POST` `/google/connections/me/disconnect` | `google.connection.manage` |
+| `GET` `/google/drive/browse` | `google.drive.read` |
+| `PUT` `/google/drive/folder` | `google.drive.write` |
+| `POST` `/google/drive/folders` | `google.drive.write` |
+| `GET` `/google/drive/links` | `google.drive.read` |
+| `POST` `/google/drive/links` | `google.drive.write` |
+| `DELETE` `/google/drive/links/{link_id}` | `google.drive.write` |
+| `POST` `/google/drive/provision` | `google.drive.write` |
+| `POST` `/google/drive/provision-all` | `google.settings.manage` |
+| `POST` `/google/drive/upload-session` | `google.drive.write` |
+| `POST` `/google/gmail/import` | `interactions.interaction.write` |
+| `GET` `/google/gmail/lookup` | `google.connection.manage` |
+| `POST` `/google/gmail/refresh` | `google.connection.manage` |
+| `GET` `/google/gmail/search` | `google.connection.manage` |
+| `GET` `/google/gmail/status` | `google.connection.manage` |
+| `GET` `/google/gmail/threads/{thread_id}` | `google.connection.manage` |
+| `GET` `/google/oauth/callback` | `google.connection.manage` |
+| `GET` `/google/oauth/connect` | `google.connection.manage` |
+| `GET` `/google/settings` | `google.settings.manage` |
+| `PUT` `/google/settings` | `google.settings.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>

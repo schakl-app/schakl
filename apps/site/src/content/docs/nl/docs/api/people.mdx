@@ -11,57 +11,57 @@ Medewerkers in plaats van klantcontacten: verlofsaldi en aanvragen, dienstverban
 
 ## `leave`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/leave/availability` | List Availability | `leave.availability.read` |
-| `POST` `/leave/availability` | Create Availability | `leave.availability.write` |
-| `PATCH` `/leave/availability/{entry_id}` | Update Availability | `leave.availability.write` |
-| `DELETE` `/leave/availability/{entry_id}` | Delete Availability | `leave.availability.write` |
-| `GET` `/leave/availability/days` | Availability Days | `leave.availability.read` |
-| `POST` `/leave/availability/move` | Move Availability | `leave.availability.write` |
-| `GET` `/leave/balance` | Balances | `leave.request.read` |
-| `GET` `/leave/balance/groups` | Group Balances | `leave.request.read` |
-| `GET` `/leave/contracts` | List Contracts | `leave.request.read` |
-| `POST` `/leave/contracts` | Create Contract | `leave.profile.manage` |
-| `PATCH` `/leave/contracts/{contract_id}` | Update Contract | `leave.profile.manage` |
-| `DELETE` `/leave/contracts/{contract_id}` | Delete Contract | `leave.profile.manage` |
-| `GET` `/leave/entitlements` | List Entitlements | `leave.entitlement.read` |
-| `PUT` `/leave/entitlements` | Upsert Entitlement | `leave.entitlement.write` |
-| `DELETE` `/leave/entitlements` | Delete Entitlement | `leave.entitlement.write` |
-| `POST` `/leave/entitlements/generate` | Generate Entitlements | `leave.entitlement.write` |
-| `GET` `/leave/free-time` | Free Time Overview | `leave.request.read` |
-| `POST` `/leave/free-time/withdraw` | Withdraw Free Time | `leave.request.write` |
-| `GET` `/leave/holidays` | List Holidays | `leave.request.read` |
-| `POST` `/leave/holidays` | Create Holiday | `leave.holiday.write` |
-| `PATCH` `/leave/holidays/{holiday_id}` | Update Holiday | `leave.holiday.write` |
-| `DELETE` `/leave/holidays/{holiday_id}` | Delete Holiday | `leave.holiday.write` |
-| `POST` `/leave/holidays/import` | Import Holidays | `leave.holiday.write` |
-| `GET` `/leave/profile` | My Profile | `leave.request.read` |
-| `GET` `/leave/profiles` | List Profiles | `leave.profile.manage` |
-| `PUT` `/leave/profiles/{user_id}` | Set Profile | `leave.profile.manage` |
-| `GET` `/leave/rate` | My Rate | `leave.rate.read` |
-| `GET` `/leave/rate/{user_id}` | User Rate | `leave.rate.read` |
-| `PUT` `/leave/rate/{user_id}` | Set Rate | `leave.rate.write` |
-| `GET` `/leave/rates` | List Rates | `leave.rate.read` |
-| `GET` `/leave/recurring` | List Recurring | `leave.request.read` |
-| `POST` `/leave/recurring` | Create Recurring | `leave.request.write` |
-| `PATCH` `/leave/recurring/{recurring_id}` | Update Recurring | `leave.request.write` |
-| `DELETE` `/leave/recurring/{recurring_id}` | Delete Recurring | `leave.request.write` |
-| `GET` `/leave/requests` | List Requests | `leave.request.read` |
-| `POST` `/leave/requests` | Create Request | `leave.request.write` |
-| `GET` `/leave/requests/{request_id}` | Get Request | `leave.request.read` |
-| `PATCH` `/leave/requests/{request_id}` | Update Request | `leave.request.write` |
-| `POST` `/leave/requests/{request_id}/cancel` | Cancel Request | `leave.request.write` |
-| `POST` `/leave/requests/{request_id}/decide` | Decide Request | `leave.request.approve` |
-| `POST` `/leave/requests/preview` | Preview Request | `leave.request.read` |
-| `GET` `/leave/settings` | Get Settings | `leave.profile.manage` |
-| `PUT` `/leave/settings` | Update Settings | `leave.profile.manage` |
-| `GET` `/leave/summary` | Summary | `leave.request.read` |
-| `GET` `/leave/team` | Team | `leave.request.read` |
-| `GET` `/leave/types` | List Types | `leave.request.read` |
-| `POST` `/leave/types` | Create Type | `leave.type.write` |
-| `PATCH` `/leave/types/{type_id}` | Update Type | `leave.type.write` |
-| `DELETE` `/leave/types/{type_id}` | Delete Type | `leave.type.write` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/leave/availability` | `leave.availability.read` |
+| `POST` `/leave/availability` | `leave.availability.write` |
+| `PATCH` `/leave/availability/{entry_id}` | `leave.availability.write` |
+| `DELETE` `/leave/availability/{entry_id}` | `leave.availability.write` |
+| `GET` `/leave/availability/days` | `leave.availability.read` |
+| `POST` `/leave/availability/move` | `leave.availability.write` |
+| `GET` `/leave/balance` | `leave.request.read` |
+| `GET` `/leave/balance/groups` | `leave.request.read` |
+| `GET` `/leave/contracts` | `leave.request.read` |
+| `POST` `/leave/contracts` | `leave.profile.manage` |
+| `PATCH` `/leave/contracts/{contract_id}` | `leave.profile.manage` |
+| `DELETE` `/leave/contracts/{contract_id}` | `leave.profile.manage` |
+| `GET` `/leave/entitlements` | `leave.entitlement.read` |
+| `PUT` `/leave/entitlements` | `leave.entitlement.write` |
+| `DELETE` `/leave/entitlements` | `leave.entitlement.write` |
+| `POST` `/leave/entitlements/generate` | `leave.entitlement.write` |
+| `GET` `/leave/free-time` | `leave.request.read` |
+| `POST` `/leave/free-time/withdraw` | `leave.request.write` |
+| `GET` `/leave/holidays` | `leave.request.read` |
+| `POST` `/leave/holidays` | `leave.holiday.write` |
+| `PATCH` `/leave/holidays/{holiday_id}` | `leave.holiday.write` |
+| `DELETE` `/leave/holidays/{holiday_id}` | `leave.holiday.write` |
+| `POST` `/leave/holidays/import` | `leave.holiday.write` |
+| `GET` `/leave/profile` | `leave.request.read` |
+| `GET` `/leave/profiles` | `leave.profile.manage` |
+| `PUT` `/leave/profiles/{user_id}` | `leave.profile.manage` |
+| `GET` `/leave/rate` | `leave.rate.read` |
+| `GET` `/leave/rate/{user_id}` | `leave.rate.read` |
+| `PUT` `/leave/rate/{user_id}` | `leave.rate.write` |
+| `GET` `/leave/rates` | `leave.rate.read` |
+| `GET` `/leave/recurring` | `leave.request.read` |
+| `POST` `/leave/recurring` | `leave.request.write` |
+| `PATCH` `/leave/recurring/{recurring_id}` | `leave.request.write` |
+| `DELETE` `/leave/recurring/{recurring_id}` | `leave.request.write` |
+| `GET` `/leave/requests` | `leave.request.read` |
+| `POST` `/leave/requests` | `leave.request.write` |
+| `GET` `/leave/requests/{request_id}` | `leave.request.read` |
+| `PATCH` `/leave/requests/{request_id}` | `leave.request.write` |
+| `POST` `/leave/requests/{request_id}/cancel` | `leave.request.write` |
+| `POST` `/leave/requests/{request_id}/decide` | `leave.request.approve` |
+| `POST` `/leave/requests/preview` | `leave.request.read` |
+| `GET` `/leave/settings` | `leave.profile.manage` |
+| `PUT` `/leave/settings` | `leave.profile.manage` |
+| `GET` `/leave/summary` | `leave.request.read` |
+| `GET` `/leave/team` | `leave.request.read` |
+| `GET` `/leave/types` | `leave.request.read` |
+| `POST` `/leave/types` | `leave.type.write` |
+| `PATCH` `/leave/types/{type_id}` | `leave.type.write` |
+| `DELETE` `/leave/types/{type_id}` | `leave.type.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -649,12 +649,12 @@ Antwoord: `204`
 
 ## `hr`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `POST` `/hr/documents` | Upload Document | `hr.document.manage` |
-| `DELETE` `/hr/documents/{document_id}` | Delete Document | `hr.document.manage` |
-| `GET` `/hr/documents/{document_id}/file` | Serve Document | `hr.dossier.read` |
-| `GET` `/hr/dossier` | Dossier | `hr.dossier.read` |
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/hr/documents` | `hr.document.manage` |
+| `DELETE` `/hr/documents/{document_id}` | `hr.document.manage` |
+| `GET` `/hr/documents/{document_id}/file` | `hr.dossier.read` |
+| `GET` `/hr/dossier` | `hr.dossier.read` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -716,14 +716,14 @@ Antwoord: `200` · `DossierRead`
 
 ## `portal`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `POST` `/portal/impersonation/stop` | Stop Portal Impersonation | _Bewust open_ |
-| `GET` `/portal/logins/{entity_type}/{subject_id}` | Portal Login State | `members.member.write` |
-| `POST` `/portal/logins/{entity_type}/{subject_id}` | Enable Portal Login | `members.member.write` |
-| `DELETE` `/portal/logins/{entity_type}/{subject_id}` | Disable Portal Login | `members.member.write` |
-| `POST` `/portal/logins/{entity_type}/{subject_id}/impersonate` | Impersonate Portal Login | `portal.login.impersonate` |
-| `POST` `/portal/logins/{entity_type}/{subject_id}/resend` | Resend Portal Invite | `members.member.write` |
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/portal/impersonation/stop` | _Bewust open_ |
+| `GET` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `DELETE` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}/impersonate` | `portal.login.impersonate` |
+| `POST` `/portal/logins/{entity_type}/{subject_id}/resend` | `members.member.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>

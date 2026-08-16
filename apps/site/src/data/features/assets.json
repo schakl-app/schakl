@@ -10,8 +10,8 @@
     "en": "Websites, domains & hosting"
   },
   "description": {
-    "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met publieke DNS, Cloudflare en het register van je registrar op dezelfde pagina.",
-    "en": "Domains, websites and hosting accounts attach to the client, with public DNS, Cloudflare and your registrar's register on the same page."
+    "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met publieke DNS, Cloudflare en het register van je registrar op dezelfde pagina, en per website de WordPress-inlog en de monitor die erbij horen.",
+    "en": "Domains, websites and hosting accounts attach to the client, with public DNS, Cloudflare and your registrar's register on the same page, and per website the WordPress credential and the monitor that belong to it."
   },
   "page": {
     "eyebrow": {
@@ -158,6 +158,28 @@
             "Wel factureren: the yearly renewal goes to the client",
             "Niet factureren: the client registered it themselves and we charge nothing for it",
             "Volg het register: the register decides, and the Gefactureerd column prints \"volgens register\" beside the answer"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat er op de site draait, en of hij overeind staat",
+          "en": "What runs on the site, and whether it is up"
+        },
+        "body": {
+          "nl": "Cloudflare is iets wat een domein heeft; WordPress en de monitor zijn iets wat een website heeft, en ze staan dus een niveau lager in de boom. Eén WordPress-applicatiewachtwoord per site opent vier oppervlakken op dezelfde host, en levert meteen de AI-zichtbaarheid van Rank Math als marketingbron: hoe vaak het merk van een klant genoemd en gelinkt wordt in AI-antwoorden. Uptime Kuma zet het vinkje monitoren om in een echt record, met een klant, een profiel, een geschiedenis en een plek op de klantpagina naast het domein en het hostingaccount waar hij van afhangt. En omdat iemand vroeg of laat een monitor in Kuma zelf aanpast, wordt apart bewaard wat schakl. besloot en wat het als laatste zag, zodat afwijking iets is wat je kunt zien in plaats van iets wat stilzwijgend overschreven wordt.",
+          "en": "Cloudflare is something a domain has; WordPress and the monitor are things a *website* has, so they sit one level down the tree. One WordPress Application Password per site opens four surfaces on the same host, and supplies Rank Math's AI visibility as a marketing source along the way: how often a client's brand is named and linked in AI answers. Uptime Kuma turns the \"monitor this\" checkbox into a real record, with a client, a profile, a history and a place on the client page beside the domain and hosting account it depends on. And because somebody will eventually edit a monitor in Kuma itself, what schakl. decided and what it last observed are stored separately, so drift is something you can see rather than something silently overwritten."
+        },
+        "bullets": {
+          "nl": [
+            "Het WordPress-wachtwoord hoort bij een beheerder, dus alleen beheerders mogen het beheren en een klantlogin komt er nooit bij",
+            "Een monitorserver van een klant achter een firewall werkt ook: dan komt het verkeer de andere kant op",
+            "Bestaande monitors neem je over in plaats van ze opnieuw aan te maken"
+          ],
+          "en": [
+            "The WordPress password belongs to an administrator, so only admins may manage it and a client login never reaches it",
+            "A client's monitor server behind a firewall works too: the traffic simply runs the other way",
+            "Existing monitors are adopted rather than recreated"
           ]
         }
       }

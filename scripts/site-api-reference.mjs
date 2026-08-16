@@ -154,7 +154,6 @@ const T = {
       'Every endpoint of the schakl. REST API, grouped by area, with the permission each one requires.',
     permission: 'Permission',
     endpoint: 'Endpoint',
-    what: 'What it does',
     none: 'None declared',
     query: 'Query parameters',
     path: 'Path parameters',
@@ -173,7 +172,6 @@ const T = {
       'Elk endpoint van de REST API van schakl., gegroepeerd per gebied, met het recht dat ervoor nodig is.',
     permission: 'Recht',
     endpoint: 'Endpoint',
-    what: 'Wat het doet',
     none: 'Geen recht vereist',
     query: 'Queryparameters',
     path: 'Padparameters',
@@ -257,9 +255,6 @@ const paramType = (schema = {}) => {
   if (schema.enum) return schema.enum.map((v) => `\`${v}\``).join(' · ');
   return schema.type ?? 'string';
 };
-
-const title = (op, path, method) =>
-  op.summary || `${method.toUpperCase()} ${path.replace('/api/v1', '')}`;
 
 function permissionCell(op, locale) {
   const id = op.operationId;
@@ -357,13 +352,18 @@ function renderArea(area, locale) {
     const ops = byTag.get(tag);
     out.push(`## \`${tag}\``);
     out.push('');
-    out.push(`| ${t.endpoint} | ${t.what} | ${t.permission} |`);
-    out.push('| --- | --- | --- |');
+    // Two columns, not three. The docs content column is ~650px, and a third column squeezed
+    // the permission — the one fixed-width token on the row, and the thing this table exists
+    // for — until it was cut off. The summary is not lost: it heads each endpoint's own entry
+    // in the block below, where there is a whole line for it.
+    out.push(`| ${t.endpoint} | ${t.permission} |`);
+    out.push('| --- | --- |');
     for (const entry of ops) {
       out.push(
-        `| \`${entry.method.toUpperCase()}\` \`${entry.path.replace('/api/v1', '')}\` | ${esc(
-          title(entry.op, entry.path, entry.method),
-        )} | ${permissionCell(entry.op, locale)} |`,
+        `| \`${entry.method.toUpperCase()}\` \`${entry.path.replace('/api/v1', '')}\` | ${permissionCell(
+          entry.op,
+          locale,
+        )} |`,
       );
     }
     out.push('');

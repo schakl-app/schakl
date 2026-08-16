@@ -11,27 +11,27 @@ The hub every other module attaches to: the client record, the people at that cl
 
 ## `companies`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/companies` | List Companies | `companies.company.read` |
-| `POST` `/companies` | Create Company | `companies.company.write` |
-| `GET` `/companies/{company_id}` | Get Company | `companies.company.read` |
-| `PATCH` `/companies/{company_id}` | Update Company | `companies.company.write` |
-| `DELETE` `/companies/{company_id}` | Delete Company | `companies.company.delete` |
-| `GET` `/companies/{company_id}/logo` | Serve Company Logo | `companies.company.read` |
-| `POST` `/companies/{company_id}/logo` | Upload Company Logo | `companies.company.write` |
-| `DELETE` `/companies/{company_id}/logo` | Remove Company Logo | `companies.company.write` |
-| `GET` `/companies/{company_id}/panels` | Company Panels | `companies.company.read` |
-| `GET` `/companies/{company_id}/summary` | Company Summary | `companies.company.read` |
-| `GET` `/companies/groups` | List Groups | `companies.group.manage` |
-| `POST` `/companies/groups` | Create Group | `companies.group.manage` |
-| `PATCH` `/companies/groups/{group_id}` | Update Group | `companies.group.manage` |
-| `DELETE` `/companies/groups/{group_id}` | Delete Group | `companies.group.manage` |
-| `PUT` `/companies/groups/{group_id}/companies` | Set Group Companies | `companies.group.manage` |
-| `PUT` `/companies/groups/{group_id}/memberships` | Set Group Memberships | `companies.group.manage` |
-| `GET` `/companies/settings` | Get Company Settings | `companies.settings.manage` |
-| `PUT` `/companies/settings` | Update Company Settings | `companies.settings.manage` |
-| `POST` `/companies/settings/backfill-client-numbers` | Backfill Client Numbers | `companies.settings.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/companies` | `companies.company.read` |
+| `POST` `/companies` | `companies.company.write` |
+| `GET` `/companies/{company_id}` | `companies.company.read` |
+| `PATCH` `/companies/{company_id}` | `companies.company.write` |
+| `DELETE` `/companies/{company_id}` | `companies.company.delete` |
+| `GET` `/companies/{company_id}/logo` | `companies.company.read` |
+| `POST` `/companies/{company_id}/logo` | `companies.company.write` |
+| `DELETE` `/companies/{company_id}/logo` | `companies.company.write` |
+| `GET` `/companies/{company_id}/panels` | `companies.company.read` |
+| `GET` `/companies/{company_id}/summary` | `companies.company.read` |
+| `GET` `/companies/groups` | `companies.group.manage` |
+| `POST` `/companies/groups` | `companies.group.manage` |
+| `PATCH` `/companies/groups/{group_id}` | `companies.group.manage` |
+| `DELETE` `/companies/groups/{group_id}` | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/companies` | `companies.group.manage` |
+| `PUT` `/companies/groups/{group_id}/memberships` | `companies.group.manage` |
+| `GET` `/companies/settings` | `companies.settings.manage` |
+| `PUT` `/companies/settings` | `companies.settings.manage` |
+| `POST` `/companies/settings/backfill-client-numbers` | `companies.settings.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -245,20 +245,20 @@ Returns: `200` · `ClientNumberBackfillResult`
 
 ## `contacts`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/contacts` | List Contacts | `contacts.contact.read` |
-| `POST` `/contacts` | Create Contact | `contacts.contact.write` |
-| `GET` `/contacts/{contact_id}` | Get Contact | `contacts.contact.read` |
-| `PATCH` `/contacts/{contact_id}` | Update Contact | `contacts.contact.write` |
-| `DELETE` `/contacts/{contact_id}` | Delete Contact | `contacts.contact.delete` |
-| `POST` `/contacts/{contact_id}/links` | Link Contact To Company | `contacts.link.write` |
-| `PATCH` `/contacts/{contact_id}/links/{company_id}` | Update Contact Company Link | `contacts.link.write` |
-| `DELETE` `/contacts/{contact_id}/links/{company_id}` | Unlink Contact From Company | `contacts.link.write` |
-| `GET` `/contacts/types` | List Contact Types | `contacts.type.read` |
-| `POST` `/contacts/types` | Create Contact Type | `contacts.type.manage` |
-| `PATCH` `/contacts/types/{type_id}` | Update Contact Type | `contacts.type.manage` |
-| `DELETE` `/contacts/types/{type_id}` | Delete Contact Type | `contacts.type.manage` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/contacts` | `contacts.contact.read` |
+| `POST` `/contacts` | `contacts.contact.write` |
+| `GET` `/contacts/{contact_id}` | `contacts.contact.read` |
+| `PATCH` `/contacts/{contact_id}` | `contacts.contact.write` |
+| `DELETE` `/contacts/{contact_id}` | `contacts.contact.delete` |
+| `POST` `/contacts/{contact_id}/links` | `contacts.link.write` |
+| `PATCH` `/contacts/{contact_id}/links/{company_id}` | `contacts.link.write` |
+| `DELETE` `/contacts/{contact_id}/links/{company_id}` | `contacts.link.write` |
+| `GET` `/contacts/types` | `contacts.type.read` |
+| `POST` `/contacts/types` | `contacts.type.manage` |
+| `PATCH` `/contacts/types/{type_id}` | `contacts.type.manage` |
+| `DELETE` `/contacts/types/{type_id}` | `contacts.type.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -409,9 +409,9 @@ Returns: `204`
 
 ## `activity`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/activity` | Entity Activity | `activity.read` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/activity` | `activity.read` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -436,9 +436,9 @@ Returns: `200` · `app__core__activity__schemas__ActivityItem[]`
 
 ## `addresslookup`
 
-| Endpoint | What it does | Permission |
-| --- | --- | --- |
-| `GET` `/addresslookup` | Lookup Address | `addresslookup.lookup` |
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/addresslookup` | `addresslookup.lookup` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>

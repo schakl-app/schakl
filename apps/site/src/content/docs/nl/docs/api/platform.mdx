@@ -11,26 +11,26 @@ Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerst
 
 ## `ai`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `POST` `/ai/assist/write` | Writing Assist | `ai.use` |
-| `POST` `/ai/assistant` | Assistant | `ai.use` |
-| `POST` `/ai/companies/{company_id}/digest` | Company Digest | `ai.use` |
-| `GET` `/ai/reports` | List Reports | `ai.use` |
-| `POST` `/ai/reports` | Create Report | `ai.use` |
-| `GET` `/ai/reports/{report_id}` | Get Report | `ai.use` |
-| `PUT` `/ai/reports/{report_id}` | Update Report | `ai.use` |
-| `DELETE` `/ai/reports/{report_id}` | Delete Report | `ai.use` |
-| `POST` `/ai/reports/generate` | Generate Report | `ai.use` |
-| `GET` `/ai/settings` | Get Ai Settings | `ai.settings.manage` |
-| `PUT` `/ai/settings` | Save Ai Settings | `ai.settings.manage` |
-| `DELETE` `/ai/settings` | Delete Ai Settings | `ai.settings.manage` |
-| `POST` `/ai/settings/models` | List Ai Models | `ai.settings.manage` |
-| `POST` `/ai/settings/test` | Test Ai Settings | `ai.settings.manage` |
-| `POST` `/ai/time/parse` | Time Parse | `ai.use` |
-| `POST` `/ai/time/reconstruct` | Time Reconstruct | `ai.use` |
-| `POST` `/ai/time/transcribe` | Time Transcribe | `ai.use` |
-| `GET` `/ai/usage` | Ai Usage | `ai.settings.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/ai/assist/write` | `ai.use` |
+| `POST` `/ai/assistant` | `ai.use` |
+| `POST` `/ai/companies/{company_id}/digest` | `ai.use` |
+| `GET` `/ai/reports` | `ai.use` |
+| `POST` `/ai/reports` | `ai.use` |
+| `GET` `/ai/reports/{report_id}` | `ai.use` |
+| `PUT` `/ai/reports/{report_id}` | `ai.use` |
+| `DELETE` `/ai/reports/{report_id}` | `ai.use` |
+| `POST` `/ai/reports/generate` | `ai.use` |
+| `GET` `/ai/settings` | `ai.settings.manage` |
+| `PUT` `/ai/settings` | `ai.settings.manage` |
+| `DELETE` `/ai/settings` | `ai.settings.manage` |
+| `POST` `/ai/settings/models` | `ai.settings.manage` |
+| `POST` `/ai/settings/test` | `ai.settings.manage` |
+| `POST` `/ai/time/parse` | `ai.use` |
+| `POST` `/ai/time/reconstruct` | `ai.use` |
+| `POST` `/ai/time/transcribe` | `ai.use` |
+| `GET` `/ai/usage` | `ai.settings.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -219,16 +219,16 @@ Antwoord: `200` · `AIUsageSummary`
 
 ## `automation`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/automation/catalog` | Get Catalog | `automation.rule.read` |
-| `POST` `/automation/dry-run` | Dry Run | `automation.rule.write` |
-| `GET` `/automation/rules` | List Rules | `automation.rule.read` |
-| `POST` `/automation/rules` | Create Rule | `automation.rule.write` |
-| `GET` `/automation/rules/{rule_id}` | Get Rule | `automation.rule.read` |
-| `PATCH` `/automation/rules/{rule_id}` | Update Rule | `automation.rule.write` |
-| `DELETE` `/automation/rules/{rule_id}` | Delete Rule | `automation.rule.write` |
-| `GET` `/automation/runs` | List Runs | `automation.run.read` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/automation/catalog` | `automation.rule.read` |
+| `POST` `/automation/dry-run` | `automation.rule.write` |
+| `GET` `/automation/rules` | `automation.rule.read` |
+| `POST` `/automation/rules` | `automation.rule.write` |
+| `GET` `/automation/rules/{rule_id}` | `automation.rule.read` |
+| `PATCH` `/automation/rules/{rule_id}` | `automation.rule.write` |
+| `DELETE` `/automation/rules/{rule_id}` | `automation.rule.write` |
+| `GET` `/automation/runs` | `automation.run.read` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -321,26 +321,26 @@ Antwoord: `200` · `Page_RunRead_`
 
 ## `bulk`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `POST` `/bulk/company/delete` | Bulk Delete Company | `companies.company.delete` |
-| `POST` `/bulk/company/update` | Bulk Update Company | `companies.company.write` |
-| `POST` `/bulk/contact/delete` | Bulk Delete Contact | `contacts.contact.delete` |
-| `POST` `/bulk/contact/update` | Bulk Update Contact | `contacts.contact.write` |
-| `POST` `/bulk/domain/delete` | Bulk Delete Domain | `domains.domain.delete` |
-| `POST` `/bulk/domain/update` | Bulk Update Domain | `domains.domain.write` |
-| `POST` `/bulk/interaction/delete` | Bulk Delete Interaction | `interactions.interaction.delete` |
-| `POST` `/bulk/invoice/delete` | Bulk Delete Invoice | `invoicing.invoice.delete` |
-| `POST` `/bulk/project/delete` | Bulk Delete Project | `projects.project.delete` |
-| `POST` `/bulk/project/update` | Bulk Update Project | `projects.project.write` |
-| `POST` `/bulk/subscription/delete` | Bulk Delete Subscription | `subscriptions.subscription.delete` |
-| `POST` `/bulk/subscription/update` | Bulk Update Subscription | `subscriptions.subscription.write` |
-| `POST` `/bulk/task/delete` | Bulk Delete Task | `tasks.task.delete` |
-| `POST` `/bulk/task/update` | Bulk Update Task | `tasks.task.write` |
-| `POST` `/bulk/uptime_monitor/delete` | Bulk Delete Uptime Monitor | `uptime.monitor.write` |
-| `POST` `/bulk/uptime_monitor/update` | Bulk Update Uptime Monitor | `uptime.monitor.write` |
-| `POST` `/bulk/website/delete` | Bulk Delete Website | `websites.website.delete` |
-| `POST` `/bulk/website/update` | Bulk Update Website | `websites.website.write` |
+| Endpoint | Recht |
+| --- | --- |
+| `POST` `/bulk/company/delete` | `companies.company.delete` |
+| `POST` `/bulk/company/update` | `companies.company.write` |
+| `POST` `/bulk/contact/delete` | `contacts.contact.delete` |
+| `POST` `/bulk/contact/update` | `contacts.contact.write` |
+| `POST` `/bulk/domain/delete` | `domains.domain.delete` |
+| `POST` `/bulk/domain/update` | `domains.domain.write` |
+| `POST` `/bulk/interaction/delete` | `interactions.interaction.delete` |
+| `POST` `/bulk/invoice/delete` | `invoicing.invoice.delete` |
+| `POST` `/bulk/project/delete` | `projects.project.delete` |
+| `POST` `/bulk/project/update` | `projects.project.write` |
+| `POST` `/bulk/subscription/delete` | `subscriptions.subscription.delete` |
+| `POST` `/bulk/subscription/update` | `subscriptions.subscription.write` |
+| `POST` `/bulk/task/delete` | `tasks.task.delete` |
+| `POST` `/bulk/task/update` | `tasks.task.write` |
+| `POST` `/bulk/uptime_monitor/delete` | `uptime.monitor.write` |
+| `POST` `/bulk/uptime_monitor/update` | `uptime.monitor.write` |
+| `POST` `/bulk/website/delete` | `websites.website.delete` |
+| `POST` `/bulk/website/update` | `websites.website.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -529,14 +529,14 @@ Antwoord: `200` · `BulkActionResult`
 
 ## `custom-fields`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/custom-fields/definitions` | List Definitions | `settings.customfields.read` |
-| `POST` `/custom-fields/definitions` | Create Definition | `settings.customfields.write` |
-| `PATCH` `/custom-fields/definitions/{definition_id}` | Update Definition | `settings.customfields.write` |
-| `DELETE` `/custom-fields/definitions/{definition_id}` | Delete Definition | `settings.customfields.write` |
-| `GET` `/custom-fields/definitions/batch` | List Definitions Batch | `settings.customfields.read` |
-| `GET` `/custom-fields/entity-types` | List Entity Types | `settings.customfields.read` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/custom-fields/definitions` | `settings.customfields.read` |
+| `POST` `/custom-fields/definitions` | `settings.customfields.write` |
+| `PATCH` `/custom-fields/definitions/{definition_id}` | `settings.customfields.write` |
+| `DELETE` `/custom-fields/definitions/{definition_id}` | `settings.customfields.write` |
+| `GET` `/custom-fields/definitions/batch` | `settings.customfields.read` |
+| `GET` `/custom-fields/entity-types` | `settings.customfields.read` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -615,12 +615,12 @@ Antwoord: `200` · `array`
 
 ## `dashboard`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/dashboard/prefs` | Get Prefs | `dashboard.prefs.read` |
-| `PUT` `/dashboard/prefs` | Set Prefs | `dashboard.prefs.write` |
-| `DELETE` `/dashboard/prefs` | Reset Prefs | `dashboard.prefs.write` |
-| `PUT` `/dashboard/prefs/default` | Set Default Prefs | `settings.dashboard.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/dashboard/prefs` | `dashboard.prefs.read` |
+| `PUT` `/dashboard/prefs` | `dashboard.prefs.write` |
+| `DELETE` `/dashboard/prefs` | `dashboard.prefs.write` |
+| `PUT` `/dashboard/prefs/default` | `settings.dashboard.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -665,15 +665,15 @@ Antwoord: `200` · `DashboardPrefs`
 
 ## `email-settings`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/settings/email` | Get Email Settings | `settings.email.manage` |
-| `PUT` `/settings/email` | Save Email Settings | `settings.email.manage` |
-| `DELETE` `/settings/email` | Delete Email Settings | `settings.email.manage` |
-| `GET` `/settings/email/templates` | List Email Templates | `settings.email.manage` |
-| `PUT` `/settings/email/templates` | Save Email Template | `settings.email.manage` |
-| `POST` `/settings/email/templates/test` | Test Email Template | `settings.email.manage` |
-| `POST` `/settings/email/test` | Test Email Settings | `settings.email.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/settings/email` | `settings.email.manage` |
+| `PUT` `/settings/email` | `settings.email.manage` |
+| `DELETE` `/settings/email` | `settings.email.manage` |
+| `GET` `/settings/email/templates` | `settings.email.manage` |
+| `PUT` `/settings/email/templates` | `settings.email.manage` |
+| `POST` `/settings/email/templates/test` | `settings.email.manage` |
+| `POST` `/settings/email/test` | `settings.email.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -744,13 +744,13 @@ Antwoord: `200` · `EmailTestResult`
 
 ## `files`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/files` | List Files | _Bewust open_ |
-| `POST` `/files` | Upload File | `files.file.write` |
-| `GET` `/files/{file_id}` | Serve File | _Bewust open_ |
-| `DELETE` `/files/{file_id}` | Delete File | `files.file.write` |
-| `GET` `/files/{file_id}/public` | Serve Public File | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/files` | _Bewust open_ |
+| `POST` `/files` | `files.file.write` |
+| `GET` `/files/{file_id}` | _Bewust open_ |
+| `DELETE` `/files/{file_id}` | `files.file.write` |
+| `GET` `/files/{file_id}/public` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -830,59 +830,59 @@ Antwoord: `200`
 
 ## `impex`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/impex/company/columns` | Impex Columns Company | `companies.company.read` |
-| `GET` `/impex/company/export` | Impex Export Company | `impex.export`, `companies.company.read` |
-| `POST` `/impex/company/import` | Impex Import Company | `impex.import`, `companies.company.write` |
-| `POST` `/impex/company/inspect` | Impex Inspect Company | `impex.import`, `companies.company.write` |
-| `GET` `/impex/contact/columns` | Impex Columns Contact | `contacts.contact.read` |
-| `GET` `/impex/contact/export` | Impex Export Contact | `impex.export`, `contacts.contact.read` |
-| `POST` `/impex/contact/import` | Impex Import Contact | `impex.import`, `contacts.contact.write` |
-| `POST` `/impex/contact/inspect` | Impex Inspect Contact | `impex.import`, `contacts.contact.write` |
-| `GET` `/impex/domain_tld_price/columns` | Impex Columns Domain Tld Price | `domains.tld_price.read` |
-| `GET` `/impex/domain_tld_price/export` | Impex Export Domain Tld Price | `impex.export`, `domains.tld_price.read` |
-| `POST` `/impex/domain_tld_price/import` | Impex Import Domain Tld Price | `impex.import`, `domains.tld_price.manage` |
-| `POST` `/impex/domain_tld_price/inspect` | Impex Inspect Domain Tld Price | `impex.import`, `domains.tld_price.manage` |
-| `GET` `/impex/domain/columns` | Impex Columns Domain | `domains.domain.read` |
-| `GET` `/impex/domain/export` | Impex Export Domain | `impex.export`, `domains.domain.read` |
-| `POST` `/impex/domain/import` | Impex Import Domain | `impex.import`, `domains.domain.write` |
-| `POST` `/impex/domain/inspect` | Impex Inspect Domain | `impex.import`, `domains.domain.write` |
-| `GET` `/impex/entities` | List Impex Entities | _Bewust open_ |
-| `GET` `/impex/hosting/columns` | Impex Columns Hosting | `hosting.hosting.read` |
-| `GET` `/impex/hosting/export` | Impex Export Hosting | `impex.export`, `hosting.hosting.read` |
-| `POST` `/impex/hosting/import` | Impex Import Hosting | `impex.import`, `hosting.hosting.write` |
-| `POST` `/impex/hosting/inspect` | Impex Inspect Hosting | `impex.import`, `hosting.hosting.write` |
-| `GET` `/impex/project/columns` | Impex Columns Project | `projects.project.read` |
-| `GET` `/impex/project/export` | Impex Export Project | `impex.export`, `projects.project.read` |
-| `POST` `/impex/project/import` | Impex Import Project | `impex.import`, `projects.project.write` |
-| `POST` `/impex/project/inspect` | Impex Inspect Project | `impex.import`, `projects.project.write` |
-| `GET` `/impex/subscription_template/columns` | Impex Columns Subscription Template | `subscriptions.subscription.read` |
-| `GET` `/impex/subscription_template/export` | Impex Export Subscription Template | `impex.export`, `subscriptions.subscription.read` |
-| `POST` `/impex/subscription_template/import` | Impex Import Subscription Template | `impex.import`, `subscriptions.template.manage` |
-| `POST` `/impex/subscription_template/inspect` | Impex Inspect Subscription Template | `impex.import`, `subscriptions.template.manage` |
-| `GET` `/impex/subscription_type/columns` | Impex Columns Subscription Type | `subscriptions.subscription.read` |
-| `GET` `/impex/subscription_type/export` | Impex Export Subscription Type | `impex.export`, `subscriptions.subscription.read` |
-| `POST` `/impex/subscription_type/import` | Impex Import Subscription Type | `impex.import`, `subscriptions.type.manage` |
-| `POST` `/impex/subscription_type/inspect` | Impex Inspect Subscription Type | `impex.import`, `subscriptions.type.manage` |
-| `GET` `/impex/subscription/columns` | Impex Columns Subscription | `subscriptions.subscription.read` |
-| `GET` `/impex/subscription/export` | Impex Export Subscription | `impex.export`, `subscriptions.subscription.read` |
-| `POST` `/impex/subscription/import` | Impex Import Subscription | `impex.import`, `subscriptions.subscription.write` |
-| `POST` `/impex/subscription/inspect` | Impex Inspect Subscription | `impex.import`, `subscriptions.subscription.write` |
-| `GET` `/impex/task/columns` | Impex Columns Task | `tasks.task.read` |
-| `GET` `/impex/task/export` | Impex Export Task | `impex.export`, `tasks.task.read` |
-| `POST` `/impex/task/import` | Impex Import Task | `impex.import`, `tasks.task.write` |
-| `POST` `/impex/task/inspect` | Impex Inspect Task | `impex.import`, `tasks.task.write` |
-| `GET` `/impex/time_entry/columns` | Impex Columns Time Entry | `time.entry.read` |
-| `GET` `/impex/time_entry/export` | Impex Export Time Entry | `impex.export`, `time.entry.read` |
-| `POST` `/impex/time_entry/import` | Impex Import Time Entry | `impex.import`, `time.entry.write` |
-| `POST` `/impex/time_entry/inspect` | Impex Inspect Time Entry | `impex.import`, `time.entry.write` |
-| `GET` `/impex/uptime_monitor/columns` | Impex Columns Uptime Monitor | `uptime.monitor.read` |
-| `GET` `/impex/uptime_monitor/export` | Impex Export Uptime Monitor | `impex.export`, `uptime.monitor.read` |
-| `GET` `/impex/website/columns` | Impex Columns Website | `websites.website.read` |
-| `GET` `/impex/website/export` | Impex Export Website | `impex.export`, `websites.website.read` |
-| `POST` `/impex/website/import` | Impex Import Website | `impex.import`, `websites.website.write` |
-| `POST` `/impex/website/inspect` | Impex Inspect Website | `impex.import`, `websites.website.write` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/impex/company/columns` | `companies.company.read` |
+| `GET` `/impex/company/export` | `impex.export`, `companies.company.read` |
+| `POST` `/impex/company/import` | `impex.import`, `companies.company.write` |
+| `POST` `/impex/company/inspect` | `impex.import`, `companies.company.write` |
+| `GET` `/impex/contact/columns` | `contacts.contact.read` |
+| `GET` `/impex/contact/export` | `impex.export`, `contacts.contact.read` |
+| `POST` `/impex/contact/import` | `impex.import`, `contacts.contact.write` |
+| `POST` `/impex/contact/inspect` | `impex.import`, `contacts.contact.write` |
+| `GET` `/impex/domain_tld_price/columns` | `domains.tld_price.read` |
+| `GET` `/impex/domain_tld_price/export` | `impex.export`, `domains.tld_price.read` |
+| `POST` `/impex/domain_tld_price/import` | `impex.import`, `domains.tld_price.manage` |
+| `POST` `/impex/domain_tld_price/inspect` | `impex.import`, `domains.tld_price.manage` |
+| `GET` `/impex/domain/columns` | `domains.domain.read` |
+| `GET` `/impex/domain/export` | `impex.export`, `domains.domain.read` |
+| `POST` `/impex/domain/import` | `impex.import`, `domains.domain.write` |
+| `POST` `/impex/domain/inspect` | `impex.import`, `domains.domain.write` |
+| `GET` `/impex/entities` | _Bewust open_ |
+| `GET` `/impex/hosting/columns` | `hosting.hosting.read` |
+| `GET` `/impex/hosting/export` | `impex.export`, `hosting.hosting.read` |
+| `POST` `/impex/hosting/import` | `impex.import`, `hosting.hosting.write` |
+| `POST` `/impex/hosting/inspect` | `impex.import`, `hosting.hosting.write` |
+| `GET` `/impex/project/columns` | `projects.project.read` |
+| `GET` `/impex/project/export` | `impex.export`, `projects.project.read` |
+| `POST` `/impex/project/import` | `impex.import`, `projects.project.write` |
+| `POST` `/impex/project/inspect` | `impex.import`, `projects.project.write` |
+| `GET` `/impex/subscription_template/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription_template/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription_template/import` | `impex.import`, `subscriptions.template.manage` |
+| `POST` `/impex/subscription_template/inspect` | `impex.import`, `subscriptions.template.manage` |
+| `GET` `/impex/subscription_type/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription_type/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription_type/import` | `impex.import`, `subscriptions.type.manage` |
+| `POST` `/impex/subscription_type/inspect` | `impex.import`, `subscriptions.type.manage` |
+| `GET` `/impex/subscription/columns` | `subscriptions.subscription.read` |
+| `GET` `/impex/subscription/export` | `impex.export`, `subscriptions.subscription.read` |
+| `POST` `/impex/subscription/import` | `impex.import`, `subscriptions.subscription.write` |
+| `POST` `/impex/subscription/inspect` | `impex.import`, `subscriptions.subscription.write` |
+| `GET` `/impex/task/columns` | `tasks.task.read` |
+| `GET` `/impex/task/export` | `impex.export`, `tasks.task.read` |
+| `POST` `/impex/task/import` | `impex.import`, `tasks.task.write` |
+| `POST` `/impex/task/inspect` | `impex.import`, `tasks.task.write` |
+| `GET` `/impex/time_entry/columns` | `time.entry.read` |
+| `GET` `/impex/time_entry/export` | `impex.export`, `time.entry.read` |
+| `POST` `/impex/time_entry/import` | `impex.import`, `time.entry.write` |
+| `POST` `/impex/time_entry/inspect` | `impex.import`, `time.entry.write` |
+| `GET` `/impex/uptime_monitor/columns` | `uptime.monitor.read` |
+| `GET` `/impex/uptime_monitor/export` | `impex.export`, `uptime.monitor.read` |
+| `GET` `/impex/website/columns` | `websites.website.read` |
+| `GET` `/impex/website/export` | `impex.export`, `websites.website.read` |
+| `POST` `/impex/website/import` | `impex.import`, `websites.website.write` |
+| `POST` `/impex/website/inspect` | `impex.import`, `websites.website.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -1514,22 +1514,22 @@ Antwoord: `200` · `ImpexInspectReport`
 
 ## `meta`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/meta/domain-probe` | Domain Probe | _Bewust open_ |
-| `GET` `/meta/instance` | Deployment Meta | _Bewust open_ |
-| `GET` `/meta/mcp` | Mcp Meta | _Bewust open_ |
-| `GET` `/meta/me` | Me | _Bewust open_ |
-| `PATCH` `/meta/me` | Update Me | _Bewust open_ |
-| `GET` `/meta/modules` | Modules | _Bewust open_ |
-| `GET` `/meta/tenant` | Tenant Branding | _Bewust open_ |
-| `PATCH` `/meta/tenant` | Update Tenant Branding | `settings.branding.write` |
-| `GET` `/meta/tenant/domain` | Domain Status | `settings.domain.read` |
-| `POST` `/meta/tenant/domain` | Claim Domain | `settings.domain.write` |
-| `DELETE` `/meta/tenant/domain` | Clear Domain | `settings.domain.write` |
-| `POST` `/meta/tenant/domain/check` | Check Domain | `settings.domain.write` |
-| `GET` `/health` | Health | _Geen recht vereist_ |
-| `GET` `/health/ready` | Health Ready | _Geen recht vereist_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/meta/domain-probe` | _Bewust open_ |
+| `GET` `/meta/instance` | _Bewust open_ |
+| `GET` `/meta/mcp` | _Bewust open_ |
+| `GET` `/meta/me` | _Bewust open_ |
+| `PATCH` `/meta/me` | _Bewust open_ |
+| `GET` `/meta/modules` | _Bewust open_ |
+| `GET` `/meta/tenant` | _Bewust open_ |
+| `PATCH` `/meta/tenant` | `settings.branding.write` |
+| `GET` `/meta/tenant/domain` | `settings.domain.read` |
+| `POST` `/meta/tenant/domain` | `settings.domain.write` |
+| `DELETE` `/meta/tenant/domain` | `settings.domain.write` |
+| `POST` `/meta/tenant/domain/check` | `settings.domain.write` |
+| `GET` `/health` | _Geen recht vereist_ |
+| `GET` `/health/ready` | _Geen recht vereist_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -1668,12 +1668,12 @@ Antwoord: `200`
 
 ## `nav`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/nav/prefs` | Get Prefs | `nav.prefs.read` |
-| `PUT` `/nav/prefs` | Set Prefs | `nav.prefs.write` |
-| `DELETE` `/nav/prefs` | Reset Prefs | `nav.prefs.write` |
-| `PUT` `/nav/prefs/default` | Set Default Prefs | `settings.nav.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/nav/prefs` | `nav.prefs.read` |
+| `PUT` `/nav/prefs` | `nav.prefs.write` |
+| `DELETE` `/nav/prefs` | `nav.prefs.write` |
+| `PUT` `/nav/prefs/default` | `settings.nav.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -1718,30 +1718,30 @@ Antwoord: `200` · `NavPrefs`
 
 ## `notifications`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/notifications` | List Notifications | `notifications.notification.read` |
-| `PATCH` `/notifications/{notification_id}` | Set Read | `notifications.notification.write` |
-| `GET` `/notifications/activity` | Activity | `notifications.notification.read` |
-| `GET` `/notifications/channels` | List Channels | `notifications.channels.manage_own` |
-| `POST` `/notifications/channels` | Create Channel | `notifications.channels.manage_own` |
-| `PATCH` `/notifications/channels/{channel_id}` | Update Channel | `notifications.channels.manage_own` |
-| `DELETE` `/notifications/channels/{channel_id}` | Delete Channel | `notifications.channels.manage_own` |
-| `POST` `/notifications/channels/{channel_id}/test` | Test Channel | `notifications.channels.manage_own` |
-| `POST` `/notifications/mark-all-read` | Mark All Read | `notifications.notification.write` |
-| `GET` `/notifications/preferences` | Get Preferences | `notifications.notification.read` |
-| `PUT` `/notifications/preferences` | Set Preferences | `notifications.notification.write` |
-| `GET` `/notifications/preferences/defaults` | Get Default Preferences | `notifications.defaults.manage` |
-| `PUT` `/notifications/preferences/defaults` | Set Default Preferences | `notifications.defaults.manage` |
-| `GET` `/notifications/push/config` | Push Config | `notifications.notification.read` |
-| `GET` `/notifications/push/subscriptions` | List Push Subscriptions | `notifications.notification.read` |
-| `POST` `/notifications/push/subscriptions` | Register Push Subscription | `notifications.notification.write` |
-| `DELETE` `/notifications/push/subscriptions/{subscription_id}` | Revoke Push Subscription | `notifications.notification.write` |
-| `POST` `/notifications/push/test` | Test Push | `notifications.notification.write` |
-| `POST` `/notifications/push/unsubscribe` | Unsubscribe Push | `notifications.notification.write` |
-| `GET` `/notifications/unread-count` | Unread Count | `notifications.notification.read` |
-| `GET` `/notifications/watch` | Get Watch | `notifications.notification.read` |
-| `PUT` `/notifications/watch` | Set Watch | `notifications.notification.write` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/notifications` | `notifications.notification.read` |
+| `PATCH` `/notifications/{notification_id}` | `notifications.notification.write` |
+| `GET` `/notifications/activity` | `notifications.notification.read` |
+| `GET` `/notifications/channels` | `notifications.channels.manage_own` |
+| `POST` `/notifications/channels` | `notifications.channels.manage_own` |
+| `PATCH` `/notifications/channels/{channel_id}` | `notifications.channels.manage_own` |
+| `DELETE` `/notifications/channels/{channel_id}` | `notifications.channels.manage_own` |
+| `POST` `/notifications/channels/{channel_id}/test` | `notifications.channels.manage_own` |
+| `POST` `/notifications/mark-all-read` | `notifications.notification.write` |
+| `GET` `/notifications/preferences` | `notifications.notification.read` |
+| `PUT` `/notifications/preferences` | `notifications.notification.write` |
+| `GET` `/notifications/preferences/defaults` | `notifications.defaults.manage` |
+| `PUT` `/notifications/preferences/defaults` | `notifications.defaults.manage` |
+| `GET` `/notifications/push/config` | `notifications.notification.read` |
+| `GET` `/notifications/push/subscriptions` | `notifications.notification.read` |
+| `POST` `/notifications/push/subscriptions` | `notifications.notification.write` |
+| `DELETE` `/notifications/push/subscriptions/{subscription_id}` | `notifications.notification.write` |
+| `POST` `/notifications/push/test` | `notifications.notification.write` |
+| `POST` `/notifications/push/unsubscribe` | `notifications.notification.write` |
+| `GET` `/notifications/unread-count` | `notifications.notification.read` |
+| `GET` `/notifications/watch` | `notifications.notification.read` |
+| `PUT` `/notifications/watch` | `notifications.notification.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -1984,10 +1984,10 @@ Antwoord: `200` · `WatchRead`
 
 ## `prefs`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/prefs` | Get Prefs | _Bewust open_ |
-| `PUT` `/prefs` | Set Prefs | _Bewust open_ |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/prefs` | _Bewust open_ |
+| `PUT` `/prefs` | _Bewust open_ |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -2014,13 +2014,13 @@ Antwoord: `200` · `UserPrefs`
 
 ## `providers`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/providers` | List Providers | `settings.providers.read` |
-| `POST` `/providers` | Create Provider | `settings.providers.manage` |
-| `GET` `/providers/{provider_id}` | Get Provider | `settings.providers.read` |
-| `PATCH` `/providers/{provider_id}` | Update Provider | `settings.providers.manage` |
-| `DELETE` `/providers/{provider_id}` | Delete Provider | `settings.providers.manage` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/providers` | `settings.providers.read` |
+| `POST` `/providers` | `settings.providers.manage` |
+| `GET` `/providers/{provider_id}` | `settings.providers.read` |
+| `PATCH` `/providers/{provider_id}` | `settings.providers.manage` |
+| `DELETE` `/providers/{provider_id}` | `settings.providers.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -2086,9 +2086,9 @@ Antwoord: `204`
 
 ## `system`
 
-| Endpoint | Wat het doet | Recht |
-| --- | --- | --- |
-| `GET` `/system/info` | System Info | `settings.system.read` |
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/system/info` | `settings.system.read` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
