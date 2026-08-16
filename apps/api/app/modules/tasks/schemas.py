@@ -599,6 +599,11 @@ class TaskDetail(TaskRead):
     labels: list[LabelRead] = Field(default_factory=list)
     checklists: list[ChecklistRead] = Field(default_factory=list)
     comments: list[CommentRead] = Field(default_factory=list)
+    #: The conversation is longer than the cap and what is above is missing. A capped read that
+    #: says nothing reads as "that is all of them" (CLAUDE.md §17, docs/PERFORMANCE.md), and the
+    #: card had no way to tell a task with exactly 200 comments from one with nine hundred.
+    #: Answered without a second query: the read asks for one row more than it keeps.
+    comments_truncated: bool = False
     activities: list[ActivityRead] = Field(default_factory=list)
     links: list[LinkRead] = Field(default_factory=list)
     # ``logged_minutes``/``remaining_minutes`` are inherited from ``TaskRead``. The card always

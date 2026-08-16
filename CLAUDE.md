@@ -1189,6 +1189,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   #318's "a queue nobody reads", one level below the queue. Nothing is lost by staying quiet: the
   moment the pairing appears the sentinel becomes a real id, the fingerprint moves, and that side
   reads as changed on the very next run.
+- **A notification that names something inside a record has to open *that*, and the record has to
+  be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
+  three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`
+  payload carrying an excerpt but not the comment's id — so "Jan reageerde op Productfeed
+  opschonen" opened a task with seventy messages on it and left the reader to find the new ones.
+  The two halves are one fix and neither works alone. The **payload** now carries `comment_id`
+  and `thread_id`, read by both destinations that exist (`notifications/href.ts` for the inbox and
+  the bell, `notifications/render.event_path` for the mail's button) — one fact, two twins, and
+  the twin that was already out of step is the argument for writing the id rather than an anchor
+  each surface has to invent. The **card** reads `?comment=`, unfolds whatever hides that message,
+  marks it, scrolls it into the middle and opens the reply composer under it: a deep link into a
+  list that folds must expand *before* it scrolls, or it is a link that visibly does nothing.
+  Three smaller rules ride along. **The order of a conversation is a per-user preference and it
+  applies to threads only** — an answer must follow its question, so the control flips the openers
+  and the default is newest-first, which is what a section on a record page needs and what a chat,
+  whose viewport is pinned to the bottom, gets for free. **A capped read says it was capped**
+  (`TaskDetail.comments_truncated`), answered by asking for one row more than is kept rather than
+  by a second count query — §17's rule, applied to the one list that had grown past its own cap in
+  silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
+  post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
+  after it is taken.
 
 ## 11. Working agreement (for Claude Code)
 

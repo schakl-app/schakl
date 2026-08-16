@@ -44,6 +44,32 @@ describe("notificationHref", () => {
     assert.equal(at("company", "company.created"), `/companies/${ID}`);
   });
 
+  test("a comment event opens the comment, not the top of the task", () => {
+    // "Jan reageerde op Website migratie" landed on a task with fifty comments and left the
+    // reader to find the words the sentence was about (#312 follow-up). The task page reads
+    // `?comment=`, unfolds whatever hides it and marks it.
+    const comment = "99999999-8888-7777-6666-555555555555";
+    assert.equal(
+      at("task", "task.commented", { comment_id: comment }),
+      `/tasks/${ID}?comment=${comment}`,
+    );
+    assert.equal(
+      at("task", "task.replied", { comment_id: comment }),
+      `/tasks/${ID}?comment=${comment}`,
+    );
+    assert.equal(
+      at("task", "task.mentioned", { comment_id: comment }),
+      `/tasks/${ID}?comment=${comment}`,
+    );
+  });
+
+  test("…and a task event that names no comment still opens the task", () => {
+    // Every other task event (assigned, due, status) carries no comment, and inventing an
+    // anchor for them would be a link to nothing.
+    assert.equal(at("task", "task.commented"), `/tasks/${ID}`);
+    assert.equal(at("task", "task.commented", { comment_id: "" }), `/tasks/${ID}`);
+  });
+
   test("leave splits by who is being asked", () => {
     // Waiting on *you* → the team review, where approve/deny is one click away.
     assert.equal(at("leave_request", "leave.requested"), `/leave/team?request=${ID}`);

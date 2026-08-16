@@ -87,6 +87,13 @@ def event_path(event) -> str | None:  # noqa: ANN001
     """Where the notification opens, as a path on the org's own host (format.ts twin)."""
     entity_id = event.entity_id
     if event.entity_type == "task":
+        # A comment event names the comment it is about (#312), so the mail's button lands on
+        # the words that were written rather than at the top of a task somebody has been
+        # talking on for a year. The task page reads `?comment=`, expands whatever hides it and
+        # scrolls to it — the same destination `href.ts` builds for the in-app inbox.
+        comment_id = (event.payload or {}).get("comment_id")
+        if isinstance(comment_id, str) and comment_id:
+            return f"/tasks/{entity_id}?comment={comment_id}"
         return f"/tasks/{entity_id}"
     if event.entity_type == "project":
         return f"/projects/{entity_id}"

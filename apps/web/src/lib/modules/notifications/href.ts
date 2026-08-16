@@ -36,7 +36,18 @@ export interface NotificationLike {
 type HrefResolver = (item: NotificationLike) => string | null;
 
 const HREF_FOR_ENTITY = {
-  task: (item) => `/tasks/${item.entity_id}`,
+  // A comment event carries the comment it is about (#312), and the task page reads `?comment=`:
+  // it expands whatever hides that message, scrolls to it, marks it, and opens the reply box
+  // underneath. Without the id, "Jan reageerde op Website migratie" opened a task with fifty
+  // comments on it and left the reader to find the ones that were new — the rule at the top of
+  // this file ("the destination is the thing the sentence is about"), unapplied to the one event
+  // type that names something *inside* a record.
+  task: (item) => {
+    const comment = item.payload?.comment_id;
+    return typeof comment === "string" && comment
+      ? `/tasks/${item.entity_id}?comment=${comment}`
+      : `/tasks/${item.entity_id}`;
+  },
   project: (item) => `/projects/${item.entity_id}`,
   company: (item) => `/companies/${item.entity_id}`,
   // The event decides whose surface answers it: a request waiting on *you* opens the team

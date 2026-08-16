@@ -153,6 +153,30 @@ export function fmtDateTime(isoDateTime: string): string {
 }
 
 /**
+ * "2 uur geleden" — how long ago an instant was, for a feed somebody scans rather than audits.
+ *
+ * A conversation is read by recency: fifty rows each stamped "16 aug, 14:32" is fifty things to
+ * compare, while "gisteren" and "2 uur geleden" sort themselves. Anything older than a week gets
+ * the absolute date back, because "37 dagen geleden" is arithmetic nobody asked for — and every
+ * caller keeps the exact stamp in a `title`, so the precise moment is one hover away and the
+ * audit question is still answerable.
+ *
+ * No timezone applies: a difference between two instants is the same number everywhere, which is
+ * also what keeps this honest across the two days a year the clocks move.
+ */
+export function fmtRelativeTime(isoDateTime: string, now: Date = new Date()): string {
+  const then = new Date(isoDateTime);
+  const seconds = Math.round((then.getTime() - now.getTime()) / 1000);
+  const absolute = Math.abs(seconds);
+  if (absolute > 7 * 86400 || Number.isNaN(absolute)) return fmtDateTime(isoDateTime);
+  const rtf = new Intl.RelativeTimeFormat(dateLocale(), { numeric: "auto" });
+  if (absolute < 60) return rtf.format(Math.round(seconds / 1), "second");
+  if (absolute < 3600) return rtf.format(Math.round(seconds / 60), "minute");
+  if (absolute < 86400) return rtf.format(Math.round(seconds / 3600), "hour");
+  return rtf.format(Math.round(seconds / 86400), "day");
+}
+
+/**
  * A bare wire time ("HH:MM" or "HH:MM:SS") in the user's clock preference (issue #13) —
  * "14:30" for 24h, "2:30 PM" for 12h. Times are wall-clock values, never instants, so no
  * timezone applies. An unreadable value passes through untouched.

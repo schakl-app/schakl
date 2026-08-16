@@ -294,12 +294,15 @@ export const actions: Actions = {
     const body = String(form.get("body") ?? "").trim();
     const parent_id = String(form.get("parent_id") ?? "") || null;
     if (!body) return fail(400, { error: "errors.required" });
-    const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/comments", {
+    const { data, error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/comments", {
       params: { path: { task_id: event.params.id } },
       body: { body, parent_id },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
-    return { commented: true };
+    // What was just written, so the card can mark it. Reading oldest-first it lands at the far
+    // end of a long list and the composer is at the top, which left "did that send?" as a
+    // question a successful save should never leave open.
+    return { commented: true, comment_id: data?.id ?? null };
   },
 
   editComment: async (event) => {

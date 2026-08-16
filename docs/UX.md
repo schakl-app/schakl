@@ -348,6 +348,34 @@
   comment while five disappear; and the composer keeps its draft on failure and closes only on
   success (`update({ reset: result.type === "success" })`), because the words are not the server's
   to throw away.
+- **A conversation is a feed, so it folds, it is counted, and its order is the reader's**
+  (`$lib/modules/tasks/TaskComments.svelte`). The rules above were written for the three-comment
+  task and were all still true at seventy: one flat column, oldest-first, no count, and nothing
+  said about the API's 200-row cap. Five things generalise to any threaded discussion the product
+  grows. **Order is a preference and it applies to threads only** — an answer must follow its
+  question, so replies stay oldest-first and what the control flips is the order of the openers.
+  The default is **newest-first**, because a chat pins its viewport to the bottom and a section on
+  a record page does not: inheriting the chat convention is what put the news at the bottom of the
+  page. It is a per-user pref (`/api/v1/prefs`, namespace `comments`), not a URL parameter — this
+  is how one person reads, not which records are on screen — applied optimistically and saved in
+  the background, because a reorder that waits for a round trip reads as a control that is broken.
+  **The list folds from the far end and the fold counts what it hides**: the newest few threads
+  stay open, "Toon 23 oudere reacties" is one line above or below them depending on the order, and
+  a thread's own earlier answers fold the same way. A list that simply stops looks exactly like a
+  list that is complete (Principle 7), which is also why the cap now says so (`comments_truncated`,
+  answered by reading one row more than is kept). **The count is on the heading**, because "how
+  much is there to read?" is the first question a discussion is asked and a folded list cannot
+  answer it by being looked at. **A deep link expands before it scrolls**: `?comment=<id>` is what
+  the notification inbox, the mail button and the activity trail all point at, and the section
+  unfolds whatever hides that message, marks it, scrolls it to the middle of the viewport and
+  opens the reply composer under it seeded with an `@mention` of its author — "someone answered
+  you" and "you are about to answer" are one motion and it used to be three clicks. Arriving is a
+  *navigation*, so the reveal is repeated over the second after it lands: SvelteKit's
+  post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
+  after we take it, and one attempt loses to whichever runs last. A `?comment=` the page does not
+  hold (deleted, or past the cap) says so in a strip — swallowing it is what a broken link looks
+  like. And **posting marks what you wrote**, for the same reason: reading oldest-first your own
+  comment lands at the far end of a long list while the composer stayed at the top.
 - **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
   own — the form lives on the detail page, and duplicating it onto the overview would be a second
   copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`

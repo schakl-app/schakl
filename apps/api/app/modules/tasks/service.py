@@ -775,6 +775,11 @@ class TaskService:
         # reply above a parent that had dropped off the end, and the client would draw it as a new
         # thread. Reversed, this reads exactly as the card renders: threads oldest-first, each
         # opener followed by its answers in the order they were written.
+        #
+        # One row *more* than the cap is asked for and thrown away: that is the whole cost of
+        # answering "is anything missing?", and a capped list that cannot say so reads as the
+        # complete conversation (CLAUDE.md §17). A count query would have been a second read on
+        # the card's query budget for a sentence shown to almost nobody.
         comment_impersonator = aliased(User)
         comment_root = aliased(TaskComment)
         comment_rows = list(
@@ -796,11 +801,15 @@ class TaskService:
                             func.coalesce(comment_root.created_at, TaskComment.created_at).desc(),
                             TaskComment.created_at.desc(),
                         )
-                        .limit(_COMMENT_CAP)
+                        .limit(_COMMENT_CAP + 1)
                     )
                 ).all()
             )
         )
+        detail.comments_truncated = len(comment_rows) > _COMMENT_CAP
+        # Reversed above, so the surplus row is the *oldest* — the front of the list.
+        if detail.comments_truncated:
+            comment_rows = comment_rows[len(comment_rows) - _COMMENT_CAP :]
         detail.comments = []
         for comment, author, wrote_as in comment_rows:
             name, deleted = _attribution(author, comment.author_name)
@@ -2048,6 +2057,17 @@ class TaskService:
         # people already in *that thread* are being answered, not merely told the task was
         # commented on, so they get `task.replied` and drop out of the generic fan-out. Everyone
         # else in the task's audience gets `task.commented`, exactly as before.
+        # Which comment the sentence is *about*. Without it "Jan reageerde op Website migratie"
+        # opened the task and left the reader to find the words that were written — on a task
+        # with fifty comments that is a search, not a link (docs/UX.md, "every number opens";
+        # #16's rule that a destination arrives ready to act on). Both ends read it: the web
+        # inbox and bell through ``notifications/href.ts``, the mail through
+        # ``notifications/render.event_path``. ``thread_id`` is the root, so the client can
+        # expand the right conversation before it scrolls — the answer is not the thread.
+        where = {
+            "comment_id": str(comment.id),
+            "thread_id": str(parent_id or comment.id),
+        }
         mentioned_set = set(mentioned)
         replied = (
             [
@@ -2070,7 +2090,7 @@ class TaskService:
                 "task.commented",
                 task,
                 commented,
-                {"excerpt": excerpt, "_exclude": list(heard)},
+                {"excerpt": excerpt, **where, "_exclude": list(heard)},
             )
         if replied:
             # Same rule one rung up: a mentioned person in this thread is watching it, so the
@@ -2079,10 +2099,10 @@ class TaskService:
                 "task.replied",
                 task,
                 replied,
-                {"excerpt": excerpt, "_exclude": list(mentioned_set)},
+                {"excerpt": excerpt, **where, "_exclude": list(mentioned_set)},
             )
         if mentioned:
-            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
+            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt, **where})
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )

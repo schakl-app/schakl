@@ -27463,6 +27463,11 @@ export interface components {
             closing_interaction_id?: string | null;
             /** Comments */
             comments?: components["schemas"]["CommentRead"][];
+            /**
+             * Comments Truncated
+             * @default false
+             */
+            comments_truncated: boolean;
             /** Company Id */
             company_id?: string | null;
             /** Completed At */
