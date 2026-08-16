@@ -11,7 +11,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.companies.models import Company
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_REGISTER, SIZE_HALF, PanelSpec
 
 
 async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
@@ -42,4 +42,12 @@ company_details_panel = PanelSpec(
     title_key="companies.panel.details",
     provider=_details_provider,
     position=10,
+    # Whoever may open the client may read its own definition — this is the record the page
+    # *is*. Declared rather than omitted (#365): the hub's own panel is the one every later
+    # module copies, so it has to show the shape.
+    requires_permission="companies.company.read",
+    # A register, not a working surface (#364): correct, occasionally consulted, never news.
+    # Half width — an address and six labelled values do not want 1150 px.
+    prominence=PROMINENCE_REGISTER,
+    size=SIZE_HALF,
 )

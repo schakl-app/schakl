@@ -97,6 +97,7 @@
   </button>
   <ImportWizard
     bind:open={showImport}
+    {entity}
     {locale}
     report={form?.impex ?? null}
     inspect={form?.impexInspect ?? null}

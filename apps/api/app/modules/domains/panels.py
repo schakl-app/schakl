@@ -12,7 +12,7 @@ from sqlalchemy import bindparam, text
 
 from app.core.tenancy import RequestContext
 from app.modules.domains.service import DomainService
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 #: How many domains the client card shows before handing over to the register.
 #:
@@ -82,6 +82,10 @@ domains_company_panel = PanelSpec(
     entity_type="company",
     title_key="domains.panel.title",
     provider=_domains_provider,
+    # `resolved_price` per domain went to anyone who could open the client (#365).
+    requires_permission="domains.domain.read",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("domains"),
     # Rarely-consulted asset panel: near the bottom, after websites, before only the trail.
     position=75,
 )

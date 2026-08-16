@@ -16,10 +16,10 @@ from sqlalchemy import select
 from app.core.crypto import encrypt
 from app.core.googleads import set_transport
 from app.db import async_session_maker, set_current_org
-from app.modules.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_ADS
-from app.modules.google_ads import reporting
-from app.modules.google_ads.models import GoogleAdsAccount, GoogleAdsSettings
+from app.integrations.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
+from app.integrations.google.oauth import SCOPE_ADS
+from app.integrations.google_ads import reporting
+from app.integrations.google_ads.models import GoogleAdsAccount, GoogleAdsSettings
 from tests.conftest import auth_cookie, make_tenant
 from tests.googleads_fake import (
     FakeGoogleAds,
@@ -817,7 +817,7 @@ async def test_every_read_releases_the_database_connection(client_for, fake) -> 
     rather than the symptom: the account row is loaded, then the connection is handed back."""
     import inspect
 
-    from app.modules.google_ads.service import GoogleAdsService
+    from app.integrations.google_ads.service import GoogleAdsService
 
     source = inspect.getsource(GoogleAdsService.open_client)
     assert "release_db" in source

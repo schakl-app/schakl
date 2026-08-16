@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Shared task row: complete-toggle, title linking to the card, label chips, due date
-   * (red when overdue), checklist progress, comment count, assignee initials.
+   * (red when overdue), checklist progress, comment count, the faces of everyone on it.
    * Used by the tasks list, the project to-do list and the company panel.
    */
   import { enhance } from "$app/forms";
@@ -38,6 +38,9 @@
     logged_minutes?: number | null;
     remaining_minutes?: number | null;
     assignee_user_id?: string | null;
+    /** The roster (#375), primary first. Optional: the compact dashboard shapes carry neither it
+     *  nor the mirrored column, and those rows draw no face at all. */
+    assignees?: { user_id: string; is_primary: boolean }[];
     labels?: Label[];
     checklist_done?: number;
     checklist_total?: number;
@@ -91,7 +94,21 @@
     statusDef && !statusDef.is_terminal && !statusDef.is_default ? statusDef : null,
   );
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
-  const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
+  // Every face on the task (#375), primary first — the row is narrow, so it draws up to three and
+  // counts the rest. Falls back to the mirrored column for the compact shapes that carry no
+  // roster, which is exactly the row this looked like before.
+  const roster = $derived(
+    task.assignees?.length
+      ? task.assignees
+      : task.assignee_user_id
+        ? [{ user_id: task.assignee_user_id, is_primary: true }]
+        : [],
+  );
+  const faces = $derived(
+    roster
+      .map((link) => ({ link, member: members.find((m) => m.user_id === link.user_id) }))
+      .filter((entry) => entry.member !== undefined),
+  );
   // `null` wherever the load did not ask for the burn (the project to-do list, the dashboard
   // widget) or the caller may not read hours — the pill then shows the plain allocation it
   // always did, rather than a zero that would read as "nothing logged".
@@ -211,13 +228,22 @@
         {fmtDayMonth(task.due_date)}
       </span>
     {/if}
-    {#if assignee}
+    {#each faces.slice(0, 3) as { link, member } (link.user_id)}
       <Avatar
-        name={assignee.full_name}
-        email={assignee.email}
-        avatarUrl={assignee.avatar_url ?? null}
+        name={member?.full_name}
+        email={member?.email ?? null}
+        avatarUrl={member?.avatar_url ?? null}
         size="sm"
       />
+    {/each}
+    {#if faces.length > 3}
+      <span
+        class="text-xs text-text-muted"
+        title={faces
+          .slice(3)
+          .map(({ member }) => member?.full_name || member?.email)
+          .join(", ")}>+{faces.length - 3}</span
+      >
     {/if}
   </div>
 </div>

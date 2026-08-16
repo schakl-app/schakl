@@ -6,14 +6,12 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.subscriptions.service import SubscriptionService
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 async def _subscriptions_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    # Money: the panel simply stays empty for someone without the read grant, rather than
-    # erroring the whole company page.
-    if not ctx.can("subscriptions.subscription.read"):
-        return {"subscriptions": [], "forbidden": True}
+    # The permission is declared on the spec (#365), so the composer never calls this without
+    # it and the provider keeps no second copy of the same rule.
     subs = await SubscriptionService(ctx).for_company(company_id)
     return {
         "subscriptions": [
@@ -39,4 +37,7 @@ subscriptions_company_panel = PanelSpec(
     title_key="subscriptions.panel.title",
     provider=_subscriptions_provider,
     position=60,
+    requires_permission="subscriptions.subscription.read",
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("subscriptions"),
 )

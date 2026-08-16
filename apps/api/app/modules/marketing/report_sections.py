@@ -39,14 +39,23 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.tenancy import RequestContext
-from app.modules.google import client as google_client
-from app.modules.google.models import ConnectionStatus, GoogleConnection
+from app.integrations.google import client as google_client
+from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.marketing.layout import resolved_tiles, source_layout
 from app.modules.marketing.models import (
     MarketingCompanySettings,
     MarketingLink,
     MarketingMetricDaily,
+    MarketingSettings,
     MarketingSource,
+)
+from app.modules.marketing.rankings import (
+    RankingSettings,
+    RankingSource,
+    effective_source,
+)
+from app.modules.marketing.rankings import (
+    resolve as resolve_rankings,
 )
 from app.modules.marketing.service import (
     aggregate,
@@ -91,6 +100,12 @@ class GatheredMarketing:
     #: ``{kind: {"rows": [...], "compare_rows": [...]}}`` — the live GA4 splits.
     live: dict[str, dict[str, Any]] = field(default_factory=dict)
     keywords: list[dict[str, Any]] = field(default_factory=list)
+    #: Which source the keyword rows above came from, or ``None`` when this client gets no
+    #: rankings section at all (#373). Resolved once by ``rankings.effective_source`` rather
+    #: than re-derived by everything that wants to know, so the settings screen, the section
+    #: catalog and the run itself cannot disagree about what will happen.
+    keyword_source: RankingSource | None = None
+    ranking_settings: RankingSettings = field(default_factory=RankingSettings)
     audit: dict[str, Any] | None = None
     ai_search: list[dict[str, Any]] = field(default_factory=list)
     key_event_labels: dict[str, str] = field(default_factory=dict)
@@ -162,8 +177,26 @@ async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketin
                 {"code": "reporting.warning.link_error", "detail": link.display_name}
             )
 
+    org_settings = await ctx.session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == ctx.org.id)
+    )
+    out.ranking_settings = resolve_rankings(
+        org_settings.rankings if org_settings else None,
+        settings_row.rankings if settings_row else None,
+    )
+    out.keyword_source = effective_source(
+        out.ranking_settings,
+        has_seranking=any(
+            link.source == MarketingSource.SERANKING.value for link in out.links
+        ),
+        has_search_console=any(
+            link.source == MarketingSource.GSC.value for link in out.links
+        ),
+    )
+
     await _gather_ga4_live(ctx, out, window)
     await _gather_seranking(ctx, out, window)
+    await _gather_gsc_keywords(ctx, out, window)
     return out
 
 
@@ -275,11 +308,16 @@ async def _gather_seranking(
         out.notes.append({"code": "reporting.warning.seranking_not_configured", "detail": ""})
         return
     adapter = source_for(MarketingSource.SERANKING.value)
+    # The audit and the AI-search sections read from SE Ranking whatever the *rankings* setting
+    # says: "report positions from Search Console" is a statement about one section, not a
+    # decision to stop reading a credential the client is paying for.
+    want_keywords = out.keyword_source is RankingSource.SERANKING
     try:
         async with org_key_client(key) as client, ctx.release_db():
-            out.keywords = await adapter.keyword_rows(
-                client, link.external_id, window.start, window.end
-            )
+            if want_keywords:
+                out.keywords = await adapter.keyword_rows(
+                    client, link.external_id, window.start, window.end
+                )
             out.audit = await adapter.audit(client, link.external_id)
             out.ai_search = await adapter.ai_search(
                 client, link.external_id, window.start, window.end
@@ -287,6 +325,51 @@ async def _gather_seranking(
     except Exception as exc:  # noqa: BLE001
         logger.warning("reporting: SE Ranking fetch failed for %s: %s", link.id, exc)
         out.notes.append({"code": "reporting.warning.source_failed", "detail": "seranking"})
+
+
+async def _gather_gsc_keywords(
+    ctx: RequestContext, out: GatheredMarketing, window: ReportWindow
+) -> None:
+    """Per-query positions from Search Console, where that is what this client's setting names.
+
+    The section this feeds is the same one SE Ranking feeds — same payload, same design block,
+    same paragraph brief — because "where do I rank" is one question with two possible answers
+    and a client should never be able to tell from the document which integration the agency
+    happens to hold. Only the columns differ, and only where the source genuinely knows less
+    (no landing page, no keyword groups); see ``GSCAdapter.keyword_rows``.
+    """
+    if out.keyword_source is not RankingSource.SEARCH_CONSOLE:
+        return
+    link = next(
+        (link for link in out.links if link.source == MarketingSource.GSC.value), None
+    )
+    if link is None or link.connection_id is None:
+        return
+    connection = await ctx.session.get(GoogleConnection, link.connection_id)
+    if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
+        out.notes.append({"code": "reporting.warning.disconnected", "detail": "gsc"})
+        return
+    adapter = source_for(MarketingSource.GSC.value)
+    settings = out.ranking_settings
+    try:
+        async with (
+            google_client.acting_as(ctx.session, ctx.org, connection) as gclient,
+            ctx.release_db(),
+        ):
+            out.keywords = await adapter.keyword_rows(
+                gclient,
+                link.external_id,
+                window.start,
+                window.end,
+                window.compare_start,
+                window.compare_end,
+                limit=settings.limit,
+                min_impressions=settings.min_impressions,
+                max_position=settings.max_position,
+            )
+    except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
+        logger.warning("reporting: Search Console keywords failed for %s: %s", link.id, exc)
+        out.notes.append({"code": "reporting.warning.source_failed", "detail": "gsc"})
 
 
 # --------------------------------------------------------------------------------------- #
@@ -474,26 +557,86 @@ async def _conversions(ctx: RequestContext, window: ReportWindow) -> dict[str, A
 
 
 async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
+    """Keyword positions, from whichever source this client's settings resolve to (#373).
+
+    One section, two possible sources, one payload. A client should not be able to tell from
+    their report which integration the agency happens to hold — so the shape, the design block
+    and the paragraph brief are the same either way, and only what a source genuinely cannot
+    know is missing from it.
+
+    The **summary tiles** are new and are the point of the section for a reader who is not going
+    to read forty rows: how many terms sit in the top three, the top ten, the top thirty, and
+    where the average is. SE Ranking has carried ``top3``/``top10``/``top30`` in
+    ``SERANKING_METRICS`` all along and the report printed none of them; a Search Console table
+    can be counted for the same four figures, which is what makes them comparable between
+    clients on different sources.
+    """
     data = await gather(ctx, window)
-    if not data.keywords:
+    if not data.keywords or data.keyword_source is None:
         return None
-    rows = _capped(data.keywords, MAX_KEYWORD_ROWS, data, "rankings")
-    groups: dict[str, list[dict]] = {}
-    for row in rows:
-        groups.setdefault(row["group"] or "", []).append(row)
+    settings = data.ranking_settings
+    rows = _capped(
+        data.keywords, min(settings.limit, MAX_KEYWORD_ROWS), data, "rankings"
+    )
+    if settings.grouped:
+        groups: dict[str, list[dict]] = {}
+        for row in rows:
+            groups.setdefault(row.get("group") or "", []).append(row)
+        grouped = [
+            {"name": name, "rows": members}
+            for name, members in sorted(groups.items(), key=lambda pair: pair[0].lower())
+        ]
+    else:
+        grouped = [{"name": "", "rows": rows}]
+    if not settings.show_landing_pages:
+        rows = [{**row, "landing_page": None} for row in rows]
+        grouped = [
+            {**group, "rows": [{**row, "landing_page": None} for row in group["rows"]]}
+            for group in grouped
+        ]
     stored = data.stored.get(MarketingSource.SERANKING.value) or {}
+    totals = dict(stored.get("totals") or {})
+    if not totals:
+        totals = _position_summary(rows)
     return {
         "kind": "rankings",
         "columns": ["begin", "end", "change"],
         "rows": rows,
-        "groups": [
-            {"name": name, "rows": members}
-            for name, members in sorted(groups.items(), key=lambda pair: pair[0].lower())
-        ],
-        "totals": stored.get("totals") or {},
+        "groups": grouped,
+        "totals": totals,
         "compare": stored.get("compare"),
         "chart": None,
         "notes": data.notes,
+    }
+
+
+def _position_summary(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """Top-3 / top-10 / top-30 counts and the average position, from the rows themselves.
+
+    What SE Ranking reports for a *project* (its own ``top3``/``top10``/``top30`` metrics), only
+    over the terms this table actually shows — which is the honest scope for a Search Console
+    table, where "tracked keywords" is not a thing anybody chose and the denominator would
+    otherwise be "every phrase Google has ever shown this site for".
+    """
+    ranked: list[int] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            position = int(row.get("end") or 0)
+        except (TypeError, ValueError):
+            continue
+        # 0 is "not ranking", not "first". Counting it would put every invisible term in the
+        # top three, which is the one arithmetic error a client would notice.
+        if position > 0:
+            ranked.append(position)
+    if not ranked:
+        return {}
+    return {
+        "keywords_ranking": float(len(ranked)),
+        "top3": float(sum(1 for position in ranked if position <= 3)),
+        "top10": float(sum(1 for position in ranked if position <= 10)),
+        "avg_position": round(sum(ranked) / len(ranked), 1),
     }
 
 
@@ -562,6 +705,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.traffic_channels",
         title_key="reporting.section.traffic_channels",
         brief_key="reporting.brief.traffic_channels",
+        source_key="reporting.source.ga4",
         provider=_traffic_channels,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -571,6 +715,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.search_engines",
         title_key="reporting.section.search_engines",
         brief_key="reporting.brief.search_engines",
+        source_key="reporting.source.ga4",
         provider=_split_section("organic_sources", "share", 10),
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -580,6 +725,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.rankings",
         title_key="reporting.section.rankings",
         brief_key="reporting.brief.rankings",
+        source_key="reporting.source.rankings",
         provider=_rankings,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -589,6 +735,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.search_console",
         title_key="reporting.section.search_console",
         brief_key="reporting.brief.search_console",
+        source_key="reporting.source.gsc",
         provider=_search_console,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -598,6 +745,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.referral",
         title_key="reporting.section.referral",
         brief_key="reporting.brief.referral",
+        source_key="reporting.source.ga4",
         provider=_split_section("referral_sources", None, MAX_TABLE_ROWS),
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -607,6 +755,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.social",
         title_key="reporting.section.social",
         brief_key="reporting.brief.social",
+        source_key="reporting.source.ga4",
         provider=_split_section("social_sources", "grouped", 10),
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -616,6 +765,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.conversions",
         title_key="reporting.section.conversions",
         brief_key="reporting.brief.conversions",
+        source_key="reporting.source.ga4",
         provider=_conversions,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -625,6 +775,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.ai_search",
         title_key="reporting.section.ai_search",
         brief_key="reporting.brief.ai_search",
+        source_key="reporting.source.seranking",
         provider=_ai_search,
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
@@ -634,6 +785,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         key="marketing.site_audit",
         title_key="reporting.section.site_audit",
         brief_key="reporting.brief.site_audit",
+        source_key="reporting.source.seranking",
         provider=_site_audit,
         audience=AUDIENCE_INTERNAL,
         requires_permission="marketing.metrics.read",

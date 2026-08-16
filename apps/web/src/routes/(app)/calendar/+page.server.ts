@@ -7,7 +7,10 @@ import {
   type CalendarView,
 } from "$lib/core/calendar";
 import { calendarSourcesFor, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { getTimeZone } from "$lib/core/timezone";
+import { availabilityActions } from "$lib/modules/leave/availability.server";
 import { isHexColor, LABEL_COLORS } from "$lib/core/ui/colors";
 import {
   createScheduleAction,
@@ -18,8 +21,11 @@ import {
 
 import type { Actions, PageServerLoad } from "./$types";
 
+/** Today as the tenant's calendar day (§8), never the Node server's UTC one — this load runs
+ *  server-side, so between midnight and 02:00 Amsterdam time the UTC date is yesterday and the
+ *  agenda opened on it with "vandaag" marked one cell too early. `en-CA` formats as YYYY-MM-DD. */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: getTimeZone() }).format(new Date());
 }
 
 function isIsoDate(value: string): boolean {
@@ -94,7 +100,18 @@ export const load: PageServerLoad = async (event) => {
   // Rosters feed the per-person menu: the overlay picker (#188) and the split-by-colleague rows
   // (#281). Both only for visible sources that offer them, and only if the viewer may see anyone
   // else (the source returns [] otherwise).
-  const [results, rosters, splitRosters] = await Promise.all([
+  // Whether an availability control belongs on this agenda at all (#368). A *permission* decides
+  // who may write and the employment *kind* decides whether the surface exists: every member
+  // holds `leave.availability.write:own`, so the permission alone would offer "beschikbaarheid
+  // vastleggen" to every employee for a thing employees do not have. Read only when it could
+  // change the answer — a viewer holding `:any` needs no profile, and neither does an org
+  // without the module (docs/PERFORMANCE.md).
+  const leaveEnabled = (event.locals.theme?.enabledModules ?? []).includes("leave");
+  const writesAvailability = leaveEnabled && can(event.locals.user, "leave.availability.write");
+  const writesAnyAvailability =
+    writesAvailability && can(event.locals.user, "leave.availability.write", "any");
+
+  const [results, rosters, splitRosters, leaveProfile] = await Promise.all([
     Promise.all(
       sources.map((source) =>
         source
@@ -122,6 +139,9 @@ export const load: PageServerLoad = async (event) => {
           : Promise.resolve([] as CalendarPerson[]),
       ),
     ),
+    writesAvailability && !writesAnyAvailability
+      ? api.GET("/api/v1/leave/profile").catch(() => ({ data: null }))
+      : Promise.resolve({ data: null }),
   ]);
   const events = results.flat();
 
@@ -145,7 +165,15 @@ export const load: PageServerLoad = async (event) => {
     })),
   }));
 
-  const base = { view, date, today, sourceOptions };
+  const base = {
+    view,
+    date,
+    today,
+    sourceOptions,
+    // `null` employment_type means *no period on file*, which shows the surface to nobody rather
+    // than to everybody — the same third value `/leave` already reads it for.
+    canAddAvailability: writesAnyAvailability || leaveProfile.data?.employment_type === "freelance",
+  };
   if (view === "year") {
     return { ...base, events: [], aggregates: aggregateEventsByDay(events) };
   }
@@ -153,6 +181,16 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /**
+   * Recording availability from the agenda (#368). The feed drew a freelancer's exceptions and
+   * offered no way to add one, so the day being planned was on screen and had to be retyped
+   * somewhere else — the calendar could be read and not written, for anything.
+   *
+   * The same four writes every other host declares, so the agenda and `/leave/availability`
+   * cannot disagree about what a save does.
+   */
+  ...availabilityActions,
+
   /** The feeds this user hid (#121) — the whole list per save, like every roster post. */
   saveSources: async (event) => {
     const form = await event.request.formData();

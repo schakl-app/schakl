@@ -68,9 +68,15 @@
     companyLinks.map((c) => ({ id: c.company_id, label: c.name, is_primary: c.is_primary })),
   );
   const linkedIds = $derived(new Set(companyLinks.map((c) => c.company_id)));
-  // The primary client scopes the notes editor's @/# candidates (#237): that company's
-  // contacts and tasks, the same host-link rule the task page applies.
-  const primaryCompanyId = $derived(
+  // Which client scopes the notes editor's @/# candidates (#237): that company's contacts and
+  // tasks, the same host-link rule the task page applies.
+  //
+  // Note what `is_primary` is *not* (#374). It means "this person is the primary contact **for
+  // that company**" — it is unique per company, so the same person can carry it at three clients
+  // at once, and "their primary client" is not a fact that exists. This picks the one client
+  // where they are the first point of contact, else simply the first link: a defensible pick for
+  // a mention scope, and never to be read back as "the client this person belongs to".
+  const mentionScopeCompanyId = $derived(
     (companyLinks.find((c) => c.is_primary) ?? companyLinks[0])?.company_id ?? null,
   );
   const candidateCompanies = $derived(
@@ -121,9 +127,21 @@
 </div>
 
 <!-- Linked clients: chips navigate in use mode; attaching, detaching and promoting appear only
-     under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
+     under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3).
+
+     The subtitle is not decoration (#374). Read without it, a marked chip in a block headed
+     "Klanten" says "this is their main client" — which is not a fact that exists, and is the
+     opposite of what the marker means and of what clicking one *does*: it makes this person the
+     first point of contact **at that client**, replacing whoever held it there. One sentence is
+     the difference between a control someone understands and one they discover by breaking
+     another client's configuration. -->
 <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
-  <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
+  <h2 class="text-sm font-semibold text-text">{t("contacts.companies")}</h2>
+  {#if links.length > 0}
+    <p class="mb-4 mt-1 text-xs text-text-muted">{t("contacts.companies_marker")}</p>
+  {:else}
+    <div class="mb-4"></div>
+  {/if}
   <!-- `editing && canLink`: read-mode chips stay navigable (a portal client may follow them to
        /companies/{id}), but link/unlink/make-primary never render for a read-only portal client
        (#244) — nor for anyone without `contacts.link.write`, which is the key they call (#310).
@@ -141,10 +159,11 @@
     placeholder={t("contacts.add_client")}
     chipHref={(cid) => `/companies/${cid}`}
     labels={{
-      primary: t("contacts.primary"),
-      makePrimary: t("contacts.make_primary"),
+      primary: t("contacts.primary_at_client"),
+      makePrimary: t("contacts.make_primary_at_client"),
       remove: t("contacts.unlink"),
     }}
+    hint={t("contacts.primary_at_client_hint")}
     oncreate={canWriteCompany ? openCreateCompany : undefined}
   />
 </section>
@@ -220,7 +239,7 @@
           name="notes"
           rows={3}
           value={contact.notes ?? ""}
-          scope={{ companyId: primaryCompanyId }}
+          scope={{ companyId: mentionScopeCompanyId }}
         />
       </div>
     </div>
@@ -231,7 +250,7 @@
           definitions={data.definitions}
           values={custom}
           locale={data.locale}
-          scope={{ companyId: primaryCompanyId }}
+          scope={{ companyId: mentionScopeCompanyId }}
         />
       </div>
     {/if}

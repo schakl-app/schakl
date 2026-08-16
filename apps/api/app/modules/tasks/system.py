@@ -19,7 +19,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.core.events import EmitContext, emit
 from app.core.richtext import MENTION_RE, sanitize_markdown
@@ -29,6 +29,7 @@ from app.modules.tasks.models import (
     Task,
     TaskActivity,
     TaskAIStatus,
+    TaskAssignee,
     TaskChecklist,
     TaskChecklistItem,
     TaskComment,
@@ -36,6 +37,37 @@ from app.modules.tasks.models import (
     TaskPriority,
     TaskStatus,
 )
+
+
+async def mirror_primary_assignee(
+    session: Any, org_id: uuid.UUID, task_id: uuid.UUID, user_id: uuid.UUID | None
+) -> None:
+    """Keep ``task_assignees`` in step with a direct write to ``tasks.assignee_user_id`` (#375).
+
+    ``TaskService`` writes the links and derives the column from them. The write paths that do
+    not go through it — automation, AI enrichment, e-mail-to-task, applying a task template —
+    set the column straight onto the row, and a mirror with no link behind it is not a cosmetic
+    gap: since the roster is what "mijn taken", the person filter and ``:own`` all read, such a
+    task would be assigned to someone and invisible to them. So every one of those paths calls
+    this, and the invariant "the column always has a matching primary link" holds for the whole
+    module rather than for the half of it that happens to use the service.
+
+    Replaces the roster rather than adding to it: these callers are stating the assignee, not
+    joining one. ``None`` leaves the task unassigned.
+    """
+    await session.execute(
+        delete(TaskAssignee).where(
+            TaskAssignee.org_id == org_id, TaskAssignee.task_id == task_id
+        )
+    )
+    await session.flush()  # clear the one-primary partial unique index before re-claiming it
+    if user_id is not None:
+        session.add(
+            TaskAssignee(
+                org_id=org_id, task_id=task_id, user_id=user_id, is_primary=True
+            )
+        )
+    await session.flush()
 
 
 async def _record(
@@ -114,6 +146,7 @@ async def create_task_system(
     )
     ctx.session.add(task)
     await ctx.session.flush()
+    await mirror_primary_assignee(ctx.session, ctx.org.id, task.id, assignee_user_id)
     await _record(ctx, task.id, "created", actor_name, {})
     await _emit(
         ctx,
@@ -177,6 +210,7 @@ async def assign_task_system(
         return task
     task.assignee_user_id = user_id
     await ctx.session.flush()
+    await mirror_primary_assignee(ctx.session, ctx.org.id, task.id, user_id)
     await _record(ctx, task.id, "updated", actor_name, {"changed": ["assignee_user_id"]})
     await _emit(ctx, "task.assigned", task, [user_id], None, extra_payload)
     return task
@@ -217,10 +251,18 @@ async def caller_may_write_task(ctx, task_id: uuid.UUID) -> bool:  # noqa: ANN00
     user = getattr(ctx, "user", None)
     if user is None:
         return False
-    assignee = await ctx.session.scalar(
-        select(Task.assignee_user_id).where(Task.org_id == ctx.org.id, Task.id == task_id)
+    # Any assignee, not the starred one (#375) — the same answer ``TaskService`` gives, and it
+    # has to be the same answer or a second assignee's approve would 403 where their own PATCH
+    # of the very same task succeeds.
+    return bool(
+        await ctx.session.scalar(
+            select(TaskAssignee.id).where(
+                TaskAssignee.org_id == ctx.org.id,
+                TaskAssignee.task_id == task_id,
+                TaskAssignee.user_id == user.id,
+            )
+        )
     )
-    return assignee is not None and assignee == user.id
 
 
 async def set_ai_status_system(

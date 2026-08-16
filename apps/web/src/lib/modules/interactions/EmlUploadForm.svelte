@@ -1,9 +1,21 @@
 <script lang="ts">
   /**
-   * Log an email nobody's connected mailbox ever saw (#262): pick its `.eml` export, assign it
-   * to a client / project / task / contact in the same step, save. The API parses the message —
-   * subject, participants, date, body, attachments — so the row reads exactly like a
-   * Gmail-synced one; only the bytes came from a file.
+   * Log an email the timeline is missing: from its `.eml` export (#262), or straight out of the
+   * caller's own Gmail by reference (#342). Either way you assign it to a client / project /
+   * task / contact in the same step and save, and the API writes a row that reads exactly like
+   * a synced one — only where the bytes came from differs.
+   *
+   * **One dialog, two sources, one set of pickers.** The half that changes is where the message
+   * comes from; the half that matters — which client, which project, which task, who it was
+   * with, and whether schakl should read it into that task — is identical, and duplicating it
+   * per source is how the second source ends up missing a field the first one has. That is the
+   * shape of the bug #342 fixed one layer down (the AI fill-in was reachable only from review,
+   * so the upload silently lacked it), so it is not a shape to repeat here.
+   *
+   * The Gmail half refuses to browse. It resolves a reference the caller already holds — a
+   * link, a `Message-ID`, or the id of a conversation we logged part of — and never lists a
+   * mailbox: a picker over arbitrary personal mail is the trust landmine `docs/GOOGLE.md` names,
+   * and it would make "schakl only ever sees matched mail" untrue.
    *
    * Rendered inside a `Modal` by whichever surface hosts the timeline, so the affordance exists
    * on the Interacties page and on every company / project / task / contact panel at once. It
@@ -14,10 +26,12 @@
    * logged twice (same `Message-ID`, "toch vastleggen"), and an attachment the storage
    * guardrails refused is reported rather than dropped.
    */
-  import { Mail, Paperclip } from "@lucide/svelte";
+  import { Mail, Paperclip, Search } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
+  import type { components } from "$lib/core/api/schema";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -32,7 +46,10 @@
   import { companyArchivedLabel } from "$lib/modules/companies/picker";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
+
   import ContactChips from "./ContactChips.svelte";
+  import GmailMessagePicker from "./GmailMessagePicker.svelte";
   import {
     loadLinkLookups,
     splitLinkOptions,
@@ -44,10 +61,26 @@
 
   let {
     prefill = {},
+    threadId = null,
+    gmailAvailable = null,
     onsaved,
   }: {
     /** The host entity's link, stamped on the uploaded row (e.g. `{ company_id }`). */
     prefill?: Record<string, string | null | undefined>;
+    /**
+     * Open on the Gmail tab, filling the gaps in **this** conversation (#342). The id came off
+     * a row the poller wrote, so asking about it is not new reach — it is the one reference
+     * nobody has to copy out of a browser address bar, which is exactly the one that does not
+     * survive the trip.
+     */
+    threadId?: string | null;
+    /**
+     * Whether this mailbox can actually be read (`/google/gmail/status`). `null` = the host did
+     * not load it, and the permission stands in: a tab that always refuses is worse than no tab
+     * (#253), but plumbing a status read into every panel that renders this dialog would tax
+     * every open for a source most of them never use.
+     */
+    gmailAvailable?: boolean | null;
     onsaved?: () => void;
   } = $props();
 
@@ -57,6 +90,25 @@
   let error = $state("");
   let duplicate = $state(false);
   let skipped = $state(0);
+
+  // --- where the message comes from (#342) --------------------------------------------- //
+  type LookupResult = components["schemas"]["GmailLookupResult"];
+  type Candidate = components["schemas"]["GmailCandidate"];
+  const gmailOffered = $derived(gmailAvailable ?? can(page.data.user, "google.connection.manage"));
+  // A thread to fill in is a Gmail question by construction; anything else opens on the file.
+  let source = $state<"file" | "gmail">(threadId ? "gmail" : "file");
+  let reference = $state("");
+  // The search fields (#372), bound so a refinement keeps what was typed — `reset: false` on
+  // its own would only preserve them across a *failure*, and narrowing a result set means
+  // submitting the same form again with one field changed.
+  let searchParticipant = $state("");
+  let searchSubject = $state("");
+  let searchAfter = $state("");
+  let searchBefore = $state("");
+  let lookup = $state<LookupResult | null>(null);
+  let picked = $state<Candidate | null>(null);
+  let gmailError = $state("");
+  const gmail = $derived(source === "gmail" && gmailOffered);
 
   // A dimension the host page already fixed rides along as a hidden input; the rest get a
   // picker, the same split the manual form makes.
@@ -108,6 +160,7 @@
   const effProject = $derived(
     fProject || (typeof prefill.project_id === "string" ? prefill.project_id : ""),
   );
+  const effTask = $derived(fTask || (typeof prefill.task_id === "string" ? prefill.task_id : ""));
   // The cascade decides *which* rows may be offered; the split decides which of them are
   // suggested. An archived client, a finished project and a closed task each drop behind the
   // search wearing their status rather than out of the picker (`lookups.splitLinkOptions`).
@@ -165,6 +218,20 @@
   const canCreateProject = $derived(can(page.data.user, "projects.project.write"));
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
   const canCreateContact = $derived(can(page.data.user, "contacts.contact.write"));
+  /**
+   * "Laat schakl de taak invullen" (#327), on a source that could never offer it before (#342).
+   * The same two gates the approve dialog uses: the per-task **write** (filling a task in is a
+   * task write, whatever route it rode in on) and the AI gate, which keeps the tick off the
+   * screen entirely for an org with no provider — off means invisible (#126). And no task
+   * picked means no box: "fill in the task" with nothing to fill in is a control that does
+   * nothing, ticked by people who reasonably expect it to.
+   */
+  const canEnrichTask = $derived(
+    Boolean(effTask) &&
+      canWriteTask(page.data.user, tasks.find((task) => task.value === effTask) ?? null) &&
+      aiEnabled(page.data.user, "email_assist"),
+  );
+  let enrichTask = $state(false);
   let taskCreateOpen = $state(false);
   let taskDraft = $state("");
   let companyCreateOpen = $state(false);
@@ -268,14 +335,200 @@
   });
 </script>
 
+{#if gmailOffered}
+  <!-- Which source, before anything else: the whole rest of the dialog is the same either way,
+       so this is the only decision the two paths do not share. Not tabs-as-navigation — the
+       form below is one form, and this switches where its message comes from. -->
+  <div class="mb-4 flex flex-wrap items-center gap-1">
+    <button
+      type="button"
+      onclick={() => (source = "file")}
+      class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'file'
+        ? 'bg-surface text-text ring-1 ring-inset ring-border'
+        : 'text-text-muted hover:text-text'}"
+    >
+      {t("interactions.eml.source_file")}
+    </button>
+    <button
+      type="button"
+      onclick={() => (source = "gmail")}
+      class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'gmail'
+        ? 'bg-surface text-text ring-1 ring-inset ring-border'
+        : 'text-text-muted hover:text-text'}"
+    >
+      {t("interactions.eml.source_gmail")}
+    </button>
+  </div>
+{/if}
+
+{#if gmail}
+  <!-- Its own form, and a sibling of the one below rather than a child: HTML has no nested
+       forms, and the two really are separate submissions — looking a message up reads, logging
+       it writes. A form action rather than a browser fetch, so the flow needs no edge route to
+       proxy `/api/v1` and behaves the same in every deployment. -->
+  <form
+    method="POST"
+    action="?/lookupGmailMessage"
+    class="mb-4 space-y-2"
+    use:enhance={busy.wrap("gmail-lookup", () => async ({ result, update }) => {
+      if (result.type === "failure") {
+        gmailError = String(result.data?.error ?? "errors.validation");
+        lookup = null;
+        picked = null;
+        return;
+      }
+      gmailError = "";
+      lookup =
+        result.type === "success"
+          ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+          : null;
+      picked = null;
+      // `reset: false`: the reference is what the user must correct when nothing came back,
+      // and blanking it sends them to Gmail to copy the same link a second time.
+      await update({ reset: false });
+    })}
+  >
+    {#if threadId}
+      <input type="hidden" name="thread_id" value={threadId} />
+      <p class="text-sm font-medium text-text">{t("interactions.gmail.thread_results")}</p>
+      <p class="text-xs text-text-muted">{t("interactions.gmail.thread_hint")}</p>
+    {:else}
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.gmail.reference")}</span>
+        <input
+          type="text"
+          name="reference"
+          bind:value={reference}
+          placeholder={t("interactions.gmail.reference_placeholder")}
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+        />
+      </label>
+      <p class="text-xs text-text-muted">{t("interactions.gmail.reference_hint")}</p>
+    {/if}
+    <Button type="submit" variant="secondary" loading={busy.is("gmail-lookup")}>
+      <Search size={15} aria-hidden="true" />
+      {threadId ? t("interactions.gmail.thread_fetch") : t("interactions.gmail.search")}
+    </Button>
+  </form>
+
+  {#if !threadId}
+    <!-- The other way in (#372). A separate form for the same reason the lookup is one: two
+         submissions, two sets of inputs, one result list. Kept collapsed because a reference is
+         the faster route when you have one — but reachable in one click, because most of the
+         time nobody has one, and "go and copy an id out of Gmail" was the whole problem. -->
+    <details class="mb-4 rounded-lg border border-border">
+      <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-text">
+        {t("interactions.gmail.search_toggle")}
+      </summary>
+      <form
+        method="POST"
+        action="?/searchGmailMessages"
+        class="space-y-2 border-t border-border p-3"
+        use:enhance={busy.wrap("gmail-search", () => async ({ result, update }) => {
+          if (result.type === "failure") {
+            gmailError = String(result.data?.error ?? "errors.validation");
+            lookup = null;
+            picked = null;
+            return;
+          }
+          gmailError = "";
+          lookup =
+            result.type === "success"
+              ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+              : null;
+          picked = null;
+          // `reset: false`: the fields describe a search somebody is refining, and blanking
+          // them after each attempt makes narrowing a result set impossible.
+          await update({ reset: false });
+        })}
+      >
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">
+            {t("interactions.gmail.search_participant")}
+          </span>
+          <input
+            type="email"
+            name="participant"
+            bind:value={searchParticipant}
+            placeholder={t("interactions.gmail.search_participant_placeholder")}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">
+            {t("interactions.gmail.search_subject")}
+          </span>
+          <input
+            type="text"
+            name="subject"
+            bind:value={searchSubject}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </label>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_after")}
+            </span>
+            <input
+              type="date"
+              name="after"
+              bind:value={searchAfter}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_before")}
+            </span>
+            <input
+              type="date"
+              name="before"
+              bind:value={searchBefore}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+        </div>
+        <p class="text-xs text-text-muted">{t("interactions.gmail.search_hint")}</p>
+        <Button type="submit" variant="secondary" loading={busy.is("gmail-search")}>
+          <Search size={15} aria-hidden="true" />
+          {t("interactions.gmail.search_submit")}
+        </Button>
+      </form>
+    </details>
+  {/if}
+
+  {#if gmailError}
+    <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(gmailError)}</p>
+  {/if}
+  {#if lookup}
+    <div class="mb-4">
+      {#if lookup.widened_to_thread}
+        <!-- "I pasted one link and got eight messages" is surprising unless it is said. -->
+        <p class="mb-2 text-xs text-text-muted">{t("interactions.gmail.widened")}</p>
+      {/if}
+      <GmailMessagePicker
+        messages={lookup.messages ?? []}
+        truncated={lookup.truncated ?? false}
+        selected={picked?.message_id ?? ""}
+        onpick={(message) => {
+          picked = message;
+          duplicate = false;
+          error = "";
+        }}
+      />
+    </div>
+  {/if}
+{/if}
+
 <form
   method="POST"
-  action="?/uploadInteractionEml"
-  enctype="multipart/form-data"
+  action={gmail ? "?/importGmailMessage" : "?/uploadInteractionEml"}
+  enctype={gmail ? "application/x-www-form-urlencoded" : "multipart/form-data"}
   class="space-y-4"
   use:enhance={busy.wrap("", () => async ({ result, update }) => {
     if (result.type === "failure") {
-      duplicate = Boolean(result.data?.emlDuplicate);
+      duplicate = Boolean(result.data?.emlDuplicate ?? result.data?.gmailDuplicate);
       error = String(result.data?.error ?? "errors.validation");
       return;
     }
@@ -289,38 +542,43 @@
     if (!skipped) onsaved?.();
   })}
 >
+  {#if gmail}
+    <input type="hidden" name="message_id" value={picked?.message_id ?? ""} />
+  {/if}
   {#each Object.entries(hidden) as [field, value] (field)}
     <input type="hidden" name={field} {value} />
   {/each}
   <!-- Set only after the duplicate warning: the second press is the deliberate one. -->
   <input type="hidden" name="allow_duplicate" value={duplicate ? "1" : "0"} />
 
-  <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
+  {#if !gmail}
+    <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
        screen exists for, so the whole block is the drop target. -->
-  <div use:filedrop={{ onerror: (key) => (error = key) }}>
-    <span class="mb-1 block text-sm font-medium text-text">{t("interactions.eml.file")}</span>
-    <label
-      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand focus-within:border-brand hover:text-brand"
-    >
-      <Paperclip size={15} aria-hidden="true" />
-      {filename || t("interactions.eml.choose")}
-      <input
-        type="file"
-        name="file"
-        accept=".eml,message/rfc822"
-        required
-        class="sr-only"
-        onchange={(e) => {
-          filename = e.currentTarget.files?.[0]?.name ?? "";
-          duplicate = false;
-          error = "";
-          skipped = 0;
-        }}
-      />
-    </label>
-    <span class="ml-2 text-xs text-text-muted">{t("common.drop_hint")}</span>
-    <p class="mt-1 text-xs text-text-muted">{t("interactions.eml.hint")}</p>
-  </div>
+    <div use:filedrop={{ onerror: (key) => (error = key) }}>
+      <span class="mb-1 block text-sm font-medium text-text">{t("interactions.eml.file")}</span>
+      <label
+        class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand focus-within:border-brand hover:text-brand"
+      >
+        <Paperclip size={15} aria-hidden="true" />
+        {filename || t("interactions.eml.choose")}
+        <input
+          type="file"
+          name="file"
+          accept=".eml,message/rfc822"
+          required
+          class="sr-only"
+          onchange={(e) => {
+            filename = e.currentTarget.files?.[0]?.name ?? "";
+            duplicate = false;
+            error = "";
+            skipped = 0;
+          }}
+        />
+      </label>
+      <span class="ml-2 text-xs text-text-muted">{t("common.drop_hint")}</span>
+      <p class="mt-1 text-xs text-text-muted">{t("interactions.eml.hint")}</p>
+    </div>
+  {/if}
 
   <div class="grid gap-4 sm:grid-cols-2">
     {#if showCompany}
@@ -396,6 +654,27 @@
     </div>
   </div>
 
+  {#if canEnrichTask}
+    <!-- The offer #342 unbundled from the review transition: it belongs to *filing an email
+         onto a task*, which is something all three sources do. Off by default — sending a
+         client's own words to a model is a decision, not an inheritance. -->
+    <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
+      <input
+        type="checkbox"
+        name="enrich_task"
+        value="1"
+        bind:checked={enrichTask}
+        class="mt-0.5"
+      />
+      <span>
+        {t("interactions.eml.enrich_task")}
+        <span class="mt-0.5 block text-xs text-text-muted"
+          >{t("interactions.eml.enrich_task_hint")}</span
+        >
+      </span>
+    </label>
+  {/if}
+
   {#if skipped}
     <p class="text-sm text-amber-700 dark:text-amber-400">
       {t("interactions.eml.attachments_skipped", { count: skipped })}
@@ -413,9 +692,13 @@
         {t("common.close")}
       </Button>
     {/if}
-    <Button type="submit" loading={busy.active}>
+    <Button type="submit" loading={busy.is("")} disabled={busy.active || (gmail && !picked)}>
       <Mail size={15} aria-hidden="true" />
-      {duplicate ? t("interactions.eml.upload_anyway") : t("interactions.eml.submit")}
+      {duplicate
+        ? t("interactions.eml.upload_anyway")
+        : gmail
+          ? t("interactions.gmail.submit")
+          : t("interactions.eml.submit")}
     </Button>
   </div>
 </form>

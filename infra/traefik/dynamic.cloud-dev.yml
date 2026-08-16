@@ -9,15 +9,28 @@ http:
       priority: 1000
       entryPoints: [web]
       service: schakl-api
-      middlewares: [compress]
+      middlewares: [compress, api-unreachable]
     web-any:
       rule: "HostRegexp(`^.+$`)"
       priority: 1
       entryPoints: [web]
       service: schakl-web
-      middlewares: [compress]
+      middlewares: [compress, web-unreachable]
 
   middlewares:
+    # Mirrors dynamic.cloud.yml — an error page cannot live in the service that is down, so the
+    # two cross-cover. Kept here rather than left out because "stop the api container and see
+    # what a tenant gets" is exactly the thing this stack exists to let someone try.
+    api-unreachable:
+      errors:
+        status: ["502-504"]
+        service: schakl-web
+        query: "/edge-error/api/{status}"
+    web-unreachable:
+      errors:
+        status: ["502-504"]
+        service: schakl-api
+        query: "/error/{status}"
     # Compress responses at the edge, not in the app (#290). The SSR HTML and the JSON list
     # payloads behind it are highly compressible text, and this is the one place that can
     # gzip/brotli them without a Python process spending CPU on it per request.

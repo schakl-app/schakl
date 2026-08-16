@@ -61,3 +61,23 @@ export const LEAVE_TEAM_COLUMNS: ColumnMeta[] = [
   },
   { key: "status", labelKey: "leave.requests.status", sortKey: "status", defaultVisible: true },
 ];
+
+/**
+ * Verlof → Beschikbaarheid: every freelancer's exception rows in the chosen window (#368).
+ *
+ * **No `sortKey` anywhere.** `GET /leave/availability` has no ordering parameter and cannot
+ * grow a useful one: a repeat's occurrences are a cadence rather than a column, so the window
+ * filter already runs in Python and the rows arrive by their anchor date. A header that claims
+ * to sort and does not is worse than a quiet one (docs/UX.md), and sorting the slice in the
+ * browser would be sorting a set the server chose.
+ */
+export const LEAVE_AVAILABILITY_TABLE_ID = "leave-availability";
+
+export const LEAVE_AVAILABILITY_COLUMNS: ColumnMeta[] = [
+  { key: "day", labelKey: "leave.availability.day", primary: true, width: 190 },
+  { key: "person", labelKey: "leave.team.member", defaultVisible: true, width: 180 },
+  { key: "kind", labelKey: "leave.availability.column_kind", defaultVisible: true },
+  { key: "window", labelKey: "leave.availability.column_window", defaultVisible: true },
+  { key: "repeat", labelKey: "leave.availability.repeat", defaultVisible: true },
+  { key: "note", labelKey: "leave.form.note" },
+];

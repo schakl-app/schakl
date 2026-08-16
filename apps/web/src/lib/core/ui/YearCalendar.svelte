@@ -7,7 +7,7 @@
    * "usable agenda list" on a phone).
    */
   import { monthGrid, type CalendarDayAggregate } from "$lib/core/calendar";
-  import { monthLabels } from "$lib/core/format";
+  import { capitalizeFirst, monthLabels } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
   let {
@@ -46,7 +46,7 @@
 <div class="hidden grid-cols-2 gap-4 sm:grid lg:grid-cols-3">
   {#each months as month, i (month)}
     <div class="rounded-xl border border-border bg-surface-raised p-3">
-      <h3 class="mb-2 text-sm font-medium capitalize text-text">{labels[i]}</h3>
+      <h3 class="mb-2 text-sm font-medium text-text">{capitalizeFirst(labels[i])}</h3>
       <div class="grid grid-cols-7 gap-0.5">
         {#each monthGrid(month) as day (day)}
           {@const inMonth = day.slice(0, 7) === month}
@@ -80,7 +80,7 @@
       href="?view=month&date={month}-01"
       class="flex items-center justify-between rounded-xl border border-border bg-surface-raised p-3"
     >
-      <span class="text-sm font-medium capitalize text-text">{labels[i]}</span>
+      <span class="text-sm font-medium text-text">{capitalizeFirst(labels[i])}</span>
       <span class="text-xs text-text-muted">
         {t("calendar.year.count", { count: monthTotal(month) })}
       </span>

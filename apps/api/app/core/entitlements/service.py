@@ -348,7 +348,13 @@ async def ensure_modules_enableable(
     ``plan`` is the org being edited, and callers on cloud must pass it: enabling has to answer
     from the same authority the write gate will, or an org is handed a module it may then not
     write to — a screen that grants something and a 402 that takes it straight back.
+
+    It also runs :func:`ensure_requirements_met` over the resulting set, rather than leaving that
+    to each caller. Three call sites already exist (org settings, instance provisioning, instance
+    org edit) and the fourth will be written by somebody who does not know this rule; one gate
+    with one name is what stops the check from being the thing a new enable path forgets.
     """
+    ensure_requirements_met(requested)
     newly = set(requested) - set(current)
     if not newly:
         return
@@ -368,6 +374,45 @@ async def ensure_modules_enableable(
         raise AppError(
             code, message, status_code=409, fields={"enabled_modules": message}
         )
+
+
+def ensure_requirements_met(requested: list[str]) -> None:
+    """An integration may not run without the modules it has nowhere to put its data in.
+
+    Checked on the **whole requested set**, not on the delta, and that is the point: the
+    interesting failure is not "I enabled Cloudflare without domains", which a screen can hardly
+    do by accident — it is *switching `domains` off afterwards*, which leaves Cloudflare enabled
+    holding a credential with no row to attach a zone to and no panel anywhere to render. A delta
+    check sees the second case as a removal and waves it through. One predicate over the
+    resulting state answers both, and answers them identically however the state was reached
+    (settings screen, instance admin, first-run wizard, an API client).
+
+    It runs *before* the licence gate on purpose. Both refuse, but only one of them is something
+    the reader can fix themselves in the next five seconds, and telling somebody to buy a licence
+    for a combination that would not work anyway is the worse of the two sentences.
+
+    Not a `sku` question and deliberately unrelated to one: a free module may be required by a
+    paid integration (``mollie`` → ``invoicing``) and the requirement holds either way.
+    """
+    unmet = registry.unmet_requirements(requested)
+    if not unmet:
+        return
+    # The envelope carries an i18n key and no free text (§9), so *which* integration needs
+    # *what* is not sayable here. It does not have to be: the same requirement map rides
+    # ``/meta/modules``, so the screen names both halves before anyone presses save — and makes
+    # the invalid combination hard to reach at all. This is the backstop for the callers that
+    # are not that screen (the instance admin, the wizard, an API client), and a backstop is
+    # allowed to be blunt. The names are logged for whoever has to read a support ticket.
+    logger.info(
+        "refused module set with unmet requirements: %s",
+        "; ".join(f"{name} needs {', '.join(needs)}" for name, needs in sorted(unmet.items())),
+    )
+    raise AppError(
+        "module_requirements_unmet",
+        "errors.module_requirements_unmet",
+        status_code=409,
+        fields={"enabled_modules": "errors.module_requirements_unmet"},
+    )
 
 
 def license_exempt(reason: str):  # noqa: ANN201 — a decorator, typed by what it wraps

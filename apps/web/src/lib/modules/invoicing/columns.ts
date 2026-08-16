@@ -95,12 +95,15 @@ export const INVOICE_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 130,
   },
+  // Wide enough for the longest label this vocabulary holds — `Deels gecrediteerd` — rather
+  // than for the one on the screen it was measured on (#347): at 120 `Geannuleerd` rendered
+  // `Geannulee…`, a closed vocabulary cut by a pixel.
   {
     key: "status",
     labelKey: "invoicing.field.status",
     sortKey: "status",
     defaultVisible: true,
-    width: 120,
+    width: 180,
   },
   {
     key: "total",
@@ -144,7 +147,13 @@ export const QUOTE_COLUMNS: ColumnMeta[] = [
     align: "right",
     defaultVisible: true,
   },
-  { key: "status", labelKey: "invoicing.field.status", sortKey: "status", defaultVisible: true },
+  {
+    key: "status",
+    labelKey: "invoicing.field.status",
+    sortKey: "status",
+    defaultVisible: true,
+    width: 180,
+  },
   {
     key: "total",
     labelKey: "invoicing.field.total",

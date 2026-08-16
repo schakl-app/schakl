@@ -11,10 +11,10 @@ from app.core.auth.models import User
 from app.core.crypto import encrypt
 from app.core.events import SystemContext, emit
 from app.db import async_session_maker, set_current_org
-from app.modules.google.drive.models import DriveFolderJob, DriveLink
-from app.modules.google.drive.service import provision_folder
-from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_DRIVE
+from app.integrations.google.drive.models import DriveFolderJob, DriveLink
+from app.integrations.google.drive.service import provision_folder
+from app.integrations.google.models import GoogleConnection, GoogleSettings
+from app.integrations.google.oauth import SCOPE_DRIVE
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -146,7 +146,7 @@ async def test_links_crud_rollup_and_unlink_never_deletes(client_for, monkeypatc
         ).json()
 
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", file_meta)])),
         )
         created = await c.post(
@@ -182,7 +182,7 @@ async def test_links_crud_rollup_and_unlink_never_deletes(client_for, monkeypatc
 
         # Unlink: 204, the reference is gone, and the empty stub script proves no Drive call.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
         )
         assert (
             await c.delete(f"/api/v1/google/drive/links/{link['id']}", headers=headers)
@@ -201,7 +201,7 @@ async def test_browse_caches_and_refresh_busts(client_for, monkeypatch) -> None:
     await _seed(t)
     headers = await auth_cookie(t.user)
     fake_redis = _FakeRedis()
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: fake_redis)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: fake_redis)
 
     listing = _StubResponse(
         200,
@@ -220,7 +220,7 @@ async def test_browse_caches_and_refresh_busts(client_for, monkeypatch) -> None:
     )
     folder_meta = _StubResponse(200, {"id": "parent-1", "name": "Klanten"})
     stub = _StubClient([("GET", listing), ("GET", folder_meta)])
-    monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.drive.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         first = (await c.get("/api/v1/google/drive/browse", headers=headers)).json()
@@ -235,7 +235,7 @@ async def test_browse_caches_and_refresh_busts(client_for, monkeypatch) -> None:
         # refresh=1 busts the cache: a new scripted round-trip is consumed.
         stub2 = _StubClient([("GET", listing), ("GET", folder_meta)])
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(stub2)
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub2)
         )
         refreshed = await c.get(
             "/api/v1/google/drive/browse", params={"refresh": True}, headers=headers
@@ -258,12 +258,12 @@ async def test_browse_search_filters_at_drive_and_keys_its_own_cache(
     org_id, user_id = t.org.id, t.user.id
     headers = await auth_cookie(t.user)
     fake_redis = _FakeRedis()
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: fake_redis)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: fake_redis)
 
     folder_meta = _StubResponse(200, {"id": "parent-1", "name": "Klanten"})
     hits = _StubResponse(200, {"files": [{"id": "f-9", "name": "O'Neill offerte.pdf"}]})
     stub = _StubClient([("GET", hits), ("GET", folder_meta)])
-    monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.drive.service.acting_as", _stub_acting_as(stub))
 
     async with client_for(t.host) as c:
         searched = await c.get(
@@ -298,7 +298,10 @@ async def test_browse_search_filters_at_drive_and_keys_its_own_cache(
             },
         )
         stub2 = _StubClient([("GET", plain_files), ("GET", folder_meta)])
-        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub2))
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(stub2),
+        )
         plain = (await c.get("/api/v1/google/drive/browse", headers=headers)).json()
         assert [i["name"] for i in plain["items"]] == ["Aanvraag.pdf", "O'Neill offerte.pdf"]
         assert plain["query"] is None and stub2.script == []
@@ -317,7 +320,7 @@ async def test_browse_says_when_the_page_is_a_prefix_of_the_folder(
     t = await make_tenant("gdrive-cap")
     await _seed(t)
     headers = await auth_cookie(t.user)
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
     folder_meta = _StubResponse(200, {"id": "parent-1", "name": "Klanten"})
 
     async with client_for(t.host) as c:
@@ -325,14 +328,14 @@ async def test_browse_says_when_the_page_is_a_prefix_of_the_folder(
             200, {"files": [{"id": "f-1", "name": "A.pdf"}], "nextPageToken": "p2"}
         )
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", capped), ("GET", folder_meta)])),
         )
         assert (await c.get("/api/v1/google/drive/browse", headers=headers)).json()["truncated"]
 
         whole = _StubResponse(200, {"files": [{"id": "f-1", "name": "A.pdf"}]})
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", whole), ("GET", folder_meta)])),
         )
         listing = (
@@ -367,7 +370,7 @@ async def test_browse_reports_googles_own_reason_not_a_500(client_for, monkeypat
     t = await make_tenant("gdrive-403")
     await _seed(t)
     headers = await auth_cookie(t.user)
-    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
 
     cases = [
         (
@@ -387,7 +390,7 @@ async def test_browse_reports_googles_own_reason_not_a_500(client_for, monkeypat
         for reason, message, expected in cases:
             stub = _StubClient([("GET", _google_error(403, reason, message))])
             monkeypatch.setattr(
-                "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+                "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
             )
             response = await c.get("/api/v1/google/drive/browse", headers=headers)
             # 409, never 500: every one of these is a state someone can fix.
@@ -452,7 +455,7 @@ async def test_company_created_queues_folder_and_worker_provisions(monkeypatch) 
             ]
         )
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
         )
         await provision_folder(session, t.org, job)
         await session.commit()
@@ -508,7 +511,7 @@ async def test_provisioning_links_existing_folder_instead_of_duplicating(monkeyp
             ]
         )
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
         )
         await provision_folder(session, t.org, job)
         assert job.status == "done" and stub.script == []
@@ -597,7 +600,7 @@ async def test_provisioning_falls_back_to_shared_drive_root(monkeypatch) -> None
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
-        from app.modules.google.drive.service import queue_folder_job
+        from app.integrations.google.drive.service import queue_folder_job
 
         job = await queue_folder_job(session, t.org.id, "company", uuid.uuid4(), "Klant BV")
         stub = _StubClient(
@@ -613,7 +616,7 @@ async def test_provisioning_falls_back_to_shared_drive_root(monkeypatch) -> None
             ]
         )
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
         )
         await provision_folder(session, t.org, job)
         await session.commit()
@@ -780,7 +783,7 @@ async def test_picking_an_existing_folder_sets_the_client_folder(client_for, mon
         ).json()
 
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("folder-1", "Klant BV"))])),
         )
         picked = await c.put(
@@ -797,7 +800,7 @@ async def test_picking_an_existing_folder_sets_the_client_folder(client_for, mon
 
         # A file is not a folder — refused on the field, never stored to be puzzled over later.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(
                 _StubClient(
                     [
@@ -831,7 +834,7 @@ async def test_picking_an_existing_folder_sets_the_client_folder(client_for, mon
         # A *subfolder* linked as an attachment stays an ordinary link and must not become the
         # client folder — the ambiguity `is_root` exists to remove.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("folder-2", "Facturen"))])),
         )
         assert (
@@ -887,7 +890,7 @@ async def test_replacing_or_detaching_a_folder_needs_manage(client_for, monkeypa
 
         # A member may fill an empty slot: no folder yet, so this is ordinary write work.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("folder-a", "Eerste"))])),
         )
         assert (
@@ -905,7 +908,7 @@ async def test_replacing_or_detaching_a_folder_needs_manage(client_for, monkeypa
         # Re-pointing it is a different act. Refused before any Drive call is made — the empty
         # stub script is the assertion that nothing was fetched.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
         )
         denied = await c.put(
             "/api/v1/google/drive/folder",
@@ -937,7 +940,7 @@ async def test_replacing_or_detaching_a_folder_needs_manage(client_for, monkeypa
 
         # The owner may do both.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("folder-b", "Eerste v2"))])),
         )
         replaced = await c.put(
@@ -987,7 +990,7 @@ async def test_provision_refuses_a_second_folder(client_for, monkeypatch) -> Non
             await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
         ).json()
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("folder-1", "Klant BV"))])),
         )
         assert (
@@ -1055,7 +1058,7 @@ async def test_task_folder_is_provisioned_under_the_project_folder(
         _, project, task = await _company_project_task(c, headers)
         # The project has its own folder; the task has none.
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("proj-folder", "Site"))])),
         )
         assert (
@@ -1107,7 +1110,10 @@ async def test_task_folder_is_provisioned_under_the_project_folder(
                 ),
             ]
         )
-        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(stub),
+        )
         await provision_folder(session, t.org, job)
 
         assert stub.call_kwargs[-1]["json"]["parents"] == ["proj-folder"]
@@ -1136,7 +1142,7 @@ async def test_task_folder_falls_back_to_the_client_folder(client_for, monkeypat
     async with client_for(t.host) as c:
         company, _project, task = await _company_project_task(c, headers)
         monkeypatch.setattr(
-            "app.modules.google.drive.service.acting_as",
+            "app.integrations.google.drive.service.acting_as",
             _stub_acting_as(_StubClient([("GET", _folder_meta("klant-folder", "Klant BV"))])),
         )
         assert (
@@ -1173,7 +1179,10 @@ async def test_task_folder_falls_back_to_the_client_folder(client_for, monkeypat
                 ("POST", _StubResponse(200, {"id": "task-folder", "name": "Logo aanleveren"})),
             ]
         )
-        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(stub),
+        )
         await provision_folder(session, t.org, job)
         await session.commit()
         assert stub.call_kwargs[-1]["json"]["parents"] == ["klant-folder"]

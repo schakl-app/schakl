@@ -1,7 +1,7 @@
 """The seam other modules resolve a website's WordPress credential through (§6).
 
 ``marketing`` needs one WordPress credential to sync a client's Rank Math AI Visibility, and
-§6 forbids it importing ``app.modules.wordpress`` internals. The house answer to that is a
+§6 forbids it importing ``app.integrations.wordpress`` internals. The house answer to that is a
 registered resolver, not a bare table read: ``app/core/registrar/presence.py`` does it for "who
 holds this registration", ``app/core/directory.py`` for "which contacts may this caller name",
 and this is the same shape for "what credential reaches this website".
@@ -41,7 +41,7 @@ class WordPressCredential:
     base_url: str
     username: str
     app_password: str
-    #: Observed at the last probe — see ``app.modules.wordpress.client.CAPABILITIES``. A
+    #: Observed at the last probe — see ``app.integrations.wordpress.client.CAPABILITIES``. A
     #: borrower reads this to *teach* ("Rank Math is not installed on this site") rather than
     #: to gate: the call it is about to make is the better evidence, and a stale probe must
     #: never be the reason a working sync does not run.
@@ -58,7 +58,7 @@ class WordPressCredentialResolver(Protocol):
 class WordPressClientFactory(Protocol):
     """Builds the HTTP client that speaks to a site. Returned duck-typed on purpose.
 
-    The factory exists so a borrower never imports ``app.modules.wordpress.client`` (§6). It
+    The factory exists so a borrower never imports ``app.integrations.wordpress.client`` (§6). It
     is the *transport*, not a data path, but the rule does not carve that out and should not:
     the day the client grows a retry policy or a per-site TLS quirk, the module that owns the
     credential is the one that should decide it — not five call sites that happened to import

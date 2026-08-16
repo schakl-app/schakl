@@ -25,6 +25,8 @@
   import type { ColumnSpec } from "$lib/core/table/columns";
   import { CUSTOM_PREFIX, customCellText, nextSort, sortDirection } from "$lib/core/table/columns";
   import { rangeSelection } from "$lib/core/table/selection";
+  import { tableLayout } from "$lib/core/table/widths";
+  import { claimPageMeasure } from "$lib/core/ui/measure.svelte";
 
   let {
     rows,
@@ -305,32 +307,43 @@
     onresize?.(widths);
   }
 
+  /** The `w-10` checkbox gutter, in px — declared in Tailwind rather than in a width style. */
+  const SELECT_COL = 40;
+
+  /** The scroll container's own width, measured — 0 until mount, and 0 means "do not shrink". */
+  let viewportWidth = $state(0);
+
   /**
-   * The column that absorbs whatever the fixed ones leave — see the `table-fixed` note below.
-   * A column that says `flex` wins; otherwise the primary one, which is the long column on most
-   * lists; otherwise the first. Always exactly one, so the declared widths always sum to less
-   * than the table.
+   * How this grid divides the width it has — every rule of it in `core/table/widths.ts`, which
+   * is pure and tested, because this arithmetic is invisible in a screenshot taken at the width
+   * you happen to develop at and has now been got wrong twice.
+   *
+   * Measured rather than assumed: the available width is a fact about the container and nothing
+   * in the column set knows it. Before mount `viewportWidth` is 0, which means "do not shrink",
+   * so the SSR HTML is exactly what it always was and the first paint never jumps wider.
    */
-  const flexKey = $derived(
-    (columns.find((c) => c.flex) ?? columns.find((c) => c.primary) ?? columns[0])?.key,
+  const layout = $derived(
+    tableLayout(
+      columns,
+      widths,
+      viewportWidth,
+      (pickable ? SELECT_COL : 0) + (actions ? actionsWidth : 0),
+    ),
   );
 
+  const flexKey = $derived(layout.flexKey);
+
   function headerWidth(column: ColumnSpec<T>): number | undefined {
-    // A width the user dragged is authoritative even on the flexible column: they asked for
-    // that number, and under a fixed layout they now actually get it.
-    return widths[column.key] ?? (column.key === flexKey ? undefined : column.width);
+    return layout.widths[column.key];
   }
 
   /**
-   * The floor under the flexible column, in px.
-   *
-   * Absorbing the slack is fine until there is none: switch enough optional columns on and the
-   * declared widths exceed the table, at which point the one column with no width of its own
-   * gets what is left — nothing. The record's own name, the only cell that links out of the
-   * row, then renders as an empty gap. A floor turns that into an honest sideways scroll, which
-   * is what a grid genuinely too wide for its screen should do.
+   * The width this grid would like the *page* to be, claimed from the shell
+   * (`core/ui/measure.svelte.ts`), which grants it only as far as the window allows and never
+   * narrower than the reading measure. That is what stops /tasks with every column on truncating
+   * the record's own name inside a 1600px measure while 360px of monitor sits idle either side.
    */
-  const FLEX_MIN = 160;
+  claimPageMeasure(() => layout.natural);
 
   function cellStyle(column: ColumnSpec<T>): string | undefined {
     const width = headerWidth(column);
@@ -355,18 +368,7 @@
    * at its worst and every pixel of the slack when there is any. Computed from widths we
    * already hold, so it is right in the SSR HTML rather than after a measurement on mount.
    */
-  /** The `w-10` checkbox gutter, in px — declared in Tailwind rather than in a width style. */
-  const SELECT_COL = 40;
-
-  const tableMinWidth = $derived(
-    columns.reduce(
-      // A width the user dragged onto the flexible column is its floor; otherwise FLEX_MIN is.
-      (sum, column) => sum + (headerWidth(column) ?? (column.key === flexKey ? FLEX_MIN : 0)),
-      0,
-    ) +
-      (pickable ? SELECT_COL : 0) +
-      (actions ? actionsWidth : 0),
-  );
+  const tableMinWidth = $derived(layout.minWidth);
 
   const checkboxClass = "h-4 w-4 cursor-pointer rounded border-border text-brand focus:ring-brand";
 </script>
@@ -406,8 +408,15 @@
     </ul>
   {/if}
 
+  <!-- `relative` on the scroll box is load-bearing: the ⋯ header's `sr-only` label is absolutely
+       positioned, and with no positioned ancestor inside the box its containing block is the
+       page. A clip does not apply to a box whose containing block sits outside it, so on a grid
+       too wide for its screen that one 1px label stood at the *table's* right edge and gave the
+       whole document a sideways scrollbar — the shell scrolling behind a scroller that was
+       already doing the scrolling. -->
   <div
-    class="overflow-x-auto rounded-xl border border-border bg-surface-raised
+    bind:clientWidth={viewportWidth}
+    class="relative overflow-x-auto rounded-xl border border-border bg-surface-raised
       {mobileRow ? 'hidden sm:block' : ''}"
   >
     <!--

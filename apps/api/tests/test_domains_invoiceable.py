@@ -29,11 +29,11 @@ import pytest
 from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
-from app.modules.cloudflare import client as cf_client
-from app.modules.cloudflare.models import CloudflareRegistrarDomain
+from app.integrations.cloudflare import client as cf_client
+from app.integrations.cloudflare.models import CloudflareRegistrarDomain
+from app.integrations.oxxa import client as oxxa_client
 from app.modules.domains.models import Domain
 from app.modules.domains.service import add_months
-from app.modules.oxxa import client as oxxa_client
 from tests.cloudflare_fake import FakeCloudflare
 from tests.conftest import add_membership, auth_cookie, make_tenant
 from tests.oxxa_fake import FakeOxxa

@@ -36,6 +36,13 @@ export const load: PageServerLoad = async (event) => {
     // client's reporting page redirects a caller who lacks it, so a link gated on anything else
     // is a control that bounces.
     canManageProfile: can(event.locals.user, "reporting.profile.manage"),
+    // Which *layout* to draw, not which controls to allow (#373). An external login gets the
+    // document; staff get the review desk. This is one of the few places `is_portal` is the
+    // honest signal (§15's "external login is one fact", #274): it is a question about who the
+    // page is for, not about capability — a read-only staff member still wants the review
+    // layout, because that is their working tool. Every write control below stays gated on its
+    // own API key regardless, so nothing depends on this flag for safety.
+    isPortal: event.locals.user?.isPortal ?? false,
     locale: event.locals.locale,
   };
 };

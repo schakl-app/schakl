@@ -304,7 +304,33 @@ _MEMBER_REQUEST_BUDGET = 8
 #: correlated EXISTS now), so it went 3 statements -> 2, and the domains panel stopped
 #: transferring 400 rows to render 5. The measurement below is the worst case for this change
 #: and the best case for the code it replaced; raise it knowingly, as this comment asks.
-_PANELS_BUDGET = 43
+#:
+#: 43 -> 44 (#364): the projects panel stopped taking the newest 50 rows and sorting them
+#: active-first *in Python* — a client with 60 projects could lose active ones off a list that
+#: claims to lead with them — so it caps at 5, orders in SQL, and pays one grouped `count(*)` for
+#: the honest total the "Alle N bekijken" link needs. One statement for a silent truncation, on
+#: the two panels beside it (domains, websites) that already made the same trade.
+#:
+#: 44 -> 45 (#375): a task carries a roster of assignees rather than one column, so the tasks
+#: panel reads ``task_assignees`` once for the whole page. One statement for any number of rows —
+#: which is the shape that had to be paid for, since the alternative (a chip row resolving per
+#: task) is the exact N+1 this file exists to catch.
+#:
+#: 45 -> 47 (#377): the snelstart panel, which answers "is this client's bookkeeping in step?"
+#: in two statements — the relation pairing, and one `GROUP BY status` over the client's invoice
+#: pairings. It is deliberately **two** rather than one: folding them would mean loading every
+#: invoice link to count it in Python, which is the N+1 this file exists to catch, on a client
+#: with two hundred invoices. It also calls SnelStart **never** — a company page must not wait on
+#: somebody else's bookkeeping server to render.
+#:
+#: A *ceiling*, and the change that would breach it is now the interesting one: since #365 the
+#: composer skips every panel the caller may not read, so a restricted member's page costs
+#: strictly less than this. The budget stays measured as the owner, which is the worst case.
+_PANELS_BUDGET = 47
+
+#: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
+#: context and the org timezone each of them resolves. Measured, not guessed — see the test.
+_SUMMARY_BUDGET = 26
 
 
 async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(
@@ -762,6 +788,40 @@ async def test_company_panels_have_a_query_budget(client_for, count_queries) -> 
         )
 
 
+async def test_company_summary_has_a_query_budget(client_for, count_queries) -> None:
+    """The vital-signs strip is an aggregate per module, never a list (#364).
+
+    Every tile is a `count`/`sum`/`min`/`max` over one indexed predicate, so a client with four
+    hundred invoices and ten years of hours costs what a new one does. The failure this budget
+    catches is the tempting one: answering "openstaand" by loading the ledger and summing it in
+    Python, which passes every functional test and is invisible in the JSON.
+
+    Same umbrella shape as the panels budget above — the providers run in sequence on one
+    session, so the cost is the sum. Raise it knowingly when a module contributes a sign.
+    """
+    t = await make_tenant("perf-summary-budget")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        await _entry(c, headers, company_id=company, minutes=60, day=0)
+        await _task(c, headers, company_id=company, title="Werk")
+        await _interaction(c, headers, company_id=company, subject="Hoi", body="tekst")
+
+        with count_queries() as counter:
+            res = await c.get(f"/api/v1/companies/{company}/summary", headers=headers)
+        assert res.status_code == 200, res.text
+        tiles = {tile["key"] for tile in res.json()}
+        # Anti-vacuum: an empty strip would meet any budget, so the assertion names tiles this
+        # client actually has. `time.month` is deliberately absent — `_entry` books against a
+        # fixed 2026-03 date and the tile counts *this* month, which is the "nothing is not a
+        # number" rule doing its job rather than a gap in the fixture.
+        assert {"tasks.open", "interactions.last"} <= tiles, tiles
+        assert len(counter) <= _SUMMARY_BUDGET, (
+            f"{len(counter)} statements, budget {_SUMMARY_BUDGET}:\n"
+            + "\n".join(counter.statements)
+        )
+
+
 async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
     client_for, count_queries
 ) -> None:
@@ -922,6 +982,9 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
     reaches for one more round trip on the way in to serve a dialog most opens never see. #314
     is exactly that pressure and deliberately paid nothing: everything the finish prompt suggests
     from is already on this response. A rise here means the next feature did not.
+
+    14 -> 15 (#375): the assignee roster. One statement, and one is the floor — the card draws
+    every person on the task, and the column it replaces could only ever name one of them.
     """
     t = await make_tenant("perf-task-detail")
     async with client_for(t.host) as c:
@@ -931,7 +994,7 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
 
         with count_queries() as bare:
             assert (await c.get(f"/api/v1/tasks/{task}", headers=headers)).status_code == 200
-        assert len(bare) == 14, bare.statements
+        assert len(bare) == 15, bare.statements
 
         for i in range(5):
             assert (
@@ -1114,7 +1177,7 @@ async def test_the_monitor_list_costs_the_same_however_many_groups_there_are(
     Two groups and four children rather than one and one, because a per-row read and a grouped
     read agree at a single row and only diverge once the same parent is asked for twice.
     """
-    from app.modules.uptime import client as kuma_client
+    from app.integrations.uptime import client as kuma_client
     from tests.uptime_fake import FakeKuma
 
     fake = FakeKuma()

@@ -9,6 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.periods import ComparePeriod
 from app.modules.marketing.models import MarketingSource
+from app.modules.marketing.rankings import (
+    DEFAULT_LIMIT,
+    DEFAULT_MAX_POSITION,
+    DEFAULT_MIN_IMPRESSIONS,
+    RankingSource,
+)
 
 
 # --- links (#132) ---------------------------------------------------------------------------- #
@@ -230,6 +236,33 @@ class CompanyMarketing(BaseModel):
     narrative: dict | None = None
 
 
+# --- keyword positions (#373) ----------------------------------------------------------------- #
+class RankingSettingsWrite(BaseModel):
+    """How keyword positions are reported — the agency's house rule, or one client's own.
+
+    Every field optional and merged over what it inherits, so raising the house limit reaches
+    every client who never set one (``marketing.rankings.parse``'s diff rule).
+    """
+
+    source: RankingSource | None = None
+    limit: int | None = Field(default=None, ge=1, le=200)
+    min_impressions: int | None = Field(default=None, ge=0, le=10_000)
+    max_position: int | None = Field(default=None, ge=3, le=100)
+    grouped: bool | None = None
+    show_landing_pages: bool | None = None
+
+
+class RankingSettingsRead(BaseModel):
+    """The resolved answer — never nulls, so no screen has to re-derive inheritance."""
+
+    source: RankingSource = RankingSource.AUTO
+    limit: int = DEFAULT_LIMIT
+    min_impressions: int = DEFAULT_MIN_IMPRESSIONS
+    max_position: int = DEFAULT_MAX_POSITION
+    grouped: bool = True
+    show_landing_pages: bool = True
+
+
 # --- per-client settings (#134, layout #192) -------------------------------------------------- #
 class CompanySettingsUpdate(BaseModel):
     """Per-client marketing preferences. Every field optional: send what changes.
@@ -242,11 +275,14 @@ class CompanySettingsUpdate(BaseModel):
     meaningful stored value here — the dashboard's select posts "volg standaard" as a real
     choice, and a payload that could not express it would leave a client pinned to whatever was
     set once, forever. The service reads ``model_fields_set`` to tell the two apart.
+
+    ``rankings`` follows the same rule for the same reason (#373).
     """
 
     show_key_events: bool | None = None
     layout: dict | None = None
     compare: ComparePeriod | None = None
+    rankings: RankingSettingsWrite | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -259,6 +295,18 @@ class CompanySettingsRead(BaseModel):
     compare: ComparePeriod | None = None
     #: What that resolves to today — the editor shows the stored value, the screen shows this.
     compare_resolved: ComparePeriod = ComparePeriod.YEAR
+    #: The stored keyword-positions override; ``None`` = follows the org's (#373).
+    rankings: dict | None = None
+    #: …and what that resolves to, which is what a run will actually do.
+    rankings_resolved: RankingSettingsRead = Field(default_factory=RankingSettingsRead)
+    #: The sources this client actually has an active link to. What lets a section picker say
+    #: whether a section will have anything in it rather than listing nine names and leaving
+    #: the reader to guess which are wired up (#373).
+    linked_sources: list[MarketingSource] = Field(default_factory=list)
+    #: Which source the keyword-positions section will read, after the setting *and* what is
+    #: linked. ``None`` = this client gets no rankings section — resolved here so the screen
+    #: cannot promise one the run then drops.
+    keyword_source: RankingSource | None = None
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #
@@ -277,6 +325,9 @@ class MarketingSettingsRead(BaseModel):
     #: null: a settings screen offering "niets gekozen" beside two real options would be a third
     #: state nobody means. A client overrides it on their own dashboard.
     default_compare: ComparePeriod = ComparePeriod.YEAR
+    #: The house keyword-positions settings every client's report inherits (#373). Always
+    #: resolved, for the same reason as ``default_compare``.
+    rankings: RankingSettingsRead = Field(default_factory=RankingSettingsRead)
 
 
 class MarketingSettingsWrite(BaseModel):
@@ -288,6 +339,8 @@ class MarketingSettingsWrite(BaseModel):
     #: The org's default comparison (#312). Omitted keeps the stored one — unlike the per-client
     #: field there is nothing above this to inherit from, so ``null`` has no second meaning here.
     default_compare: ComparePeriod | None = None
+    #: The house keyword-positions settings (#373). Same rule: omitted keeps the stored one.
+    rankings: RankingSettingsWrite | None = None
 
 
 class DrilldownRowOut(BaseModel):

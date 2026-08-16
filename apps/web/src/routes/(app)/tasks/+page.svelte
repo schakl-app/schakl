@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
-  import PersonChip from "$lib/core/ui/PersonChip.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -13,6 +13,7 @@
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
   import { memberLabel } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -108,10 +109,6 @@
     ),
   );
 
-  const memberName = (id?: string | null) => {
-    const member = data.members.find((m) => m.user_id === id);
-    return member ? memberLabel(member) : "";
-  };
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
@@ -325,6 +322,16 @@
     onclick={() => setFilter("unlinked", data.filters.unlinked ? "" : "1")}
     >{t("tasks.filter.unlinked")}</button
   >
+  <!-- The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or
+       deleted; without it they sit among real work with nothing to gather them by. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.filters.unnamed
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => setFilter("unnamed", data.filters.unnamed ? "" : "1")}
+    >{t("tasks.filter.unnamed")}</button
+  >
   {#each data.labels as label (label.id)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
@@ -369,11 +376,14 @@
         aria-label={t("tasks.toggle_done")}>✓</span
       >
     {/if}
+    <!-- A task nobody named reads as unnamed, in the *reader's* language, and is marked as
+         unfinished rather than passed off as a title (#350). -->
     <a
       href="/tasks/{task.id}"
       class="truncate font-medium {done
         ? 'text-text-muted line-through'
-        : 'text-text hover:text-brand'}">{task.title}</a
+        : 'text-text hover:text-brand'} {task.unnamed ? UNNAMED_CLASS : ''}"
+      >{taskTitle(task)}</a
     >
     <!-- Client-portal visibility rides the title cell rather than becoming a column the user can
          turn off (#41's rule): "a client is reading this" is the one piece of task metadata you
@@ -404,16 +414,14 @@
 {/snippet}
 
 {#snippet assigneeCell(task: Task)}
-  {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
-  {#if member}
-    <!-- The chip is `inline-flex`, so on its own it takes its min-content width and spills past
-         the column; as a flex item it shrinks and its own `truncate` finally has room to work. -->
+  {@const roster = task.assignees ?? []}
+  {#if roster.length > 0}
+    <!-- `Assignees` is `inline-flex`, so on its own it takes its min-content width and spills past
+         the column; as a flex item it shrinks and its chips' own `truncate` has room to work.
+         `max=1` keeps the row one line high whatever the roster: the verantwoordelijke is named
+         and the rest are a `+N` that names them in its tooltip (#375). -->
     <span class="flex min-w-0 items-center">
-      <PersonChip
-        name={member.full_name}
-        email={member.email}
-        avatarUrl={member.avatar_url ?? null}
-      />
+      <Assignees assignees={roster} members={data.members} />
     </span>
   {:else}
     <span class="text-text-muted">—</span>

@@ -12,7 +12,7 @@ from app.core.tenancy import RequestContext
 from app.modules.tasks.models import Task
 from app.modules.tasks.service import TaskService
 from app.modules.tasks.statuses import load_statuses, non_terminal_keys
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_PRIMARY, PanelSpec
 
 _SHOWN = 50
 
@@ -55,4 +55,8 @@ tasks_company_panel = PanelSpec(
     title_key="tasks.panel.title",
     provider=_tasks_provider,
     position=30,
+    requires_permission="tasks.task.read",
+    # The working surface the page did not have (#364): what we owe this client.
+    prominence=PROMINENCE_PRIMARY,
+    empty_when=lambda data: not data.get("tasks"),
 )

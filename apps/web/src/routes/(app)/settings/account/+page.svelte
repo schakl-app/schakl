@@ -8,7 +8,7 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
-  import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
+  import GoogleAccountCard from "$lib/integrations/google/GoogleAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
   import { navItemsFor, resolveLabel, type NavLabelMap } from "$lib/core/registry";

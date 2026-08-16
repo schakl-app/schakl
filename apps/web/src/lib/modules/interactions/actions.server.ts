@@ -211,6 +211,86 @@ export const interactionActions = {
     };
   },
 
+  /**
+   * Resolve a pasted Gmail reference, or read one conversation (#342).
+   *
+   * A **form action** rather than a browser `fetch`: the whole flow is server-rendered, so it
+   * needs no edge route to proxy `/api/v1` and works the same in every deployment. Both shapes
+   * land here because the screen is one screen — a pasted link and "mist er een bericht?"
+   * produce the same list of candidates, and only where the id came from differs.
+   */
+  lookupGmailMessage: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const reference = String(form.get("reference") ?? "").trim();
+    const threadId = String(form.get("thread_id") ?? "").trim();
+    if (!reference && !threadId) return fail(400, { error: "errors.required" });
+    const api = apiFor(event);
+    const { data, error } = threadId
+      ? await api.GET("/api/v1/google/gmail/threads/{thread_id}", {
+          params: { path: { thread_id: threadId } },
+        })
+      : await api.GET("/api/v1/google/gmail/lookup", { params: { query: { reference } } });
+    // A refusal keeps the reference on the form: it is the thing the user must correct, and
+    // blanking it would make them go back to Gmail and copy it again to read the message.
+    if (error) return fail(400, { error: apiErrorKey(error).key, gmailReference: reference });
+    return { gmailLookup: data, gmailReference: reference };
+  },
+
+  /**
+   * Search the caller's **own** mailbox for a message to file (#372).
+   *
+   * Its own action rather than a mode on `lookupGmailMessage`: a different question, different
+   * inputs, and its own refusal ("no fields at all" is "list my mailbox", which is the one
+   * thing this is not). Both end in the same candidate list, which is what the shared picker
+   * is for — two ways in must never come to offer different things.
+   *
+   * Named fields all the way down. The API takes `participant` / `subject` / `after` /
+   * `before` and builds the Gmail query itself, so nothing here forwards operator syntax.
+   */
+  searchGmailMessages: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const query = {
+      participant: String(form.get("participant") ?? "").trim() || undefined,
+      subject: String(form.get("subject") ?? "").trim() || undefined,
+      after: String(form.get("after") ?? "").trim() || undefined,
+      before: String(form.get("before") ?? "").trim() || undefined,
+    };
+    const { data, error } = await apiFor(event).GET("/api/v1/google/gmail/search", {
+      params: { query },
+    });
+    // The lookup's rule: a refusal keeps what was typed. It is the thing the user has to
+    // correct, and re-typing an address is the least helpful thing to ask of them.
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { gmailLookup: data };
+  },
+
+  /** Log one message the poller skipped, filed where the dialog says (#342). */
+  importGmailMessage: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const message_id = String(form.get("message_id") ?? "").trim();
+    if (!message_id) return fail(400, { error: "errors.required" });
+    const body = linkBody(form);
+    const { data, error } = await apiFor(event).POST("/api/v1/google/gmail/import", {
+      body: {
+        message_id,
+        company_id: (body.company_id as string | null) ?? null,
+        project_id: (body.project_id as string | null) ?? null,
+        task_id: (body.task_id as string | null) ?? null,
+        ...(Array.isArray(body.contact_ids) ? { contact_ids: body.contact_ids } : {}),
+        allow_duplicate: form.get("allow_duplicate") === "1",
+        enrich_task: checked(form, "enrich_task"),
+      },
+    });
+    if (error)
+      return fail(400, {
+        error: apiErrorKey(error).key,
+        // The same "log it anyway" confirm the .eml upload offers, for the same reason: a
+        // colleague's mailbox having logged it is a warning, not a wall (#262).
+        gmailDuplicate: apiErrorKey(error).key === "errors.interactions_eml_duplicate",
+      });
+    return { gmailImported: data };
+  },
+
   updateInteraction: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

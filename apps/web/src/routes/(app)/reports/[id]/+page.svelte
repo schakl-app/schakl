@@ -24,6 +24,7 @@
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";
   import { t } from "$lib/core/i18n";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { pollWhile } from "$lib/core/poll.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -45,6 +46,21 @@
   const isInternal = $derived(report.audience === "internal");
   const canEdit = $derived(data.canWrite && report.status !== "sent");
   const readyToSend = $derived(report.status === "ready" || report.status === "sent");
+  /**
+   * A client gets the document; staff get the review desk (#373).
+   *
+   * This screen used to render one layout for everybody — per-section prose cards down the left,
+   * the preview frame down the right — with the write controls hidden for a portal login. What
+   * a client's monthly report therefore looked like was a half-disabled admin tool: nine
+   * read-only text cards headed with our internal section names, beside a frame. They came for
+   * a document.
+   *
+   * `isPortal` decides the **layout** only, which is the one question it is genuinely the right
+   * signal for (§15's "external login is one fact", #274): a read-only staff member still wants
+   * the review desk, because that is their working tool. Every control below stays gated on its
+   * own API permission, so nothing depends on this flag for safety.
+   */
+  const reader = $derived(data.isPortal);
 
   const busy = new InFlight();
   let confirmDelete = $state(false);
@@ -67,7 +83,7 @@
 </svelte:head>
 
 <a
-  href="/reports"
+  href={returnHref("/reports")}
   class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
 >
   <ArrowLeft size={15} />
@@ -78,7 +94,13 @@
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-xl font-semibold text-text">{report.company_name}</h1>
-      <ReportStatusPill status={report.status} />
+      <!-- "Klaar om na te kijken" is a state in *our* workflow. A client reading it on their own
+           monthly report learns that somebody here has not looked at it yet, which is true, none
+           of their business, and alarming. Same for the audience label under it: "Klantrapportage"
+           is a word for the other kind of document, and they have never seen the other kind. -->
+      {#if !reader}
+        <ReportStatusPill status={report.status} />
+      {/if}
       {#if isInternal}
         <span
           class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 dark:bg-red-950 dark:text-red-300"
@@ -88,7 +110,7 @@
       {/if}
     </div>
     <p class="mt-1 text-sm text-text-muted">
-      {periodLabel(report, locale)} · {audienceLabel(report.audience)}
+      {periodLabel(report, locale)}{#if !reader} · {audienceLabel(report.audience)}{/if}
       {#if report.sent_at}
         · {t("reporting.review.sent_on", { date: fmtDate(report.sent_at, locale) })}
       {:else if report.published_at}
@@ -199,81 +221,96 @@
   </section>
 {/if}
 
-<div class="grid gap-6 lg:grid-cols-2">
-  <div class="space-y-4">
-    <ReportSectionEditor
-      sectionKey="summary"
-      title={t("reporting.doc.summary")}
-      text={narrative.summary ?? ""}
-      edited={edited.has("summary")}
-      canWrite={canEdit}
-    />
-
-    {#each sections as section (section.key)}
+{#if reader}
+  <!-- The client's view: the document, full width, and nothing that names our machinery. No
+       section cards, no preview heading, and deliberately no summary card above the frame — the
+       document's own cover already opens with that exact paragraph, and printing it twice a
+       hundred pixels apart reads as a mistake rather than as emphasis. -->
+  <iframe
+    src={`/reports/${report.id}/preview`}
+    title={report.title || t("nav.reports")}
+    class="h-[80vh] w-full rounded-xl border border-border bg-white"
+    sandbox="allow-same-origin"
+  ></iframe>
+{:else}
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="space-y-4">
       <ReportSectionEditor
-        sectionKey={section.key}
-        title={section.title}
-        text={narrative[section.key] ?? ""}
-        edited={edited.has(section.key)}
+        sectionKey="summary"
+        title={t("reporting.doc.summary")}
+        text={narrative.summary ?? ""}
+        edited={edited.has("summary")}
         canWrite={canEdit}
       />
-    {/each}
 
-    {#if isInternal}
-      <ReportSectionEditor
-        sectionKey="actions"
-        title={t("reporting.doc.actions")}
-        text={narrative.actions ?? ""}
-        edited={edited.has("actions")}
-        canWrite={canEdit}
-      />
-      <ReportSectionEditor
-        sectionKey="questions"
-        title={t("reporting.doc.questions")}
-        text={narrative.questions ?? ""}
-        edited={edited.has("questions")}
-        canWrite={canEdit}
-      />
-    {/if}
+      {#each sections as section (section.key)}
+        <ReportSectionEditor
+          sectionKey={section.key}
+          title={section.title}
+          text={narrative[section.key] ?? ""}
+          edited={edited.has(section.key)}
+          canWrite={canEdit}
+        />
+      {/each}
 
-    {#if sections.length === 0 && report.status !== "generating"}
-      <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
-        {t("reporting.review.no_sections")}
-      </p>
-    {/if}
-  </div>
+      {#if isInternal}
+        <ReportSectionEditor
+          sectionKey="actions"
+          title={t("reporting.doc.actions")}
+          text={narrative.actions ?? ""}
+          edited={edited.has("actions")}
+          canWrite={canEdit}
+        />
+        <ReportSectionEditor
+          sectionKey="questions"
+          title={t("reporting.doc.questions")}
+          text={narrative.questions ?? ""}
+          edited={edited.has("questions")}
+          canWrite={canEdit}
+        />
+      {/if}
 
-  <!-- The document, exactly as it prints. Sticky so the prose on the left can be scrolled
-       against it. -->
-  <div class="lg:sticky lg:top-4 lg:self-start">
-    <div class="mb-2 flex items-center justify-between">
-      <h2 class="flex items-center gap-2 text-sm font-semibold text-text">
-        <Eye size={15} />
-        {t("reporting.review.preview")}
-      </h2>
-      {#if !isInternal && data.canSend}
-        <form method="POST" action="?/publish" use:enhance={busy.keep("publish")}>
-          <input type="hidden" name="published" value={report.published_at ? "false" : "true"} />
-          <Button
-            type="submit"
-            variant="secondary"
-            size="sm"
-            loading={busy.is("publish")}
-            disabled={busy.active || report.status === "draft"}
-          >
-            {report.published_at ? t("reporting.review.unpublish") : t("reporting.review.publish")}
-          </Button>
-        </form>
+      {#if sections.length === 0 && report.status !== "generating"}
+        <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
+          {t("reporting.review.no_sections")}
+        </p>
       {/if}
     </div>
-    <iframe
-      src={`/reports/${report.id}/preview`}
-      title={t("reporting.review.preview")}
-      class="h-[70vh] w-full rounded-xl border border-border bg-white"
-      sandbox="allow-same-origin"
-    ></iframe>
+
+    <!-- The document, exactly as it prints. Sticky so the prose on the left can be scrolled
+       against it. -->
+    <div class="lg:sticky lg:top-4 lg:self-start">
+      <div class="mb-2 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 text-sm font-semibold text-text">
+          <Eye size={15} />
+          {t("reporting.review.preview")}
+        </h2>
+        {#if !isInternal && data.canSend}
+          <form method="POST" action="?/publish" use:enhance={busy.keep("publish")}>
+            <input type="hidden" name="published" value={report.published_at ? "false" : "true"} />
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              loading={busy.is("publish")}
+              disabled={busy.active || report.status === "draft"}
+            >
+              {report.published_at
+                ? t("reporting.review.unpublish")
+                : t("reporting.review.publish")}
+            </Button>
+          </form>
+        {/if}
+      </div>
+      <iframe
+        src={`/reports/${report.id}/preview`}
+        title={t("reporting.review.preview")}
+        class="h-[70vh] w-full rounded-xl border border-border bg-white"
+        sandbox="allow-same-origin"
+      ></iframe>
+    </div>
   </div>
-</div>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmDelete}

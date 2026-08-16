@@ -345,7 +345,14 @@ The exceptions are real but narrow, and each is an exception for a reason offset
 serve: a **grouped inventory** (Cloudflare zones, listed under their account) would split a group
 across pages; a **grouped report with subtotals** (`/invoices/uninvoiced`) computes its totals
 over the whole set by design; an **approval queue** (`/leave/team`'s pending list) is meant to be
-emptied, and a second page of decisions waiting on you is a workload problem, not a paging one.
+emptied, and a second page of decisions waiting on you is a workload problem, not a paging one;
+and a **window-bounded list of rules** (`/leave/availability`, #368) has no offset to page on at
+all, because a repeat's occurrences are a cadence rather than a column — "does any of this land
+in June" is not a range predicate, so the window filter runs in Python and the *window* is what
+bounds the read. That last one is an exception with an obligation attached: the window has to be
+a control the reader can move (`?from=` / `?to=`, and the URL is the view). Every host of this
+list before #368 hardcoded `today → +365`, which is a prefix of itself wearing a constant — the
+exact failure the pager rule exists to stop, with the past unreachable as the visible symptom.
 
 ## Per-request overhead is pinned
 

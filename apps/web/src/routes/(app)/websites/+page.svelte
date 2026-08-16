@@ -45,6 +45,7 @@
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
   import { WEBSITE_COLUMNS } from "$lib/modules/websites/columns";
   import type { WebsiteFilterKey } from "$lib/modules/websites/filters";
+  import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
 
   type Website = components["schemas"]["WebsiteRead"];
 
@@ -280,13 +281,16 @@
 {/snippet}
 
 {#snippet uptimeCell(site: Website)}
-  {#if site.uptime_enabled}
+  {@const state = uptimeState(site)}
+  {#if state}
     <!-- `inline-block`, not `block`: the pill hugs its label rather than painting across the
          whole cell, and an inline box would ignore the truncate entirely. -->
     <span
-      class="inline-block max-w-full truncate rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
+      class="inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] {uptimeChipClass(
+        state,
+      )}"
     >
-      {t("websites.uptime_short")}
+      {uptimeLabel(state)}
     </span>
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
@@ -326,11 +330,10 @@
         <span class="mt-0.5 block truncate text-sm text-text-muted">{site.company_name}</span>
       {/if}
     </a>
-    {#if site.uptime_enabled}
-      <span
-        class="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
-      >
-        {t("websites.uptime_short")}
+    {#if uptimeState(site)}
+      {@const state = uptimeState(site)!}
+      <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] {uptimeChipClass(state)}">
+        {uptimeLabel(state)}
       </span>
     {/if}
     {#if canWrite || canDelete}

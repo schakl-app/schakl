@@ -5,7 +5,13 @@
   import { goto } from "$app/navigation";
   import { aiEnabled } from "$lib/core/ai";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
-  import { fmtDayMonth, fmtLongDay, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
+  import {
+    capitalizeFirst,
+    fmtDayMonth,
+    fmtLongDay,
+    fmtWeekdayShort,
+    RANGE_DASH,
+  } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -93,6 +99,15 @@
   $effect(() => {
     if (editingId && !editingEntry) editingId = null;
   });
+  // What the form beside the list is currently about: the budgets panel under it answers
+  // for *this* entry's client and project, not for every project the agency has. Reported by the
+  // form because the selection lives there and moves as it is filled — the create form starts on
+  // the last-used pair and an edit starts on the entry's own.
+  let entryScope = $state<{ companyId: string; projectId: string }>({
+    companyId: "",
+    projectId: "",
+  });
+
   function rowClick(e: (typeof entries)[number]) {
     if (e.is_running) return;
     if (e.approved_at && !canApprove) return; // approved hours are locked
@@ -628,8 +643,8 @@
   <main class="min-w-0 rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h2 class="text-base font-semibold capitalize text-text">
-          {fmtLongDay(data.selectedDate)}
+        <h2 class="text-base font-semibold text-text">
+          {capitalizeFirst(fmtLongDay(data.selectedDate))}
         </h2>
         {#if data.selectedDate === data.today}
           <span
@@ -889,6 +904,7 @@
             oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
             oncreateproject={(name, companyId) =>
               quickCreateProject(name, "entry_project", companyId)}
+            onscope={(scope) => (entryScope = scope)}
           />
         {/key}
       {:else}
@@ -914,6 +930,7 @@
             oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
             oncreateproject={(name, companyId) =>
               quickCreateProject(name, "entry_project", companyId)}
+            onscope={(scope) => (entryScope = scope)}
           />
         {/key}
       {/if}
@@ -921,8 +938,14 @@
 
     <!-- "Hoeveel uren zijn er nog?" — answered where the hours are logged, from the project
          lookup this page already holds (#225: a covered project's budget *is* the agreement's
-         included hours, so this is also where retainer hours live now). -->
-    <ProjectBudgetsPanel projects={data.projects} companies={data.companies} />
+         included hours, so this is also where retainer hours live now). Narrowed to what the
+         form above is about: this entry's project, or its client's projects. -->
+    <ProjectBudgetsPanel
+      projects={data.projects}
+      companies={data.companies}
+      companyId={entryScope.companyId}
+      projectId={entryScope.projectId}
+    />
   </div>
 </div>
 
@@ -1075,10 +1098,19 @@
   {/key}
 </Modal>
 
-<!-- Floating "add hours" button -->
+<!--
+  Floating "add hours" button — mobile only (#345).
+
+  `lg` is exactly the breakpoint where the layout above becomes `1fr 360px` and the whole
+  Nieuwe registratie panel sits open beside the day, so from there up this control scrolls to a
+  form that is already on screen: nothing to do, and it did it *on top of* the Taak picker's
+  right end — 27 × 20 px of chevron where `elementFromPoint` answered "Uren toevoegen", so the
+  reflex click opened the wrong thing. A fixed control that overlaps a field is a bug whether or
+  not it is useful; this one was neither.
+-->
 <button
   type="button"
-  class="fixed bottom-6 right-6 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:opacity-90"
+  class="fixed bottom-6 right-6 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:opacity-90 lg:hidden"
   onclick={jumpToNewEntry}
   aria-label={t("time.add_hours")}
   title={t("time.add_hours")}

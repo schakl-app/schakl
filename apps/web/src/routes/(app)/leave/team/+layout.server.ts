@@ -30,11 +30,23 @@ export const load: LayoutServerLoad = async (event) => {
   // Its own permission, not `leave.profile.manage`: keeping somebody's availability is a
   // different act from rewriting the period they were engaged under, and a tenant may hand out
   // one without the other.
-  const keepsAvailability = approver && can(event.locals.user, "leave.availability.write", "any");
+  //
+  // **And not `leave.request.approve` either** (#368). That `approver &&` is what made the
+  // sentence above false: holding only `leave.availability.write:any` reached no surface on any
+  // screen, so the permission the module invented could be granted and never exercised. The
+  // page still redirects a non-approver away from the roster — availability's own home is
+  // `/leave/availability` — but the flag now says what it means, and the ⋯ item it drives no
+  // longer waits on a second grant.
+  const keepsAvailability = can(event.locals.user, "leave.availability.write", "any");
   const [members, profiles, contracts, recurring, settings, availability] = await Promise.all([
-    approver ? api.GET("/api/v1/members/lookup") : Promise.resolve({ data: null }),
+    approver || keepsAvailability
+      ? api.GET("/api/v1/members/lookup")
+      : Promise.resolve({ data: null }),
     manage ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
-    manage
+    // Contracts are read for `manage` *or* for availability: the ⋯ offers availability only on a
+    // freelance period, and that set is derived from these rows — so without them the menu item
+    // silently never rendered for exactly the person the permission exists for (#368).
+    manage || keepsAvailability
       ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
       : Promise.resolve({ data: null }),
     manage ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),

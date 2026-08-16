@@ -34,6 +34,8 @@ registerWebModule({
       module: "tasks",
       component: TasksPanel,
       position: 30,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/tasks?company_id=${id}`,
     },
   ],
   dashboardWidgets: [

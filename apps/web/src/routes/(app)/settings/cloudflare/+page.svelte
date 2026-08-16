@@ -28,7 +28,7 @@
     type AccountRead,
     type PagesProject,
     type ZoneRead,
-  } from "$lib/modules/cloudflare/types";
+  } from "$lib/integrations/cloudflare/types";
 
   let { data, form } = $props();
 

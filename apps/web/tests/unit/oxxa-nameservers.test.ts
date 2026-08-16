@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { parseNameservers, sameNameservers } from "../../src/lib/modules/oxxa/types.ts";
+import { parseNameservers, sameNameservers } from "../../src/lib/integrations/oxxa/types.ts";
 
 const CLOUDFLARE = ["ana.ns.cloudflare.com", "bob.ns.cloudflare.com"];
 

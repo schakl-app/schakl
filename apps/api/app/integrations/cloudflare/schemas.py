@@ -1,0 +1,533 @@
+"""Pydantic schemas for the cloudflare module (epic #278).
+
+Two conventions worth stating once:
+
+* **The API token is write-only.** It goes in on create/update and never comes back out — not in
+  a read model, not in the OpenAPI spec, not masked. ``token_configured`` is the only thing a
+  client learns about it, exactly as ``google.settings``' client secret works.
+* **A status report names its problems as keys, not sentences.** ``issues`` carries stable
+  machine strings that the web resolves to ``cloudflare.issue.*`` messages, so the API never
+  picks a locale for someone else's screen (CLAUDE.md §8, §17's "labels are a display concern").
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.integrations.cloudflare.models import REDIRECT_STATUS_CODES
+
+# --- accounts --------------------------------------------------------------------------- #
+
+
+class AccountRead(BaseModel):
+    """A configured Cloudflare account. Never carries the token."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    cf_account_id: str | None = None
+    cf_account_name: str | None = None
+    provider_id: uuid.UUID | None = None
+    provider_name: str | None = None
+    active: bool
+    status: str
+    #: Observed at verify time — see ``client.CAPABILITIES``. A missing key means "not probed".
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+    #: Why a probe answered no, keyed the same way: Cloudflare's status, code and own text. Only
+    #: ever holds keys whose capability is ``False`` — a ✗ with no explanation is the one state
+    #: an admin cannot act on, and Cloudflare's text is the only thing that names the fix.
+    capability_errors: dict[str, str] = Field(default_factory=dict)
+    last_verified_at: datetime | None = None
+    last_synced_at: datetime | None = None
+    last_error: str | None = None
+    #: Whether a token is stored at all. The token itself never leaves the server.
+    token_configured: bool = True
+    #: How many synced zones point at this account — the number the settings row prints.
+    zone_count: int = 0
+
+
+class AccountOption(BaseModel):
+    """An account as a *picker* needs it: a name to choose between, nothing else.
+
+    Separate from :class:`AccountRead` because the two have different readers. Choosing which
+    Cloudflare account to create a zone in is part of ``cloudflare.zone.manage``; seeing how a
+    credential is configured, what it may do and why it last failed is ``settings.manage``. One
+    endpoint serving both would have forced the picker's holder to hold the credential screen's
+    permission (docs/UX.md: a control that renders without checking `can()` — inverted).
+    """
+
+    id: uuid.UUID
+    name: str
+    active: bool
+
+
+class AccountCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    #: A **scoped API token**. Cloudflare's legacy Global API Key is refused on purpose: it is
+    #: unscoped, unrevocable per-integration, and grants everything the account can do.
+    api_token: str = Field(min_length=20, max_length=512)
+    #: Pin the account explicitly when the token can see more than one (rare, but real for an
+    #: agency whose Cloudflare login sits on several accounts).
+    cf_account_id: str | None = Field(default=None, max_length=64)
+    provider_id: uuid.UUID | None = None
+    active: bool = True
+
+
+class AccountUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    #: Omit to keep the stored token; send a new one to rotate. Never send an empty string to
+    #: clear it — an account without a token is not a state this module has a use for.
+    api_token: str | None = Field(default=None, min_length=20, max_length=512)
+    cf_account_id: str | None = Field(default=None, max_length=64)
+    provider_id: uuid.UUID | None = None
+    active: bool | None = None
+
+
+class AccountVerifyResult(BaseModel):
+    """What a verify learned. ``account`` is filled when the token sees exactly one account."""
+
+    ok: bool
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+    #: Cloudflare's own words for each refusal — see :class:`AccountRead.capability_errors`.
+    capability_errors: dict[str, str] = Field(default_factory=dict)
+    cf_account_id: str | None = None
+    cf_account_name: str | None = None
+    #: More than one account behind the token: the admin must pick, so both are named.
+    account_choices: list[dict[str, str]] = Field(default_factory=list)
+    error: str | None = None
+
+
+class AccountSyncResult(BaseModel):
+    """The outcome of pulling an account's inventory. Counts, not rows — the lists are paginated
+    endpoints of their own."""
+
+    zones_synced: int = 0
+    zones_matched: int = 0
+    pages_projects_synced: int = 0
+    #: Custom hostnames those projects serve, and how many of them matched a schakl domain and
+    #: are therefore now on that domain's page. Separate numbers because they answer different
+    #: questions: a hostname belonging to no domain record here is a finding, not a failure.
+    pages_domains_synced: int = 0
+    pages_links_matched: int = 0
+    #: Links this sync adopted (Cloudflare holds the hostname, schakl had no row) and links it
+    #: found gone (schakl has a row, the project no longer serves it). Neither is acted on
+    #: beyond recording it — a sync reports drift, it does not resolve it.
+    pages_links_adopted: int = 0
+    pages_links_missing: int = 0
+    #: Whether the Registrar list answered at all (#298). **Not derivable from the counts**: an
+    #: account holding no registrations and a token that may not read the register both report
+    #: zero, and only the first of those may narrow what schakl invoices. False keeps every
+    #: undecided domain invoicing exactly as it did.
+    registrar_read: bool = False
+    #: Registrations Cloudflare Registrar reported (#298) — and how many of those the agency
+    #: actually holds there. Reported separately from the zone counts because they answer
+    #: different questions: a zone is DNS, a registration is who pays the registry.
+    registrar_domains_synced: int = 0
+    registrar_domains_at_cloudflare: int = 0
+    #: How many of those matched a schakl domain record. Worth its own number: those are the
+    #: rows whose invoicing this register now answers for (#298).
+    registrar_domains_matched: int = 0
+    #: Non-fatal problems (Pages unreadable with this token, for instance): the zone sync still
+    #: succeeded and saying so beats failing the whole action.
+    warnings: list[str] = Field(default_factory=list)
+
+
+# --- zones ------------------------------------------------------------------------------ #
+
+
+class ZoneRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    account_name: str | None = None
+    cf_zone_id: str
+    name: str
+    status: str
+    plan: str | None = None
+    paused: bool = False
+    name_servers: list[str] = Field(default_factory=list)
+    original_name_servers: list[str] = Field(default_factory=list)
+    domain_id: uuid.UUID | None = None
+    domain_name: str | None = None
+    last_synced_at: datetime | None = None
+
+
+class ZoneLink(BaseModel):
+    domain_id: uuid.UUID
+
+
+# --- DNS records -------------------------------------------------------------------------- #
+
+
+class DnsRecordRead(BaseModel):
+    """One record as Cloudflare reports it. Read live — never stored (a DNS record is not our
+    data, and a cached copy would be wrong within minutes of any change)."""
+
+    id: str
+    type: str
+    name: str
+    content: str
+    ttl: int = 1
+    proxied: bool = False
+    priority: int | None = None
+    comment: str | None = None
+
+
+class DnsRecordWrite(BaseModel):
+    type: str = Field(min_length=1, max_length=16)
+    name: str = Field(min_length=1, max_length=253)
+    content: str = Field(min_length=1, max_length=2048)
+    #: ``1`` is Cloudflare's "automatic". A proxied record ignores TTL entirely.
+    ttl: int = Field(default=1, ge=1, le=86400)
+    proxied: bool = False
+    priority: int | None = Field(default=None, ge=0, le=65535)
+    comment: str | None = Field(default=None, max_length=100)
+
+
+# --- redirects ---------------------------------------------------------------------------- #
+
+
+class RedirectIntent(BaseModel):
+    """What the tenant wants the redirect to *be* — the fields a rule is built from.
+
+    Shared by :class:`RedirectWrite` and :class:`RedirectAdopt` rather than inherited from one
+    by the other, because the difference between them is not a field: one writes the rule and
+    the other only claims one. ``ensure_origin`` belongs to the first and would be a lie on the
+    second, which touches Cloudflare not at all.
+    """
+
+    target_url: str = Field(min_length=1, max_length=2048)
+    status_code: int = 301
+    preserve_path: bool = True
+    preserve_query: bool = True
+    include_subdomains: bool = True
+
+    @field_validator("status_code")
+    @classmethod
+    def _known_status(cls, value: int) -> int:
+        if value not in REDIRECT_STATUS_CODES:
+            raise ValueError("unsupported redirect status code")
+        return value
+
+
+class RedirectWrite(RedirectIntent):
+    """The tenant's intent for a domain-wide redirect, plus how to push it."""
+
+    #: Create the proxied placeholder records a redirect needs when the zone has none. A
+    #: Redirect Rule only fires for traffic that *reaches* Cloudflare's edge, and a zone whose
+    #: apex has no proxied record never sends any — the rule saves fine and does nothing, which
+    #: is the single most confusing failure this feature has.
+    ensure_origin: bool = True
+
+
+class RedirectAdopt(RedirectIntent):
+    """Take ownership of a Redirect Rule that already exists on the zone.
+
+    The rule is named by **id**, never by description (``redirects.find_our_rule``), and it is
+    adopted **only when it is exactly the rule schakl would have written** for this intent — so
+    an agency inheriting a client's Cloudflare stops re-creating a redirect that is already
+    live, and adoption can never quietly change what a visitor's browser does.
+    """
+
+    rule_id: str = Field(min_length=1, max_length=64)
+
+
+class RedirectRuleEdit(RedirectIntent):
+    """A new intent for a Redirect Rule the zone already has — ours or the tenant's.
+
+    The rule is named by **id in the path**, so this carries only what the rule should become.
+    Adoption's "only if it already matches exactly" refusal is deliberately absent: that guard
+    protects a *claim* about a rule nobody is changing, and this endpoint's whole purpose is to
+    change one. What replaces it is narrower and lives in ``redirects.edited_rule`` — a match set
+    schakl cannot write is carried over untouched, so an edit moves the destination and never the
+    set of hostnames it answers for.
+
+    No ``ensure_origin``. That flag exists because a *newly created* rule on a zone with no
+    proxied record is inert; a rule already in the ruleset is one traffic is already reaching, and
+    a checkbox offering to fix a problem this path does not create would be a control with nothing
+    to do. The status check still raises ``origin_missing`` where it is genuinely wrong.
+    """
+
+
+class RedirectRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    zone_id: uuid.UUID
+    domain_id: uuid.UUID
+    target_url: str
+    status_code: int
+    preserve_path: bool
+    preserve_query: bool
+    include_subdomains: bool
+    last_status: str
+    last_error: str | None = None
+    last_checked_at: datetime | None = None
+    last_pushed_at: datetime | None = None
+
+
+# --- Pages -------------------------------------------------------------------------------- #
+
+
+class PagesProjectRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    account_name: str | None = None
+    name: str
+    subdomain: str | None = None
+    production_branch: str | None = None
+    #: The hostnames this project serves that schakl has filed under a domain. The picker
+    #: ignores it; the settings screen is what needs it, because *"your projects were synced"*
+    #: and *"your sites are attached to them"* are different claims, and only the second is
+    #: what an agency opened the screen to check. Horizon-filtered by the links' own scoped
+    #: repository (§15/#285), so a restricted member sees the project and only the hostnames
+    #: belonging to clients they may see.
+    hostnames: list[str] = Field(default_factory=list)
+
+
+class PagesLinkRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    project_name: str | None = None
+    domain_id: uuid.UUID
+    hostname: str
+    status: str | None = None
+    last_error: str | None = None
+    last_checked_at: datetime | None = None
+    #: Set when a check found Cloudflare no longer holds this hostname on this project. The row
+    #: survives and says so — the same reporting-not-overwriting rule the redirect reconcile
+    #: follows.
+    missing_at: datetime | None = None
+    #: Set when a sync adopted this link from Cloudflare instead of the button creating it, so
+    #: the panel can say where the row came from.
+    discovered_at: datetime | None = None
+
+
+class PagesLinkCreate(BaseModel):
+    project_id: uuid.UUID
+    #: The hostname to serve from the project. Defaults to the domain's apex when omitted.
+    hostname: str | None = Field(default=None, max_length=253)
+
+
+# --- connect + status ---------------------------------------------------------------------- #
+
+
+class ConnectRequest(BaseModel):
+    """"Connect this domain to Cloudflare" — adopt the existing zone, or create one."""
+
+    #: Which of the tenant's Cloudflare accounts. Required whenever more than one is active:
+    #: guessing would put a client's zone in the wrong account, and moving a zone between
+    #: accounts at Cloudflare means deleting and recreating it.
+    account_id: uuid.UUID | None = None
+    #: Create the zone when the account does not have it yet. False = adopt-only, which is the
+    #: safe first step when taking over a client's existing Cloudflare setup.
+    create_if_missing: bool = True
+
+
+class ZoneCandidate(BaseModel):
+    """One account's answer to "do you have this zone?" — the shape ambiguity is reported in."""
+
+    account_id: uuid.UUID
+    account_name: str
+    cf_zone_id: str
+    status: str
+    name_servers: list[str] = Field(default_factory=list)
+
+
+class RedirectObservation(BaseModel):
+    """What Cloudflare currently has for our rule, next to what we asked for."""
+
+    present: bool = False
+    status_code: int | None = None
+    target: str | None = None
+    #: Field names of :class:`RedirectWrite` that Cloudflare disagrees with — empty when in sync.
+    differences: list[str] = Field(default_factory=list)
+
+
+class RedirectConflict(BaseModel):
+    """A redirect on this zone that schakl does not own.
+
+    Named `conflict` for the case it was written for — Cloudflare evaluates redirect rules
+    top-down, so a tenant rule above ours silently wins — but that is only what it *is* when we
+    hold a rule too. With none of ours, these are simply the redirects this domain has, and the
+    panel lists them as such: the state an agency inherits is the state this module exists to
+    serve, and rendering it as a fault taught people to ignore the box it was in.
+
+    Either way it is reported rather than resolved. We cannot evaluate a tenant's filter
+    expression to know what it catches, so naming it lets the admin decide; silently appending
+    our rule below it would look like it worked.
+    """
+
+    kind: Literal["redirect_rule", "page_rule"]
+    description: str = ""
+    detail: str = ""
+    #: Cloudflare's id for a Redirect Rule, which is the only safe way to name one — and the only
+    #: thing that makes "adopt this one" expressible at all. Absent for a Page Rule: a legacy
+    #: forwarding rule is a different product and adopting it would mean claiming to manage
+    #: something this module cannot write.
+    rule_id: str | None = None
+    #: The intent that would have produced this rule (``redirects.rule_intent``), so the row can
+    #: describe itself in the tenant's own vocabulary — *"301, pad meenemen, incl. subdomeinen"* —
+    #: and so **the adopt button posts the rule's own values**. It used to post whatever happened
+    #: to be typed in the form above it, which is why adopting an inherited redirect answered
+    #: `cloudflare_redirect_differs` until the admin hand-matched five fields to a rule they could
+    #: not see. ``None`` means the shape is not one schakl can express: listed, described by
+    #: Cloudflare's own text, and offered no adopt button rather than one that always refuses.
+    intent: RedirectIntent | None = None
+    #: Where this rule sends traffic, read on its own (``redirects.rule_target``) rather than off
+    #: ``intent``. The two come apart on shapes we can read but not *write* — Cloudflare's own
+    #: ``http.host in {"klant.nl" "www.klant.nl"}`` is the common one — and there the target is
+    #: still the single most useful thing to put on the row and in ``Domain.redirect_url``.
+    target_url: str | None = None
+    #: Whether this rule redirects the **whole** domain (``redirects.domain_wide_for``). A rule
+    #: for one subdomain, or one narrowed to a path, mentions the apex and does not redirect it;
+    #: only this may move ``Domain.status``.
+    domain_wide: bool = False
+    # --- the rule's own settings, field by field, each ``None`` where it cannot be read ------ #
+    # Together these are what the **edit form seeds from**, and they exist beside ``intent``
+    # rather than inside it because a rule can be editable without being adoptable. ``intent`` is
+    # all-or-nothing by design — it answers "could schakl have written this whole rule?", and one
+    # unreadable part costs the lot. Seeding a form from it therefore filled every field of a
+    # partly-readable rule with a *default*, and saving then wrote those defaults back: a 303
+    # became a 301, a rule sending every URL to one page started appending paths, a redirect for
+    # one hostname widened to every subdomain of it. All three are silent, and all three change
+    # what a visitor's browser does.
+    #
+    # So each is read on its own and says so when it cannot be. The panel draws a control only
+    # for a field it was given, and the API rewrites only what it was sent.
+    #: **Tri-state** (``redirects.rule_scope``): what the rule's match set says about subdomains,
+    #: or ``None`` when that match set is not one schakl can rewrite (Cloudflare's own
+    #: ``http.host in {…}``, say). ``None`` means the expression is carried over verbatim by an
+    #: edit and the checkbox is not drawn.
+    include_subdomains: bool | None = None
+    #: Read from the target's *shape* (``redirects.rule_target``), which is the only place it
+    #: exists — Cloudflare has no flag for it. Readable exactly when ``target_url`` is, since both
+    #: come out of the same call.
+    preserve_path: bool | None = None
+    #: ``preserve_query_string`` as Cloudflare holds it.
+    preserve_query: bool | None = None
+    #: The code Cloudflare holds, passed through even when it is one schakl cannot express (a 303
+    #: costs the ``intent`` and nothing else). The panel's select offers the four we can write, so
+    #: an edit of such a rule is a deliberate change of code rather than an accidental one.
+    status_code: int | None = None
+
+
+class OriginState(BaseModel):
+    """Whether traffic for this domain reaches Cloudflare's edge at all.
+
+    A redirect rule on a zone with no proxied record for the apex is inert. This is the check
+    that turns "I set the redirect and nothing happens" into a sentence.
+
+    ``www`` is tracked separately because it fails separately: a proxied apex beside an
+    unproxied ``www`` leaves the one hostname a domain redirect exists to catch serving
+    nothing, while the apex answers and the report otherwise reads healthy.
+    """
+
+    apex_proxied: bool = False
+    www_proxied: bool = False
+    #: True when the zone has records but none of them are proxied — the "grey cloud" case.
+    has_records: bool = False
+
+
+class DomainStatusRead(BaseModel):
+    """Everything known about one domain's Cloudflare state.
+
+    ``live`` says whether Cloudflare was actually asked. The stored read (``GET .../status``) is
+    the cheap one a page load uses; ``POST .../check`` is the one that talks to Cloudflare and
+    fills in ``conflicts``, ``origin`` and the redirect observation (docs/PERFORMANCE.md — a
+    detail page must not depend on an outside API being up).
+    """
+
+    domain_id: uuid.UUID
+    domain_name: str
+    live: bool = False
+    #: When Cloudflare was last actually asked about this domain — the most recent of the
+    #: observations this report is assembled from (the zone, the redirect rule, the Pages
+    #: links), never "when this report was built". A stored read renders as fast as it does
+    #: *because* it asks nothing, so without this the panel cannot tell "checked a minute ago"
+    #: from "never checked", and the answer it shows has no age at all. ``None`` means nothing
+    #: here has ever been observed.
+    checked_at: datetime | None = None
+
+    zone: ZoneRead | None = None
+    #: Every account that has this apex. More than one is legal at Cloudflare (only *activation*
+    #: is exclusive) and is exactly the state a "connect" must refuse to guess through.
+    candidates: list[ZoneCandidate] = Field(default_factory=list)
+
+    #: The nameservers Cloudflare expects, and the ones public DNS currently answers — the
+    #: latter from the domains module's own periodic lookup, never a second resolver here.
+    expected_nameservers: list[str] = Field(default_factory=list)
+    observed_nameservers: list[str] = Field(default_factory=list)
+    #: **Tri-state.** ``True``/``False`` are answers; ``None`` means one of the two sides did not
+    #: answer at all — Cloudflare has assigned no nameservers yet, or the public-DNS lookup came
+    #: back empty, which ``dns.fetch_dns`` returns for a timeout exactly as it does for a domain
+    #: that really delegates nowhere. As a plain boolean every one of those read as a confident
+    #: "your nameservers are wrong, change them at the registrar".
+    nameservers_delegated: bool | None = None
+    #: When the *observed* side was last looked up (the domains module's ``dns_checked_at``).
+    #: ``checked_at`` covers the Cloudflare half and never this one, so without it the panel
+    #: printed "checked just now" over a reading a daily cron owns.
+    nameservers_checked_at: datetime | None = None
+
+    redirect: RedirectRead | None = None
+    redirect_live: RedirectObservation | None = None
+    #: The redirects on this zone schakl does not own. **Filled on a stored read too**, from the
+    #: zone's last observation — that is what lets a domain whose redirect was made in
+    #: Cloudflare's dashboard show as redirecting the moment the page opens, instead of only for
+    #: as long as somebody holds the check button's answer on screen.
+    conflicts: list[RedirectConflict] = Field(default_factory=list)
+    #: When ``conflicts`` was last read from Cloudflare. ``None`` = never, which an empty list
+    #: alone cannot say, and "we have not looked" must never render as "there is nothing there".
+    redirects_observed_at: datetime | None = None
+    origin: OriginState | None = None
+    pages_links: list[PagesLinkRead] = Field(default_factory=list)
+
+    #: What the domain record itself claims, so "schakl says redirect, Cloudflare does not" is
+    #: visible without opening two screens.
+    domain_status: str | None = None
+    domain_redirect_url: str | None = None
+
+    #: Stable keys resolved to ``cloudflare.issue.*`` by the client. Ordered most-actionable
+    #: first; an empty list means there is nothing to do.
+    issues: list[str] = Field(default_factory=list)
+    #: A probe that could not run (the token lacks the scope) — named so the admin can widen the
+    #: token instead of reading a silently incomplete report as "all clear".
+    unavailable: list[str] = Field(default_factory=list)
+
+
+class DnsExport(BaseModel):
+    """A zone export. ``content`` is the file body; the client saves it under ``filename``."""
+
+    filename: str
+    content_type: str
+    content: str
+
+
+class ZoneRecords(BaseModel):
+    """A zone's live records plus the state of the read itself."""
+
+    zone_id: uuid.UUID
+    zone_name: str
+    records: list[DnsRecordRead] = Field(default_factory=list)
+
+
+class PanelPayload(BaseModel):
+    """Shape of the cloudflare panel's data (documented here, served as a plain dict)."""
+
+    connected: bool
+    zone_name: str | None = None
+    zone_status: str | None = None
+    redirect_target: str | None = None
+    redirect_status: str | None = None
+    issues: list[str] = Field(default_factory=list)
+    extra: dict[str, Any] = Field(default_factory=dict)

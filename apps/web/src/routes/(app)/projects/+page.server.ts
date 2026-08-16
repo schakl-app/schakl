@@ -30,6 +30,9 @@ export const load: PageServerLoad = async (event) => {
   // never in the browser — filtering the fifty rows this page happens to hold would report a
   // total counted over all of them (§9).
   const statusFilter = event.url.searchParams.get("status") || "";
+  // "Show me the ones nobody named" (#350) — the abandoned create-then-edit rows, which read
+  // as ordinary projects and are otherwise ungatherable.
+  const unnamed = event.url.searchParams.get("unnamed") === "1" || undefined;
   const status =
     statusFilter === PROJECT_STATUS_ALL ? undefined : statusFilter || PROJECT_WORKING_SET;
 
@@ -60,6 +63,7 @@ export const load: PageServerLoad = async (event) => {
         hours,
         company_id,
         status,
+        unnamed,
       },
     },
   });
@@ -69,6 +73,7 @@ export const load: PageServerLoad = async (event) => {
     paging,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     mine,
+    unnamed: unnamed ?? false,
     companyFilter: company_id ?? "",
     // Two values, on purpose: the pills highlight on the *token* the URL carries, and the export
     // sends the *resolved* filter — the whole point of `ImpexBar`'s `filters` is that the file
@@ -112,9 +117,11 @@ export const actions: Actions = {
     if (!company_id) return fail(400, { error: "errors.projects_company_required" });
     const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
-        // The API requires a non-empty name; the placeholder is replaced the moment the user
-        // types a real one on the detail page.
+        // The API requires a non-empty name, so the row still carries one — but it is a
+        // placeholder nobody typed, and `unnamed` is what says so (#350; see the twin in
+        // `tasks/+page.server.ts`).
         name: t("projects.untitled"),
+        unnamed: true,
         company_id,
         status: "active",
         budget_period: "total",

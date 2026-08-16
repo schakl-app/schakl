@@ -105,6 +105,8 @@ export interface InteractionItem {
   /** Gmail-style conversation grouping (#272): the id every logged email row of one thread
    *  shares. `null`/absent on manual/pending rows — each is its own singleton. */
   conversation_id?: string | null;
+  /** The Gmail conversation this row came from — what "mist er een bericht?" asks about (#342). */
+  gmail_thread_id?: string | null;
   /** How many messages this conversation folds — a badge shows only when it is > 1, and it
    *  decides whether the detail modal fetches the full thread. Defaults to 1. */
   conversation_count?: number;

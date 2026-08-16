@@ -169,6 +169,10 @@ export const actions: Actions = {
     const id = String(form.get("id") ?? "");
     const body = {
       name: text(form, "name") ?? "",
+      // The tenant's own article code (#377). `text()` already turns a blank into `null`, which
+      // is what clears it — the API reads an empty string the same way, so an emptied field
+      // detaches the product from its counterpart in the bookkeeping rather than storing "".
+      code: text(form, "code") ?? null,
       description: text(form, "description") ?? null,
       unit: text(form, "unit") ?? null,
       unit_price: text(form, "unit_price") ?? "0",

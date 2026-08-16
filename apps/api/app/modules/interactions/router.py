@@ -186,6 +186,9 @@ async def upload_interaction_eml(
     allow_duplicate: bool = Form(
         False, description="Log it even though this Message-ID is already on the timeline"
     ),
+    enrich_task: bool = Form(
+        False, description="Let schakl read this email into the task it is filed on (#327)"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> InteractionEmlUploadRead:
     """Log an exported email as a contactmoment (#262).
@@ -193,7 +196,10 @@ async def upload_interaction_eml(
     The narrow, audited path that may write the protected ``email`` kind: the ordinary
     ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
     may claim to be one. Links may be assigned in the same step, exactly like approving a
-    gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+    gmail row (#183) — and, since #342, that includes ``enrich_task``: the AI fill-in was
+    reachable only from the review transition, so the one source that deliberately skips review
+    was the one source that could not ask for it. Declared before ``/{interaction_id}`` so the
+    literal path always wins.
     """
     # UploadFile spools to disk past a small threshold; size it without trusting the client.
     file.file.seek(0, 2)
@@ -214,6 +220,7 @@ async def upload_interaction_eml(
             **({"contact_ids": contact_ids} if contact_ids is not None else {}),
         },
         allow_duplicate=allow_duplicate,
+        enrich_task=enrich_task,
     )
     return InteractionEmlUploadRead(
         interaction=InteractionRead.model_validate(interaction),

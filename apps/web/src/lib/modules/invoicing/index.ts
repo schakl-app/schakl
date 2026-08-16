@@ -72,6 +72,8 @@ registerWebModule({
       module: "invoicing",
       component: InvoicingPanel,
       position: 65,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/invoices?company=${id}`,
     },
   ],
 });

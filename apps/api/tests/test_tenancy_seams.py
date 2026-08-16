@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.db import INSTANCE_LEVEL_TABLES, engine
-from app.registry import registry
+from app.registry import module_package, registry
 from tests.conftest import auth_cookie, make_tenant
 
 # Not a mapped table; Alembic bookkeeping.
@@ -75,7 +75,9 @@ async def test_every_table_is_org_scoped_and_rls_forced() -> None:
 
 def test_every_module_cron_job_binds_tenant_context() -> None:
     for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+        package = module_package(name)
+        assert package is not None, f"enabled module '{name}' is in neither package root"
+        importlib.import_module(package)
     jobs = [(module.name, job) for module in registry.all() for job in module.cron_jobs]
     for module_name, job in jobs:
         source = inspect.getsource(job.coroutine)

@@ -6,9 +6,9 @@
   import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
-  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
+  import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
   import { pageTitle } from "$lib/core/title";
@@ -16,6 +16,7 @@
   import { entityPanelComponent } from "$lib/core/registry";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
+  import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -42,7 +43,12 @@
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
-    projects: data.projects,
+    // This project itself, merged in. `data.projects` is the capped picker list (`limit: 200`,
+    // unsorted), and the one project a panel is certain to ask about is the one whose page this
+    // is — the Drive panel reads its client off it to root the browser (#363).
+    projects: data.projects.some((project) => project.id === data.project.id)
+      ? data.projects
+      : [...data.projects, data.project],
     tasks: data.tasks,
     // The page already loads the vocabulary for its own to-do list; the time panel's entry form
     // needs the same answer to keep finished tasks out of its picker.
@@ -167,10 +173,9 @@
   // current period — the same figures the projects list column shows, and the same period the Uren
   // panel below lists the entries for. Money is priced per logger (#226): the API's employee-rate
   // query carries the billable value and the cost, loaded only for rate-money readers.
-  const loggedHours = $derived(project.hours?.spent_hours ?? 0);
-  // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
-  // so a project 40 % over budget drew exactly like one that had just landed on it.
-  const budgetPct = $derived(burnPct(loggedHours, budgetHours));
+  // The stored budget stands in when the burn aggregate wasn't attached, so the block still
+  // names the allowance it cannot yet report a spend against.
+  const burn = $derived(hoursBurn({ ...(project.hours ?? {}), budget_hours: budgetHours }));
 
   const money = (n: number) =>
     new Intl.NumberFormat("nl-NL", {
@@ -264,29 +269,21 @@
       </div>
     </dl>
     <div class="mt-4 border-t border-border pt-4">
-      <div class="flex items-end justify-between text-sm">
-        <!-- The API's effective period: forced to monthly when a subscription sources the
-             hours (#225), the project's own otherwise. -->
-        <span class="text-text-muted"
-          >{t(
+      <!-- The one burn block (core/ui/BudgetBar.svelte), worded by core/hours.ts (#340): what
+           is left leads, in words, and the bare `4 / 5 u` below it is spent-of-budget — the
+           same sentence the lists, My Day and the timesheet print for this project. The label
+           is the API's effective period: forced to monthly when a subscription sources the
+           hours (#225), the project's own otherwise. -->
+      {#if burn}
+        <BudgetBar
+          spent={burn.spent}
+          budget={burn.budget}
+          label={t(
             `projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`,
-          )}</span
-        >
-        <span class="font-medium text-text">
-          {loggedHours}
-          {t("projects.hours_unit")}{#if budgetHours != null}
-            <span class="text-text-muted"> / {budgetHours} {t("projects.hours_unit")}</span>
-          {/if}
-        </span>
-      </div>
-      {#if budgetPct != null}
-        <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface">
-          <!-- The number may exceed 100 %; the bar it draws cannot. -->
-          <div
-            class="h-full rounded-full {burnBarClass(budgetPct)}"
-            style="width: {burnBarWidth(budgetPct)}%"
-          ></div>
-        </div>
+          )}
+          remainingText={burn.remainingText}
+          spentText={burn.spentText}
+        />
       {/if}
       <!-- Money from employee rates (#111, #226): every hour is priced at its logger's rate,
            so billable value and cost come from the same API query. Only loaded (and rendered)

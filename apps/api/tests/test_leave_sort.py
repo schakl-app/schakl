@@ -157,3 +157,38 @@ async def test_leave_sort_never_crosses_tenants(client_for) -> None:
             await c.get("/api/v1/leave/requests?all_users=true&sort=employee", headers=headers)
         ).json()
         assert page["items"] == []
+
+
+async def test_sorting_by_employee_orders_each_persons_requests_by_date(client_for) -> None:
+    """A sort on a non-unique column carries a tiebreaker (#360).
+
+    `/leave/team` defaults to Medewerker, and within one employee the rows came back in whatever
+    order the plan produced — *13 nov, 27 nov, 11 dec, 30 okt, 24 jul*. Nearly-sorted is the worst
+    kind of wrong on a screen whose question is "when is my team away": nobody re-reads it.
+    Requests are created out of order here on purpose, so an accidentally-insertion-ordered
+    result cannot pass.
+    """
+    t = await make_tenant("lv-tiebreak", email="owner@lv-tb.test")
+    ann = await _member(t.org.id, "ann@lv-tb.test", "Ann Appel")
+    zoe = await _member(t.org.id, "zoe@lv-tb.test", "Zoe Zwart")
+
+    async with client_for(t.host) as c:
+        owner_headers = await auth_cookie(t.user)
+        type_id = await _leave_type(c, owner_headers)
+        days = [leave_workday(i) for i in (20, 0, 40, 10)]
+        for user in (zoe, ann):
+            headers = await auth_cookie(user)
+            for day in days:
+                await _request(c, headers, type_id, day)
+
+        page = (
+            await c.get(
+                "/api/v1/leave/requests?all_users=true&sort=employee&limit=50",
+                headers=owner_headers,
+            )
+        ).json()
+        rows = [(i["user_id"], i["start_date"]) for i in page["items"]]
+        assert [r[0] for r in rows] == [str(ann.id)] * 4 + [str(zoe.id)] * 4
+        expected = sorted(d.isoformat() for d in days)
+        assert [r[1] for r in rows[:4]] == expected
+        assert [r[1] for r in rows[4:]] == expected

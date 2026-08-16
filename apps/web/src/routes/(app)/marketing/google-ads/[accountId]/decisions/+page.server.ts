@@ -5,7 +5,7 @@ import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
-import { GOOGLE_ADS_DECISIONS_TABLE_ID } from "$lib/modules/google_ads/columns";
+import { GOOGLE_ADS_DECISIONS_TABLE_ID } from "$lib/integrations/google_ads/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 

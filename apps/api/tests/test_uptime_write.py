@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.uptime import client as kuma_client
-from app.modules.uptime import profiles as prof
+from app.integrations.uptime import client as kuma_client
+from app.integrations.uptime import profiles as prof
 from tests.conftest import auth_cookie, make_tenant
 from tests.uptime_fake import FakeKuma
 
@@ -405,3 +405,153 @@ async def test_delete_leaves_kuma_alone_unless_asked(client_for, kuma) -> None:
             f"/api/v1/uptime/monitors/{drop['id']}?at_kuma=true", headers=headers
         )
         assert drop["kuma_monitor_id"] not in kuma.monitors
+
+
+# ------------------------------------------------------ creating from a website (#366)
+
+
+async def _company(c, headers, name: str) -> str:
+    return (await c.post("/api/v1/companies", json={"name": name}, headers=headers)).json()["id"]
+
+
+async def _domain(c, headers, name: str, company: str) -> str:
+    return (
+        await c.post(
+            "/api/v1/domains", json={"name": name, "company_id": company}, headers=headers
+        )
+    ).json()["id"]
+
+
+async def _website(c, headers, domain: str, *, root: bool = True) -> str:
+    return (
+        await c.post(
+            "/api/v1/websites", json={"domain_id": domain, "root": root}, headers=headers
+        )
+    ).json()["id"]
+
+
+async def test_a_monitor_created_from_a_website_gets_that_websites_client(
+    client_for, kuma
+) -> None:
+    """The create path derives `company_id` exactly as the update and link paths do (#366).
+
+    Posting only `website_id` used to land the row at `company_id IS NULL` — visible to staff
+    outside that client's group and invisible to the client whose site it watches (§285, #266).
+    Nothing on the screen would have said so, which is what makes this worth pinning rather than
+    leaving to the panel that happens to post it.
+    """
+    t = await make_tenant("uptime-create-anchor")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        instance_id = await _connected(c, headers)
+        company = await _company(c, headers, "Klant")
+        domain = await _domain(c, headers, "klant.nl", company)
+        website = await _website(c, headers, domain)
+
+        created = await c.post(
+            "/api/v1/uptime/monitors",
+            json={
+                "instance_id": instance_id,
+                "name": "klant.nl",
+                "monitor_type": "http",
+                "target": "https://klant.nl",
+                # Deliberately no `company_id`: the panel does not post one, because two copies
+                # of "whose monitor is this" is how the horizon starts disagreeing with the row.
+                "website_id": website,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert body["website_id"] == website
+        assert body["company_id"] == company
+        # One anchor, never three: the others stay empty rather than being carried along.
+        assert body["domain_id"] is None and body["hosting_id"] is None
+
+
+async def test_a_monitor_created_from_a_domain_gets_the_domains_client(client_for, kuma) -> None:
+    """The domain page posts the other anchor, and it resolves through the same ladder."""
+    t = await make_tenant("uptime-create-domain")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        instance_id = await _connected(c, headers)
+        company = await _company(c, headers, "Klant")
+        domain = await _domain(c, headers, "klant.nl", company)
+
+        created = await c.post(
+            "/api/v1/uptime/monitors",
+            json={
+                "instance_id": instance_id,
+                "name": "mail.klant.nl",
+                "monitor_type": "ping",
+                "target": "mail.klant.nl",
+                "domain_id": domain,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["company_id"] == company
+        assert created.json()["website_id"] is None
+
+
+async def test_creating_against_another_tenants_anchor_is_a_404(client_for, kuma) -> None:
+    """The create route stands behind the same fence as `link_monitor` (§15, Golden Rule 1).
+
+    A 404 and not a 403: a refusal must not confirm that the row exists. Without this the create
+    route would be the one way past a gate the other two write paths already hold.
+    """
+    other = await make_tenant("uptime-create-other")
+    other_headers = await auth_cookie(other.user)
+    async with client_for(other.host) as c:
+        company = await _company(c, other_headers, "Andermans klant")
+        domain = await _domain(c, other_headers, "andermans.nl", company)
+        foreign_website = await _website(c, other_headers, domain)
+
+    t = await make_tenant("uptime-create-mine")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        instance_id = await _connected(c, headers)
+        refused = await c.post(
+            "/api/v1/uptime/monitors",
+            json={
+                "instance_id": instance_id,
+                "name": "Van iemand anders",
+                "monitor_type": "http",
+                "target": "https://andermans.nl",
+                "website_id": foreign_website,
+            },
+            headers=headers,
+        )
+        assert refused.status_code == 404, refused.text
+
+
+async def test_the_instance_picker_reads_on_monitor_read_and_hides_the_credential(
+    client_for, kuma
+) -> None:
+    """The create form's picker (#366).
+
+    Readable on `monitor.read` for `list_profiles`' reason — a form gated on a permission the
+    create route does not require is a picker its holder cannot populate (#310) — and carrying no
+    fact about the credential, which stays behind `instance.manage`.
+    """
+    t = await make_tenant("uptime-selectable")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        managed = await _connected(c, headers)
+        # A `linked` instance holds no credential by definition, so nothing can ever be pushed
+        # to it: offering it would be a control that can only refuse (#253).
+        linked = (
+            await c.post(
+                "/api/v1/uptime/instances",
+                json={"name": "Klant-Kuma", "mode": "linked"},
+                headers=headers,
+            )
+        ).json()["id"]
+
+        options = await c.get("/api/v1/uptime/instances/selectable", headers=headers)
+        assert options.status_code == 200, options.text
+        by_id = {o["id"]: o for o in options.json()}
+        assert by_id[managed]["writable"] is True
+        assert by_id[linked]["writable"] is False
+        # The literal segment is matched as itself, not read as an id.
+        assert set(by_id[managed]) == {"id", "name", "mode", "writable"}

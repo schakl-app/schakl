@@ -8,6 +8,49 @@
   apologise for — and a report that silently prints a row of zeros is worse than one that is
   shorter.
 #}
+
+{# One tile strip, used by the cover and by every section, so the two can never drift apart.
+   `tile_rows` balances and pads (`context.tile_rows`); the padding is what keeps every tile the
+   same width, because a fixed table layout divides by the cells that are present. #}
+{% macro tiles(items) %}
+  {% for row in tile_rows(items) %}
+    <div class="kpis">
+      {% for tile in row %}
+        {% if tile %}
+          <div class="kpi">
+            <div class="figure">
+              <span class="value">{{ tile.value }}</span>
+              {% if tile.delta != '-' %}
+                <span class="badge {{ tile.delta_class }}">{{ tile.delta }}</span>
+              {% endif %}
+            </div>
+            <span class="label">{{ tile.icon }}{{ tile.label }}</span>
+          </div>
+        {% else %}
+          <div class="kpi ghost"></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+{% endmacro %}
+
+{# A table head: the metric's mark, then its *short* name. The long name heads the tile, which
+   is the box with room for it — see `context.metric_short` for why the head may not carry it. #}
+{% macro head(columns, name_label, name_width) %}
+  <colgroup>
+    <col style="width: {{ name_width }}%" />
+    {% for column in columns %}<col style="width: {{ column.width }}%" />{% endfor %}
+  </colgroup>
+  <thead>
+    <tr>
+      <th>{{ name_label }}</th>
+      {% for column in columns %}
+        <th class="num" title="{{ column.full_label }}">{{ column.icon }}{{ column.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+{% endmacro %}
+
 <div class="cover">
   <div class="cover-bar">
     {% if client_logo %}
@@ -45,6 +88,17 @@
     </div>
   {% endif %}
 
+  {# The figures the client opened the document for, on the page that is one glance. Not
+     decoration filling the cover's white space: they are the first section's own totals, taken
+     from the resolved section (`context._headline`) so the cover and the page they came from
+     can never disagree about a number. #}
+  {% if headline %}
+    <div class="glance">
+      <h2>{{ labels.at_a_glance }}</h2>
+      {{ tiles(headline) }}
+    </div>
+  {% endif %}
+
   <div class="cover-foot">
     {{ labels.period }}: {{ period_label }}{% if compare_label %} · {{ labels.compared_with }}
     {{ compare_label }}{% endif %}
@@ -65,19 +119,7 @@
     <h2>{{ section.title }}</h2>
     {% if section.narrative %}<div class="narrative">{{ section.narrative | nl2br }}</div>{% endif %}
 
-    {% if section.totals %}
-      <div class="kpis">
-        {% for tile in section.totals %}
-          <div class="kpi">
-            <div class="label">{{ tile.label }}</div>
-            <div class="value">{{ tile.value }}</div>
-            {% if tile.delta != '-' %}
-              <span class="badge {{ tile.delta_class }}">{{ tile.delta }}</span>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+    {% if section.totals %}{{ tiles(section.totals) }}{% endif %}
 
     {# A chart sits *beside* its table when both are narrow enough to survive it, and above it
        when either is not. Deciding it here from the shape of the data, rather than per section
@@ -100,34 +142,60 @@
 
     {% if section.kind == 'rankings' %}
       {# Positions read as a table per keyword group: a client thinks in themes, not in a
-         flat alphabetical list of 200 phrases. #}
+         flat alphabetical list of 200 phrases.
+
+         The landing-page column is only drawn where the section carries one — a Search
+         Console-sourced ranking table knows the query and not which page answered it, and a
+         column of dashes is worse than no column (§17's rule, one layer over). #}
       {% for group in section.groups %}
-        {% if group.name %}<div class="group-head">{{ group.name }}</div>{% endif %}
+        {% set span = 4 + (1 if section.show_landing_page else 0) %}
         <table class="data">
+          <colgroup>
+            <col style="width: {{ section.rank_name_width }}%" />
+            {% if section.show_landing_page %}<col style="width: 26%" />{% endif %}
+            <col style="width: 11%" /><col style="width: 11%" /><col style="width: 13%" />
+          </colgroup>
+          {# The theme's name lives *inside* the head, so a group that runs over a page break
+             carries its name onto the next sheet — `display: table-header-group` repeats a
+             thead and repeats nothing that merely precedes the table. A reader who turns the
+             page onto four keywords belonging to no visible theme has lost the one thing the
+             grouping was for. #}
           <thead>
+            {% if group.name %}
+              <tr><th class="group" colspan="{{ span }}">{{ group.name }}</th></tr>
+            {% endif %}
             <tr>
-              <th>{{ labels.keyword }}</th>
-              <th>{{ labels.landing_page }}</th>
+              <th>{{ icon('keyword') }}{{ labels.keyword }}</th>
+              {% if section.show_landing_page %}
+                <th>{{ icon('landing_page') }}{{ labels.landing_page }}</th>
+              {% endif %}
               <th class="num">{{ labels.start_position }}</th>
               <th class="num">{{ labels.end_position }}</th>
+              <th class="num">{{ icon('change') }}{{ labels.move }}</th>
             </tr>
           </thead>
           <tbody>
             {% for row in group.rows %}
               <tr>
                 <td>{{ row.keyword }}</td>
-                <td class="url">{{ row.landing_page or '-' }}</td>
-                <td class="pos {% if row.begin and row.begin <= 10 %}good{% elif row.begin %}poor{% endif %}">
-                  {{ row.begin or '-' }}
-                </td>
-                <td class="pos {% if row.end and row.end <= 10 %}good{% elif row.end %}poor{% endif %}">
+                {% if section.show_landing_page %}
+                  <td class="url">{{ row.landing_page or '-' }}</td>
+                {% endif %}
+                <td class="pos">{{ row.begin or '-' }}</td>
+                {# The wash is the *move*, not the rank — see `standard.css`. The accent rule is
+                   the separate, quieter fact that this term is in the top three. #}
+                <td class="pos {{ row.move_class or '' }}{% if row.end and row.end <= 3 %} top{% endif %}">
                   {{ row.end or '-' }}
-                  {% if row.status == 'improved' %}
-                    <span class="badge up">+{{ row.change }}</span>
-                  {% elif row.status == 'declined' %}
-                    <span class="badge down">{{ row.change }}</span>
-                  {% elif row.status == 'new' %}
+                </td>
+                <td class="num">
+                  {% if row.status == 'new' %}
                     <span class="badge up">{{ labels.new_keyword }}</span>
+                  {% elif row.change %}
+                    <span class="badge {{ row.move_class }}">
+                      {% if row.change > 0 %}+{% endif %}{{ row.change }}
+                    </span>
+                  {% else %}
+                    <span class="badge neutral">0</span>
                   {% endif %}
                 </td>
               </tr>
@@ -138,11 +206,12 @@
 
     {% elif section.kind == 'audit' %}
       <table class="data">
+        <colgroup><col style="width: 30%" /><col /><col style="width: 12%" /></colgroup>
         <thead>
           <tr>
             <th>{{ labels.source }}</th>
             <th>{{ section.title }}</th>
-            <th class="num">{{ labels.pages }}</th>
+            <th class="num">{{ icon('pages') }}{{ labels.pages }}</th>
           </tr>
         </thead>
         <tbody>
@@ -161,31 +230,28 @@
 
     {% elif section.rows %}
       <table class="data">
-        <thead>
-          <tr>
-            <th>{{ labels.source }}</th>
-            {% for column in section.columns %}<th class="num">{{ column.label }}</th>{% endfor %}
-          </tr>
-        </thead>
+        {{ head(section.columns, labels.source, section.name_width) }}
         <tbody>
           {% for row in section.rows %}
-            <tr>
-              {# `.get`, never `row.label`: the environment is StrictUndefined, and a row that
-                 has no `label` key must render a dash rather than take the report down.
+            {# `.get`, never `row.label`: the environment is StrictUndefined, and a row that
+               has no `label` key must render a dash rather than take the report down.
 
-                 The dot is this row's segment in the chart above it, resolved in
-                 `render/context.py` from the very palette the chart draws from — so it is
-                 only ever present where it means something, and a section whose rows are not
-                 parts of one whole simply has none.
+               The dot is this row's segment in the chart above it, resolved in
+               `render/context.py` from the very palette the chart draws from — so it is
+               only ever present where it means something, and a section whose rows are not
+               parts of one whole simply has none.
 
-                 `section.dots` marks the *column*, not the row: the dot is positioned against
-                 the cell (see `standard.css`), and a section's tail rows have no segment and
-                 so no dot — indenting only the marked ones would turn that honest absence into
-                 a ragged left edge. #}
+               `section.dots` marks the *column*, not the row: the dot is positioned against
+               the cell (see `standard.css`), and a section's tail rows have no segment and
+               so no dot — indenting only the marked ones would turn that honest absence into
+               a ragged left edge. #}
+            <tr{% if row.get('folded') %} class="folded"{% endif %}>
               <td{% if section.dots %} class="mark"{% endif %}>{% if row.get('color') %}<span class="dot" style="background: {{ row.get('color') }}"></span>{% endif %}{{ row.get('label') or row.get('engine') or '-' }}</td>
               {% for column in section.columns %}
                 <td class="num">
-                  {% if column.key == 'delta' %}
+                  {% if row.get(column.key) is none %}
+                    <span class="empty">-</span>
+                  {% elif column.key == 'delta' %}
                     <span class="badge {{ delta_class(column.key, row.get(column.key)) }}">
                       {{ fmt_delta(row.get(column.key)) }}
                     </span>

@@ -2,8 +2,8 @@
 
 > The `uptime` module: monitors, groups and default settings on the tenant's **own** Uptime Kuma
 > instances, plus the status those instances report back. Business-licensed (`sku="uptime"`).
-> Read this before changing anything under `apps/api/app/modules/uptime/`,
-> `apps/web/src/lib/modules/uptime/` or `apps/web/src/routes/(app)/settings/uptime/`.
+> Read this before changing anything under `apps/api/app/integrations/uptime/`,
+> `apps/web/src/lib/integrations/uptime/` or `apps/web/src/routes/(app)/settings/uptime/`.
 
 Sibling to `docs/CLOUDFLARE.md`, and deliberately built to the same three rules: the credential is
 a row, an integration that mirrors outside state stores *what it decided* and *what it last
@@ -83,8 +83,8 @@ coexist in one virtualenv — a dependency that can silently become the other on
 
 ### Therefore: `client.py` is ours
 
-`app/modules/uptime/client.py` is a Socket.IO client this repo owns, the same posture as
-`app/modules/cloudflare/client.py`. Both libraries are MIT (© 2023 Lucas Held) and Uptime Kuma
+`app/integrations/uptime/client.py` is a Socket.IO client this repo owns, the same posture as
+`app/integrations/cloudflare/client.py`. Both libraries are MIT (© 2023 Lucas Held) and Uptime Kuma
 itself is MIT, so the derivation is clean — keep the notice in a `LICENSE` beside the module, as
 `cloudflare/` already does.
 
@@ -670,6 +670,72 @@ here (§7) and watches nothing, so attaching one would put a folder in the panel
 proposes one because it has no target to match on, and the picker draws the same line rather than
 letting the only other way in disagree.
 
+### Attaching answers half the question; the other half is that nothing watches it yet (#366)
+
+Both controls on the panel — *Koppel een monitor* and *Ontkoppel* — take a monitor that **already
+exists in Uptime Kuma**. `POST /uptime/monitors` had existed since gate 2 and the entire web app
+called it from exactly one place: `createGroup` on the settings screen, which posts
+`monitor_type: "group"`. A folder, never a check.
+
+So a website nobody has set up monitoring for — the normal state of a site delivered last week —
+had no way forward from the page that is about it. You opened Uptime Kuma, made the monitor by
+hand, came back to Instellingen → Uptime, synced, and confirmed the match. Four screens for the
+thing this module exists to do, and the first three in a different application. That is the
+`pickers must offer inline-create` rule (docs/UX.md) one level up: **a picker that only offers
+existing rows is unfinished for as long as the row you need is not one of them.**
+
+The create form sits beside the attach control on both anchors and is shaped by four decisions.
+
+- **The anchor is the route's record, never the form.** `uptimeCreateMonitor` reads
+  `event.params.id`, exactly as `uptimeLink` does, and posts **no `company_id` at all** — the API
+  derives it. `cloudflare` paid for the other shape once, in an adopt button that posted whatever
+  was typed above it rather than the row it was drawn from.
+- **The target is suggested, visible, and correctable.** A website has no URL column: its host is
+  the apex or `www.` plus the apex depending on `websites.root`, which is what
+  `matching.build_index` already derives when it decides which website a *found* monitor belongs
+  to. The panel mirrors that rule off the record the host page has already loaded rather than
+  fetching it — one more request on every website and domain page, to serve a form most visits
+  never open, is the trade `docs/PERFORMANCE.md` bans — and puts the answer in a field you can
+  see. A drift between the two derivations is then something you notice, not something you find
+  out about later. Changing the type re-suggests the target **only while the box still holds the
+  last suggestion**: once somebody has typed in it, that is the answer.
+- **The settings are in the form, and blank means inherit.** Type, interval, retries and the
+  profile, with every numeric box left out of the body when it is empty rather than sent as `0`.
+  `None` means *follow the default* the whole way down (`profiles.resolve`), and an empty interval
+  posted as a number would pin the monitor to the invariant floor — the kind of plausible wrong
+  value nobody notices until a client asks why their site is checked every twenty seconds.
+- **The group is where you finally use one.** #321 made groups manageable under Instellingen and
+  gave them no point of use; the create form is it, and it offers only the **selected instance's**
+  groups, because a monitor cannot sit in a folder on a different server.
+
+Two things had to be fixed underneath it.
+
+`create_monitor` wrote `company_id=payload.company_id` and took the three anchor ids on trust,
+while `update_monitor`'s own docstring says the opposite in as many words — *"which client a
+monitor belongs to is derived from what it was attached to, unless the caller said otherwise. Two
+copies of 'whose monitor is this' is how the horizon starts disagreeing with the record."* A
+monitor created from a website page therefore landed at `company_id IS NULL`: visible to staff
+outside that client's group and invisible to the client whose site it watches (§15's #285/#266
+rules) — the exact state #321 spent an issue removing from the sync path, back through the other
+door, and this time for monitors we made ourselves. `_resolve_anchor` now runs the create payload
+through the same resolution `link_monitor` uses: **one anchor, most specific first, the others
+dropped**, resolved through `matching.anchor_query` so an id outside the caller's horizon is a
+**404** rather than a silently-written link. Without it the create route was the one way past a
+fence the other two write paths both stand behind.
+
+And the picker needed a list it is allowed to read. `GET /uptime/instances` is gated whole on
+`instance.manage`, which is deliberate — it reports credential state — but `uptime.monitor.write`
+without `instance.manage` is a combination the permission split exists to make possible ("using
+the connection somebody else configured", `permissions.py`). A form gated on a permission its own
+route does not require is #310's mistake in miniature, so `GET /uptime/instances/selectable`
+answers on `monitor.read` with `{id, name, mode, writable}` and nothing else: every field there
+already rides every monitor row under `meta=true`, so it reveals nothing new, and no fact about a
+credential leaves `instance.manage`. `writable` is computed server-side so the rule lives once — a
+`linked` instance holds no credential by definition (§4), `_push` can never write to it, and a
+monitor created against one would sit at `pending` for ever. The picker draws only writable
+instances and says so in words when there are none, rather than offering a choice that can only
+fail (#253's control that always refuses).
+
 ### The company panel had no renderer, so it printed its own JSON
 
 `panels.py` has contributed `uptime.company` since gate 1 and the web module registered no
@@ -708,7 +774,7 @@ one thing, the drift check expects another, and every monitor in the tenant read
 Resolving to *no* profile falls back to the oldest active profile of that monitor type, and the first
 profile of one **is** the default: nobody makes one profile and means "use none of it".
 
-Built as `app/modules/uptime/profiles.py`, and two details are worth knowing. `PROFILE_KEYS` is
+Built as `app/integrations/uptime/profiles.py`, and two details are worth knowing. `PROFILE_KEYS` is
 an **allow-list**, so a profile can never carry a `url` — a profile that can set a URL is a
 profile that can point forty monitors at the wrong host in one save. And the invariants clamp
 **last**, after both the profile and the monitor's own overrides, so nothing a tenant configures

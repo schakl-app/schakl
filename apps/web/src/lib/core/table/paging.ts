@@ -11,7 +11,9 @@
  * **The URL is the view.** `?page=` and `?size=` fully describe which slice is on screen, so the
  * back button lands where the user left, a page is shareable, and SvelteKit restores the scroll
  * position for free. That is also why every filter, search and sort control must drop `page`
- * (`resetPage`) — page 7 of the old filter is not page 7 of the new one.
+ * (`resetPage`) — page 7 of the old filter is not page 7 of the new one. A *forward* link back to
+ * the list — the crumb row — gets neither for free, which is what `core/screen-position` is for:
+ * it is the URL being the view that makes "the screen they left" a thing a link can name at all.
  *
  * **The preference is the default, never the state.** `TablePref.page_size` is what the list
  * opens on; the URL wins whenever it speaks. Storing the *current* page in the preference

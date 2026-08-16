@@ -1712,8 +1712,37 @@ export interface paths {
         /**
          * Company Panels
          * @description Compose the detail-view panels contributed by every enabled module (the hub).
+         *
+         *     Only the panels **this caller may read** (#365): the composition used to declare
+         *     ``companies.company.read`` once and then call thirteen providers, so a member holding
+         *     exactly that key received the client's tasks, hours, domains and full change history.
+         *     ``panels_for`` takes ``ctx.can`` and the provider is never called.
          */
         get: operations["company_panels_api_v1_companies__company_id__panels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/{company_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Summary
+         * @description The client's vital signs (#364) — openstaand, uren, open taken, laatste contact, verlenging.
+         *
+         *     Every one of these was already derivable from a panel the reader had to scroll to and add up
+         *     by eye. Same seam as the panels one level up: the module owns the number and where it opens,
+         *     core owns the strip, and this page gains no per-module code.
+         */
+        get: operations["company_summary_api_v1_companies__company_id__summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2289,7 +2318,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove Google Ads Ad Group
+         * @description Delete an ad group, with the keywords and ads inside it. Permanent at Google.
+         */
+        delete: operations["remove_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -2300,6 +2333,26 @@ export interface paths {
          *     Google ignores it, and this route does not pretend otherwise.
          */
         patch: operations["update_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}/ads/{ad_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Google Ads Ad
+         * @description Delete one ad. Permanent at Google — a replacement is a new ad with its own history.
+         */
+        delete: operations["remove_google_ads_ad_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__ads__ad_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/google-ads/accounts/{account_id}/ads": {
@@ -2329,7 +2382,7 @@ export interface paths {
         head?: never;
         /**
          * Update Google Ads Ad
-         * @description Pause, resume or remove one ad.
+         * @description Pause or resume one ad. `status` is ENABLED or PAUSED; to delete it, use DELETE.
          *
          *     Status only. An ad's creative is immutable at Google — its performance history belongs to its
          *     text — so changing a headline means creating a new ad and removing this one.
@@ -2372,7 +2425,13 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove Google Ads Budget
+         * @description Delete a daily budget.
+         *
+         *     Google refuses while a campaign still uses it, so remove or re-point the campaign first.
+         */
+        delete: operations["remove_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets__budget_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -2432,7 +2491,14 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove Google Ads Campaign
+         * @description Delete a campaign. **Permanent** at Google — it can be recreated, never restored.
+         *
+         *     Its ad groups and ads stop serving with it but are *not* themselves removed, and afterwards
+         *     they can no longer be removed at all. Delete them first if you want a clean account.
+         */
+        delete: operations["remove_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns__campaign_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -2713,6 +2779,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google-ads/accounts/{account_id}/negative-lists/{shared_set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Google Ads Negative List
+         * @description Delete a shared negative-keyword list.
+         *
+         *     Every campaign attached to it stops excluding those terms, so check what uses it first.
+         */
+        delete: operations["remove_google_ads_negative_list_api_v1_google_ads_accounts__account_id__negative_lists__shared_set_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google-ads/accounts/{account_id}/negatives": {
         parameters: {
             query?: never;
@@ -2797,7 +2885,14 @@ export interface paths {
          */
         put: operations["save_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Clear Google Ads Policy
+         * @description Drop this account's own rules, so it inherits the agency's house policy again.
+         *
+         *     Not the same as saving every field empty: that leaves a row that reports `stored: true` and
+         *     holds nothing. Returns what the account is left with.
+         */
+        delete: operations["clear_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2980,7 +3075,11 @@ export interface paths {
          */
         put: operations["save_google_ads_house_policy_api_v1_google_ads_policy_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Clear Google Ads House Policy
+         * @description Drop the agency's house rules, leaving only the built-in ceiling every account gets.
+         */
+        delete: operations["clear_google_ads_house_policy_api_v1_google_ads_policy_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3259,6 +3358,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/gmail/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Gmail Message
+         * @description Log one message the poller skipped, filed where the caller says.
+         *
+         *     The declared permission is the one for the row this **writes** — a contactmoment — while
+         *     reaching into the mailbox is asked for in the service (``google.connection.manage``). Two
+         *     keys, because it is two acts, and gating on the one the screen happens to be about is how a
+         *     403 becomes unexplainable (#310).
+         */
+        post: operations["import_gmail_message_api_v1_google_gmail_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Gmail Message
+         * @description Resolve a pasted reference to the message(s) it names, in the caller's own mailbox.
+         *
+         *     A **GET**, deliberately: it reads, and a read must survive an expired licence (#307) — the
+         *     module's write gate reads the method, so a POST here would 402 somebody out of looking at
+         *     their own mailbox. It is also why the reference is a query parameter rather than a body.
+         */
+        get: operations["lookup_gmail_message_api_v1_google_gmail_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Gmail
+         * @description Poll this mailbox once, now — rate-limited to one manual poll per minute.
+         */
+        post: operations["refresh_gmail_api_v1_google_gmail_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Gmail
+         * @description Find a message in the caller's **own** mailbox, by who it was with and when (#372).
+         *
+         *     Named parameters rather than one free-text box, and that is a boundary rather than a
+         *     convenience: the service builds the Gmail query from them, so a colon in an address cannot
+         *     become an operator and "what was searched for" stays a sentence we can state.
+         *
+         *     ``google.connection.manage`` is the key — the same one every other read of the caller's own
+         *     mailbox declares. This reaches no schakl row at all, so ``interactions.interaction.write``
+         *     is asked for at the point something is actually logged, not here. A **GET** for
+         *     :func:`lookup_gmail_message`'s reason: it reads, and a read must survive an expired
+         *     licence (#307).
+         */
+        get: operations["search_gmail_api_v1_google_gmail_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gmail Status
+         * @description When this mailbox was last polled, and whether asking for another one is worth it.
+         */
+        get: operations["read_gmail_status_api_v1_google_gmail_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/gmail/threads/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gmail Thread
+         * @description Every message of one conversation, marked with what is already on the timeline.
+         *
+         *     The thread id comes off a row we logged, so this asks about a conversation we were already
+         *     told about — no search, no browsing, and nothing the poller could not already read.
+         */
+        get: operations["read_gmail_thread_api_v1_google_gmail_threads__thread_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/oauth/callback": {
         parameters: {
             query?: never;
@@ -3298,6 +3539,8 @@ export interface paths {
          *     (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
          *     marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
          *     **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+         *     ``include_tag_manager`` is its own flag and rides no bundle: it asks for the four GTM scopes,
+         *     one of which publishes to a client's live website (:mod:`app.integrations.google.oauth`).
          *
          *     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
          *     is asked from the page that needed it, so that is the page to come back to.
@@ -3322,6 +3565,406 @@ export interface paths {
         get: operations["get_settings_api_v1_google_settings_get"];
         /** Save Settings */
         put: operations["save_settings_api_v1_google_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Containers
+         * @description Every linked Tag Manager container this caller may see — **start here**.
+         *
+         *     The list an agent needs before anything else: it names the containers, and every other tool
+         *     takes one of these ``id`` values. Company-scoped logins see only the containers of clients in
+         *     their horizon; a container attached to no client (the agency's own) stays visible to all.
+         */
+        get: operations["list_gtm_containers_api_v1_gtm_containers_get"];
+        put?: never;
+        /**
+         * Link Gtm Container
+         * @description Attach a container to this workspace, and say whose it is.
+         *
+         *     Named either by its numeric pair or by the ``GTM-XXXXXXX`` on the client's website — the
+         *     second is resolved through Google's own lookup, so nobody has to dig a container id out of a
+         *     URL before they can link the container they are looking at.
+         */
+        post: operations["link_gtm_container_api_v1_gtm_containers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Gtm Containers
+         * @description Containers the caller's own Google grant can reach, across every Tag Manager account.
+         *
+         *     Live — this is the one read that calls Google on every request, because a picker showing a
+         *     stale list is how somebody links a container that was deleted last month.
+         */
+        get: operations["list_available_gtm_containers_api_v1_gtm_containers_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Gtm Container */
+        get: operations["get_gtm_container_api_v1_gtm_containers__container_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Gtm Container
+         * @description Forget the container here. **Nothing is removed from Tag Manager** — an agency that stops
+         *     working for a client does not thereby delete the tracking off their website.
+         */
+        delete: operations["unlink_gtm_container_api_v1_gtm_containers__container_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Gtm Container */
+        patch: operations["update_gtm_container_api_v1_gtm_containers__container_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Conversions
+         * @description The conversions schakl set up in this container, and whether each is live yet.
+         *
+         *     Stored rows, not a Google call: GTM records that a tag exists and records nowhere that it is
+         *     the client's "offerte aangevraagd" conversion, set up by us, on a date, by a person.
+         */
+        get: operations["list_gtm_conversions_api_v1_gtm_containers__container_id__conversions_get"];
+        put?: never;
+        /**
+         * Create Gtm Conversion
+         * @description Set up one conversion: the trigger, the tag, and the record that they belong together.
+         *
+         *     ``kind="ga4_event"`` needs ``event_name`` and ``measurement_id``; ``kind="ads_conversion"``
+         *     needs ``conversion_id`` and ``conversion_label``. Neither is ever guessed — sending a client's
+         *     conversions to a measurement id we picked would be wrong in a way no screen could show.
+         *
+         *     It lands in a workspace and is live for nobody until a version is published.
+         */
+        post: operations["create_gtm_conversion_api_v1_gtm_containers__container_id__conversions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/snippet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gtm Container Snippet
+         * @description The install snippet, for the developer who has to put it on the site.
+         */
+        get: operations["gtm_container_snippet_api_v1_gtm_containers__container_id__snippet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gtm Workspace Status
+         * @description What is staged in a workspace and not live — the question before every publish.
+         */
+        get: operations["gtm_workspace_status_api_v1_gtm_containers__container_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Tags
+         * @description Every tag in a workspace — what is (or is about to be) measuring this client's site.
+         */
+        get: operations["list_gtm_tags_api_v1_gtm_containers__container_id__tags_get"];
+        put?: never;
+        /**
+         * Create Gtm Tag
+         * @description Create a tag from its own ``type`` and parameter array.
+         *
+         *     The general case, and the escape hatch from the conversion recipe: GTM decides which
+         *     parameter keys a tag template accepts and its refusal names the field, so this is validated
+         *     by Google rather than here. It lands in a workspace and is live for nobody until a version is
+         *     published — which is a different permission.
+         */
+        post: operations["create_gtm_tag_api_v1_gtm_containers__container_id__tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Tag */
+        delete: operations["delete_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Gtm Tag
+         * @description Change one tag. Reads it first and writes back under its fingerprint, so an edit somebody
+         *     made in Tag Manager meanwhile is a 409 rather than a silent overwrite of their work.
+         */
+        patch: operations["update_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/triggers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Gtm Triggers */
+        get: operations["list_gtm_triggers_api_v1_gtm_containers__container_id__triggers_get"];
+        put?: never;
+        /**
+         * Create Gtm Trigger
+         * @description Create a trigger from six named kinds rather than from GTM's own vocabulary.
+         *
+         *     ``page_view``, ``form_submit``, ``link_click``, ``element_click``, ``element_visibility``,
+         *     ``custom_event`` — plus ``url_contains`` to narrow any of them to one part of the site. The
+         *     built-in variables the resulting trigger reads are switched on with it, because a trigger
+         *     referring to a variable that does not exist is stored happily by GTM and fires never.
+         */
+        post: operations["create_gtm_trigger_api_v1_gtm_containers__container_id__triggers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/triggers/{trigger_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Trigger */
+        delete: operations["delete_gtm_trigger_api_v1_gtm_containers__container_id__triggers__trigger_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Gtm Variables */
+        get: operations["list_gtm_variables_api_v1_gtm_containers__container_id__variables_get"];
+        put?: never;
+        /**
+         * Create Gtm Variable
+         * @description Create a user-defined variable — a dataLayer read (``v``), a constant (``c``), a lookup.
+         *
+         *     Same contract as a tag: the ``type`` and parameter keys are GTM's, and GTM validates them.
+         */
+        post: operations["create_gtm_variable_api_v1_gtm_containers__container_id__variables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/variables/{variable_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Gtm Variable */
+        delete: operations["delete_gtm_variable_api_v1_gtm_containers__container_id__variables__variable_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Gtm Container
+         * @description Ask Google what it says about this container, and record the answer either way.
+         *
+         *     Never raises for a container that answered badly: the outcome *is* the row, so a failure
+         *     comes back as ``status="error"`` with Google's own sentence on it rather than as an envelope
+         *     the screen has to guess the meaning of.
+         */
+        post: operations["verify_gtm_container_api_v1_gtm_containers__container_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Versions
+         * @description The container's version history, newest first, with the live one marked.
+         */
+        get: operations["list_gtm_versions_api_v1_gtm_containers__container_id__versions_get"];
+        put?: never;
+        /**
+         * Create Gtm Version
+         * @description Freeze what is staged into a version. **Still live for nobody** — publishing is separate.
+         *
+         *     ``empty=true`` means the workspace had nothing to freeze: GTM answers 200 with no version at
+         *     all, which is not a failure and is emphatically not something anybody can publish.
+         */
+        post: operations["create_gtm_version_api_v1_gtm_containers__container_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/versions/{version_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Gtm Version
+         * @description Make this version live on the client's website, now, for every visitor.
+         *
+         *     The only call on this surface with an audience outside the building, which is why it carries
+         *     its own permission, its own OAuth scope and its own line in the activity trail.
+         */
+        post: operations["publish_gtm_version_api_v1_gtm_containers__container_id__versions__version_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/containers/{container_id}/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Gtm Workspaces
+         * @description The container's workspaces — its shared drafts. Usually one; sometimes one per person.
+         */
+        get: operations["list_gtm_workspaces_api_v1_gtm_containers__container_id__workspaces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gtm/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gtm Settings
+         * @description The org's Tag Manager posture: the write kill switch and the workspace schakl writes in.
+         */
+        get: operations["get_gtm_settings_api_v1_gtm_settings_get"];
+        /** Save Gtm Settings */
+        put: operations["save_gtm_settings_api_v1_gtm_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5168,7 +5811,10 @@ export interface paths {
          *     The narrow, audited path that may write the protected ``email`` kind: the ordinary
          *     ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
          *     may claim to be one. Links may be assigned in the same step, exactly like approving a
-         *     gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+         *     gmail row (#183) — and, since #342, that includes ``enrich_task``: the AI fill-in was
+         *     reachable only from the review transition, so the one source that deliberately skips review
+         *     was the one source that could not ask for it. Declared before ``/{interaction_id}`` so the
+         *     literal path always wins.
          */
         post: operations["upload_interaction_eml_api_v1_interactions_upload_eml_post"];
         delete?: never;
@@ -6390,6 +7036,8 @@ export interface paths {
         /**
          * List Availability
          * @description The exception rows with an occurrence in the window — own, or anyone's with ``:any``.
+         *
+         *     Each row carries the person's name, so a cross-person list needs no second read.
          */
         get: operations["list_availability_api_v1_leave_availability_get"];
         put?: never;
@@ -7162,7 +7810,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Company Settings
+         * @description This client's marketing preferences, and what they resolve to.
+         *
+         *     A **read**, so it declares the read permission rather than ``link.manage``: the reporting
+         *     profile screen (#373) shows the resolved keyword-positions settings a client's document will
+         *     be built with, and someone who may look at a report should not need the permission to
+         *     reconfigure integrations in order to see them. Writing is still the manage permission, on the
+         *     PUT below.
+         */
+        get: operations["get_company_settings_api_v1_marketing_companies__company_id__settings_get"];
         /**
          * Set Company Settings
          * @description Per-client marketing preferences: the curated tab layout (#192), the comparison this
@@ -7171,9 +7829,9 @@ export interface paths {
          *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
          *     returned for this client — panel, tab and overview — until they're back on.
          *
-         *     ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
-         *     the override back to the org default, which is a choice the dashboard's select offers. Hence
-         *     ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
+         *     ``compare`` and ``rankings`` are the two fields where an explicit ``null`` differs from
+         *     omitting it: it clears the override back to the org default, which is a choice both screens
+         *     offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -9322,6 +9980,384 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snelstart/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Connected administrations. The koppelsleutel is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_snelstart_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential, or open a pending one for the activation flow to fill.
+         *
+         *     Creating does not verify: ``/verify`` is the explicit probe, so a typo is reported on the
+         *     settings screen beside the row rather than as a failed save that loses what was typed.
+         */
+        post: operations["create_account_api_v1_snelstart_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Options
+         * @description The accounts a sync or push may run against.
+         *
+         *     Gated on the *weaker* ``sync.run`` rather than ``settings.manage``: choosing which
+         *     administration to push into is the sync caller's job, and should not require holding the
+         *     credential screen's permission (``oxxa``'s ``/accounts/options`` reasoning).
+         */
+        get: operations["account_options_api_v1_snelstart_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_api_v1_snelstart_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, rotate, or change what this connection does. An omitted key keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_snelstart_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/ledgers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger Options
+         * @description The revenue accounts a line may book to — the picker behind the per-rate mapping.
+         *
+         *     From the cache, never live: a settings screen that waits on SnelStart to draw a dropdown is
+         *     a settings screen that hangs when SnelStart does.
+         */
+        get: operations["ledger_options_api_v1_snelstart_accounts__account_id__ledgers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/links/{link_id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Link
+         * @description Pair a SnelStart row with a schakl record by hand — the reviewer's one click.
+         */
+        post: operations["adopt_link_api_v1_snelstart_accounts__account_id__links__link_id__adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Articles
+         * @description schakl's products into SnelStart's article file, matched on the article code.
+         */
+        post: operations["push_articles_api_v1_snelstart_accounts__account_id__push_articles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Invoices
+         * @description Every issued invoice not yet in SnelStart, or a named selection.
+         *
+         *     Idempotent by construction: a stored link, then a lookup by number, then SnelStart's own
+         *     ``BOE-0021`` duplicate refusal, then — for a write that got no answer at all — a lookup
+         *     before any retry. A duplicate invoice in a client's ledger is a real-world incident (#31),
+         *     so the guard is four-deep rather than careful.
+         */
+        post: operations["push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Invoice
+         * @description One invoice, from its own detail page.
+         */
+        post: operations["push_invoice_api_v1_snelstart_accounts__account_id__push_invoices__invoice_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/push/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Relations
+         * @description Push paired and invoiced companies into SnelStart's relation file.
+         */
+        post: operations["push_relations_api_v1_snelstart_accounts__account_id__push_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Relation Candidates
+         * @description Every SnelStart customer and what schakl believes it is. Writes nothing.
+         *
+         *     The review screen for a first connect, and the reason it exists rather than a silent merge:
+         *     200 relations against 180 companies is an overlap nobody can eyeball, and each proposal says
+         *     *why* it was made so an admin only has to actually read the guesses.
+         */
+        get: operations["relation_candidates_api_v1_snelstart_accounts__account_id__relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description What the last syncs did, and what they could not do (#31: failures are visible).
+         */
+        get: operations["list_runs_api_v1_snelstart_accounts__account_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Payments
+         * @description Fold SnelStart's outstanding balances back into schakl as payments.
+         *
+         *     ``sync.run``, not ``ledger.write``, and the distinction is exact: this writes into *schakl*
+         *     and changes nothing in the administration. It is also the answer to "who hasn't paid", which
+         *     is the reason most agencies want this integration at all.
+         */
+        post: operations["sync_payments_api_v1_snelstart_accounts__account_id__sync_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Reference
+         * @description Pull the administration's chart of accounts, journals, countries and article groups.
+         */
+        post: operations["sync_reference_api_v1_snelstart_accounts__account_id__sync_reference_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/sync/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Relations
+         * @description Adopt every SnelStart customer schakl can identify without guessing.
+         *
+         *     ``sync.run``, not ``ledger.write``: nothing outside schakl changes. It pairs records and
+         *     records what it could not pair.
+         */
+        post: operations["link_relations_api_v1_snelstart_accounts__account_id__sync_relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Ask SnelStart which administration this key opens, and what it may do there.
+         *
+         *     Answers ``200`` with ``ok=false`` for a rejected credential rather than an error status: the
+         *     probe succeeded, its answer was no, and the row keeps SnelStart's own words on it. The
+         *     result also names *which* credential was refused — the tenant's koppelsleutel or the
+         *     install's subscription key — because only one of those is something the agency can fix.
+         */
+        post: operations["verify_account_api_v1_snelstart_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snelstart/coupling/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Coupling Callback
+         * @description Receive a koppelsleutel SnelStart has just granted.
+         *
+         *     ``{KoppelSleutel, ActionType: "Create"|"Regenerate"|"Delete", ReferenceKey}``. Five gates, in
+         *     this order and no other — the payment webhook's order, because the problem is the same one:
+         *
+         *     1. **The reference names the tenant.** No hostname, no session, no unscoped lookup. On cloud
+         *        this arrives on the instance apex, where no org resolves at all, so there is nothing else
+         *        it could come from.
+         *     2. **The RLS GUC is bound before anything is read**, which is what makes gate 3 safe to run
+         *        against attacker-chosen ids.
+         *     3. **The secret is compared in constant time**, and a mismatch is a bare 404 — never 401 or
+         *        403, which would confirm that the account exists.
+         *     4. **The body is a hint, never a fact.** It names a key; the key proves itself by minting a
+         *        token and reading ``/companyInfo``. A payload that merely *claims* to be a credential is
+         *        stored only after it has behaved like one — and that re-fetch is also what records which
+         *        administration it opens.
+         *     5. **``Delete`` disconnects, it does not delete the row.** The links, the mappings and the
+         *        run history are the tenant's record of what happened; throwing them away because
+         *        somebody revoked a key in SnelStart would destroy the audit trail of a ledger.
+         *
+         *     Answers ``200`` for anything it cannot act on, deliberately: SnelStart treats 2xx as
+         *     delivered and **does not retry**, so the only thing a non-2xx buys is a tenant staring at a
+         *     connect flow that failed silently. What we cannot process is logged, not bounced.
+         */
+        post: operations["coupling_callback_api_v1_snelstart_coupling_callback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -10543,6 +11579,34 @@ export interface paths {
         put?: never;
         /** Create Instance */
         post: operations["create_instance_api_v1_uptime_instances_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/instances/selectable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Selectable Instances
+         * @description Which Uptime Kumas a monitor may be created on — the create form's picker (#366).
+         *
+         *     Declared **before** `/instances/{instance_id}` so the literal segment is matched as itself
+         *     rather than as an id, and read on `monitor.read` rather than `instance.manage` for
+         *     `list_profiles`' reason: the form needs to show where a monitor lands, and a gate naming a
+         *     permission the create route does not require is #310's mistake in miniature.
+         *
+         *     `writable` is computed here rather than left to the caller so the rule lives in one place: a
+         *     `linked` instance holds no credential, and a monitor created against one can never be pushed.
+         */
+        get: operations["list_selectable_instances_api_v1_uptime_instances_selectable_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -11919,6 +12983,11 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /**
+             * User Name
+             * @default
+             */
+            user_name: string;
         };
         /**
          * AvailabilityUpdate
@@ -12866,6 +13935,11 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post */
+        Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post: {
+            /** Invoice Ids */
+            invoice_ids?: string[] | null;
+        };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
             /**
@@ -12937,6 +14011,12 @@ export interface components {
              * @description Everyone the message was with; wins over contact_id
              */
             contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @description Let schakl read this email into the task it is filed on (#327)
+             * @default false
+             */
+            enrich_task: boolean;
             /**
              * File
              * @description An exported .eml message
@@ -13807,10 +14887,18 @@ export interface components {
             compare?: components["schemas"]["ComparePeriod"] | null;
             /** @default year */
             compare_resolved: components["schemas"]["ComparePeriod"];
+            keyword_source?: components["schemas"]["RankingSource"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
             } | null;
+            /** Linked Sources */
+            linked_sources?: components["schemas"]["MarketingSource"][];
+            /** Rankings */
+            rankings?: {
+                [key: string]: unknown;
+            } | null;
+            rankings_resolved?: components["schemas"]["RankingSettingsRead"];
             /** Show Key Events */
             show_key_events: boolean;
         };
@@ -13826,6 +14914,8 @@ export interface components {
          *     meaningful stored value here — the dashboard's select posts "volg standaard" as a real
          *     choice, and a payload that could not express it would leave a client pinned to whatever was
          *     set once, forever. The service reads ``model_fields_set`` to tell the two apart.
+         *
+         *     ``rankings`` follows the same rule for the same reason (#373).
          */
         CompanySettingsUpdate: {
             compare?: components["schemas"]["ComparePeriod"] | null;
@@ -13833,6 +14923,7 @@ export interface components {
             layout?: {
                 [key: string]: unknown;
             } | null;
+            rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             /** Show Key Events */
             show_key_events?: boolean | null;
         };
@@ -15674,6 +16765,201 @@ export interface components {
          */
         GmailApprovalMode: "approval_required" | "auto_approve";
         /**
+         * GmailCandidate
+         * @description One message the caller could log, and everything the row needs to describe itself.
+         */
+        GmailCandidate: {
+            /**
+             * Before Connection
+             * @default false
+             */
+            before_connection: boolean;
+            /**
+             * Direction
+             * @default none
+             */
+            direction: string;
+            /** From Email */
+            from_email?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Interaction Id */
+            interaction_id?: string | null;
+            /**
+             * Logged
+             * @default false
+             */
+            logged: boolean;
+            /** Message Id */
+            message_id: string;
+            /**
+             * Never Offered
+             * @default false
+             */
+            never_offered: boolean;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Recipients */
+            recipients?: string | null;
+            /** Skip Detail */
+            skip_detail?: {
+                [key: string]: string;
+            };
+            /** Skip Reason */
+            skip_reason?: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /**
+             * Suppressed
+             * @default false
+             */
+            suppressed: boolean;
+            /** Thread Id */
+            thread_id?: string | null;
+        };
+        /**
+         * GmailImportRequest
+         * @description One named message, and where it is filed — the ``.eml`` upload's body, minus the file.
+         */
+        GmailImportRequest: {
+            /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Ids */
+            contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @default false
+             */
+            enrich_task: boolean;
+            /** Message Id */
+            message_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** GmailImportResult */
+        GmailImportResult: {
+            /**
+             * Body Fetched
+             * @default false
+             */
+            body_fetched: boolean;
+            /**
+             * Interaction Id
+             * Format: uuid
+             */
+            interaction_id: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** GmailLookupResult */
+        GmailLookupResult: {
+            /** Messages */
+            messages?: components["schemas"]["GmailCandidate"][];
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
+        };
+        /** GmailRefreshResult */
+        GmailRefreshResult: {
+            /**
+             * Logged
+             * @default 0
+             */
+            logged: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "polled" | "cooldown" | "error";
+            sync: components["schemas"]["GmailSyncStatus"];
+        };
+        /**
+         * GmailSearchResult
+         * @description A search over the caller's own mailbox — the same rows, plus what was asked.
+         */
+        GmailSearchResult: {
+            /** Messages */
+            messages?: components["schemas"]["GmailCandidate"][];
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
+        };
+        /**
+         * GmailSyncStatus
+         * @description Everything the button needs to decide whether to draw itself, and what to say.
+         */
+        GmailSyncStatus: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /**
+             * Connection Error
+             * @default false
+             */
+            connection_error: boolean;
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** Last Polled At */
+            last_polled_at?: string | null;
+            /**
+             * Retry After Seconds
+             * @default 0
+             */
+            retry_after_seconds: number;
+            /**
+             * Scope Granted
+             * @default false
+             */
+            scope_granted: boolean;
+            /**
+             * Sync Enabled
+             * @default false
+             */
+            sync_enabled: boolean;
+        };
+        /**
          * GmailThreadFollowup
          * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
          * @enum {string}
@@ -15717,6 +17003,8 @@ export interface components {
             descriptive_name: string;
             /** Login Customer Id */
             login_customer_id?: string | null;
+            /** Time Zone */
+            time_zone?: string | null;
         };
         /** GoogleAdsAccountRead */
         GoogleAdsAccountRead: {
@@ -15870,6 +17158,8 @@ export interface components {
             hint: string;
             /** Login Customer Id */
             login_customer_id?: string | null;
+            /** Time Zone */
+            time_zone?: string | null;
         };
         /** GoogleAdsBudgetCreate */
         GoogleAdsBudgetCreate: {
@@ -15911,6 +17201,11 @@ export interface components {
              * @default SEARCH
              */
             channel: string;
+            /**
+             * Eu Political Advertising
+             * @default false
+             */
+            eu_political_advertising: boolean;
             /** Name */
             name: string;
             /**
@@ -16817,6 +18112,511 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * GtmAvailableContainer
+         * @description One pickable container, as the live picker offers it.
+         */
+        GtmAvailableContainer: {
+            /** Account Name */
+            account_name: string;
+            /**
+             * Already Linked
+             * @default false
+             */
+            already_linked: boolean;
+            /** Gtm Account Id */
+            gtm_account_id: string;
+            /** Gtm Container Id */
+            gtm_container_id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Public Id */
+            public_id: string;
+            /** Usage Context */
+            usage_context: string[];
+        };
+        /**
+         * GtmContainerCreate
+         * @description Link a container, named either the way Google addresses it or the way a human reads it.
+         *
+         *     ``public_id`` (``GTM-NPGFR9W9``) is what is on the client's website and in the e-mail their
+         *     developer sent; the numeric pair is what the API uses. Accepting only the second would make
+         *     every link start with a lookup somebody has to do by hand, so ``containers:lookup`` does it.
+         */
+        GtmContainerCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Gtm Account Id */
+            gtm_account_id?: string | null;
+            /** Gtm Container Id */
+            gtm_container_id?: string | null;
+            /** Public Id */
+            public_id?: string | null;
+            /** Website Id */
+            website_id?: string | null;
+        };
+        /** GtmContainerRead */
+        GtmContainerRead: {
+            /** Active */
+            active: boolean;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Connection Id */
+            connection_id: string | null;
+            /** Domain Names */
+            domain_names: string[];
+            /** Gtm Account Id */
+            gtm_account_id: string;
+            /** Gtm Container Id */
+            gtm_container_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Last Verified At */
+            last_verified_at: string | null;
+            /** Live Version Id */
+            live_version_id: string | null;
+            /** Live Version Name */
+            live_version_name: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Path */
+            path: string;
+            /** Public Id */
+            public_id: string;
+            /** Status */
+            status: string;
+            /** Tag Count */
+            tag_count: number;
+            /** Tag Manager Url */
+            tag_manager_url: string;
+            /** Tagging Server Urls */
+            tagging_server_urls: string[];
+            /** Trigger Count */
+            trigger_count: number;
+            /** Usage Context */
+            usage_context: string[];
+            /** Variable Count */
+            variable_count: number;
+            /** Website Id */
+            website_id: string | null;
+            /** Workspace Changes */
+            workspace_changes: number;
+        };
+        /**
+         * GtmContainerUpdate
+         * @description Only the fields schakl *decided*. What Google said is refreshed by verify, never typed.
+         */
+        GtmContainerUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Website Id */
+            website_id?: string | null;
+        };
+        /**
+         * GtmConversionCreate
+         * @description Set up one conversion: the trigger, the tag, and the record that they belong together.
+         *
+         *     It lands in a workspace and is live for nobody until a version is published — which is a
+         *     separate permission, on purpose.
+         */
+        GtmConversionCreate: {
+            /** Conversion Id */
+            conversion_id?: string | null;
+            /** Conversion Label */
+            conversion_label?: string | null;
+            /** Conversion Value */
+            conversion_value?: string | null;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Event Name */
+            event_name?: string | null;
+            /** Kind */
+            kind: string;
+            /** Measurement Id */
+            measurement_id?: string | null;
+            /** Name */
+            name: string;
+            trigger?: components["schemas"]["GtmTriggerWrite"] | null;
+            /** Trigger Id */
+            trigger_id?: string | null;
+        };
+        /** GtmConversionRead */
+        GtmConversionRead: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Container Id
+             * Format: uuid
+             */
+            container_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Published Version Id */
+            published_version_id: string | null;
+            /** Status */
+            status: string;
+            /** Tag Id */
+            tag_id: string | null;
+            /** Trigger Id */
+            trigger_id: string | null;
+            /** Workspace Id */
+            workspace_id: string | null;
+        };
+        /**
+         * GtmParameter
+         * @description One GTM ``Parameter``. Recursive: ``list`` and ``map`` hold more of them.
+         *
+         *     The field names carry aliases because ``list`` and ``map`` are builtins; every serialisation
+         *     to Google goes ``by_alias=True``, so what leaves is Google's own spelling.
+         */
+        GtmParameter: {
+            /** Key */
+            key?: string | null;
+            /** List */
+            list?: components["schemas"]["GtmParameter"][] | null;
+            /** Map */
+            map?: components["schemas"]["GtmParameter"][] | null;
+            /**
+             * Type
+             * @default template
+             */
+            type: string;
+            /** Value */
+            value?: string | null;
+        };
+        /** GtmPickerRead */
+        GtmPickerRead: {
+            /** Containers */
+            containers: components["schemas"]["GtmAvailableContainer"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GtmPublishResult */
+        GtmPublishResult: {
+            /**
+             * Compiler Error
+             * @default false
+             */
+            compiler_error: boolean;
+            /** Live Version Id */
+            live_version_id?: string | null;
+            /** Name */
+            name: string;
+            /** Version Id */
+            version_id: string;
+        };
+        /** GtmSettingsRead */
+        GtmSettingsRead: {
+            /** Own Workspace */
+            own_workspace: boolean;
+            /** Workspace Name */
+            workspace_name: string;
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /** GtmSettingsWrite */
+        GtmSettingsWrite: {
+            /** Own Workspace */
+            own_workspace?: boolean | null;
+            /** Workspace Name */
+            workspace_name?: string | null;
+            /** Writes Enabled */
+            writes_enabled?: boolean | null;
+        };
+        /**
+         * GtmSnippetRead
+         * @description The install snippet, for the developer who has to put it on the site.
+         */
+        GtmSnippetRead: {
+            /** Public Id */
+            public_id: string;
+            /** Snippet */
+            snippet: string;
+        };
+        /** GtmTagRead */
+        GtmTagRead: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[];
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Tag Id */
+            tag_id: string;
+            /** Tag Manager Url */
+            tag_manager_url?: string | null;
+            /** Type */
+            type: string;
+        };
+        /** GtmTagUpdate */
+        GtmTagUpdate: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[] | null;
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[] | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][] | null;
+            /** Paused */
+            paused?: boolean | null;
+        };
+        /**
+         * GtmTagWrite
+         * @description The escape hatch, and the surface an agent uses most.
+         *
+         *     ``type`` and ``parameter`` are GTM's own; nothing here validates them, because the tag
+         *     template does and its refusal names the field. What *is* validated is the shape of the
+         *     envelope and the fact that this container is one this caller may write to.
+         */
+        GtmTagWrite: {
+            /** Blocking Trigger Id */
+            blocking_trigger_id?: string[];
+            /** Firing Trigger Id */
+            firing_trigger_id?: string[];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][];
+            /** Paused */
+            paused?: boolean | null;
+            /** Type */
+            type: string;
+        };
+        /** GtmTriggerRead */
+        GtmTriggerRead: {
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Trigger Id */
+            trigger_id: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * GtmTriggerWrite
+         * @description The recipe's vocabulary, not GTM's — see the module docstring for why this one differs.
+         */
+        GtmTriggerWrite: {
+            /** Event Name */
+            event_name?: string | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Selector */
+            selector?: string | null;
+            /** Url Contains */
+            url_contains?: string | null;
+            /** Visible Percent */
+            visible_percent?: number | null;
+        };
+        /** GtmVariableRead */
+        GtmVariableRead: {
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Type */
+            type: string;
+            /** Variable Id */
+            variable_id: string;
+        };
+        /** GtmVariableWrite */
+        GtmVariableWrite: {
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Parameter */
+            parameter?: components["schemas"]["GtmParameter"][];
+            /** Type */
+            type: string;
+        };
+        /** GtmVersionCreate */
+        GtmVersionCreate: {
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
+        /** GtmVersionCreated */
+        GtmVersionCreated: {
+            /**
+             * Compiler Error
+             * @default false
+             */
+            compiler_error: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Sync Conflicts
+             * @default 0
+             */
+            sync_conflicts: number;
+            /** Version Id */
+            version_id: string | null;
+        };
+        /** GtmVersionRead */
+        GtmVersionRead: {
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Num Tags
+             * @default 0
+             */
+            num_tags: number;
+            /**
+             * Num Triggers
+             * @default 0
+             */
+            num_triggers: number;
+            /**
+             * Num Variables
+             * @default 0
+             */
+            num_variables: number;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Version Id */
+            version_id: string;
+        };
+        /** GtmWorkspaceRead */
+        GtmWorkspaceRead: {
+            /** Description */
+            description?: string | null;
+            /** Fingerprint */
+            fingerprint?: string | null;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
+         * GtmWorkspaceStatusRead
+         * @description What is staged in a workspace and not live, plus anything that will not merge cleanly.
+         */
+        GtmWorkspaceStatusRead: {
+            /** Changes */
+            changes: number;
+            /** Entries */
+            entries?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Merge Conflicts
+             * @default 0
+             */
+            merge_conflicts: number;
+            /** Workspace Id */
+            workspace_id: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -19448,6 +21248,7 @@ export interface components {
              * @default false
              */
             env_ads_token_configured: boolean;
+            rankings?: components["schemas"]["RankingSettingsRead"];
             /**
              * Seranking Api Key Configured
              * @default false
@@ -19459,6 +21260,7 @@ export interface components {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
+            rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
         };
@@ -19727,6 +21529,14 @@ export interface components {
              * @default false
              */
             mcp_entitled: boolean;
+            /** Module Kinds */
+            module_kinds?: {
+                [key: string]: string;
+            };
+            /** Module Requires */
+            module_requires?: {
+                [key: string]: string[];
+            };
             /** Oidc Enabled */
             oidc_enabled: boolean;
             /** Oidc Name */
@@ -19859,7 +21669,7 @@ export interface components {
              * @default false
              */
             connected: boolean;
-            connection?: components["schemas"]["app__modules__google__schemas__ConnectionRead"] | null;
+            connection?: components["schemas"]["app__integrations__google__schemas__ConnectionRead"] | null;
             /**
              * Drive Enabled
              * @default false
@@ -20691,10 +22501,25 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
             /** Key */
             key: string;
             /** Position */
             position: number;
+            /**
+             * Prominence
+             * @default register
+             */
+            prominence: string;
+            /**
+             * Size
+             * @default full
+             */
+            size: string;
             /** Title Key */
             title_key: string;
         };
@@ -21163,6 +22988,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Code */
+            code?: string | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -21189,6 +23016,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Code */
+            code?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -21232,6 +23061,8 @@ export interface components {
         ProductUpdate: {
             /** Active */
             active?: boolean | null;
+            /** Code */
+            code?: string | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -21348,6 +23179,8 @@ export interface components {
             start_date?: string | null;
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
+            /** Unnamed */
+            unnamed?: boolean | null;
         };
         /**
          * ProjectHoursSource
@@ -21432,6 +23265,11 @@ export interface components {
             start_date?: string | null;
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
+            /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -22003,6 +23841,65 @@ export interface components {
             /** Valid Until */
             valid_until?: string | null;
         };
+        /**
+         * RankingSettingsRead
+         * @description The resolved answer — never nulls, so no screen has to re-derive inheritance.
+         */
+        RankingSettingsRead: {
+            /**
+             * Grouped
+             * @default true
+             */
+            grouped: boolean;
+            /**
+             * Limit
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Max Position
+             * @default 25
+             */
+            max_position: number;
+            /**
+             * Min Impressions
+             * @default 10
+             */
+            min_impressions: number;
+            /**
+             * Show Landing Pages
+             * @default true
+             */
+            show_landing_pages: boolean;
+            /** @default auto */
+            source: components["schemas"]["RankingSource"];
+        };
+        /**
+         * RankingSettingsWrite
+         * @description How keyword positions are reported — the agency's house rule, or one client's own.
+         *
+         *     Every field optional and merged over what it inherits, so raising the house limit reaches
+         *     every client who never set one (``marketing.rankings.parse``'s diff rule).
+         */
+        RankingSettingsWrite: {
+            /** Grouped */
+            grouped?: boolean | null;
+            /** Limit */
+            limit?: number | null;
+            /** Max Position */
+            max_position?: number | null;
+            /** Min Impressions */
+            min_impressions?: number | null;
+            /** Show Landing Pages */
+            show_landing_pages?: boolean | null;
+            source?: components["schemas"]["RankingSource"] | null;
+        };
+        /**
+         * RankingSource
+         * @description Where a client's keyword positions come from.
+         * @enum {string}
+         */
+        RankingSource: "auto" | "seranking" | "search_console" | "off";
         /** ReadUpdate */
         ReadUpdate: {
             /** Read */
@@ -22694,6 +24591,8 @@ export interface components {
             effective_schedule?: {
                 [key: string]: unknown;
             };
+            /** Effective Sections */
+            effective_sections?: string[];
             /** Goals */
             goals?: string | null;
             /**
@@ -22731,6 +24630,10 @@ export interface components {
             scope_notes?: string | null;
             /** Sea Focus */
             sea_focus?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            };
             /** Seo Focus */
             seo_focus?: string | null;
             /** Template Id */
@@ -22778,6 +24681,10 @@ export interface components {
             scope_notes?: string | null;
             /** Sea Focus */
             sea_focus?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: boolean;
+            };
             /** Seo Focus */
             seo_focus?: string | null;
             /** Template Id */
@@ -23589,7 +25496,7 @@ export interface components {
         };
         /**
          * SectionCatalogEntry
-         * @description One section a template may order or switch off — the registry, made visible.
+         * @description One section a template or a client may order or switch off — the registry, made visible.
          */
         SectionCatalogEntry: {
             /** Audience */
@@ -23598,6 +25505,11 @@ export interface components {
             key: string;
             /** Module */
             module: string;
+            /**
+             * Source Key
+             * @default
+             */
+            source_key: string;
             /** Title Key */
             title_key: string;
         };
@@ -23767,6 +25679,369 @@ export interface components {
         SmsSetupIn: {
             /** Phone */
             phone: string;
+        };
+        /** SnelstartAccountCreate */
+        SnelstartAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Client Key */
+            client_key?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Subscription Key */
+            subscription_key?: string | null;
+        };
+        /**
+         * SnelstartAccountRead
+         * @description One connected administration, as the settings screen sees it. **Never a credential.**
+         */
+        SnelstartAccountRead: {
+            /**
+             * Activation Url
+             * @default
+             */
+            activation_url: string;
+            /** Active */
+            active: boolean;
+            /** Administration Id */
+            administration_id?: string | null;
+            /** Administration Name */
+            administration_name?: string | null;
+            /** Article Code Kind */
+            article_code_kind?: string | null;
+            /** Article Code Max Length */
+            article_code_max_length?: number | null;
+            /**
+             * Attach Invoice Pdf
+             * @default true
+             */
+            attach_invoice_pdf: boolean;
+            /**
+             * Auto Push Invoices
+             * @default false
+             */
+            auto_push_invoices: boolean;
+            connect_method: components["schemas"]["SnelstartConnectMethod"];
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Coupling Webhook Url
+             * @default
+             */
+            coupling_webhook_url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Ledger Code */
+            default_ledger_code?: string | null;
+            /** Financial Year */
+            financial_year?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Reference Sync At */
+            last_reference_sync_at?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Own Subscription Key
+             * @default false
+             */
+            own_subscription_key: boolean;
+            /** Provider Id */
+            provider_id?: string | null;
+            /**
+             * Pull Payments
+             * @default true
+             */
+            pull_payments: boolean;
+            /** Scopes */
+            scopes?: string[];
+            status: components["schemas"]["SnelstartAccountStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SnelstartAccountStatus
+         * @description Whether the stored credential still works. ``error`` is set by whatever found out.
+         *
+         *     ``pending`` is a third real state and not a nicety: with the activation flow the row exists
+         *     before the koppelsleutel does, because we created it to mint the ``referenceKey`` that
+         *     SnelStart will quote back to us. Rendering that as ``error`` would tell an admin something
+         *     is broken during the ten seconds in which everything is going exactly to plan.
+         * @enum {string}
+         */
+        SnelstartAccountStatus: "pending" | "active" | "error";
+        /** SnelstartAccountUpdate */
+        SnelstartAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Attach Invoice Pdf */
+            attach_invoice_pdf?: boolean | null;
+            /** Auto Push Invoices */
+            auto_push_invoices?: boolean | null;
+            /** Client Key */
+            client_key?: string | null;
+            /** Default Ledger Code */
+            default_ledger_code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Pull Payments */
+            pull_payments?: boolean | null;
+            /** Subscription Key */
+            subscription_key?: string | null;
+        };
+        /**
+         * SnelstartConnectMethod
+         * @description How the koppelsleutel arrived. Recorded because it changes what "disconnect" means.
+         *
+         *     A ``manual`` key was typed by a human and deleting the row is the end of it. A ``coupling``
+         *     key was granted through SnelStart's activation flow, and SnelStart may later POST
+         *     ``ActionType: "Delete"`` for it — so the row must be findable from a webhook that knows
+         *     only our own ``referenceKey``.
+         * @enum {string}
+         */
+        SnelstartConnectMethod: "manual" | "coupling";
+        /**
+         * SnelstartLedgerOption
+         * @description One revenue account an invoice line may book to.
+         */
+        SnelstartLedgerOption: {
+            /** Code */
+            code: string;
+            /**
+             * Function
+             * @default
+             */
+            function: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Vat Kinds */
+            vat_kinds?: string[];
+        };
+        /**
+         * SnelstartLinkAdopt
+         * @description Pair an existing SnelStart row with a schakl record, by hand.
+         *
+         *     The escape hatch matching cannot provide: an agency whose bookkeeper called a client
+         *     *"Jansen bv"* in SnelStart and *"Bakkerij Jansen"* in schakl has two records that no rule
+         *     should pair automatically and a human can pair in one click.
+         */
+        SnelstartLinkAdopt: {
+            /**
+             * Local Id
+             * Format: uuid
+             */
+            local_id: string;
+        };
+        /**
+         * SnelstartLinkRead
+         * @description One pairing between a schakl record and a SnelStart one.
+         */
+        SnelstartLinkRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Company Id */
+            company_id?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id: string;
+            /** External Name */
+            external_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Local Id */
+            local_id?: string | null;
+            /** Local Type */
+            local_type?: string | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Pushed At */
+            pushed_at?: string | null;
+            status: components["schemas"]["SnelstartLinkStatus"];
+        };
+        /**
+         * SnelstartLinkStatus
+         * @description Deliberately six values, not a boolean.
+         *
+         *     ``pending`` — paired but never pushed. ``active`` — pushed, and SnelStart still agrees.
+         *     ``drift`` — it is there and somebody changed it *in SnelStart*, which is a thing an agency's
+         *     bookkeeper legitimately does and which we must never silently overwrite. ``missing`` — the
+         *     document we created is gone. ``error`` — SnelStart refused. ``unlinked`` — it exists in
+         *     SnelStart and nothing in schakl matches it, which is the state that makes a first connect
+         *     reviewable instead of a leap of faith.
+         *
+         *     Each of those needs a different button, which is the test for whether a status column has
+         *     earned its values (the ``cloudflare`` redirect rule).
+         * @enum {string}
+         */
+        SnelstartLinkStatus: "pending" | "active" | "drift" | "missing" | "error" | "unlinked";
+        /**
+         * SnelstartPushResult
+         * @description The outcome of pushing one record.
+         */
+        SnelstartPushResult: {
+            /** Action */
+            action?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Key */
+            error_key?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** Guessed Rates */
+            guessed_rates?: string[];
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * SnelstartRelationCandidate
+         * @description One SnelStart relation and what schakl thinks it is, before anybody agrees.
+         *
+         *     The first connect is the dangerous moment: an administration with 200 relations and a CRM
+         *     with 180 companies has an overlap nobody can eyeball, and a sync that decided silently would
+         *     either duplicate every client or merge two that merely share a word. So matching *proposes*
+         *     and a human confirms — which is also the only place the confidence is worth showing.
+         */
+        SnelstartRelationCandidate: {
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** External Code */
+            external_code?: string | null;
+            /** External Id */
+            external_id: string;
+            /** Link Id */
+            link_id?: string | null;
+            /**
+             * Linked
+             * @default false
+             */
+            linked: boolean;
+            /** Match On */
+            match_on?: string | null;
+            /** Name */
+            name: string;
+            /** Vat Number */
+            vat_number?: string | null;
+        };
+        /**
+         * SnelstartSyncRunRead
+         * @description What one sync did, and what it could not do.
+         */
+        SnelstartSyncRunRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Actor User Id */
+            actor_user_id?: string | null;
+            /** Counts */
+            counts?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * SnelstartVerifyResult
+         * @description The outcome of testing a connection. **Never raises** — see the service.
+         *
+         *     ``ok=False`` with the row still saved is a real and common state: a rejected credential is
+         *     still a stored credential, and telling somebody which one was rejected is more useful than
+         *     refusing to remember what they typed.
+         */
+        SnelstartVerifyResult: {
+            /** Administration Id */
+            administration_id?: string | null;
+            /** Administration Name */
+            administration_name?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Key */
+            error_key?: string | null;
+            /** Financial Year */
+            financial_year?: number | null;
+            /** Missing Scopes */
+            missing_scopes?: string[];
+            /** Ok */
+            ok: boolean;
+            /** Scopes */
+            scopes?: string[];
+            /** Seller */
+            seller?: {
+                [key: string]: unknown;
+            };
         };
         /** SourceMetrics */
         SourceMetrics: {
@@ -24567,6 +26842,46 @@ export interface components {
             /** Used Hours */
             used_hours: number;
         };
+        /**
+         * SummaryData
+         * @description One vital sign in a host entity's header strip (#364).
+         *
+         *     The panels answer "what is on file"; these answer *"are we all right with this client"* —
+         *     and each one opens the thing it counted (docs/UX.md principle 7, "every number opens").
+         */
+        SummaryData: {
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Format
+             * @default number
+             */
+            format: string;
+            /** Hint Key */
+            hint_key?: string | null;
+            /** Hint Params */
+            hint_params?: {
+                [key: string]: unknown;
+            };
+            /** Href */
+            href?: string | null;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /**
+             * Position
+             * @default 100
+             */
+            position: number;
+            /**
+             * Tone
+             * @default neutral
+             */
+            tone: string;
+            /** Value */
+            value: string;
+        };
         /** SystemInfo */
         SystemInfo: {
             build: components["schemas"]["BuildInfo"];
@@ -24599,6 +26914,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */
@@ -24619,6 +26936,8 @@ export interface components {
             status?: string | null;
             /** Title */
             title: string;
+            /** Unnamed */
+            unnamed?: boolean | null;
             /**
              * Visible To Client
              * @default false
@@ -24640,6 +26959,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /** Checklists */
             checklists?: components["schemas"]["ChecklistRead"][];
             /** Closing Interaction Id */
@@ -24696,6 +27017,11 @@ export interface components {
             /** Title */
             title: string;
             /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -24727,6 +27053,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Checklist Done
              * @default 0
@@ -24792,6 +27120,11 @@ export interface components {
             /** Title */
             title: string;
             /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -24851,6 +27184,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /** Closing Interaction Id */
             closing_interaction_id?: string | null;
             /** Company Id */
@@ -24899,6 +27234,11 @@ export interface components {
             /** Title */
             title: string;
             /**
+             * Unnamed
+             * @default false
+             */
+            unnamed: boolean;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -24917,6 +27257,8 @@ export interface components {
             assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Closing Interaction Id */
             closing_interaction_id?: string | null;
             /** Company Id */
@@ -26375,6 +28717,36 @@ export interface components {
              */
             ssl_verify: boolean;
         };
+        /**
+         * UptimeInstanceOption
+         * @description One instance as the *create-a-monitor* form needs it, and nothing more (#366).
+         *
+         *     A second, leaner read of the same rows exists for the reason ``list_profiles`` is readable on
+         *     ``monitor.read``: the form that creates a monitor has to **show which Uptime Kuma it lands
+         *     on**, and gating that on ``instance.manage`` would leave a member who holds exactly the
+         *     permission the create route declares with a picker they cannot populate (#310). Every field
+         *     here is already visible to such a caller — ``instance_name`` rides every monitor row under
+         *     ``meta=true`` — so this reveals nothing new, which is what makes the wider gate safe.
+         *
+         *     What is **not** here is the whole point: no ``base_url``, no ``username``, no
+         *     ``token_configured``, no connect-header names. Those are facts about a credential, and they
+         *     stay behind ``instance.manage`` where the settings screen reads them.
+         */
+        UptimeInstanceOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            mode: components["schemas"]["InstanceMode"];
+            /** Name */
+            name: string;
+            /**
+             * Writable
+             * @default false
+             */
+            writable: boolean;
+        };
         /** UptimeInstanceRead */
         UptimeInstanceRead: {
             /** Active */
@@ -27083,6 +29455,8 @@ export interface components {
              * @default false
              */
             uptime_enabled: boolean;
+            /** Uptime Status */
+            uptime_status?: string | null;
         };
         /**
          * WebsiteRef
@@ -27548,16 +29922,10 @@ export interface components {
             sessions: number;
         };
         /**
-         * DomainStatus
-         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
-         * @enum {string}
-         */
-        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
-        /**
          * ConnectionRead
          * @description The caller's own connection — or the admin list's per-user rows.
          */
-        app__modules__google__schemas__ConnectionRead: {
+        app__integrations__google__schemas__ConnectionRead: {
             /**
              * Connected At
              * Format: date-time
@@ -27584,6 +29952,12 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
         /** TemplateCreate */
         app__modules__invoicing__schemas__TemplateCreate: {
             /**
@@ -31322,6 +33696,37 @@ export interface operations {
             };
         };
     };
+    company_summary_api_v1_companies__company_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryData"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_contacts_api_v1_contacts_get: {
         parameters: {
             query?: {
@@ -32785,6 +35190,41 @@ export interface operations {
             };
         };
     };
+    remove_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Check and change nothing. */
+                validate_only?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+                ad_group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__patch: {
         parameters: {
             query?: never;
@@ -32800,6 +35240,42 @@ export interface operations {
                 "application/json": components["schemas"]["GoogleAdsAdGroupUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_google_ads_ad_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__ads__ad_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Check and change nothing. */
+                validate_only?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+                ad_group_id: string;
+                ad_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -32973,6 +35449,41 @@ export interface operations {
             };
         };
     };
+    remove_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets__budget_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Check and change nothing. */
+                validate_only?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets__budget_id__patch: {
         parameters: {
             query?: never;
@@ -33076,6 +35587,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns__campaign_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Check and change nothing. */
+                validate_only?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33637,6 +36183,41 @@ export interface operations {
             };
         };
     };
+    remove_google_ads_negative_list_api_v1_google_ads_accounts__account_id__negative_lists__shared_set_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Check and change nothing. */
+                validate_only?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+                shared_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get: {
         parameters: {
             query?: {
@@ -33790,6 +36371,37 @@ export interface operations {
                 "application/json": components["schemas"]["GoogleAdsPolicyWrite"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -34094,6 +36706,26 @@ export interface operations {
             };
         };
     };
+    clear_google_ads_house_policy_api_v1_google_ads_policy_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
+                };
+            };
+        };
+    };
     get_google_ads_settings_api_v1_google_ads_settings_get: {
         parameters: {
             query?: never;
@@ -34214,7 +36846,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__google__schemas__ConnectionRead"][];
+                    "application/json": components["schemas"]["app__integrations__google__schemas__ConnectionRead"][];
                 };
             };
         };
@@ -34570,6 +37202,176 @@ export interface operations {
             };
         };
     };
+    import_gmail_message_api_v1_google_gmail_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GmailImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_gmail_message_api_v1_google_gmail_lookup_get: {
+        parameters: {
+            query: {
+                /** @description A Gmail link, a message/thread id, or an RFC-822 Message-ID */
+                reference: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_gmail_api_v1_google_gmail_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailRefreshResult"];
+                };
+            };
+        };
+    };
+    search_gmail_api_v1_google_gmail_search_get: {
+        parameters: {
+            query?: {
+                participant?: string | null;
+                subject?: string | null;
+                after?: string | null;
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_gmail_status_api_v1_google_gmail_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailSyncStatus"];
+                };
+            };
+        };
+    };
+    read_gmail_thread_api_v1_google_gmail_threads__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GmailLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     google_oauth_callback_api_v1_google_oauth_callback_get: {
         parameters: {
             query?: never;
@@ -34598,6 +37400,7 @@ export interface operations {
                 include_analytics?: boolean;
                 include_search_console?: boolean;
                 include_ads?: boolean;
+                include_tag_manager?: boolean;
                 next?: string;
             };
             header?: never;
@@ -34666,6 +37469,873 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_containers_api_v1_gtm_containers_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_gtm_container_api_v1_gtm_containers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmContainerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_gtm_containers_api_v1_gtm_containers_available_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmPickerRead"];
+                };
+            };
+        };
+    };
+    get_gtm_container_api_v1_gtm_containers__container_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_gtm_container_api_v1_gtm_containers__container_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_gtm_container_api_v1_gtm_containers__container_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmContainerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_conversions_api_v1_gtm_containers__container_id__conversions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmConversionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_conversion_api_v1_gtm_containers__container_id__conversions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmConversionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmConversionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gtm_container_snippet_api_v1_gtm_containers__container_id__snippet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSnippetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gtm_workspace_status_api_v1_gtm_containers__container_id__status_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmWorkspaceStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_tags_api_v1_gtm_containers__container_id__tags_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_tag_api_v1_gtm_containers__container_id__tags_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTagWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_gtm_tag_api_v1_gtm_containers__container_id__tags__tag_id__patch: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTagUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_triggers_api_v1_gtm_containers__container_id__triggers_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTriggerRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_trigger_api_v1_gtm_containers__container_id__triggers_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmTriggerWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmTriggerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_trigger_api_v1_gtm_containers__container_id__triggers__trigger_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                trigger_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_variables_api_v1_gtm_containers__container_id__variables_get: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVariableRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_variable_api_v1_gtm_containers__container_id__variables_post: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmVariableWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVariableRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gtm_variable_api_v1_gtm_containers__container_id__variables__variable_id__delete: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+            };
+            header?: never;
+            path: {
+                container_id: string;
+                variable_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_gtm_container_api_v1_gtm_containers__container_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmContainerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_versions_api_v1_gtm_containers__container_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVersionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_gtm_version_api_v1_gtm_containers__container_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmVersionCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_gtm_version_api_v1_gtm_containers__container_id__versions__version_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmPublishResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_gtm_workspaces_api_v1_gtm_containers__container_id__workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                container_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmWorkspaceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_gtm_settings_api_v1_gtm_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSettingsRead"];
+                };
+            };
+        };
+    };
+    save_gtm_settings_api_v1_gtm_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GtmSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GtmSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -42187,6 +45857,37 @@ export interface operations {
             };
         };
     };
+    get_company_settings_api_v1_marketing_companies__company_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_company_settings_api_v1_marketing_companies__company_id__settings_put: {
         parameters: {
             query?: never;
@@ -44737,6 +48438,8 @@ export interface operations {
                 /** @description Lifecycle status; comma-separate for several ('active,on_hold'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
                 status?: string | null;
                 q?: string | null;
+                /** @description Only projects nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
+                unnamed?: boolean | null;
                 /** @description Only projects I'm assigned to (primary or not) */
                 mine?: boolean;
                 /** @description name | status | start_date | end_date | budget_hours | …, '-' desc */
@@ -46534,6 +50237,549 @@ export interface operations {
             };
         };
     };
+    list_accounts_api_v1_snelstart_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_snelstart_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_options_api_v1_snelstart_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_snelstart_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_snelstart_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ledger_options_api_v1_snelstart_accounts__account_id__ledgers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartLedgerOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_link_api_v1_snelstart_accounts__account_id__links__link_id__adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnelstartLinkAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_articles_api_v1_snelstart_accounts__account_id__push_articles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Body_push_invoices_api_v1_snelstart_accounts__account_id__push_invoices_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_invoice_api_v1_snelstart_accounts__account_id__push_invoices__invoice_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartPushResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_relations_api_v1_snelstart_accounts__account_id__push_relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relation_candidates_api_v1_snelstart_accounts__account_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartRelationCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_snelstart_accounts__account_id__runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_payments_api_v1_snelstart_accounts__account_id__sync_payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_reference_api_v1_snelstart_accounts__account_id__sync_reference_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_relations_api_v1_snelstart_accounts__account_id__sync_relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartSyncRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_snelstart_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnelstartVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    coupling_callback_api_v1_snelstart_coupling_callback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
     list_subscriptions_api_v1_subscriptions_get: {
         parameters: {
             query?: {
@@ -47109,6 +51355,8 @@ export interface operations {
                 /** @description Deadline window end (inclusive) */
                 due_to?: string | null;
                 q?: string | null;
+                /** @description Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
+                unnamed?: boolean | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
@@ -49582,6 +53830,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_selectable_instances_api_v1_uptime_instances_selectable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceOption"][];
                 };
             };
         };

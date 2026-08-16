@@ -74,7 +74,7 @@
    * `employmentActions` (employment.server.ts).
    */
   import { enhance } from "$app/forms";
-  import { fmtNumericDate } from "$lib/core/format";
+  import { currencySymbol, fmtNumericDate } from "$lib/core/format";
   // `t` is imported in the module script above and is in scope here and in the markup.
   import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -82,7 +82,8 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
-  import AvailabilityManager, { type AvailabilityEntry } from "./AvailabilityManager.svelte";
+  import AvailabilityManager from "./AvailabilityManager.svelte";
+  import type { AvailabilityEntry } from "./availability";
   import EmploymentWizard, {
     type WizardContract,
     type WizardPattern,
@@ -284,7 +285,7 @@
         <p class="text-sm text-text-muted">{memberLabel(member)}</p>
         <div>
           <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
-            {t("settings.users.rate_label")}
+            {t("settings.users.rate_label", { currency: currencySymbol() })}
           </label>
           <input
             id="hourly_rate"

@@ -34,6 +34,8 @@ registerWebModule({
       module: "time",
       component: TimePanel,
       position: 40,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/time?company=${id}`,
     },
   ],
   entityPanels: [

@@ -42,6 +42,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Web app       | SvelteKit (SSR) + `@vite-pwa/sveltekit` · TailwindCSS · Bits UI / shadcn-svelte |
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
+| Accounting    | Provider-agnostic seam in `app/modules/invoicing/accounting.py` (#31): an `AccountingProvider` protocol plus `invoicing_external_refs` as the idempotency. `snelstart` is the first live implementation (#377, `docs/SNELSTART.md`); UBL 2.1 export stays the provider-less bridge every package imports. **The CRM is not the ledger** — what has been paid comes back as an ordinary `InvoicePayment`, never as a second copy |
 | Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
 | Payments      | Provider-agnostic seam in `app/core/payments/` (epic #269): a `PaymentProvider` protocol, a per-provider account resolver, and the `{org}.{account}.{secret}` callback token a provider's unauthenticated POST names its tenant by (the Google channel-token pattern). `mollie` is the first implementation and Stripe/Adyen are a package, not a refactor. **A webhook body is a hint, never a fact**: only the id it names is read, and status, amount and mode come from an authenticated re-fetch with the tenant's own credential. A confirmed payment writes an ordinary `InvoicePayment` row, so invoicing stays the single answer to "what has been paid" — `docs/PAYMENTS.md`, `docs/MOLLIE.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
@@ -70,12 +71,22 @@ apps/
       time/
       leave/        # employee PTO / leave (see §14)
       ...
-    main.py        # discovers enabled modules and mounts their routers
+    integrations/  # same descriptor, same registry — a credential for someone else's service (§6a)
+      google/      # Workspace: Gmail, Calendar, Drive, Contacts
+      google_ads/
+      cloudflare/
+      oxxa/        # registrar
+      uptime/      # Uptime Kuma
+      wordpress/
+      mollie/      # payments
+    main.py        # discovers enabled modules/integrations and mounts their routers
   web/src/
     lib/core/      # api client, tenant/theme loader, i18n runtime, module + nav registry
     lib/modules/
       companies/   # components, CompanyPanel(s), nav items, message namespace
       ...
+    lib/integrations/   # mirrors apps/api/app/integrations/ (§6a)
+      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/
     routes/        # thin route files that delegate into modules
     paraglide/     # generated (do not edit by hand)
 messages/          # en.json (SOURCE), nl.json (required, default UI lang) — flat, namespaced keys
@@ -151,7 +162,16 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
 - `permissions.py` — the `PermissionSpec`s this module introduces, declared on its
   `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
-  data provider) so the company detail view can compose it. This is the modular hub.
+  data provider) so the company detail view can compose it. This is the modular hub. A panel
+  declares **four things beyond its data** (#364, #365): the permission the viewer must hold
+  before its provider is *called* (`requires_permission`, or an `explicit_public` reason — a
+  panel with neither is a build break, exactly as an undeclared route is); its `prominence`
+  (a working surface, or a register: correct, occasionally consulted, never news); its `size`
+  (full or half, for the host's two-column grid); and `empty_when(data)`, which lets the host
+  fold "this client has nothing here yet" into one strip of ＋ chips instead of ten cards that
+  are each a heading over a negative sentence. Optionally `summaries` too — the same seam one
+  level up: one number, a label, a tone and a link, laid out as the record's vital signs under
+  its header, so the hub's *foreground* is contributed rather than hardcoded.
 - `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
   module contributes to *another* module's entity (see §17).
 - `email_templates` — optional: the outgoing mails this module lets the tenant reword
@@ -194,6 +214,89 @@ enabled module via the registry — so adding a new attachable type (e.g. `domai
 `ssl_certs`) is just adding a module, no edits to the company page. For cross-links that
 aren't a simple FK, use a generic `relations(org_id, from_type, from_id, to_type, to_id)`
 table.
+
+## 6a. Modules and integrations
+
+Same machinery, different things — and the difference had never been written down, so it was
+answered differently on every screen that asked. Instellingen → Modules listed Google Workspace,
+Cloudflare, Uptime Kuma, OXXA and Mollie in one alphabetical column of checkboxes beside Verlof
+and Facturatie; the settings index filed Marketing, Rapportage and Meldingen under
+"Communicatie & koppelingen" *with* those five; and the commercial licence called them all
+"licensed module directories". A reader who wanted to know what this workspace **connects to**
+had to already know the product to work it out.
+
+**A module is a capability schakl itself provides.** It owns entities, screens and a data model,
+and it is worth having with every third-party account in the world cancelled: `companies`,
+`contacts`, `tasks`, `projects`, `time`, `leave`, `hr`, `invoicing`, `subscriptions`, `domains`,
+`websites`, `hosting`, `interactions`, `notifications`, `automation`, `marketing`, `reporting`,
+`portal`.
+
+**An integration is a conversation with somebody else's service.** It holds a **credential** for
+an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
+over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
+`wordpress`, `mollie`.
+
+The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
+it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
+though every number on it arrives through GA4 and Search Console — the dashboard, the periods
+(#312/#316) and the narratives are ours, and with the links removed it is an empty screen rather
+than an absent one. `google` is an integration even though it enriches three modules.
+
+It is stated in five places and each one is load-bearing:
+
+- **The tree.** `apps/api/app/integrations/` and `apps/web/src/lib/integrations/`, beside
+  `modules/`. Registration, mounting, permissions, licensing and per-tenant enablement are all
+  identical — only the package differs, so the layout says the thing the code already means.
+  `app/registry.module_package()` is the **one** place that knows both roots; every dynamic load
+  (the app's mount, the worker's, the model aggregator's, the permission catalog's) goes through
+  it, because five copies of a two-root lookup is four copies that will not be updated.
+- **The descriptor.** `ModuleDescriptor.kind` (`KIND_MODULE` / `KIND_INTEGRATION`), defaulting to
+  `module` — the harmless wrong answer, since an integration mislabelled a module lands in the
+  wrong group while a module mislabelled an integration claims a credential it does not have.
+  Mirrored on the web by `registerWebModule({ kind })`, and served to any other client as
+  `module_kinds` on `/meta/modules`.
+- **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
+  its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
+  `invoicing`, `google_ads` → `google`. Deliberately *not* "modules this is nicer with":
+  over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
+  (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
+  nothing (its panels attach to `websites` **or** `domains`, which an AND-list cannot say).
+  `ensure_requirements_met` checks the **whole resulting set**, not the delta, because the
+  interesting failure is not enabling Cloudflare without domains — it is switching `domains` off
+  afterwards, which a delta check reads as a removal and waves through. It runs inside
+  `ensure_modules_enableable` *and* inside `validate_modules`, so the settings screen, the
+  instance-admin path and the first-run wizard cannot disagree, and it runs **before** the licence
+  gate: telling somebody to buy a licence for a combination that would not work anyway is the
+  worse of the two refusals.
+- **The screens** — two of them, and where they *sit* is half the rule (#378). Two lists with two
+  sentences on one page was still one page called Modules, filed under Werkruimte, while a group
+  heading fourteen cards further down the index also read "Modules": the word named the switch and
+  the collection at once, and the Integraties group was a list of settings for connections with no
+  way to make one. So **Instellingen → Modules** and **Instellingen → Integraties** are separate
+  screens, each **first in the group of settings it governs**, which is the only arrangement where
+  a heading and the screen under it cannot disagree (`settings-groups.test.ts` asserts the
+  position, because a position is not something a type can hold). The requirement is **derived,
+  not validated**: ticking an integration pulls in what it needs, and unticking a module leaves
+  the integrations that needed it ticked-but-not-saved with an amber line naming what is missing —
+  the API's 409 is the backstop for callers that are not this screen, and a backstop should never
+  be the thing a user meets first. Because they are two screens over **one** `enabled_modules`
+  list, each computes the fixpoint over the *whole* set, posts the whole set, and **names the
+  casualties on the other screen by name** (`EnablementForm`): switching Domeinen off under
+  Modules says that Cloudflare and OXXA go with it, before Save, on a screen that does not list
+  them. A row also carries what it *is* (`module.<name>.description`) and, where the module owns
+  exactly one settings screen, a link to it — switching an integration on and saying nothing about
+  the empty credential box elsewhere is half a sentence.
+- **The licence.** `LICENSE-COMMERCIAL.md` lists Core, Modules and Integrations separately. They
+  are licensed identically — what is licensed is the code either way — but an integration's API,
+  terms and continued existence are not ours, and a reader should be able to tell which they are
+  looking at without opening the directory. `scripts/license-check.mjs` verifies both directions
+  and does not care which heading a path sits under.
+
+Core holds third-party seams that are not registry modules at all — the AI provider, the e-mail
+transport, S3 storage, the OIDC relying party. Their settings screens sit in the `integrations`
+group where they read as integrations (E-mail, AI) and stay where they are where they do not: SSO
+lives under Team & toegang, because what it configures is *who may sign in*, not what we read
+from someone else.
 
 ## 7. White-label / theming
 
@@ -249,7 +352,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 ## 9. Conventions
 
 - REST: plural nouns, `/api/v1/<module>/<resource>`; cursor or page/limit pagination;
-  consistent error envelope `{ error: { code, message, fields? } }` (message is an i18n key).
+  consistent error envelope `{ error: { code, message, fields?, details? } }` (message is an i18n
+  key, and so is every value in `fields`). **`details` is the machine-readable half and it exists
+  because `fields` cannot be**: its values are i18n keys, so a refusal could name the parameter and
+  never the number — "over the ceiling" without saying what the ceiling is, which an agent cannot
+  correct without a second call, and which #305 already established as the difference between a
+  constraint that reads as a rule and one that reads as a broken control. It carries literals
+  (`{"limit": 50}`) and provider identifiers (`{"google_error_code": "fieldError.REQUIRED"}`),
+  never translated text and **never the provider's own prose** — that is what `message` is for,
+  and untranslated vendor English in the envelope is a screen in the wrong language
+  (`test_google_s_own_text_never_reaches_the_envelope`).
 - Auth: a single FastAPI dependency yields `(current_user, current_org, role)`.
 - Tests: `pytest` (API, incl. a tenant-isolation test per module) + Playwright (web smoke).
 - Migrations: one per change, named `<module>_<verb>_<noun>`.
@@ -504,6 +616,57 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   perceives as a stripe is a printing fault. Finally, **what a client is called on their report
   is not what an invoice calls them** — `report_profiles.display_name`, resolved once at
   generation and snapshotted, never a second name on `companies`.
+- **A table's geometry is stated, or the loudest heading spends the page** (#373,
+  `docs/REPORTING.md`). The overflow fix above was right and its two halves together produced the
+  opposite fault: auto layout allocates by *content demand*, and `overflow-wrap: anywhere` drops a
+  column's minimum width to one character — so BELANGRIJKE GEBEURTENISSEN, one unbreakable phrase
+  at 7pt, beat the column holding `startgoogle.startpagina.nl`, which duly broke over three lines
+  beside a column of sixteen zeros twice its width. `table-layout: fixed` plus a computed width
+  per column ends the negotiation; a **short** metric label heads a printed column (`DOELEN`,
+  never the tile's full name) because that is what makes the stated width enough; and a per-metric
+  glyph makes seven columns scannable rather than readable. Its sibling has nothing to do with
+  CSS: **a JSONB column has no key order** — Postgres sorts by length then bytes — so a provider's
+  carefully ordered totals came back as *NIEUWE GEBRUIKERS · SESSIES · BELANGRIJKE GEBEURTENISSEN
+  · GEBRUIKERS* on the strip a client reads first. Invisible in every offline render, because a
+  Python dict *does* keep insertion order; only a document read back from the database shows it,
+  which is the general lesson (`_TILE_ORDER`). And three rules about what a client's table
+  *contains*, all applied at the renderer so they also improve the reports already stored: an
+  all-zero column does not print, an open-ended source list folds its long tail into one row that
+  **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
+  and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
+  `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A section whose data has two possible sources needs a setting, not a silent preference**
+  (#373, `app/modules/marketing/rankings.py`). "Zoekwoordposities" was produced from SE Ranking
+  and nothing else, so a client without that subscription simply had no keyword section — the one
+  question an agency's customer asks every month — with nothing on the document or the review
+  screen saying one had been withheld, while Search Console sat connected and unasked. The fix is
+  not a fallback buried in the gatherer: it is `auto` / `seranking` / `search_console` / `off`,
+  org default with a per-client diff, resolved by **one** `effective_source()` that the gatherer,
+  the settings screen and the section picker all read — three copies of a preference rule is how
+  a screen comes to promise a section the run then drops. A *named* source is never silently
+  substituted (two months on different sources are not comparable and nothing on the page would
+  say why), the two adapters answer the same payload shape so the document cannot tell them apart,
+  and the visibility depth is deliberately the same number on both — a client whose agency
+  switches source must not find sixty new "rankings" in a month where nothing changed.
+- **A per-client document needs a per-client diff, not a second template** (#373). Sections were
+  toggled per *template*, which is org-wide, so a client with no social presence got a social
+  section every month and the only escape was authoring a near-copy of the house template for
+  them. `report_profiles.sections` makes resolution three layers — registry → template layout →
+  this client — each a diff over the one before, overriding in **both** directions (a client may
+  switch on what the template hides, or the control is a veto rather than a choice) and leaving
+  the *order* the template's, because two reports from one agency reading like two different
+  products is not something anybody asked for. The picker states **what feeds each section** and
+  whether this client has it: choosing what goes in a document is a decision about sources, and a
+  list of nine names cannot tell "no social traffic" from "nobody linked the property".
+- **A client opening their own report should get the document, not the desk it was written on**
+  (#373). `/reports/<id>` rendered one layout for everybody — per-section prose cards down the
+  left, the preview frame down the right — with the write controls hidden for a portal login, so
+  a client's monthly report read as a half-disabled admin tool headed with our internal section
+  names. `is_portal` picks the **layout** here, which is the one question it is genuinely the
+  right signal for (§15, #274): a read-only staff member still wants the review desk, that being
+  their working tool. Every control stays gated on its own API key regardless, so nothing depends
+  on the flag for safety — and the same pass removed *"Klaar om na te kijken"* from the client's
+  view, because a state in our workflow is true, none of their business, and alarming.
 - **A percentage is a claim about two spans, so both of them have to be on the screen** (#312,
   `app/core/periods.py`). The marketing dashboard labelled every delta *"t.o.v. vorige periode"* —
   a sentence it could print over any two dates at all, which is why a comparison set to the wrong
@@ -630,6 +793,42 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
 
+- **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
+  SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
+  outlive it. **A query parameter the server ignores is worse than one it rejects**: `$filter` is
+  honoured by `/relaties`, `/grootboeken` and `/artikelen` — which reject an unknown property — and
+  **silently ignored** by `/landen` and `/dagboeken`, which answer `200` with all 250 countries for
+  a filter naming a field that does not exist. A client that trusts it and takes `[0]` resolves
+  Nederland for Estonia, so every predicate that decides an answer is re-applied locally and the
+  filter is a bandwidth optimisation, never a guarantee. **Two credentials that belong to two
+  different people need two error paths**: the subscription key is the *install's* (and expires
+  after 90 days on the free developer product), the koppelsleutel is the *tenant's*, both are
+  refused with a 401, and reporting one as the other sends an agency to re-issue the thing that was
+  already right. **A duplicate refusal is an answer, not a failure** — `BOE-0021` is SnelStart
+  saying the boeking is already there, so the correct response is to go and adopt it, and a write
+  that got *no* answer is looked up before any retry (#31's "a timeout is unknown"); a boeking under
+  our number that we did not write is adopted and **left alone**, because somebody wrote it. And
+  **derive what can be derived**: the btw-soort comes from the administration's own date-ranged rate
+  table, because the Dutch low rate was 6% until 2019 and 9% after and a constant is wrong about one
+  of them — while a rate the table cannot confirm is reported as guessed rather than quietly taxed.
+  Its cloud half is the reason the broker exists at all: SnelStart posts every partner's couplings
+  to **one** URL, so on cloud that URL is the instance apex where no org resolves and the tenancy
+  rides in the `referenceKey` (`{org}.{account}.{secret}`, Mollie's token shape reused because the
+  problem is identical) — while a self-hosted box, whose hostname SnelStart has never heard of,
+  renders no activation button at all rather than one that always refuses (#253). Two things the
+  tests found that review would not have: `json.loads(str(Decimal))` parses straight back into a
+  float, so money now travels as decimal text that .NET parses exactly; and **§18's per-row
+  savepoint and §11's `release_db` cannot both hold** in a batch that calls out per row, because
+  `release_db` commits and a commit closes the savepoint — `release_db` wins, and its commit gives
+  the per-row durability the savepoint was for. Two more came out of *working the screens* rather
+  than reading them, and both are the same shape: **a uniqueness the database guarantees is a
+  refusal the service owes**. Pairing a client already paired hit the partial unique index and
+  answered **500** — so it is a 409 naming what happened, and the picker no longer offers a client
+  who is taken (#253 again: a control that can only refuse should not be drawn). And **a
+  numbering system somebody else owns will collide with yours**: a client number that is already
+  a `relatiecode` failed the whole create, when the relation is the requirement and the shared
+  number is only a convenience — so the collision is resolved by *looking at who holds it* and
+  either adopting them or letting SnelStart allocate its own.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -762,6 +961,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   an `updateMask` is **derived from the body being sent**, never accepted as an argument, because a
   hand-written mask and a hand-written body are two spellings of one list and the day they disagree
   Google applies the intersection and reports success.
+- **A draft and a broadcast are not the same act, and one permission cannot say so**
+  (`google_tag_manager`, `docs/GOOGLE_TAG_MANAGER.md`). Tag Manager is where an agency's promise to
+  a client — "we measure quote requests" — is actually kept, and it was the one surface the platform
+  had no answer for: which container is this client's, what is live in it, who put that tag there,
+  and whether the change somebody staged three weeks ago was ever published. Five rules generalise
+  past GTM. **The write half splits where the audience changes**: editing a workspace changes a
+  draft that is real, recorded and served to nobody, while publishing changes what runs in every
+  visitor's browser with no review step behind it — so `tag.write` and `version.publish` are
+  separate keys, and "let the assistant prepare the tracking and I will look it over" becomes an API
+  key rather than a conversation. Version *creation* deliberately rides the first: it is the act of
+  writing down what was staged, and gating it behind the second would leave the staging half unable
+  to finish its own work. **A vendor's own validator is worth more than a half-modelled recipe** —
+  GTM decides the legal parameter keys per tag *template*, of which there are hundreds, so the two
+  templates an agency sets up over and over get a stated recipe (`gaawe` with
+  **`measurementIdOverride`**, not `measurementId`; `awct` with `enableConversionLinker` always on)
+  and everything else takes GTM's own `type` and parameter array, where a hand-written body fails
+  loudly and a wrong recipe would deploy quietly. **The recipe never guesses a value**: a
+  measurement id we picked sends a client's conversions to somebody else's property, and nothing on
+  any screen would say so. **What the provider does not store is the thing worth storing** —
+  `gtm_conversions` exists because Google records that a trigger and a tag exist and records nowhere
+  that together they are the client's "offerte aangevraagd", set up from here, on a date, by a
+  person (`google_ads_decisions`' argument, one integration over). And the surprise worth carrying
+  out of GTM specifically: **a workspace is a shared draft, not a branch**, so writing into the
+  client's own puts unfinished work in front of them and *their* next Publish ships it — schakl
+  writes in one of its own, named by the tenant because the client sees the name. Its own
+  observation is the same shape: the number the nightly cron exists for is `workspace_changes`,
+  because a change staged weeks ago and never published is how a client's tracking quietly stops
+  being what they were told it is, and nobody opens a container they have no reason to open.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -801,6 +1028,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   API downtime"*) is worth measuring — this one omitted the migration and the lifespan reconcile
   that the healthcheck already budgeted 90s for. And a service kept alive **through** a dependency's
   planned outage needs an answer for what it serves during it; "it stays up" is not one.
+- **The answer is that an error page cannot live in the service that is down** (`docs/DEPLOY.md`).
+  The rule above named the obligation and left it open, so a redeploy still ended at SvelteKit's
+  default 500 and an unreachable backend at Traefik's plain-text 502 — on a white-label product,
+  where the page a client meets when something is wrong is the agency's page. Four surfaces now
+  answer and the placement of each follows from that one sentence. The **SSR hook catches an
+  unreachable API** and returns a branded `503` itself: routing needs the data it just failed to
+  get, so the outage page is a self-contained document with no stylesheet, script or second
+  request — and its branding comes from a per-process cache of the last tenant that resolved on
+  that hostname, because the alternative store is Redis, which is behind the same failure. The
+  **edge cross-covers**: `errors` middlewares on `502-504` only (the codes Traefik itself invents;
+  every other status came from an app that already has a better page), each router taking its page
+  from the *other* service, `Host` forwarded so both sides brand it. The **API's paths get the
+  `{error:{code,message}}` envelope, not HTML** — their callers are the generated client and MCP,
+  and an unparseable body surfaces as "er ging iets mis" over a JSON parse error. Two consequences
+  are worth stating on their own. **A distinction that only exists in a status code has to be
+  read**: `if (!data) return DEFAULT_THEME` treated "this host is unknown" and "the API is not
+  answering" as one fact, and a network throw never reached even that line. And **an error page
+  must not depend on anything that can be down with it** — no API call from the edge-error route,
+  no raise out of the API's renderer, and a `Retry-After` with `no-store`, because an outage page
+  that outlives the outage is worse than the outage.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.
@@ -1055,6 +1302,26 @@ apply as everywhere.
   `any` for an admin), not `leave.profile.manage` — **the contract is the agency's and the
   exceptions are the freelancer's**, so "I'm also free on Wednesdays" is a weekly `extra` rather
   than a rewrite of the period somebody was engaged under.
+- **A record needs a list, and the list is where the second permission finally works** (#368).
+  Availability shipped as a *section* and two ⋯ modals — three surfaces, each about one person —
+  so "who can I book on the 14th" meant opening one modal per freelancer, `PATCH` had no caller
+  anywhere in the web and therefore no test, and every host hardcoded `today → +365`, which made
+  the past unreachable and uncorrectable. `/leave/availability` is the rows themselves, with the
+  window in the URL. Four rules generalise. **An endpoint nothing calls is not "ready", it is
+  untested** — the PATCH was written, mounted, documented and unreachable, and its first test
+  found nothing wrong precisely because writing one is what closes that loop. **A screen's gate
+  must be the gate its own permission names**: the roster read `approver && can(availability
+  .write:any)` under a comment saying that availability is deliberately *not* leave approval, and
+  it also derived "who is a freelancer" from contracts fetched only for `leave.profile.manage` —
+  so the permission the module invented to avoid requiring that one required it, plus approval,
+  on every screen that offered it. #310's shape, twice, in the same menu item. **A repeat is a
+  rule, so the list it appears in is bounded by a window rather than by a pager** — there is no
+  offset to page on and no column to sort by (docs/PERFORMANCE.md names the exception), which is
+  exactly why the window has to be a control and not a constant. And **a feed you can read and
+  cannot write makes the user retype the day already on the screen**: the agenda's ＋ now records
+  availability and hands the leave form its date, because `CalendarSourceSpec` has `load`, `move`,
+  `people` and `splitPeople` and no create seam — the generic version of that is the right fix and
+  the hardcoded menu is the honest interim.
 - **On the agenda it is its own feed, and only the deviations are drawn** (`leave.availability`,
   the §6 calendar-source pattern). Separate from `leave.team` because it answers the opposite
   question — that feed says who is away, this one says who can be booked — and a viewer planning
@@ -1263,6 +1530,13 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
+  **A route is not the only surface that composes data** (#365): the company hub called thirteen
+  panel providers behind one `companies.company.read`, and seven of them checked nothing — so a
+  member holding that single key received the client's tasks, hours, domains-with-prices and full
+  change history. Anything that *fans out* to module-contributed providers carries the same rule
+  as a route: `PanelSpec` / `SummarySpec` declare `requires_permission` or an `explicit_public`
+  reason, `registry.panels_for(..., ctx.can)` filters **before** calling, and a contribution
+  declaring neither is a build break. "Each provider remembers" is not a rule, it is a hope.
 - **System roles.** `owner` / `admin` / `member` / `client` are seeded per org. `owner` holds
   exactly `["*"]`, immutable and undeletable — that is what keeps a mistake made anywhere else
   fixable. The other three are undeletable and key-immutable but freely permission-editable and

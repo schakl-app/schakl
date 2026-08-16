@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from app.modules.invoicing.models import TaxCategory
 
@@ -137,3 +138,45 @@ def compute_totals(lines: list[LineInput], *, prices_include_tax: bool = False) 
         total=subtotal + tax_total,
         groups=tuple(groups),
     )
+
+
+def line_nets(
+    lines: list[Any], groups: tuple[TaxGroup, ...], include_tax: bool
+) -> list[Decimal]:
+    """Net (tax-exclusive) amount per line, reconciling exactly with the group bases.
+
+    On a tax-inclusive document each line's net is its gross divided by its own rate, and a
+    sum of independently rounded quotients does **not** equal the group base rounded once. So
+    the per-group drift is folded into that group's largest line, which keeps the cent where it
+    is least visible and makes ``sum(nets) == subtotal`` a guarantee rather than a hope.
+
+    Shared rather than copied: every export that has to state a per-line net — UBL today
+    (``ubl.py``), a SnelStart ``verkoopboeking``'s ``boekingsregels`` next — needs the same
+    reconciliation, and a second implementation is how two exports of one invoice start
+    disagreeing by a cent with an accountant looking at both.
+    """
+    nets: list[Decimal] = []
+    for line in lines:
+        untaxed = line.tax_category in (
+            TaxCategory.EXEMPT.value,
+            TaxCategory.REVERSE_CHARGE.value,
+        )
+        if include_tax and not untaxed and line.tax_rate_pct != 0:
+            factor = Decimal(1) + Decimal(line.tax_rate_pct) / Decimal(100)
+            nets.append(round_cents(Decimal(line.amount) / factor))
+        else:
+            nets.append(Decimal(line.amount))
+    for group in groups:
+        indexes = [
+            i
+            for i, line in enumerate(lines)
+            if Decimal(line.tax_rate_pct) == group.rate_pct
+            and line.tax_category == group.category
+        ]
+        if not indexes:
+            continue
+        delta = group.base - sum(nets[i] for i in indexes)
+        if delta:
+            largest = max(indexes, key=lambda i: abs(nets[i]))
+            nets[largest] += delta
+    return nets

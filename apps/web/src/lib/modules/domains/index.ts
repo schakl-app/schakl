@@ -20,6 +20,13 @@ registerWebModule({
     },
   ],
   companyPanels: [
-    { key: "domains.company", module: "domains", component: DomainsPanel, position: 40 },
+    {
+      key: "domains.company",
+      module: "domains",
+      component: DomainsPanel,
+      position: 40,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/domains?company=${id}`,
+    },
   ],
 });

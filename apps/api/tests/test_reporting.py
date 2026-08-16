@@ -116,6 +116,53 @@ def test_a_layout_reorders_and_disables_but_never_hides_a_new_section() -> None:
     assert "marketing.traffic_channels" in without
 
 
+def test_one_client_switches_a_section_off_without_a_template_of_their_own() -> None:
+    """Resolution is three layers and each is a diff over the one before (#373).
+
+        registry  →  template layout  →  this client's own overrides
+
+    Before it, sections were toggled per *template*, which is org-wide: two clients sharing the
+    house template could not differ, so a client with no social presence got a social section
+    every month and the only escape was authoring a second template for them — which then has to
+    be kept in step with the first one for ever.
+    """
+    layout = {"sections": [{"key": "marketing.rankings", "enabled": False}]}
+
+    keys = [
+        spec.key
+        for spec in generate.enabled_sections(
+            ReportAudience.CLIENT.value, layout, {"marketing.social": False}
+        )
+    ]
+    assert "marketing.social" not in keys, "this client said no"
+    assert "marketing.rankings" not in keys, "the template said no and nobody overrode it"
+    assert "marketing.traffic_channels" in keys
+
+    # …and the override goes the other way too: a client may switch on what the template hides,
+    # or the setting is a veto rather than a choice.
+    back_on = [
+        spec.key
+        for spec in generate.enabled_sections(
+            ReportAudience.CLIENT.value, layout, {"marketing.rankings": True}
+        )
+    ]
+    assert "marketing.rankings" in back_on
+
+    # A section a later release adds still reaches a client who has an override for something
+    # else — the whole reason this is a diff and not a stored list.
+    assert "marketing.conversions" in keys
+
+    # Junk in the JSONB column is ignored rather than obeyed: it is a column, and an old
+    # release or a bad import can put anything in it.
+    unaffected = [
+        spec.key
+        for spec in generate.enabled_sections(
+            ReportAudience.CLIENT.value, None, {"marketing.social": "nope", "nonsense": True}
+        )
+    ]
+    assert "marketing.social" in unaffected
+
+
 def test_the_internal_analysis_and_the_client_document_are_different_documents() -> None:
     """Same numbers, different lens — and exactly one section withheld.
 
@@ -522,6 +569,15 @@ async def test_the_document_renders_and_prints_from_the_snapshot(tmp_path) -> No
     def svg_boxes(box) -> list[tuple[float, float]]:
         tag = str(getattr(box, "element_tag", "") or "")
         if tag.endswith("}svg") or tag == "svg":
+            # A document has two kinds of SVG since #373: charts, and the metric glyph on a
+            # table head or a tile. The glyph is *meant* to be ten pixels square, so a blanket
+            # "every SVG has area" started failing on a perfectly good document. Filter on what
+            # the mark says it is rather than on a size threshold — a threshold would eventually
+            # wave a genuinely collapsed chart through as "probably an icon".
+            element = getattr(box, "element", None)
+            classes = (element.get("class") or "") if element is not None else ""
+            if "mi" in classes.split():
+                return []
             return [(box.width, box.height)]
         found: list[tuple[float, float]] = []
         for child in getattr(box, "children", []) or []:
@@ -677,12 +733,18 @@ async def test_every_section_heading_bleeds_to_the_sheet_edge() -> None:
     assert html.count('class="section"') == 2
     assert "section band" not in html
 
-    def headings(box) -> list:
+    def headings(box, inside_section: bool = False) -> list:
         # The block box only: its line and text boxes carry the same tag and no border box.
+        # And only inside a `.section`: the cover's own "in één oogopslag" strip is an <h2>
+        # too (#373) and must emphatically *not* bleed — it sits in the text column with the
+        # summary above it.
+        element = getattr(box, "element", None)
+        classes = ((element.get("class") or "") if element is not None else "").split()
+        here = inside_section or "section" in classes
         tag = str(getattr(box, "element_tag", "") or "")
-        found = [box] if tag == "h2" and type(box).__name__ == "BlockBox" else []
+        found = [box] if here and tag == "h2" and type(box).__name__ == "BlockBox" else []
         for child in getattr(box, "children", []) or []:
-            found += headings(child)
+            found += headings(child, here)
         return found
 
     document = await asyncio.to_thread(

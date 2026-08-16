@@ -28,6 +28,7 @@ from app.modules.notifications.events import (
     LEAVE_REJECTED,
     LEAVE_REQUESTED,
     PROJECT_ASSIGNED,
+    SNELSTART_SYNC_FAILED,
     TASK_ASSIGNED,
     TASK_MENTIONED,
     TASK_OVERDUE,
@@ -59,6 +60,10 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         INTERACTION_EMAIL_PENDING,
         # A mention is addressed to you by name (#151), like TASK_MENTIONED.
         INTERACTION_MENTIONED,
+        # A ledger that did not receive last night's invoices (#377). Immediate, because the
+        # cost of hearing about it tomorrow is a day of an accountant's books being wrong — and
+        # because the usual cause is an expired credential, which nothing fixes by waiting.
+        SNELSTART_SYNC_FAILED,
         # An answer to your own words in a thread you are holding (#312). TASK_COMMENTED stays on
         # the digest — being told a task was commented on is news — but a conversation that
         # arrives tomorrow morning is not a conversation. The narrower audience is what makes

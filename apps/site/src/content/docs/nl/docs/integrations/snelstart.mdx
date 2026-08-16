@@ -1,0 +1,177 @@
+---
+title: SnelStart
+description: "Koppel je SnelStart-administratie: klanten, definitieve facturen en artikelen gaan erheen, en wie er betaald heeft komt terug als een gewone betaling op de factuur."
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+SnelStart is de boekhouding en schakl. is het CRM, en dat blijft ook zo. Je klanten worden
+relaties, je definitieve facturen worden verkoopboekingen met de gerenderde pdf eraan, en je
+producten worden artikelen. Eén ding komt terug, en het is precies het ding waar SnelStart de baas
+over is: wie er betaald heeft. Die betaling landt hier als een gewone betaalregel op de factuur,
+dus de status, de herinneringen en het klantportaal werken daarna zoals altijd.
+
+<Aside type="caution" title="Waarom dit bèta is (en waarom niet)">
+Deze koppeling is wél tegen een echte SnelStart-administratie met een echte koppelsleutel
+gebouwd en gedraaid: verbinden, grootboeken ophalen, relaties overnemen, facturen boeken met de
+pdf eraan, een betaling teruglezen en opnieuw synchroniseren tot alles "ongewijzigd" meldt.
+
+Bèta slaat op twee andere dingen. Het koppelen met één klik is nog niet gecertificeerd door
+SnelStart, en de koppeling is jong: hij heeft nog niet in tientallen administraties gedraaid, en
+administraties verschillen (eigen grootboekschema, eigen dagboeken, eigen artikelinstellingen).
+Begin daarom met een paar facturen en kijk in SnelStart of ze staan zoals je ze verwacht.
+</Aside>
+
+## Waar je het vindt
+
+*Instellingen → SnelStart*, in de groep **Integraties**. Per klant staat de stand ook op de
+klantpagina, in het paneel **SnelStart**: of die klant aan een relatie gekoppeld is, wat er van
+zijn facturen geboekt is en wat aandacht vraagt.
+
+## Koppelen
+
+<Steps>
+
+1. **Zorg dat je het recht hebt.** *Instellingen → Rollen* → `snelstart.settings.manage`.
+   Standaard heeft alleen de rol **beheerder** dit, en de klantrol nooit.
+
+2. **Haal een koppelsleutel op bij SnelStart.** SnelStart Web → *Instellingen → Koppelingen* →
+   nieuwe sleutel. Een koppelsleutel hoort bij precies één administratie; voer je er meer, dan
+   koppel je ze los van elkaar.
+
+3. **Plak de sleutel.** *Instellingen → SnelStart* → **Administratie koppelen**. schakl. wisselt
+   de sleutel meteen in voor een token en vraagt SnelStart om de administratiegegevens, dus je
+   ziet direct de naam van je eigen administratie terug. Zie je die niet, dan is de sleutel niet
+   goed en is er ook niets opgeslagen.
+
+4. **Laat de basisgegevens ophalen.** Grootboekrekeningen, dagboeken, btw-tarieven en landen
+   worden één keer uitgelezen en bewaard. Dit is een leesactie: er verandert niets in je
+   boekhouding.
+
+5. **Kies de standaard grootboekrekening.** Een factuurregel boekt op de rekening die bij zijn
+   btw-tarief hoort; voor alles waarvoor je niets hebt ingesteld gebruikt schakl. deze. Wil je
+   het fijner, dan koppel je per btw-tarief een eigen rekening.
+
+6. **Beoordeel de relaties.** schakl. legt naast elkaar welke van je klanten al als relatie in de
+   administratie staan en welke niet. Je bevestigt de koppeling zelf, per klant; er wordt niets
+   automatisch aan elkaar geplakt op basis van een gelijkende naam.
+
+7. **Boek één factuur.** Neem een definitieve factuur, druk op pushen en kijk in SnelStart of de
+   boeking staat zoals je verwacht: het bedrag, de btw-soort en de grootboekrekening. Klopt dat,
+   dan klopt de rest ook.
+
+</Steps>
+
+## Wat er heen gaat
+
+Alleen **definitieve** facturen en creditfacturen. Een concept gaat nooit mee: die heeft nog geen
+nummer en is nog niemands afspraak.
+
+Een factuur wordt een **verkoopboeking**, geen verkooporder. Dat is bewust: een verkooporder laat
+SnelStart zelf een factuur maken en versturen, en dan staat er een tweede, anders vormgegeven
+factuur bij je klant in de bus. Wat schakl. rendert en verstuurt is het document; SnelStart houdt
+de boekhouding bij, met de pdf als bijlage.
+
+De **btw-soort wordt opgezocht**, niet aangenomen. Het lage tarief was 6% tot 2019 en 9% daarna,
+dus een percentage zegt op zichzelf niets: schakl. leest de tarieventabel van je eigen
+administratie op de factuurdatum. Kan een tarief daarin niet worden teruggevonden, dan wordt dat
+gemeld in plaats van dat er stilletjes iets aannemelijks wordt gekozen.
+
+Een relatie **aanvullen wist niets**. Wat jij in SnelStart zelf hebt ingevuld (het memo, de
+kredietlimiet, de incassomachtiging) blijft staan, en een leeg veld in schakl. is geen opdracht om
+het daar te wissen.
+
+## Nooit twee keer dezelfde factuur
+
+Een dubbele factuur bij een klant is geen foutje maar een incident, dus er zitten vier sloten op:
+
+1. schakl. onthoudt wat het gestuurd heeft.
+2. Weet het dat niet meer, dan vraagt het op factuurnummer.
+3. Weigert SnelStart het nummer omdat het al bestaat, dan is dat geen fout maar een antwoord: de
+   boeking wordt opgezocht en overgenomen.
+4. En komt er helemaal geen antwoord (een time-out), dan wordt eerst gekeken of de boeking er
+   staat voordat er iets opnieuw gestuurd wordt.
+
+Een boeking die er al stond wordt **overgenomen, niet overschreven**: iemand heeft hem gemaakt.
+Klopt het bedrag ervan niet met je factuur, dan komt dat op het scherm te staan als "vraagt
+aandacht" in plaats van dat het stilletjes wordt rechtgetrokken.
+
+## Wie er betaald heeft
+
+Het bankafschrift wordt in SnelStart afgeletterd, dus SnelStart is de enige plek die weet dat een
+factuur betaald is. schakl. leest dat elke nacht terug (of wanneer je zelf op de knop drukt) en
+maakt er een gewone betaalregel op de factuur van: de status springt op betaald, herinneringen
+stoppen en het klantportaal klopt weer. Een deelbetaling telt mee, want iemand die de helft
+betaald heeft is nog geen betaler.
+
+Er wordt alleen geld bíj geboekt. Een betaling terugdraaien is een beslissing van een mens en
+gebeurt hier niet vanzelf.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `snelstart.settings.manage` | De administratie koppelen, de sleutel vervangen, de grootboekrekeningen kiezen en de koppeling verwijderen | Beheerder |
+| `snelstart.sync.run` | De administratie uitlezen: basisgegevens ophalen, relaties beoordelen en betalingen teruglezen. Er verandert niets in SnelStart | Beheerder |
+| `snelstart.ledger.write` | Naar de boekhouding schrijven. Facturen pushen vraagt daarnaast ook het recht om facturen te bewerken | Beheerder |
+
+Lezen en schrijven staan met opzet uit elkaar: uitlezen en beoordelen is iets anders dan iets
+veranderen in de boeken van je bureau.
+
+## Als er iets misgaat
+
+Elke synchronisatie legt vast wat er gebeurd is, regel voor regel: wat er gelukt is, wat ongewijzigd
+bleef, wat mislukte en wat aandacht vraagt. Een mislukte regel kun je opnieuw proberen zonder de
+rest over te doen.
+
+Gaat het 's nachts mis, dan krijgt degene die de koppeling beheert er meteen bericht van. Wil je
+dat liever niet, dan zet je die melding uit bij je meldingsvoorkeuren; het verschil met "we hebben
+het nooit aangeboden" is precies waar het hier om gaat.
+
+<Aside type="tip" title="Twee sleutels, twee eigenaren">
+Er zijn twee geheimen in het spel en ze zijn van verschillende mensen. De **koppelsleutel** is van
+jou en hoort bij jouw administratie; die vervang je zelf in SnelStart Web. De
+**abonnementssleutel** hoort bij de installatie en is van degene die die installatie beheert.
+SnelStart weigert allebei met dezelfde soort foutmelding, dus schakl. houdt ze uit elkaar en zegt
+welke van de twee het is. Krijg je te horen dat het aan de abonnementssleutel ligt, dan heeft het
+geen zin om je koppelsleutel opnieuw uit te geven.
+</Aside>
+
+## Goed om te weten
+
+- **Offertes gaan niet mee.** Een offerte heeft nog geen boekhoudkundig gevolg, en SnelStart zou er
+  een tweede, anders vormgegeven offerte van maken. Verkoopfacturen en creditfacturen gaan wel mee.
+- **Eén koppeling is één administratie.**
+- **Koppelen met één klik wacht op certificering.** Vandaag plak je een koppelsleutel. Draai je je
+  eigen installatie, dan verschijnt die knop sowieso niet: SnelStart kent jouw adres niet en zou er
+  nooit iets naartoe kunnen sturen.
+- **Uren, projecten en abonnementen gaan niet als zodanig mee.** Wat er heen gaat is de factuur die
+  eruit komt.
+- **Een tweede keer synchroniseren schrijft niets.** "Ongewijzigd" is het normale antwoord.
+- **Klantnummers hoeven niet te botsen.** Staat jouw klantnummer al als relatiecode in SnelStart,
+  dan wordt gekeken van wie die code is: is het dezelfde klant, dan wordt die relatie overgenomen,
+  en anders geeft SnelStart zelf een nummer uit. De relatie is waar het om gaat, het nummer is
+  meegenomen.
+- **Peppol en e-facturatienetwerken staan hier los van.**
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard
+    title="Facturatie"
+    href="/nl/docs/modules/invoicing/"
+    description="Waar de factuur vandaan komt en wat er met een betaling gebeurt."
+  />
+  <LinkCard
+    title="Mollie"
+    href="/nl/docs/integrations/mollie/"
+    description="Online laten betalen. De bevestigde betaling landt op dezelfde plek als deze."
+  />
+  <LinkCard
+    title="Alle koppelingen"
+    href="/nl/docs/integrations/"
+    description="Wat er verder te koppelen valt, en wat beschikbaar of bèta is."
+  />
+</CardGrid>

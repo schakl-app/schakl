@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Weekly timesheet grid: one row per client · project · task, columns are the 7 days. */
-  import { fmtWeekdayDay } from "$lib/core/format";
+  import { capitalizeFirst, fmtWeekdayDay } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -109,8 +109,8 @@
             <th class="px-4 py-2 font-medium">{t("time.timesheet.row")}</th>
             {#each visibleDays as day, i (day)}
               {@const holiday = visibleHolidays[i]}
-              <th class="px-2 py-2 text-right font-medium capitalize" title={holiday ?? undefined}>
-                {fmtWeekdayDay(day)}
+              <th class="px-2 py-2 text-right font-medium" title={holiday ?? undefined}>
+                {capitalizeFirst(fmtWeekdayDay(day))}
                 {#if holiday}
                   <!-- A holiday is nobody's working day: a quiet, uncoloured marking (#47). -->
                   <span

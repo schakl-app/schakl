@@ -86,6 +86,23 @@ incoming channel/notification back to org + connection via our own channel token
 - Start **one-way** where it's cheap: §14 already wants approved leave → Google Calendar.
   Two-way is much harder — don't sign up for it in v1.
 
+**The Agenda drops the mirror of anything it already draws natively, and the identity it drops it
+by has to survive the round trip.** A leave request, a freelance availability row and a planned
+task block all mirror outwards *and* come back through the events cache, so `events_feed` filters
+that cache against the outbox: an event whose id sits in `calendar_event_links` is the same item
+twice. **A row that repeats breaks that in the one way an id comparison cannot see.** A repeating
+availability mirrors as a *single* event carrying an RRULE — which is what keeps an edit an edit
+and a delete a delete, instead of a diff against whatever horizon was last placed — while the sync
+expands recurrences (`singleEvents=true`), so what comes back is a series of *instances*, each
+under an id of its own that the outbox has never held. Every occurrence of a freelancer's weekly
+availability was drawn twice, natively and as its own mirror. An instance names its master in
+`recurringEventId` and nowhere else, so the cache stores it
+(`google_calendar_events.recurring_event_id`, migration `c5d81b3f7a26`, which clears every
+`sync_token` so the next pull refills the parentage it could not have known) and the feed tests
+both identities: the event's own id, or the series it belongs to. Worth generalising — **when you
+mirror a rule rather than its occurrences, what comes back is not the thing you sent**, and any
+dedup keyed on what you sent passes every test written against a one-off.
+
 **A database cascade announces nothing, so the mirror has to be told.** The outbox learns that a
 local record is gone from one place only — the emit at the removal site — and a link is the *only*
 record that a Google event exists at all: once its `local_id` names a row nobody will write again,
@@ -311,6 +328,119 @@ agency tool — so, direct.
 - **Ingestion:** Gmail's real-time `watch` requires **Google Pub/Sub** (unlike Calendar) —
   extra infra. Start with **periodic ARQ polling using `historyId`** (incremental, cheap); add
   Pub/Sub push later only if latency demands it.
+- **A five-minute cron is invisible, so the timeline states its own freshness** (#341,
+  `gmail/refresh.py`). An email sent thirty seconds ago is simply not on the list yet, and
+  nothing on the screen distinguished *not synced yet* from *not matched at all* — so the
+  interactions page now prints when this mailbox was last polled and offers `POST
+  /google/gmail/refresh` to poll it now. Four rules, and none of them is really about Gmail. It
+  is the **caller's own** mailbox, resolved from `ctx.user` and never from a parameter: a grant
+  is per-user, and "refresh everyone's mail" is one person spending colleagues' quota against
+  consents they did not give (hence `google.connection.manage`, the same key as the rest of
+  your own connection). The **rate limit is a row, not a Redis bucket** —
+  `google_connections.gmail_manual_poll_at`, one manual poll per minute — because what is being
+  protected is a per-user quota, the row is the thing that knows, and a ceiling in the database
+  survives a Redis outage and holds across both API replicas; two clicks racing it are settled
+  by `SELECT … FOR UPDATE`, not by application code (the `docs/PAYMENTS.md` rule, one layer
+  down). It is **stamped before the poll and outside its savepoint**, so a mailbox that errors
+  is reported *and* still spends its budget: otherwise the one grant most worth leaving alone is
+  the one anybody can hold the button down on. That stamp is deliberately **not**
+  `gmail_last_polled_at`, which answers "how fresh is this feed?", is written by the cron too,
+  and — because the first poll of a new mailbox baselines and returns early without setting it —
+  could not bound a freshly connected account at all. And "too soon" is a 200 carrying
+  `status="cooldown"` and the seconds left, never an error envelope: it is the honest answer
+  *this feed is already fresh*, and it has to arrive with `last_polled_at` beside it or the
+  screen loses the one thing it was drawn to say.
+- **Silent skips need one loud override** (#342, `gmail/manual.py`). The ingest has ten ways to
+  decide against a message, and two are ordinary enough to hit every agency: a
+  sender who is not a contact yet (`has_external_match`), and anything older than the day the
+  mailbox was connected (the first poll baselines and imports nothing, on purpose). Add an
+  expired `historyId`, a deferral to a mailbox that later opted out, an excluded label, an
+  earlier rejection — and "why is this e-mail not on the timeline?" has no answer anybody can
+  act on. The thing worth noticing is that **almost none of them are blindness; they are
+  decisions**, and the message is sitting in a mailbox we already hold a grant for. So the
+  owner may find one and override it. Three rules.
+  **The id space is Google's, so the guard is Google's.** Every read goes through `acting_as`
+  — the caller's *own* grant — and a Gmail message id means something only inside one mailbox,
+  so a guessed, copied or brute-forced id answers 404. That is what makes "accept an id from
+  the client" safe here and unsafe almost everywhere else: it is not an id into *our* tables,
+  where the check would be ours to get right.
+  **A thread we already logged is not new reach.** The commonest complaint is not "this
+  e-mail" but "the *rest* of this conversation", and we hold that `gmail_thread_id` already —
+  so `GET /gmail/threads/{id}` lists one thread and marks which of its messages are on the
+  timeline. Since #372 a *reference* widens to its conversation too: it used to answer with the
+  single message whenever the id resolved cleanly, so the better your reference the **less** you
+  were shown, and "which of these are missing?" could only be asked by accident.
+  **Gmail's web ids are not Gmail's API ids, and pretending otherwise fails silently.** What a
+  person copies out of the address bar today is an opaque `FMfcgz…` id the API neither accepts
+  nor converts. Three references *do* resolve and the parser takes exactly those — a hex id, a
+  `msg-f:`/`thread-f:` decimal, and the RFC-822 `Message-ID` via `q=rfc822msgid:` (a lookup
+  wearing a search's clothes, and the one reference anybody can always obtain). Anything else
+  gets its **own** error key naming the two that work, because a link that can never resolve
+  answered with a generic failure is how somebody concludes the feature is broken.
+  **And it refuses to guess.** No contact matching, no company ranking: the caller says where
+  the message is filed, exactly as an uploaded `.eml` does. Every matching rule that could have
+  run here is a rule that already declined this message once.
+- **Searching your own mailbox is allowed; browsing it is not** (#372, `manual.search`). This
+  section used to argue the other way: *"a **picker** means `messages.list` over arbitrary
+  personal mail rendered inside the CRM … and it would make 'schakl only ever sees matched
+  mail' untrue. Refused, not deferred."* The concern is real; the conclusion was too strong,
+  and the tell is what the promise is **about**. "schakl only ever sees matched mail" is a
+  statement about the *poller* — what the integration ingests on its own initiative, unattended,
+  into a shared timeline. It was never a promise that the owner of a mailbox may not look in
+  their own mailbox. Requiring them to go to Gmail, open "Toon origineel", copy a `Message-ID`
+  and paste it back protected nothing at all; it just meant that in practice nobody used the
+  feature, and the one email they wanted filed stayed unfiled.
+  What answers the concern is the *shape*, not the absence. **The caller's own grant**, always
+  (`acting_as` with their connection — Google's authorization is the boundary, the same thing
+  that makes accepting a message id safe here). **Named fields, never raw Gmail syntax**
+  (`GmailSearchQuery` → `build_search_query`): we construct the query, so a colon in an address
+  cannot become an operator and "what was searched for" is a sentence we can state — a free-text
+  operator box would be forwarding user input to a search engine over personal mail. **Nothing
+  stored**: metadata in one response, no row, no cache; content still arrives only on import,
+  under the same grant. And **a hard ceiling** (`MAX_SEARCH_RESULTS = 20`), because a picker over
+  an unbounded result set is exactly the mailbox browser this is careful not to be. An empty
+  query is refused rather than answered — with no fields it *is* "list my mailbox".
+- **Ten silent skips need one honest answer, and it is a dry run** (#372, `gmail/gates.py`).
+  The override above lets you fix one message; it never told you *why* the message needed
+  fixing. Every skip but one was a bare `return 0`, so "why did this e-mail never appear?" had
+  no answer for the mailbox owner or for us — the code comment on the single skip that did log
+  said as much. The fix is a refactor before it is a feature: the chain is now `classify(...) ->
+  Decision`, a function that **decides without acting**, and `_ingest_message` fetches and acts
+  on what it returns. The explainer behind the manual importer calls the *same* function, which
+  is #324's rule (*"named once and read twice, because two copies of it is how they came to
+  disagree"*) applied to the whole chain — an explainer that drifts from the ingest answers
+  confidently and wrongly, which is worse than not answering.
+  **It is a query, not a log.** The tempting design is a `gmail_skips` row per decision, and it
+  is wrong twice: it would be a record of *every e-mail you receive* (newsletters, supplier
+  invoices, password resets, GitHub notifications — #324's inventory of a real mailbox), which
+  is strictly more than this module promises to know; and it answers speculatively for thousands
+  of messages nobody will ever ask about. The question is asked about **one** message, by
+  somebody looking at it, through the fetch they already requested.
+  **Two exceptions, and the test is not "is it useful".** It is *"is this a failure rather than
+  a policy, and would the user never know to look?"* Two qualify: a deferral to a colleague's
+  mailbox that then stops polling (the e-mail is simply gone, and nobody suspects a second
+  mailbox exists), and a poison message skipped so it cannot wedge the feed. Those get a
+  `gmail_skips` row — **ids, a reason and a timestamp, no subject and no participants** — reaped
+  after `SKIP_RETENTION_DAYS`, because a permanent record of a transient failure is a log by
+  another name. The other eight are policy the dry run explains perfectly well on demand.
+  **And two answers do not come from the gates at all.** A message older than the connection was
+  never offered (the first poll baselines and imports nothing), and one that passes every gate
+  and is *still* not here was never seen either — a `historyId` gap, which is unknowable per
+  message and so is reported as the observation (`never_offered`) rather than as a cause we
+  would be guessing at. Running the gates on those and printing a verdict would be the
+  confident-and-wrong failure in its purest form; for both, the honest answer is "this was never
+  offered" and the right response is simply to import it.
+- **A second way to log an e-mail must not be a second-class e-mail** (#342). "Laat schakl deze
+  taak invullen" (#327) was reachable only from `approve()` — gated `_owned_gmail_or_404` +
+  `_pending_only` — so an uploaded `.eml`, which lands `logged` on purpose and never passes
+  through review, **could not offer it at all**. Nobody decided that: the offer was attached to
+  the *review transition* rather than to the act it actually belongs to, and the second source
+  inherited the omission. It now hangs off **filing an e-mail onto a task**, which is something
+  all three sources do, and one worker job serves all three (it re-defers while the body has
+  not landed, which is exactly what makes an upload's already-present body and a gmail row's
+  not-yet-fetched one the same case). The generalisation is worth more than the fix: when a
+  capability is reached through one path's transition, adding a second path silently drops it,
+  and no test fails — so hang it off the *act*, and let every path call it.
 - A dedicated `email_logs` module (or generic `relations` rows, §6) attaching to
   company/contact/project, with its own company panel.
 - **Privacy:** mailbox connection is per-user and opt-in; let users scope it to a label/query.

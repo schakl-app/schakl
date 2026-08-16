@@ -14,7 +14,7 @@ from app.core.ai.tools import available_tools, run_tool
 from app.core.permissions import PermissionSet
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
-from app.modules.google_ads.mcp import GOOGLE_ADS_MCP_TOOLS, _delta
+from app.integrations.google_ads.mcp import GOOGLE_ADS_MCP_TOOLS, _delta
 from tests.conftest import make_tenant
 from tests.googleads_fake import campaign_row, search_term_row
 from tests.test_google_ads_reads import _linked, fake  # noqa: F401 — the transport fixture
@@ -128,7 +128,7 @@ async def test_an_unconfigured_account_answers_the_model_rather_than_raising(fak
     to arrive as data."""
     from sqlalchemy import select
 
-    from app.modules.google_ads.models import GoogleAdsAccount
+    from app.integrations.google_ads.models import GoogleAdsAccount
 
     t, account_id = await _linked("gads-mcp-unconfigured")
     async with async_session_maker() as session:

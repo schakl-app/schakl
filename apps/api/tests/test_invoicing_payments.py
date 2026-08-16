@@ -34,9 +34,9 @@ import pytest
 from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
+from app.integrations.mollie import client as mollie_client
 from app.modules.invoicing.jobs import invoicing_payments_reconcile
 from app.modules.invoicing.models import InvoicePayment, InvoicePaymentIntent
-from app.modules.mollie import client as mollie_client
 from tests.conftest import Tenant, auth_cookie, make_tenant, org_today
 from tests.mollie_fake import FakeMollie
 

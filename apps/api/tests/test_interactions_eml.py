@@ -550,3 +550,59 @@ async def test_editing_the_body_drops_the_converted_formatting(
         assert edited.status_code == 200, edited.text
         assert edited.json()["body_markdown"] is None
         assert edited.json()["body_text"] == "Samengevat: akkoord."
+
+
+async def test_upload_can_ask_for_the_ai_task_fill_in(client_for, monkeypatch) -> None:
+    """#342: an upload is not a second-class email.
+
+    "Laat schakl deze taak invullen" (#327) used to hang off the *review transition* — the one
+    thing this source deliberately skips — so the offer was unreachable from here. Nobody
+    decided that; it was inherited from where the call happened to live. The offer now hangs
+    off filing an email onto a task, which is what all three sources actually do.
+    """
+    t = await make_tenant("eml-enrich")
+    headers = await auth_cookie(t.user)
+    offered: list[tuple[str, str]] = []
+
+    async def _capture(ctx, interaction_id, task_id):  # noqa: ANN001, ARG001
+        offered.append((str(interaction_id), str(task_id)))
+        return object()
+
+    async def _available(ctx) -> bool:  # noqa: ANN001, ARG001
+        return True
+
+    monkeypatch.setattr("app.modules.interactions.jobs.schedule_enrichment", _capture)
+    monkeypatch.setattr("app.modules.interactions.enrich.available", _available)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Offerte nakijken", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        uploaded = await c.post(
+            "/api/v1/interactions/upload-eml",
+            files=_upload(),
+            data={"task_id": task["id"], "enrich_task": "true"},
+            headers=headers,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        row = uploaded.json()["interaction"]
+        assert offered == [(row["id"], task["id"])]
+
+    # Not asking still means not asking — the offer is opt-in, exactly as on approve.
+    offered.clear()
+    async with client_for(t.host) as c:
+        again = await c.post(
+            "/api/v1/interactions/upload-eml",
+            files=_upload(message_id="<second@mail.client.nl>"),
+            data={"task_id": task["id"]},
+            headers=headers,
+        )
+        assert again.status_code == 201, again.text
+        assert offered == []

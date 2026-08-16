@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
 
@@ -81,3 +81,33 @@ class PanelData(BaseModel):
     title_key: str          # i18n key
     position: int
     data: dict[str, Any]
+    #: "Working surface" or "register" (#364) — the module's own answer, since only it knows
+    #: whether its card is something the reader acts on today or reference material.
+    prominence: str = "register"
+    #: Preferred width in the host's desktop grid (#364): ``full`` or ``half``.
+    size: str = "full"
+    #: This client has nothing here yet (#364). The page absorbs such panels into one strip of
+    #: ＋ chips rather than drawing ten headings over ten negative sentences. ``False`` for a
+    #: panel that declares no predicate — silence is never read as emptiness.
+    empty: bool = False
+
+
+class SummaryData(BaseModel):
+    """One vital sign in a host entity's header strip (#364).
+
+    The panels answer "what is on file"; these answer *"are we all right with this client"* —
+    and each one opens the thing it counted (docs/UX.md principle 7, "every number opens").
+    """
+
+    key: str
+    label_key: str          # i18n key
+    #: Raw: a decimal string, an integer, an ISO date or free text — the reader's locale
+    #: formats it (§8), so this never carries a currency symbol or a decimal comma.
+    value: str
+    format: str = "number"  # money | number | hours | date | text
+    currency: str | None = None
+    tone: str = "neutral"   # neutral | good | warn | bad
+    hint_key: str | None = None
+    hint_params: dict[str, Any] = Field(default_factory=dict)
+    href: str | None = None
+    position: int = 100

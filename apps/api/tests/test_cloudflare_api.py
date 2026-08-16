@@ -16,8 +16,8 @@ from sqlalchemy import select, text
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from app.modules.cloudflare import client as cf_client
-from app.modules.cloudflare import redirects as rules
+from app.integrations.cloudflare import client as cf_client
+from app.integrations.cloudflare import redirects as rules
 from app.registry import registry
 from tests.cloudflare_fake import FakeCloudflare
 from tests.conftest import add_membership, auth_cookie, make_tenant

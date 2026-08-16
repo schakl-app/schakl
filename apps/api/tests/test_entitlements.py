@@ -116,6 +116,10 @@ def test_paid_module_set_is_pinned() -> None:
         # `reporting` sits on: a tenant can license the dashboards without buying the surface
         # that reads and writes a client's live advertising account.
         "google_ads": "google_ads",
+        # Tag Manager writes to what runs on a client's website, which is the highest-consequence
+        # thing this platform does to somebody else's property — licensed for the same reason
+        # `google_ads` is, one rung further along the same ladder.
+        "google_tag_manager": "google_tag_manager",
         "hosting": "hosting",
         "hr": "hr",
         "interactions": "interactions",
@@ -135,6 +139,10 @@ def test_paid_module_set_is_pinned() -> None:
         # capability *on top of* `marketing` — a tenant can license the dashboards without
         # buying the documents, which is the product ladder rather than a technical split.
         "reporting": "reporting",
+        # SnelStart (#377) is a licensed integration for the same reason `mollie` and `oxxa`
+        # are: it is a credential and a conversation with somebody else's paid service, sitting
+        # on top of `invoicing` rather than inside the free CRM core.
+        "snelstart": "snelstart",
         "subscriptions": "subscriptions",
         "time": "time",
         # Landed on dev with a sku and without an entry here, which is precisely what this test

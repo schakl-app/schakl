@@ -47,6 +47,8 @@ registerWebModule({
       module: "projects",
       component: ProjectsPanel,
       position: 25,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/projects?company=${id}`,
     },
   ],
 });

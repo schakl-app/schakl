@@ -23,7 +23,7 @@ from app.modules.companies.schemas import (
     CompanyUpdate,
 )
 from app.modules.companies.service import CompanyService, CompanySettingsService
-from app.schemas import Page, PanelData
+from app.schemas import Page, PanelData, SummaryData
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 # The horizon admin surface (#191) registers *first*: `/companies/groups/...` must match its
@@ -192,7 +192,13 @@ async def company_panels(
     company_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
 ) -> list[PanelData]:
-    """Compose the detail-view panels contributed by every enabled module (the hub)."""
+    """Compose the detail-view panels contributed by every enabled module (the hub).
+
+    Only the panels **this caller may read** (#365): the composition used to declare
+    ``companies.company.read`` once and then call thirteen providers, so a member holding
+    exactly that key received the client's tasks, hours, domains and full change history.
+    ``panels_for`` takes ``ctx.can`` and the provider is never called.
+    """
     # Import here to avoid a module→registry import cycle at load time.
     from app.registry import registry
 
@@ -201,7 +207,7 @@ async def company_panels(
 
     enabled = await _enabled_modules(ctx)
     panels: list[PanelData] = []
-    for spec in registry.panels_for("company", enabled):
+    for spec in registry.panels_for("company", enabled, ctx.can):
         data = await spec.provider(ctx, company_id)
         panels.append(
             PanelData(
@@ -209,9 +215,54 @@ async def company_panels(
                 title_key=spec.title_key,
                 position=spec.position,
                 data=data,
+                prominence=spec.prominence,
+                size=spec.size,
+                # The module reads its own payload (#364); a panel with no predicate is never
+                # called empty, because "said nothing" and "said there is nothing" differ.
+                empty=bool(spec.empty_when(data)) if spec.empty_when else False,
             )
         )
     return panels
+
+
+@router.get(
+    "/{company_id}/summary",
+    response_model=list[SummaryData],
+    dependencies=[require_permission("companies.company.read")],
+)
+async def company_summary(
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> list[SummaryData]:
+    """The client's vital signs (#364) — openstaand, uren, open taken, laatste contact, verlenging.
+
+    Every one of these was already derivable from a panel the reader had to scroll to and add up
+    by eye. Same seam as the panels one level up: the module owns the number and where it opens,
+    core owns the strip, and this page gains no per-module code.
+    """
+    from app.registry import registry
+
+    await CompanyService(ctx).get(company_id)
+
+    enabled = await _enabled_modules(ctx)
+    tiles: list[SummaryData] = []
+    for spec in registry.summaries_for("company", enabled, ctx.can):
+        for tile in await spec.provider(ctx, company_id):
+            tiles.append(
+                SummaryData(
+                    key=tile.key,
+                    label_key=tile.label_key,
+                    value=tile.value,
+                    format=tile.format,
+                    currency=tile.currency,
+                    tone=tile.tone,
+                    hint_key=tile.hint_key,
+                    hint_params=tile.hint_params,
+                    href=tile.href,
+                    position=tile.position or spec.position,
+                )
+            )
+    return sorted(tiles, key=lambda t: (t.position, t.key))
 
 
 # --------------------------------------------------------------------------- #

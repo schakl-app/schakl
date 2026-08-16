@@ -117,6 +117,11 @@ class AIService:
         self.pending_tokens_in = 0
         self.pending_tokens_out = 0
         self.pending_model: str | None = None
+        #: Why the last :meth:`complete` stopped. Kept on the instance rather than added to the
+        #: return tuple: every caller wants the text and the calls, and only the ones that can
+        #: *do* something about a cut-off answer ask (``truncated`` below). Five callers stay
+        #: unchanged, and the one question they could not previously ask becomes askable.
+        self.last_stop_reason: str | None = None
 
     async def _settings(self) -> AISettings | None:
         if not self._row_loaded:
@@ -355,6 +360,8 @@ class AIService:
         text_parts: list[str] = []
         calls: list[providers.ToolCall] = []
         tokens_in = tokens_out = 0
+        stop_reason: str | None = None
+        self.last_stop_reason = None
         try:
             async with self.ctx.release_db():
                 async for event in providers.stream_chat(
@@ -372,6 +379,7 @@ class AIService:
                         calls.append(event.tool_call)
                     elif event.kind == "done":
                         tokens_in, tokens_out = event.tokens_in, event.tokens_out
+                        stop_reason = event.stop_reason
         except AIProviderError as exc:
             logger.warning("AI provider error (%s/%s): %s", config.provider, feature, exc)
             raise AppError(
@@ -380,7 +388,24 @@ class AIService:
         self.pending_tokens_in += tokens_in
         self.pending_tokens_out += tokens_out
         self.pending_model = config.model
+        self.last_stop_reason = stop_reason
+        if self.truncated:
+            # Logged here rather than per caller, because every one of them is exposed to it and
+            # none of them could see it: a cut-off answer is a *short* answer everywhere
+            # downstream — a half-written report paragraph, a plan with no fields.
+            logger.warning(
+                "AI answer truncated (%s/%s, max_tokens=%s, out=%s): the answer is incomplete",
+                config.model,
+                feature,
+                max_tokens,
+                tokens_out,
+            )
         return "".join(text_parts), calls
+
+    @property
+    def truncated(self) -> bool:
+        """Did the last :meth:`complete` stop because it ran out of room, rather than finish?"""
+        return self.last_stop_reason in providers.TRUNCATED_STOP_REASONS
 
     async def flush_usage(self, feature: str) -> None:
         """Write the accumulated metering for a multi-round feature as **one** row.

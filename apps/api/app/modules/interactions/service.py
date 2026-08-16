@@ -546,6 +546,7 @@ class InteractionService:
         content_type: str | None,
         links: dict[str, Any],
         allow_duplicate: bool = False,
+        enrich_task: bool = False,
     ) -> tuple[dict[str, Any], int, int]:
         """Log an uploaded ``.eml`` as a ``kind="email"`` interaction (#262).
 
@@ -555,7 +556,10 @@ class InteractionService:
         fields come out of a real RFC 5322 message, in the same shape the gmail feed produces.
 
         It lands ``logged``, not ``pending``: the review step exists to catch mail the poller
-        ingested *for* you, which cannot apply to a file someone deliberately picked.
+        ingested *for* you, which cannot apply to a file someone deliberately picked. That was
+        always right about *status* and quietly wrong about everything hanging off the review
+        transition — ``enrich_task`` is here because skipping review must not also mean skipping
+        "laat schakl deze taak invullen" (#342).
         """
         self.ctx.require("interactions.interaction.write")
         if not looks_like_eml(filename, content_type):
@@ -660,7 +664,116 @@ class InteractionService:
             row = await self.repo.update(
                 row, body_markdown=rewrite_cid_images(row.body_markdown, inline)
             )
+        if enrich_task:
+            # Last, so the worker's claim is made over a row that is already complete — the
+            # body is parsed and the attachments are stored, so the job's `_body_ready` gate
+            # passes on the first attempt instead of re-deferring for nothing.
+            await self.offer_task_enrichment(row)
         return await self._present_one(row), stored, skipped
+
+    # --- a message pulled out of Gmail by hand (#342) ----------------------------- #
+    async def create_from_gmail_message(
+        self,
+        *,
+        owner_user_id: uuid.UUID,
+        owner_name: str | None,
+        occurred_at: datetime,
+        subject: str | None,
+        snippet: str | None,
+        direction: str,
+        participants: list[dict[str, Any]],
+        gmail_message_id: str,
+        gmail_thread_id: str | None,
+        rfc822_message_id: str | None,
+        deep_link: str | None,
+        links: dict[str, Any],
+        allow_duplicate: bool = False,
+        enrich_task: bool = False,
+    ) -> Interaction:
+        """Log a message the poller decided not to, named by its owner (#342).
+
+        The **third** source of an email row, and deliberately the same shape as the second:
+        the pipeline's nine silent skips (no known outside contact, a baseline that imported
+        nothing, an expired ``historyId``, a deferral to a mailbox that later opted out, an
+        excluded label, a suppression, …) are *decisions*, not blindness — the message is
+        sitting in a mailbox we already hold a grant for. So this overrides the decision and
+        nothing else: the caller names one message, the row is written from the real headers,
+        and every skip that made it invisible is bypassed **because a person asked for it by
+        id**, which is the one signal none of those rules has.
+
+        ``logged``, never ``pending``, for the upload's reason: review exists to catch mail the
+        poller ingested *for* you, which cannot apply to a message somebody went and fetched.
+        And ``source`` stays ``gmail`` rather than gaining a fourth value — there really is a
+        mailbox behind it, with a thread, a deep link and a body the sweep can re-fetch; only
+        the *reason it was logged* differs, and that is what the activity trail is for.
+
+        The body is **not** read here. It is the caller's next call (the same
+        ``_fetch_body_with`` the auto path uses after approval), because it is an HTTP round
+        trip per attachment and this transaction should not be holding a database connection
+        for it (CLAUDE.md §11).
+        """
+        self.ctx.require("interactions.interaction.write")
+        # Same mailbox, same message: this is not a duplicate to confirm, it is the row the
+        # caller is looking at. ``allow_duplicate`` deliberately does not open it — two rows
+        # for one message in one mailbox is never what anybody meant.
+        existing = await self.ctx.session.scalar(
+            select(Interaction.id).where(
+                Interaction.org_id == self._org_id,
+                Interaction.owner_user_id == owner_user_id,
+                Interaction.gmail_message_id == gmail_message_id,
+            )
+        )
+        if existing is not None:
+            raise AppError(
+                "conflict", "errors.interactions_gmail_already_logged", status_code=409
+            )
+        # A colleague's mailbox already logged it (the RFC-822 cross-mailbox dedup). A warning,
+        # not a wall — the upload's rule (#262): the other row may have been rejected, or filed
+        # somewhere this one belongs too — so the caller confirms and re-sends.
+        if rfc822_message_id and not allow_duplicate:
+            duplicate = await self.ctx.session.scalar(
+                select(Interaction.id).where(
+                    Interaction.org_id == self._org_id,
+                    Interaction.rfc822_message_id == rfc822_message_id,
+                )
+            )
+            if duplicate is not None:
+                raise AppError(
+                    "conflict", "errors.interactions_eml_duplicate", status_code=409
+                )
+        roster = await self._requested_roster(links) or []
+        resolved = await self._resolve_links(
+            {field: links.get(field) for field in ("company_id", "project_id", "task_id")}
+            | {"contact_id": roster[0] if roster else None}
+        )
+        row = await self.repo.create(
+            kind=PROTECTED_KIND,
+            status=InteractionStatus.LOGGED.value,
+            occurred_at=occurred_at,
+            subject=(subject or "")[:500] or None,
+            snippet=snippet,
+            direction=direction,
+            owner_user_id=owner_user_id,
+            owner_name=owner_name,
+            participants=participants,
+            source=InteractionSource.GMAIL.value,
+            gmail_message_id=gmail_message_id,
+            gmail_thread_id=gmail_thread_id,
+            rfc822_message_id=rfc822_message_id,
+            deep_link=deep_link,
+            # Logged at birth, so it joins its thread's conversation now — the same rule
+            # ``record_email`` applies to an auto-approved row (#272).
+            conversation_id=await resolve_conversation_id(self.ctx, gmail_thread_id),
+            **resolved,
+        )
+        await self._set_contacts(row, roster)
+        await ActivityService(self.ctx).record_created(
+            ENTITY_TYPE, row.id, {"source": "gmail_manual"}
+        )
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
+        if enrich_task:
+            await self.offer_task_enrichment(row)
+        return row
 
     async def _upload_direction(self, from_email: str | None) -> str:
         """Inbound unless the sender is one of us — the closest an uploaded file can get to the
@@ -867,22 +980,34 @@ class InteractionService:
                 roster = await self._requested_roster(sent)
         row = await self._approve_row(row, link_values, roster)
         if data is not None and data.enrich_task:
-            await self._offer_task_enrichment(row)
+            await self.offer_task_enrichment(row)
         return await self._present_one(row)
 
-    async def _offer_task_enrichment(self, row: Interaction) -> None:
+    async def offer_task_enrichment(self, row: Interaction) -> None:
         """"Laat schakl deze taak invullen" (#327): hand the email to the worker.
 
-        Nothing is read here. The body does not exist yet — a pending row carries metadata only
-        and the gmail fetch happens after this transaction, on purpose — so a synchronous read
-        would write an empty description on most emails, and only on the ones nobody checked.
-        What happens here is the *claim*: the task is flipped to ``queued`` so its card says
-        "schakl leest de e-mail" from the next render, and a deferred job does the reading.
+        **This hangs off filing an email onto a task, not off the review transition** (#342).
+        It used to be reachable only from :meth:`approve`, which is gated ``_owned_gmail_or_404``
+        + ``_pending_only`` — so an uploaded ``.eml`` (#262), which lands ``logged`` on purpose
+        and never passes through review, could not offer it at all. Nobody decided that: a
+        second way to log an email became a second-class email by inheriting where the offer
+        happened to live. Every source that can name a ``task_id`` now calls this, and the three
+        of them (approve, upload, gmail import) share one set of refusals below.
+
+        Nothing is read here, whether or not the body exists yet. For an approved gmail row it
+        genuinely does not — a pending row carries metadata only and the fetch happens after
+        this transaction — and for an upload or a manual import it already does; either way the
+        model call belongs in a worker, never in a request holding a database connection
+        (CLAUDE.md §3). What happens here is the *claim*: the task flips to ``queued`` so its
+        card says "schakl leest de e-mail" from the next render, and the job does the reading
+        (it re-defers while the body has not landed, which is what makes one job serve all
+        three sources).
 
         Every way out of this is a no-op rather than an error, because the thing that must
-        survive is the **approval**. Losing a review to an optional convenience — no task
-        picked, AI not configured, Redis down — is a far worse outcome than an unenriched task,
-        which is exactly what the user had before ticking the box.
+        survive is the **write it rode in on**. Losing an approval — or an upload — to an
+        optional convenience (no task picked, AI not configured, Redis down) is a far worse
+        outcome than an unenriched task, which is exactly what the user had before ticking the
+        box.
         """
         from app.modules.interactions import enrich
         from app.modules.interactions.jobs import schedule_enrichment
@@ -892,7 +1017,8 @@ class InteractionService:
         if row.task_id is None or not await enrich.available(self.ctx):
             return
         # The gate of the module being written into, not of the route this rode in on (#314):
-        # approving is `interactions.interaction.review`, and filling a task in is a task write.
+        # the route that got here declares review (approve) or write (upload, gmail import),
+        # and filling a task in is a *task* write — so it is asked for separately, every time.
         if not await caller_may_write_task(self.ctx, row.task_id):
             logger.debug(
                 "interactions: enrichment declined for task %s — caller cannot write it",

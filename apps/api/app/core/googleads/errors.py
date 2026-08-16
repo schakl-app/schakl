@@ -106,6 +106,26 @@ class AdsError(AppError):
         self.message_key = f"errors.{type(self).code}"
         self.status_code = type(self).status_code
         self.fields: dict[str, str] | None = None
+        #: Google's own **identifiers**, carried onto the envelope (``AppError.details``) so a
+        #: refusal is diagnosable at all: before this, a write failure arrived as a bare
+        #: ``google_ads_error`` and the field path Google named was discarded at the boundary by
+        #: the one class built to preserve it — ``str(exc)`` only ever reaches an admin through
+        #: ``last_error``, which ``verify`` and the sync write and no write path does.
+        #:
+        #: Deliberately **not** ``str(exc)``: Google's prose stays out of the envelope
+        #: (``test_google_s_own_text_never_reaches_the_envelope``) because the envelope's message
+        #: is an i18n key (§9) and untranslated provider text in it is a screen in the wrong
+        #: language. An error code and a request id are identifiers, not prose — the first is
+        #: what §5 calls the only reliable way to tell two refusals apart, and the second is the
+        #: one thing Google support asks for.
+        self.details: dict[str, Any] | None = {
+            key: value
+            for key, value in (
+                ("google_error_code", error_code),
+                ("google_request_id", request_id),
+            )
+            if value
+        } or None
         self.status = status
         #: The GAQL/API error enum, as ``"<group>.<VALUE>"`` (``"quotaError.RESOURCE_EXHAUSTED"``).
         #: The only reliable way to tell two refusals apart that share a status code.
@@ -116,7 +136,9 @@ class AdsError(AppError):
 
     def as_app_error(self) -> AppError:
         """Kept for call sites that want a plain envelope error rather than this subclass."""
-        return AppError(self.code, self.message_key, status_code=self.status_code)
+        return AppError(
+            self.code, self.message_key, status_code=self.status_code, details=self.details
+        )
 
 
 class AdsNotConfigured(AdsError):
@@ -178,6 +200,21 @@ class AdsQueryError(AdsError):
     status_code = 422
 
 
+class AdsRequestError(AdsError):
+    """The request we built was refused: a missing required field, a bad enum, a bad mask.
+
+    Split from :class:`AdsQueryError` because a mutate contains no GAQL, and telling somebody
+    the query was rejected when they were creating a campaign is the most misleading sentence
+    available — ``requestError`` used to land here and answered *"the GAQL was rejected"* for a
+    campaign removal. Split from the base :class:`AdsError` because that answers **502**, and a
+    payload Google refused is a fault on this side: 502 reads as "Google is down" and sends
+    somebody to check a status page over a missing field.
+    """
+
+    code = "google_ads_request"
+    status_code = 422
+
+
 class AdsVersionError(AdsError):
     """A 404 on a versioned path: this Ads API version is sunset.
 
@@ -205,7 +242,10 @@ _BY_GROUP: dict[str, type[AdsError]] = {
     "authorizationError": AdsPermissionError,
     "quotaError": AdsQuotaError,
     "queryError": AdsQueryError,
-    "requestError": AdsQueryError,
+    "requestError": AdsRequestError,
+    "fieldError": AdsRequestError,
+    "fieldMaskError": AdsRequestError,
+    "mutateError": AdsRequestError,
     "headerError": AdsAuthError,
     "internalError": AdsUnavailable,
 }
@@ -281,7 +321,11 @@ def _typed(
                 group, value = str(key), str(raw)
                 break
     message = str(item.get("message") or fallback or value or "Google Ads error")
-    cls = _BY_GROUP.get(group, AdsError)
+    # A *named* group is Google telling us which of the 167 things went wrong, which makes it a
+    # refusal of what we sent — not an outage. Only a failure we could not read at all falls back
+    # to `AdsError` and its 502; anything Google classified and we have no mapping for is still a
+    # caller error, so a group added to the API next year lands on the right side of that line.
+    cls = _BY_GROUP.get(group) or (AdsRequestError if group else AdsError)
     if value in _DEVELOPER_TOKEN_VALUES:
         cls = AdsDeveloperTokenError
     kwargs: dict[str, Any] = {}

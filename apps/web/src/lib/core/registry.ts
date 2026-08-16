@@ -9,6 +9,8 @@ import type { Component } from "svelte";
 
 import { getLocale } from "$lib/paraglide/runtime";
 
+import type { CustomFieldDefinition } from "./customfields/types";
+
 import type { ApiClient } from "./api/client";
 import { t } from "./i18n";
 import { can, type PermissionScope } from "./permissions";
@@ -30,6 +32,25 @@ export function moduleLabel(name: string): string {
   const key = `module.${name}.label`;
   const label = t(key);
   return label === key ? name : label;
+}
+
+/**
+ * One line saying what a module or integration *is*, for the two screens that ask a reader to
+ * decide whether to run it (issue #378).
+ *
+ * Instellingen → Modules listed twenty-six names against twenty-six checkboxes. "HR",
+ * "Klantportaal", "Uptime" are not self-explanatory to the person who has to decide, and the
+ * consequence was that nobody switched anything on or off deliberately — the screen could be read
+ * only by someone who already knew the product, which is the audience least likely to be reading it.
+ *
+ * Empty rather than the raw key for a module this build has no copy for, exactly as `moduleLabel`
+ * falls back to the name: a missing description costs a line of prose, and printing
+ * `module.foo.description` at a user costs their trust in every other line on the screen.
+ */
+export function moduleDescription(name: string): string {
+  const key = `module.${name}.description`;
+  const text = t(key);
+  return text === key ? "" : text;
 }
 
 export interface NavItem {
@@ -70,14 +91,42 @@ export interface CompanyPanelSpec {
   /** Matches the API PanelSpec.key it renders (e.g. "companies.details"). */
   key: string;
   module: string;
-  /** `members` is optional context the host already holds (mention candidates, #151) —
-   *  a panel that doesn't take the prop simply never reads it. */
+  /** `members`, `definitions` and `locale` are optional context the host already holds
+   *  (mention candidates #151; the tenant's custom-field definitions #364) — a panel that
+   *  doesn't take the prop simply never reads it. */
   component: Component<{
     companyId: string;
     data: Record<string, unknown>;
     members?: PanelMember[];
+    definitions?: CustomFieldDefinition[];
+    locale?: string;
+    /** The heading the host would draw; passed so an `ownsHeader` panel can draw it itself. */
+    title?: string;
+    onedit?: () => void;
   }>;
   position?: number;
+  /**
+   * This panel draws its own heading row (`PanelHeader`), so the host draws none (#364).
+   *
+   * A panel with a control beside its title otherwise had nowhere to put it, because the host
+   * owns the `<h2>` — so it pushed a button row *underneath* the heading and the card opened
+   * with a band of empty space and one floating control in it.
+   */
+  ownsHeader?: boolean;
+  /**
+   * What this module offers when the client has nothing here yet (#364).
+   *
+   * A module with nothing to show does not earn a heading, a border and 100 px — the API says
+   * `empty: true` and the hub folds it into one "nog niets vastgelegd" strip of ＋ chips. The
+   * chip needs somewhere to go, and where is a *routing* question the API may not answer, so it
+   * lives here beside the component that draws the full panel.
+   *
+   * A chip with no `emptyHref` is drawn as a plain label: still one line in a strip instead of a
+   * card, which is the win, and never a control that goes nowhere (#253).
+   */
+  emptyHref?: (companyId: string) => string;
+  /** Overrides the chip's label; defaults to the panel's own `title_key`. */
+  emptyLabelKey?: string;
 }
 
 /** A member as `/api/v1/members/lookup` returns them. Panels print names, never user ids. */
@@ -96,6 +145,12 @@ export interface PanelMember {
  * 200-row company fetch to render a name the page is already holding. So the host passes what it
  * has, and a panel that needs none of it ignores the lot. `id`+name shapes only — a panel renders
  * labels and fills pickers, it does not need the records.
+ *
+ * **The record whose page this is must always be in here** (#363). These lists are the page's
+ * pickers, and a picker is a capped list — `limit: 200`, unsorted. A panel that answers a
+ * question *about the host record* by looking it up among them is asking a question the page
+ * already has the answer to, and getting `undefined` the moment the tenant outgrows the cap. The
+ * host merges its own record in; the cost is one array spread.
  */
 export interface EntityPanelLookups {
   members: PanelMember[];
@@ -105,6 +160,12 @@ export interface EntityPanelLookups {
     id: string;
     title: string;
     project_id?: string | null;
+    /**
+     * The task's *own* client. A task carries `company_id` independently of `project_id` — one
+     * attached straight to a client has no project to walk through — so a panel that needs the
+     * client reads it here rather than inferring it from a project it may not have (#363).
+     */
+    company_id?: string | null;
     allocated_minutes?: number | null;
     status?: string | null;
     due_date?: string | null;
@@ -336,8 +397,22 @@ export interface CalendarSourceSpec {
   splitPeople?: (api: ApiClient, range: CalendarRange) => Promise<CalendarPerson[]>;
 }
 
+/**
+ * A capability schakl itself provides, versus a conversation with somebody else's service
+ * (CLAUDE.md §6a). The API is the authority — `module_kinds` on `/meta/modules` — and this
+ * mirrors it for the screens that classify a name while rendering, where a round trip would be
+ * asking the server a question the build already knows the answer to.
+ */
+export type ModuleKind = "module" | "integration";
+
 export interface WebModule {
   name: string;
+  /**
+   * Defaults to `"module"`, which is the harmless wrong answer: an integration mislabelled a
+   * module lands in the wrong group on one screen, while a module mislabelled an integration
+   * claims a credential it does not have and sends the reader looking for one.
+   */
+  kind?: ModuleKind;
   nav?: NavItem[];
   companyPanels?: CompanyPanelSpec[];
   /** Panels this module hangs off another module's detail page (e.g. Uren on a project). */
@@ -368,6 +443,17 @@ export function registerWebModule(mod: WebModule): void {
 
 export function enabledWebModules(enabled: string[]): WebModule[] {
   return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
+}
+
+/**
+ * Is `name` an integration? (CLAUDE.md §6a)
+ *
+ * Falls back to `"module"` for a name this build has no web module for — an instance may mount an
+ * API module whose web half this build does not ship, and answering "integration" for something
+ * unknown would put it under a heading promising a credential nobody can produce.
+ */
+export function moduleKind(name: string): ModuleKind {
+  return _modules.get(name)?.kind ?? "module";
 }
 
 /** A tenant's per-locale label for a nav entry / group (#169); `null`/absent = use the declared. */

@@ -1,8 +1,9 @@
 <script lang="ts">
   /** My Day widget: the budgeted projects burning hottest — the one burn scale (core/burn),
-   *  unclamped number, clamped bar, loudly red over budget (UX Principle 4). */
+   *  unclamped number, clamped bar, loudly red over budget (UX Principle 4). The figure is
+   *  spent-of-budget and says so in the same words as every other surface (core/hours, #340). */
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
-  import { fmtNumber } from "$lib/core/format";
+  import { hoursBurn, type HoursFields } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
@@ -11,10 +12,7 @@
   interface ProjectRow {
     id: string;
     name: string;
-    hours?: {
-      budget_hours?: number | null;
-      spent_hours?: number;
-    } | null;
+    hours?: HoursFields | null;
   }
   // `/projects/dashboard-budgets` returns the budgeted projects already sorted by burn and cut
   // to the tile's length (#290), so there is nothing left to filter, sort or slice here.
@@ -22,8 +20,7 @@
     ((data ?? []) as ProjectRow[]).map((p) => ({
       id: p.id,
       name: p.name,
-      spent: p.hours?.spent_hours ?? 0,
-      budget: p.hours?.budget_hours ?? 0,
+      burn: hoursBurn(p.hours),
       pct: burnPct(p.hours?.spent_hours ?? 0, p.hours?.budget_hours ?? null),
     })),
   );
@@ -48,18 +45,18 @@
               {project.name}
             </a>
             <!-- The burn is a total of time entries, so it opens the report those entries are
-                 in — filtered to this project (issue #15). -->
+                 in — filtered to this project (issue #15). Spent of budget, with what is left on
+                 hover in words: the tile and the lists answer the same question with the same
+                 sentence (#340). -->
             <a
               href="/overview?project_id={project.id}"
+              title={project.burn?.title}
               class="shrink-0 tabular-nums hover:underline {project.pct != null &&
               project.pct >= 100
                 ? 'font-medium text-red-600 dark:text-red-400'
                 : 'text-text-muted'}"
             >
-              {t("projects.widget.spent", {
-                spent: fmtNumber(project.spent, 1),
-                budget: fmtNumber(project.budget, 1),
-              })}
+              {project.burn?.spentText}
             </a>
           </div>
           {#if project.pct != null}

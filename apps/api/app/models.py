@@ -29,6 +29,7 @@ from app.core.permissions.models import (  # noqa: F401
 from app.core.providers.models import Provider  # noqa: F401
 from app.core.storage.models import FileBlob, StoredFile  # noqa: F401
 from app.db import Base  # noqa: F401
+from app.registry import module_package
 
 for _name in settings.enabled_modules:
     # A module need not own a table. ``portal`` is the proof: it manages client logins against
@@ -37,5 +38,6 @@ for _name in settings.enabled_modules:
     # ``find_spec`` rather than catching ``ModuleNotFoundError`` on purpose — the latter also
     # swallows a genuinely broken import *inside* a module's models, which is exactly the
     # failure this aggregator exists to surface.
-    if importlib.util.find_spec(f"app.modules.{_name}.models") is not None:
-        importlib.import_module(f"app.modules.{_name}.models")
+    _package = module_package(_name)
+    if _package and importlib.util.find_spec(f"{_package}.models") is not None:
+        importlib.import_module(f"{_package}.models")

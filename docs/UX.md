@@ -62,6 +62,23 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
+- **A date and an instant travel down the same `string`, so the value decides, not the caller.**
+  The API sends a wall-clock date (`2026-07-07` — a due date, an expiry, a contract start) and an
+  instant (`2026-07-07T09:12:33Z` — when something was checked, uploaded, decided), and the two are
+  read in different zones: a date in UTC or it slips a day, an instant in the *tenant's* zone
+  (CLAUDE.md §8) or two colleagues read different days for the same event. Every formatter in
+  `core/format.ts` used to assume the first shape and pin `timeZone: "UTC"`, parsing by
+  concatenating a midnight onto the string — so an instant became `…T09:12:33ZT00:00:00Z`, an
+  Invalid Date, and printed as **`NaN-NaN-0NaN`** (the year is `String(NaN).padStart(4, "0")`).
+  It shipped on five screens at once — the three Google Ads panels' *"gecontroleerd"*, the cloud
+  console's trial and lifecycle dates, the domain health card's certificate expiry, the HR document
+  list — because there is nothing for the build to catch: both shapes are `string`, so the types
+  agree and `svelte-check` passes, and the garbage only appears on a row that actually carries a
+  timestamp. The discrimination now lives in one dependency-free place (`core/wire-date.ts`, pinned
+  by `tests/unit/wire-date.test.ts`) and reads the shape off the value — an instant carries a `T` —
+  so any date formatter may be handed either. Choosing to *show* the time is still a separate
+  decision: an "as of" line that a button refreshes (a verification, a health probe, a sync) uses
+  `fmtDateTime`, because a bare date on something you just pressed already said today.
 - **A duration is typed, not counted** (#326). Every field whose subject is a span of time —
   a task's budget, a scheduled block, worked hours, a break — takes free text through the shared
   `core/ui/DurationInput` and the one parser behind it (`core/duration.ts`): `1:40`, `100`,
@@ -161,11 +178,25 @@
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
 - **People attached to a record are "one primary, N others"** — the same chips-plus-type-ahead
-  shape everywhere. **The primary is marked by the brand colour and nothing else: no star, no
-  emoji, no glyph of any kind.** A coloured chip among grey ones already says which one is
-  primary; a ★ next to it is decoration, and decoration is what makes a dense screen look cheap.
-  Because colour cannot be read by a screen reader (WCAG 1.4.1), the primary chip carries an
-  `sr-only` label — that, not a glyph, is how the meaning is made accessible.
+  shape everywhere. **The primary is marked by a ★ *and* the brand colour**, plus an `sr-only`
+  label. This **reverses** the original rule ("the colour and nothing else: no star, no emoji, no
+  glyph of any kind"), and the reversal is the interesting part. A coloured chip among grey ones
+  does say which one is primary — but only when there *are* grey ones, and a client with one
+  contact person has a lone gold pill with nothing to contrast against; on a gold-branded tenant
+  that pill is also indistinguishable from an amber warning chip, so the person to ring first read
+  as a problem. Colour was carrying two meanings and neither of them reached a screen reader.
+  Both *pill* surfaces obey it (`LinkField`, `AssigneePicker`): they sit on the same screens, and a
+  marker that means "primary" on one card and nothing on the next teaches the reader that it means
+  nothing. `Assignees` — the read-only avatar row — is not a pill and keeps its full-vs-muted
+  contrast; a glyph beside a face fixes nothing there.
+  **The glyph says *that* a chip is special, never *what* or *which direction*** (#374). That is
+  words' work, and on a direction-ambiguous surface the words must say the direction:
+  `company_contacts.is_primary` means "the primary contact **for that company**", so the
+  clients-on-a-contact block reads *"hoofdcontact bij deze klant"* and never a bare *"primair"* —
+  which invites a reading that does not exist (*this person's main client*) and turns the promote
+  click into an unannounced write to a different client's configuration. So every chip carries a
+  `title` naming itself, and edit mode states the promote gesture in one line of text: a gesture
+  discoverable only by hovering the thing you did not know to hover is not discoverable.
   **Clicking a chip promotes it to primary** — the marker never doubles as a control — and each
   chip carries an ✕ to drop it. Both gestures are *edit-mode only* (Principle 3): attaching,
   detaching and re-designating the primary all change the record's definition. So `LinkField`
@@ -627,6 +658,23 @@
   caller passes the two raw numbers (which decide the colour) and the formatted strings (which say
   it in that module's unit and words), because a task budgets minutes and a project budgets hours.
   Reach for it before writing a bar.
+- **A bare `x / y` is spent-of-budget, and a remainder always carries its own word** (#340,
+  `core/hours.ts`). `0 / 5 u` and `5 / 5 u` are the same nine glyphs: My Day printed the spend,
+  the companies and projects lists printed what was left of the same budget, and both drew the
+  identical bar underneath — so on the list an empty bar sat beside the figure `5`, which reads
+  as "5 used". One screen apart, the same project. The meaning was chosen because two things
+  already agreed on it: the bar has always drawn the spend, and `/time` already printed
+  `0 / 5 u deze periode`. What is left is the more useful sentence on a client list, so it did
+  not disappear — it moved to the hover, in words (`5 u over`), where it cannot be mistaken for
+  the other number. `HoursCell`'s tooltip used to *lead* with `{spent} van {budget} u` while the
+  cell beside it showed the remainder, so a single element disagreed with itself.
+  Three rules generalise past this bug. **The words live with the numbers**: `core/hours.ts` is
+  `modules/tasks/budget.ts` for the unit a project budgets in, and a shared *component* only
+  fixes half of it while five callers still write the sentence themselves. **A column header is
+  part of the figure** — the cell could not be corrected without renaming *Beschikbare uren* to
+  *Geboekt / budget*, because a header naming the other reading is the same bug one row up. And
+  **an ambiguous figure is not fixed by formatting it better**: `{spent} / {budget}` was
+  perfectly formatted on both screens.
 - **A task's hour budget belongs where the hours are spent, not only on the task** (#313). The
   allocation existed for a year and was drawn on exactly one screen — the task's own card, the one
   place you are *not* when you are logging against it or deciding what to pick up. It is now on
@@ -644,12 +692,24 @@
   to log against. Two pickers meant two places a retainer's remaining hours could be counted, and
   they could disagree. What replaced it is the answer itself, on the screen that spends the hours:
   the picked project's **remaining** hours under the project field (named after the agreement they
-  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form listing
-  every budgeted project on the one burn scale, hottest first. Both render from the project lookup
+  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form on the
+  one burn scale, hottest first. Both render from the project lookup
   the page already loads with `hours=true` — a number this useful should cost no extra call, and the
   form asks for one *less* than it did. The "no budget" hint only appears when the caller actually
   asked for the burn: a lookup fetched without `hours=true` knows nothing, and silence beats a
   confident "geen urenbudget" that is really "didn't look".
+  **And a panel beside a form is about the form's record, not about the org.** The panel listed
+  *every* budgeted project the agency has — a scrolling column of other clients' work, next to a
+  form filling in one of them, where the useful line was already off the bottom. It now follows the
+  entry's own selection: a picked project **is** the answer, a picked client shows exactly what its
+  project picker offers (its own projects, plus the client-less ones that are loggable under every
+  client), and only an entry naming neither falls back to the full list. Two rules generalise. The
+  selection lives in the form, so the form **reports** it (`onscope`) rather than the host guessing
+  from the record it handed in — a create form's client and project move while it is being filled.
+  And a narrowed panel that finds nothing says so in words instead of unmounting: a box that
+  vanishes the moment you pick a client reads as broken. The one exception is a picked project with
+  no budget, which the form already answers under the project picker — where the question was
+  asked, and where it is not a second empty box.
 - **Forms are SSR form actions** with `use:enhance` — and **a form that stays mounted after a
   successful save always passes `update({ reset: false })`.** The default success path calls
   `form.reset()`, which rewinds every control to its server-rendered default *without firing any
@@ -694,6 +754,16 @@
     that already exists, and `busy.clear(key)` when you actively want the form emptied for the
     next entry. Choosing between two named methods is a decision; remembering to hand-write a
     `reset: false` callback is a thing to forget, and twenty components had each re-derived it.
+  - **A quick-add row also has to keep the caret: `busy.clearAndFocus(key, name)`** (#367). A
+    field that exists to be filled in over and over — a checklist to-do, a tag — wants the reset
+    *and* wants the cursor left in it, and the second half does not come for free: `applyAction`
+    ends every successful action with SvelteKit's `reset_focus()`, an accessibility rule written
+    for navigations and applied to form results too, which focuses `document.body`. So Enter
+    added the item and then quietly took the field away, and adding five to-dos cost five trips
+    back to the mouse. The affordance refocuses the form's own input once the update has settled
+    (so no `bind:this` inside an `{#each}`), only on success — a refusal leaves focus where the
+    error handling put it — and places the caret at the *end*, because anything typed while the
+    request was in flight survives the reset that fired before it.
   - **The affordance was not enough on its own, so the rule is now enforced**
     (`scripts/forms-check.mjs`, `pnpm forms:check`, run in CI's web job and by the pre-commit
     hook on any staged `.svelte`). It shipped a *third* time after the two above — Instellingen
@@ -1007,17 +1077,39 @@
   The **grouping** is part of the same job. "Modules & workflows" had become a fifteen-card junk
   drawer holding the org's dashboard defaults, its outgoing mail transport, its AI provider and a
   cloud support switch side by side, while Google Workspace sat two groups away from the other two
-  third-party integrations. Five groups, each answering one question: what this workspace looks
-  like (Werkruimte), who may use it (Team & toegang), what shape our data takes (Gegevens &
-  keuzelijsten), how each module behaves (Modules & werkprocessen), what it talks to (Communicatie
-  & koppelingen). A card is named after what is *on* it — the screen holding only client numbering
-  is "Klantnummering", not "Bedrijven", which read as a sibling of Klantgroepen and was neither.
-- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up, and never
-  on the index itself — there the cards *are* the navigation, with subtitles the rail has no room
-  for. Below `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings
-  form a fifth of its width to save one click, and the app-wide breadcrumb row is already the way
-  back. It lists exactly what the index would show that viewer, marks the current screen, and
-  resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  third-party integrations. Each group answers one question: what this workspace looks like
+  (Werkruimte), who may use it (Team & toegang), what shape our data takes (Gegevens &
+  keuzelijsten), how each module behaves (**Modules**), what it talks to (**Integraties**) — the
+  last two split apart along CLAUDE.md §6a, because "a module is configured" and "an integration is
+  connected" are not the same kind of setting and do not fail the same way. **The screen that
+  switches each collection on leads its own group** (#378): Instellingen → Modules first under
+  Modules, Instellingen → Integraties first under Integraties. Before that, one screen switched
+  both on, it was filed under Werkruimte, and it was called "Modules" — the same word a group
+  heading fourteen cards down the index used for something else. A card is named after what is *on*
+  it — the screen holding only client numbering is "Klantnummering", not "Bedrijven", which read as
+  a sibling of Klantgroepen and was neither.
+- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up as a sticky
+  column, below it as a disclosure over the content, and **on every screen in the section including
+  the index**. It lists exactly what the index would show that viewer, marks the current screen,
+  and resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  Two earlier positions were wrong and are worth keeping written down, because both were reasoned
+  from a plausible principle (#378).
+  *"The index needs no rail — its cards are the navigation."* Its cards are the **descriptions**.
+  Forty of them stack 3050 px tall in a ragged two-column grid, and the screen you come back to in
+  order to find something was the one screen with nothing to find it with. It carries the rail now,
+  with `search={false}`, because its own content owns the search over that same list — the rule
+  being **one search box per screen**, never two filtering different things.
+  *"A flat list of links is the rail."* Forty-one links are 1628 px inside a box 902 px tall on a
+  1440 × 950 laptop and 752 px on a 1280 × 800 one, so 45–54% of the tree sat below the fold of a
+  **nested** scroller that the page's own scrollbar does not move and overlay scrollbars do not
+  advertise. Standing on Instellingen → Modules, the rail beside you ended at Import & export: the
+  group that screen belongs to was missing from its own navigation, along with Integraties and
+  Systeem. **So the groups collapse** (`SettingsNav`), under three rules that keep collapsing from
+  becoming hiding: the group holding the active screen is open *unconditionally* — it is where you
+  are, not a preference; a search opens every group that matches, because a result you must reveal
+  is not a result; and what you open by hand is remembered in `localStorage`. A closed group shows
+  its item count, or an empty group and a collapsed one look identical. Seven headings fit at any
+  width; forty-one links fit at none, and the forty-second would only have made it worse.
   It is a **component, not a route layout**, because of the bullet two above this one: the three
   catalogs that live on their working page (#229) are Instellingen screens at a `/tasks/`,
   `/subscriptions/` or `/domains/` URL, and a layout under `/settings/` can only wrap its own
@@ -1062,6 +1154,30 @@
   like `prettify()` — the slug with a capital letter, in English, on a Dutch-default app. `/reports`
   read "Reports" and `/companies/<id>/reporting` read "Reporting" for exactly that reason, and
   nothing in the build noticed, because a prettified slug renders perfectly well.
+- **A link back to a screen names the screen you were on, not the section it belongs to**
+  (`core/screen-position.ts`, `core/screen-position.svelte.ts`). Open Klanten, page to 3, scroll to
+  the fiftieth row, click it, then click "Klanten" in the crumb row: you landed on page 1, at the
+  top, with the client you had just been reading about two pages and several hundred pixels away.
+  Both halves of that are the same mistake — the crumb href was rebuilt from the path, and
+  `/companies` is a different screen from `/companies?page=3&status=active&sort=-name`. So every
+  navigation records, per pathname, the query string the visitor had there and how far down the page
+  they were, and the crumb row links to *that*, with the scroll offset restored on arrival.
+  Four things hold it up. **The crumb row carries the slice; the sidebar does not.** Klanten in the
+  sidebar is how you go to the section, and a nav item that quietly reapplied last hour's filters
+  would be a control that does not do what it says — so the two now differ on purpose, and the
+  difference is legible in the href. **Restoration requires an exact URL match**, which is what
+  makes that distinction work without a second mechanism: the crumb asks for `?page=3` and gets its
+  offset back, the nav item asks for the bare path and gets the top of it, and a filter change, a
+  page step or a fresh search all land at the top by construction rather than by each list
+  remembering to say so. **The back button is left alone** — SvelteKit already restores scroll per
+  history entry, so `popstate` is skipped and the two can never fight over one number. And **it is
+  keyed by pathname, with every screen recording**, not by a list of list routes: a registry is a
+  list somebody has to remember to add to, which is exactly the failure the crumb row itself exists
+  to prevent. A record's tabbed detail page and a long form come back to where they were being read
+  without opting in. The handful of screens carrying their own "← Rapportages" link above the crumb
+  row call `returnHref(path)` for the same answer.
+  It lives in `sessionStorage` — the same lifetime as SvelteKit's own scroll restoration, this tab
+  and this visit — capped, evicting least-recently-left first.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
@@ -1110,6 +1226,25 @@
   eleven-control grid under a heading that promised only "logo, kleuren en merknaam", so "waar stel
   ik de valuta in?" had no scent to follow. Naming the halves costs nothing; it is still one form
   and one save button, because splitting the save is the mistake this page would make next.
+- **An error page is a screen, and a tenant's client sees it too** (docs/DEPLOY.md). One card,
+  the same shape as the login card: the tenant's logo or name, a sentence naming what happened, a
+  single link, and the status code last and quietest — a visitor is not helped by "404" set at
+  48px. What it says comes from one table (`$lib/core/errors/copy.ts`), shared by the in-app page
+  and the two standalone renderers, so the wording cannot drift between "the API is restarting"
+  and "the whole app is gone". Three rules are load-bearing:
+  - **The status is what we interpret, never the message.** The old page printed
+    `t(page.error.message)` — an i18n key on an API error and English prose on a SvelteKit one,
+    so roughly half the time it showed the visitor the literal text `errors.not_found`. A
+    message is used only when the catalogue actually holds it (`hasMessage`), which is what tells
+    one of ours apart from the framework's.
+  - **A gateway status says "even niet bereikbaar", never "er ging iets mis".** That is what a
+    rolling redeploy looks like from outside; telling an agency's client that something broke,
+    over a planned rollover, sends them to the phone — and it is not true.
+  - **"Probeer opnieuw" is only offered where retrying can work**, and it is a full document
+    load (`data-sveltekit-reload`): the thing that failed is the server, so re-running the same
+    load inside the same page proves nothing. A 404 and a 403 answer identically however many
+    times they are asked, so there the link goes home instead (#253, a control that always
+    refuses is a broken control).
 
 ## Known mistakes to not repeat
 
@@ -1142,14 +1277,34 @@
 - A desktop-only sidebar with no mobile navigation at all.
 - Bare **Delete** / **Edit** buttons exposed on a row or header (accidental-click magnets) —
   they belong in the ⋯ `ActionsMenu`, and every delete confirms via `ConfirmDialog`.
-- A ★ (or any emoji/glyph) marking the primary chip on top of its brand colour — the colour is
-  the marker, the glyph was noise. Meaning that colour alone carries goes in an `sr-only` label.
+- ~~A ★ (or any emoji/glyph) marking the primary chip on top of its brand colour~~ — **reversed**:
+  the colour turned out to be the mistake, not the glyph. It said nothing on a chip that had no
+  grey sibling to contrast with, and on an amber-branded tenant it said *warning*. The chip carries
+  a ★ now; see the rule above. Left struck through rather than deleted, because a design decision
+  that was made, held, and then overturned is worth more here than a clean list.
+- A primary marker with no words anywhere near it. The glyph says *that* one chip differs; only
+  text says what it means, and — on the clients-on-a-contact block, which points the other way
+  round from how it reads — which direction it points (#374).
 - Chip fields that were editable in use mode: a stray click could detach a contact or move the
   primary. Linking, unlinking and promoting are definition changes and live behind edit mode.
 - A burn bar clamped at 100 % (`Math.min(100, pct)`): a project 40 % over budget drew exactly like
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A `shrink-0` badge sharing the identity cell with the identity.** The invoices list drew a
+  "Creditfactuur" badge beside the number and marked the *badge* as the thing that must not
+  shrink, on the reasoning that the kind is what the row is about (#341). In a `table-fixed` grid
+  that reasoning is a measurement, and it lost: the column is 130 px, 98 px of it inside the
+  padding, the badge took 84 px, and `2026-0006` was handed 10 px and rendered as **`2.`** — so
+  the one document hardest to tell apart from its neighbours (same client, same date, only the
+  sign differs) was the only one whose number could not be read. Two rules. **The identity wins
+  its own cell**: whatever else lands there yields first, and a marker that cannot yield has to be
+  small enough that it never needs to. And **widening the column is not a fix, it is a new
+  threshold** — a longer number or a longer translation walks straight back into it, which is why
+  the word became a 14 px glyph carrying its label in `sr-only` (and in `title` for a sighted
+  hover) rather than a badge with a bigger budget. That is not the ★ mistake above: this glyph
+  replaces text that no longer fits and says the same thing to a screen reader that the badge did,
+  where the star duplicated a colour that already carried the meaning.
 - **A list that opens on everything it has, rather than on what anyone is working on.** Klanten
   listed the archive among the live clients and sorted newest-first, so the first screen of an
   agency's oldest relationship was whoever they signed up last, mixed with people they stopped
@@ -1206,6 +1361,20 @@
   declaration only where the endpoint needs no permission, or where the panel deliberately draws
   its own refusal state because that state is worth telling apart from an empty one (`oxxa`
   distinguishes "you may not look" from "there is no register account yet").
+
+  **And it closed the hole for exactly the pages the rule was not written about** (#365). The
+  contact/project/task pages compose the *web* registry's `EntityPanelSpec`; the **company hub**
+  composes the **API**'s `PanelSpec`, which was never given the field — so `GET
+  /companies/{id}/panels` declared `companies.company.read` once and then called thirteen
+  providers, and a member holding exactly that key received the client's contacts, projects,
+  tasks, hours (what somebody worked on, for how long, and whether we bill for it), websites,
+  domains with their resolved prices, and the full change history with actor names. Seven of
+  thirteen providers self-checked; six did not, and "each provider remembers" is not a rule, it is
+  a hope. `PanelSpec.requires_permission` now filters in `registry.panels_for(entity_type, names,
+  ctx.can)`, so the provider is never *called* — a check that still runs the query saves no round
+  trip and produces the answer anyway. `explicit_public` is the `no_permission_required` of this
+  seam: a declaration, with a reason, and a panel carrying neither is a build break
+  (`tests/test_company_panels_permissions.py`).
 - **A write control that leaks to the client portal because it's a *shared* component or a
   "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
   renders the **same** components as staff, and detail pages compose them without a portal filter —
@@ -1336,6 +1505,38 @@
   screen (a client list with every optional column on), not against prose, and it binds only above a
   1888 px window, so laptops are untouched. A screen that genuinely needs the whole width opts out
   by not using the class — never by raising the number for everyone.
+- **A measure is a rule about reading, and a grid is not read.** The entry above says the number was
+  chosen against the densest screen this app has. It was not: /tasks with every optional column
+  switched on wants 1812 px, and no width in that set is a taste — it is the arithmetic of the
+  columns the user switched on. On a 2560 px monitor the page was held at 1600 with every column
+  about a tenth under what it asked for (Titel 286 of 360, Labels 180 of 200) and 720 px of screen
+  sitting idle beside it; below a 1600 px window the same shortfall starts costing rows, and it was
+  worse still before the shrink was made to share (the finding that started this: Titel at its
+  160 px floor with nine of eleven titles truncated, next to a 198 px column of em-dashes). So a
+  page-level table now **claims** the width its columns actually ask for
+  (`$lib/core/ui/measure.svelte.ts`), and the shell grants it bounded twice — never below the
+  measure, so a short list still reads inside it and is never stretched thin, and never past the
+  room that exists. Tasks with twelve columns lands at 1814 px with every column at its declared
+  width and 253 px of margin still to spare: the point is not full bleed. How wide a grid is, is
+  arithmetic; how wide a paragraph is, stays a judgement. The header's controls take the same
+  measure, or the avatar drifts off the table it sits over. The claim is made from an effect, so a
+  wide grid widens once at hydration — the shell cannot see its own content until the content
+  exists.
+- **That arithmetic now lives in `$lib/core/table/widths.ts`, pure and tested.** #346 has been fixed
+  twice — the identity column handed *zero*, then the identity column handed its *floor* while a
+  column of em-dashes kept 99 % of its width — and both times the fix read fine in the diff. It is
+  invisible in every functional test (each row renders, every value is right; only the columns are
+  absurd) and invisible in any screenshot taken at the width you happen to develop at, which is why
+  it is now asserted at the widths nobody develops at rather than measured in a browser once. One
+  detail came out of the pinning: round a shrunken width *down*. A dozen columns each rounded up sum
+  past the box, and the grid answers a two-pixel overshoot with a scrollbar.
+- **An `sr-only` label can give the whole document a sideways scrollbar.** It is absolutely
+  positioned, and with no positioned ancestor inside the scroll box its containing block is the page
+  — and a clip does not apply to a box whose containing block sits outside it. So on any grid too
+  wide for its screen, the ⋯ header's 1 px screen-reader label stood at the *table's* right edge and
+  the shell scrolled sideways behind a scroller that was already doing the scrolling. `relative` on
+  the scroll box is the whole fix. Worth remembering the shape: when a document scrolls horizontally
+  and everything visible fits, look for what is positioned, not for what is wide.
 - **An inline-SVG chart with a constant `viewBox` and `class="w-full"`.** That pair does not size a
   chart, it fixes its *aspect ratio*, and the browser then scales every user unit inside it —
   gridlines, strokes and, fatally, type. The marketing trend chart was drawn 720×200; on a 3178 px
@@ -1483,3 +1684,144 @@
   the two remaining consequences are stated: a future planned block that would otherwise stay
   standing in the Agenda and in Google (removable in the same confirm, named with its date), and
   the good news that the rule has already scheduled the next one.
+
+- **A page that only *composes* has no foreground, and every card on it is equally unimportant**
+  (#364, the client hub). The registry handed the company page a list of panels, the page drew
+  each as a full-width card in `position` order, and that was the whole layout. A card holding
+  eight invoices and a card saying *"Deze klant heeft nog geen Drive-map."* were the same width,
+  the same weight and cost the same to scroll past — 4.6 screens on a well-filled client, 2.9 on a
+  young one, ten of whose fourteen cards were a heading over a negative sentence. Four rules came
+  out of redesigning it, and none of them costs the composition (§6 is intact: the page still
+  draws whatever the registry hands it, and names no module).
+
+  **A card is for content; an absence is a sentence, and ten absences are one sentence with ten
+  links.** A module with nothing to show does not earn a heading, a border and 100 px. `PanelSpec`
+  declares `empty_when(data)` — only the module can read its own payload — the API sends
+  `empty: true`, and the page folds every such panel into one *"Nog niets vastgelegd"* strip of ＋
+  chips. Ten ＋ actions in one row are easier to find than ten cards to scroll past, so this
+  *improves* discoverability. The one thing it must not cost is the control the empty panel
+  existed to offer: a chip links to the module's own create screen (`emptyHref` on the web spec,
+  because routing is a web question), and where the module has no such screen — Drive's "koppel
+  een map", Google Ads' connect flow live *in the panel* — the chip unfolds that card in place.
+
+  **A panel declares its own weight, because only the module knows.** `prominence` is a working
+  surface (something the reader acts on today) or a **register** (correct, occasionally consulted,
+  never news); `size` is full or half. How the page then fits them together is the entry below.
+
+  **Vital signs are the panels seam one level up.** `SummarySpec` / `SummaryTile` let a module
+  contribute one number, a label, a tone and a link; core lays them out under the header. Not one
+  of *openstaand bedrag, uren deze maand, open taken waarvan n over tijd, laatste contactmoment,
+  eerstvolgende verlenging* was on the page before, though every one was derivable from a panel
+  the reader had to scroll to and add up by eye. Each tile **opens what it counted** (principle 7,
+  applied at the top rather than inside a card), the value travels **raw** with its units so the
+  reader's locale formats it (§8), and a module returns **no tile** rather than a zero — a strip
+  permanently reading "€ 0,00 openstaand" is the chrome the redesign exists to remove.
+
+  **A panel with a control beside its title draws its own heading row.** The host owns the `<h2>`,
+  so such a panel had nowhere to put its ✎ and pushed a button row *underneath* — a band of empty
+  card with one control floating in it. `ownsHeader` + `PanelHeader` puts them on one line; the
+  title still comes from the API's `title_key`, so a panel does not get to rename itself by
+  drawing its own header.
+
+- **A grid of cards is a *row* layout, and rows are what leave the holes.** #364 read the two
+  declarations above correctly and then drew them the one way that cannot fit: a row is as tall as
+  its tallest card, so a short card leaves the space under it empty, and a full-width panel
+  arriving after an odd number of halves leaves half a row empty beside the one before it. On a
+  real client that measured a **271 px void** under Abonnementen, a whole empty half-row beside
+  Uren, and four ragged bottom edges — a page that reads as unfinished, which is #364's own
+  complaint one layer down. `items-start` is not the fix for that; it is the setting that makes the
+  holes exact. So the ordered panels are cut into **blocks**, and each block gets the layout its
+  own count deserves — every one hole-free by construction rather than by luck:
+
+  - **A card alone on its row takes the row.** A half-width panel with no half-width neighbour is
+    drawn full width; the alternative is a bordered rectangle beside nothing.
+  - **Two cards match.** With two there is nothing to pack, so they sit in a stretching two-column
+    grid: bottoms level, one edge, no gap. This is not "stretch everything" — the old warning
+    against stretching a two-row list to match a tall card still stands, which is exactly why
+    three or more do something else.
+  - **Three or more pack.** CSS multi-column: each card keeps its natural height and the browser
+    balances the lanes. Real masonry with no measuring, no layout jump after hydration, and no
+    second opinion about a height the browser already knows. It costs one thing worth writing
+    down — a multi-column container is a fragmentation context, so a panel that opens a dropdown
+    belongs in the primary lane (pairs and solos) or wants a viewport-anchored popover.
+
+  Every kind collapses to one column below `lg`, so this is a desktop rule and a phone still gets
+  one stack. The same complaint reached the vital-signs strip, where the *count* is what varies: a
+  fixed five-column grid fits five tiles and nothing else, so a client with no invoices contributed
+  four and the strip stopped 232 px short of the right edge, the empty slot reading as a tile that
+  had failed to load. "Nothing is a number" (above) is what makes the count variable in the first
+  place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
+  count nobody promised — one row at `lg` and up, whole rows below it.
+
+- **One edit surface for every size of edit.** Everything about a client — thirty fields, its
+  contact people and its logo — was changed in one 512 px `Modal` that rendered **1445 px tall**
+  on a 900 px laptop, so Opslaan started below the fold and changing a billing address put the
+  logo uploader on screen. The size of the edit surface should match the size of the edit (#364):
+
+  - **Tier 1, one field, in place.** The status pill was already the right control in the right
+    place; it just did nothing. It opens a `Combobox`, PATCHes on pick, and the trail records it.
+    Submit **one frame after** `onselect` (`requestAnimationFrame`, the shape `LinkField` uses):
+    the handler fires before the binding reaches the hidden input, so submitting straight from it
+    posts the value that was there when the dropdown opened — the pill flicks back to what it
+    already said and the write is a silent no-op.
+  - **Tier 2, a section.** Gegevens and Factuurgegevens each carry their own ✎ that flips *that
+    group* into edit mode, the pattern the contactpersonen panel already used. What makes it safe
+    is on the server: the update action patches **only the fields the form actually carried**
+    (`form.has(...)`, never `?? ""`), so a section save cannot null what it left out — absent
+    means leave alone and an explicit `null` clears, exactly as bulk edit reads it (§18).
+  - **Tier 3, the whole record**, in a `SlideOver` rather than a `Modal`: docked right and full
+    height it fits a long form without going below the fold, and the record you are editing
+    against stays visible beside it.
+
+  And **a save must say so.** The app had no toast primitive at all: the dialog closed, one value
+  changed somewhere in a 4116 px page, and if you had scrolled you would not see it.
+  `$lib/core/ui/toast.svelte` + `ToastHost` is that gap closed once, in core — a report, never a
+  question; not an error channel (a form's own error stays beside the control that produced it);
+  and never the only copy of anything, which is what makes auto-dismissal safe.
+
+- **`replaceState` during hydration takes the rest of the page with it.** Clearing a consumed
+  `?edit=1` from an `$effect` (or from `afterNavigate` on the first load) throws *"Cannot call
+  replaceState before router is initialized"*, and a throw in the hydration pass aborts every
+  effect after it — which left the edit surface's `Combobox`es showing their placeholder over
+  perfectly good values, a symptom that looks nothing like its cause. Consume a URL intent on a
+  **user gesture** instead (`clearEditIntent()` when the surface closes), which also covers the
+  ways out a handler never sees: the ✕, Escape and the backdrop.
+
+- **A dialog whose backdrop is `fixed` inside a scrolling wrapper hands the wheel to the page.**
+  `Modal`'s backdrop was `fixed inset-0` *inside* the `fixed inset-0 overflow-y-auto` wrapper, so
+  it was positioned against the viewport rather than against the wrapper and was not part of its
+  scroll chain: with the pointer over the dim area the wheel scrolled the document behind by
+  600 px while the dialog stood still. Body scroll was never locked either. On the tallest dialog
+  in the app that was the difference between reaching Opslaan and not. `absolute` within the
+  wrapper, plus `overflow: hidden` on the documentElement while open (`position: fixed` would jump
+  the page to the top).
+
+- **A backdrop is measured against the thing that scrolls, not against the viewport.** The same
+  `Modal`, the other half of the same bug. `absolute inset-0 min-h-full` on a child of the
+  `fixed inset-0 overflow-y-auto` port resolves to exactly *one viewport height*, because that is
+  the port's own height — it does not grow with what is inside it. So an online-meeting note that
+  laid out 2 555 px tall dimmed the first 720 px and left the rest of the page at full brightness,
+  with the title and the ✕ scrolled off the top: the dialog read as broken rather than as long,
+  and closing it meant scrolling back up to find the ✕. Three rules come out of fixing it.
+  - **The element the backdrop is measured against must be the one that grows.** The port is now
+    transparent and holds a single `relative flex min-h-full` wrapper *in flow* — at least the
+    viewport, taller when the dialog is — and the backdrop is `absolute` against that. It still
+    may not be `fixed`, for the scroll-chain reason above: `fixed` and `absolute`-against-the-port
+    both cover one viewport and stop, and only one of them also breaks the wheel.
+  - **A header that scrolls out of reach is not a header.** Title and ✕ are `sticky top-0`, opaque
+    and ruled — the shape `SlideOver` has always had, so the two dialogs now agree — and the title
+    is `line-clamp-2`, because on the surface that needed this (an e-mail subject) an unbounded
+    one would push the body off the screen it is pinned to.
+  - **Internal scrolling is the tempting fix and the wrong one here.** Capping the card and giving
+    the *body* `overflow-y-auto` is what most dialogs do, and it would clip every absolutely
+    positioned descendant whether or not anything overflows — including the `Combobox` list, which
+    deliberately hangs past the bottom edge of a short dialog. Scroll the whole overlay; pin the
+    header.
+
+  `SessionGuard` (deliberately not a `Modal`) had the sibling flaw: an item centred *in* its own
+  scroll port overflows equally in both directions, and the part above the top is unreachable at
+  any scroll position — so on a short window the product name and the title of a dialog you cannot
+  dismiss were simply not there. Centre on a `min-h-full` wrapper inside the port, never on the
+  port itself. Those two are the app's only full-screen scroll ports; everything else that scrolls
+  is a `max-h-*` list inside a card.
+

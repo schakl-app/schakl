@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from app.db import async_session_maker, set_current_org
-from app.modules.wordpress import client as wp_client
+from app.integrations.wordpress import client as wp_client
 from tests.conftest import add_membership, auth_cookie, make_tenant
 from tests.wordpress_fake import FakeWordPress
 

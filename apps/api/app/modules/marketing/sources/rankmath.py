@@ -44,7 +44,7 @@ from app.modules.marketing.sources.base import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from app.modules.wordpress.client import WordPressClient
+    from app.integrations.wordpress.client import WordPressClient
 
 logger = logging.getLogger("schakl.marketing")
 

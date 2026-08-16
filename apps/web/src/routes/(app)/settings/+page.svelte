@@ -4,8 +4,8 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import {
-    SETTINGS_GROUPS,
-    SETTINGS_SECTIONS,
+    groupSettingsScreens,
+    matchSettingsScreens,
     visibleSettingsScreens,
     type SettingsScreen,
   } from "$lib/core/settings-nav";
@@ -24,29 +24,14 @@
     }),
   );
 
-  // Thirty-five screens is past the point where scanning five groups beats typing. Matching runs
+  // Thirty-eight screens is past the point where scanning six groups beats typing. Matching runs
   // over the title, the subtitle *and* the screen's hidden keywords, so "btw" finds Facturatie and
-  // "wachtwoord" finds Mijn account — neither word appears on its card.
+  // "wachtwoord" finds Mijn account — neither word appears on its card. The matching and the
+  // grouping are shared with the rail (`SettingsNav`), which grew the same box: two copies is how
+  // a search on one of them narrows to a card while the other still lists everything.
   let query = $state("");
-  function haystack(screen: SettingsScreen): string {
-    const extra = screen.keywordsKey ? ` ${t(screen.keywordsKey)}` : "";
-    return `${t(screen.titleKey)} ${t(screen.subtitleKey)}${extra}`.toLowerCase();
-  }
-  const terms = $derived(query.trim().toLowerCase().split(/\s+/).filter(Boolean));
-  const matches = $derived(
-    terms.length === 0
-      ? screens
-      : screens.filter((s) => terms.every((w) => haystack(s).includes(w))),
-  );
-
-  const sections = $derived(
-    SETTINGS_SECTIONS.map((section) => ({
-      ...section,
-      groups: SETTINGS_GROUPS.filter((g) => g.section === section.key)
-        .map((group) => ({ ...group, items: matches.filter((s) => s.group === group.key) }))
-        .filter((group) => group.items.length > 0),
-    })).filter((section) => section.groups.length > 0),
-  );
+  const matches = $derived(matchSettingsScreens(screens, query, t));
+  const sections = $derived(groupSettingsScreens(matches));
 </script>
 
 <svelte:head>
@@ -56,7 +41,7 @@
 {#snippet card(screen: SettingsScreen)}
   <a
     href={screen.href}
-    class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    class="rounded-xl border border-border bg-surface-raised p-4 hover:border-brand"
   >
     <h3 class="text-sm font-semibold text-text">{t(screen.titleKey)}</h3>
     <p class="mt-1 text-sm text-text-muted">{t(screen.subtitleKey)}</p>
@@ -88,7 +73,10 @@
       {#if group.labelKey}
         <h3 class="mb-2 text-sm font-medium text-text">{t(group.labelKey)}</h3>
       {/if}
-      <div class="mb-6 grid gap-4 sm:grid-cols-2">
+      <!-- Two columns at every width above `sm` left a 1536 px screen rendering half-empty cards
+           down a 3050 px page with five orphan gaps (#378). The rail now takes 13 rem from `xl`,
+           and what is left still fits three from `2xl`. -->
+      <div class="mb-6 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
         {#each group.items as screen (screen.key)}
           {@render card(screen)}
         {/each}
@@ -97,6 +85,6 @@
   </section>
 {:else}
   <p class="rounded-xl border border-border bg-surface-raised p-5 text-sm text-text-muted">
-    {terms.length ? t("common.no_results") : t("settings.none_available")}
+    {query.trim() ? t("common.no_results") : t("settings.none_available")}
   </p>
 {/each}

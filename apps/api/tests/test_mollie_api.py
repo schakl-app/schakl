@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.mollie import client as mollie_client
+from app.integrations.mollie import client as mollie_client
 from app.registry import registry
 from tests.conftest import auth_cookie, make_tenant
 from tests.mollie_fake import FakeMollie

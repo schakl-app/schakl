@@ -408,11 +408,13 @@ async def list_availability(
     all_users: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> list[AvailabilityRead]:
-    """The exception rows with an occurrence in the window — own, or anyone's with ``:any``."""
-    rows = await LeaveService(ctx).list_availability(
+    """The exception rows with an occurrence in the window — own, or anyone's with ``:any``.
+
+    Each row carries the person's name, so a cross-person list needs no second read.
+    """
+    return await LeaveService(ctx).list_availability(
         date_from=date_from, date_to=date_to, user_id=user_id, all_users=all_users
     )
-    return [AvailabilityRead.model_validate(row) for row in rows]
 
 
 @router.get(

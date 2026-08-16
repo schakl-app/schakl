@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import subprocess
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from app.main import app as fastapi_app
 from tests.conftest import auth_cookie, make_tenant
@@ -444,3 +448,43 @@ async def test_meta_mcp_describes_every_section_the_server_serves(client_for) ->
             url="/mcp/invoicing",
         )
         assert len(listed["result"]["tools"]) == rows["invoicing"]["tool_count"]
+
+
+def test_importing_mcp_is_quiet_and_leaves_authlib_deprecations_audible():
+    """``import fastmcp`` must not print Authlib's ``authlib.jose`` deprecation on every boot.
+
+    FastMCP's JWT verifier imports the module; we never mount that provider and never touch
+    ``authlib.jose`` ourselves, and the import is still there on 3.x, so there is no upgrade
+    that fixes it. ``app/core/mcp/__init__`` silences it for the length of one import — and
+    the two things that make that work are invisible in a diff, which is what this pins:
+
+    * the ``authlib.deprecate`` pre-import is not a stray line. ``simplefilter`` prepends, so
+      Authlib's own ``always`` filter installed *inside* the block would sit in front of our
+      ignore and the warning would print regardless.
+    * ``catch_warnings`` restores the filter list it entered with, so that same inside-the-block
+      install would then be undone on the way out, taking every *other* Authlib deprecation
+      with it. We are an Authlib consumer in our own right (OIDC, Google OAuth).
+
+    A subprocess because a warning is raised once per process and the suite has long since
+    imported this package by the time any test runs.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONWARNINGS"}
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import app.core.mcp, warnings, authlib.deprecate as d;"
+            "print(any(f[2] is d.AuthlibDeprecationWarning for f in warnings.filters))",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "authlib.jose" not in proc.stderr, f"the deprecation is loud again:\n{proc.stderr}"
+    assert proc.stdout.strip() == "True", (
+        "Authlib's own 'always' filter did not survive the import, so every future Authlib "
+        f"deprecation is now silent too:\n{proc.stdout}{proc.stderr}"
+    )

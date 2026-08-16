@@ -16,10 +16,12 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import ReportSectionPicker from "$lib/modules/reporting/ReportSectionPicker.svelte";
   import ReportStatusPill from "$lib/modules/reporting/ReportStatusPill.svelte";
   import {
     audienceLabel,
@@ -28,7 +30,11 @@
     fmtDate,
     periodLabel,
   } from "$lib/modules/reporting/format";
-  import type { ReportTemplate, ReportTone } from "$lib/modules/reporting/types";
+  import type {
+    ReportTemplate,
+    ReportTone,
+    SectionCatalogEntry,
+  } from "$lib/modules/reporting/types";
 
   let { data, form } = $props();
 
@@ -65,6 +71,37 @@
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const areaClass = `${inputClass} leading-relaxed`;
 
+  /**
+   * This client's own section diff (#373). Seeded from the profile and then owned by the
+   * picker, so the hidden field it posts recomputes as rows are changed.
+   *
+   * Keyed on the profile id so switching client re-seeds — a `$state` initialised once from a
+   * `$derived` would carry the previous client's choices into this client's form.
+   */
+  let sectionOverrides = $state<Record<string, boolean>>({});
+  let seededFor = $state<string | null>(null);
+  $effect(() => {
+    const id = profile?.id ?? null;
+    if (seededFor === id) return;
+    seededFor = id;
+    sectionOverrides = { ...((profile?.sections ?? {}) as Record<string, boolean>) };
+  });
+
+  /** What the chosen client template says per section, so "volg sjabloon" can name its answer. */
+  const templateDefaults = $derived.by(() => {
+    const chosen =
+      clientTemplates.find((tpl) => tpl.id === profile?.template_id) ??
+      clientTemplates.find((tpl) => tpl.is_default) ??
+      clientTemplates[0];
+    const stored = (chosen?.layout as { sections?: { key: string; enabled?: boolean }[] })
+      ?.sections;
+    const out: Record<string, boolean> = {};
+    for (const entry of stored ?? []) out[entry.key] = entry.enabled !== false;
+    return out;
+  });
+
+  const marketing = $derived(data.marketing);
+
   /** The fact fields, in the order somebody filling this in would think of them. */
   const FACTS = [
     "business_context",
@@ -84,7 +121,7 @@
 </svelte:head>
 
 <a
-  href={`/companies/${data.companyId}`}
+  href={returnHref(`/companies/${data.companyId}`)}
   class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
 >
   <ArrowLeft size={15} />
@@ -208,6 +245,97 @@
         </select>
       </div>
     </div>
+  </section>
+
+  <!-- ── What the report contains ───────────────────────────────────────── -->
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-1 text-base font-semibold text-text">{t("reporting.profile.sections")}</h2>
+    <p class="mb-4 text-sm text-text-muted">{t("reporting.profile.sections_hint")}</p>
+
+    <ReportSectionPicker
+      sections={data.sections as SectionCatalogEntry[]}
+      bind:overrides={sectionOverrides}
+      {templateDefaults}
+      effective={profile?.effective_sections ?? []}
+      linkedSources={(marketing?.linked_sources ?? []) as string[]}
+    />
+
+    <!-- Keyword positions are the one section with a *choice* of source, so the choice lives
+         beside the switch rather than three screens away in Instellingen → Marketing. Leaving
+         it on "volg standaard" is the ordinary case and says what the standard resolves to.
+         Gated on `marketing.link.manage` — the key the save actually uses, not the one this
+         screen is about (#310): a control whose save 403s is a broken screen. -->
+    {#if data.canManageMarketing}
+      <div class="mt-5 border-t border-border pt-4">
+        <h3 class="mb-1 text-sm font-semibold text-text">{t("reporting.profile.rankings")}</h3>
+        <p class="mb-3 text-xs text-text-muted">
+          {t("reporting.profile.rankings_hint")}
+          {#if marketing?.keyword_source}
+            <span class="text-text">
+              · {t(`reporting.rankings.source_${marketing.keyword_source}`)}
+            </span>
+          {:else}
+            <span class="text-amber-700 dark:text-amber-400">
+              · {t("reporting.rankings.source_none")}
+            </span>
+          {/if}
+        </p>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label for="rank-source" class="mb-1 block text-sm font-medium text-text">
+              {t("reporting.rankings.source")}
+            </label>
+            <select
+              id="rank-source"
+              name="rankings_source"
+              class={inputClass}
+              value={(marketing?.rankings as { source?: string } | null)?.source ?? ""}
+            >
+              <option value="">{t("reporting.profile.inherit")}</option>
+              <option value="auto">{t("reporting.rankings.source_auto")}</option>
+              <option value="seranking">{t("reporting.rankings.source_seranking")}</option>
+              <option value="search_console">{t("reporting.rankings.source_search_console")}</option
+              >
+              <option value="off">{t("reporting.rankings.source_off")}</option>
+            </select>
+          </div>
+          <div>
+            <label for="rank-limit" class="mb-1 block text-sm font-medium text-text">
+              {t("reporting.rankings.limit")}
+            </label>
+            <input
+              id="rank-limit"
+              name="rankings_limit"
+              type="number"
+              min="1"
+              max="200"
+              class={inputClass}
+              placeholder={String(marketing?.rankings_resolved?.limit ?? 25)}
+              value={(marketing?.rankings as { limit?: number } | null)?.limit ?? ""}
+            />
+          </div>
+          <div>
+            <label for="rank-impressions" class="mb-1 block text-sm font-medium text-text">
+              {t("reporting.rankings.min_impressions")}
+            </label>
+            <input
+              id="rank-impressions"
+              name="rankings_min_impressions"
+              type="number"
+              min="0"
+              max="10000"
+              class={inputClass}
+              placeholder={String(marketing?.rankings_resolved?.min_impressions ?? 10)}
+              value={(marketing?.rankings as { min_impressions?: number } | null)
+                ?.min_impressions ?? ""}
+            />
+            <p class="mt-1 text-xs text-text-muted">
+              {t("reporting.rankings.min_impressions_hint")}
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
   </section>
 
   <!-- ── Recipients ─────────────────────────────────────────────────────── -->

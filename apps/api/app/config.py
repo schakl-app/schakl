@@ -139,8 +139,9 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-            "interactions", "google", "marketing", "google_ads", "hr", "cloudflare", "oxxa",
-            "portal", "reporting", "mollie", "uptime", "wordpress",
+            "interactions", "google", "marketing", "google_ads", "google_tag_manager", "hr",
+            "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
+            "snelstart",
         ]
     )
     default_locale: str = "nl"
@@ -198,6 +199,12 @@ class Settings(BaseSettings):
     # Password-reset requests are cheaper to abuse (e-mail bombing a victim's inbox), so the
     # forgot/reset routes get a tighter, separate budget.
     password_reset_rate_limit_per_minute: int = 5
+    # Signed-in ceilings on somebody else's quota, keyed per user rather than per IP
+    # (``limit_by_principal``). Pulling an email out of Gmail by hand (#342) is a few calls a
+    # person makes a few times a day; the ceiling is what keeps a script from turning the
+    # feature into a bulk mailbox import. 0 disables, as above.
+    gmail_manual_lookup_rate_limit_per_minute: int = 20
+    gmail_manual_import_rate_limit_per_minute: int = 10
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
@@ -269,6 +276,30 @@ class Settings(BaseSettings):
     # The DNS target tenants point their custom-domain CNAME at (shown in the domain UI on
     # cloud). Empty = derived as "edge.<base_domain>".
     cloud_cname_target: str | None = None
+
+    # --- SnelStart (epic #377) ---
+    # The **partner** subscription key for the SnelStart B2B-API (`Ocp-Apim-Subscription-Key`).
+    # Instance-level, not per tenant: it identifies the *integration* to Azure API Management,
+    # while the koppelsleutel each tenant supplies identifies their administration. One key
+    # serves every org on the box. A tenant may still store their own on the account row — a
+    # self-hosting agency that registered their own developer account — and that overrides this.
+    #
+    # Not shipped in any image. A free "Ontwikkeling & Test" key expires after **90 days**,
+    # which is worth knowing before an integration stops working on a Tuesday for no reason
+    # anyone can see; a certified Maatwerk or Productie key does not.
+    snelstart_subscription_key: str | None = None
+    # The `appShortName` SnelStart issues to a certified partner, which is what makes the
+    # one-click activation link possible: the tenant approves at
+    # `web.snelstart.nl/couplings/activate/<shortname>` and SnelStart posts the koppelsleutel
+    # to the **one** webhook URL registered for that app. Unset = the activation button does not
+    # render at all and connecting is a paste — which is the right answer for a self-hosted box,
+    # whose hostname SnelStart has never heard of and could not post to. #253: a control that
+    # always refuses is worse than no control.
+    snelstart_app_shortname: str | None = None
+    # Where SnelStart should post that koppelsleutel. Must be the single URL registered with
+    # SnelStart for the app, so on cloud it is the instance apex — where no org resolves and the
+    # `referenceKey` is the only thing that names the tenant. Empty = derived from base_domain.
+    snelstart_webhook_base: str | None = None
 
     # --- Cloudflare for SaaS (cloud only) ---
     # When the operator fronts the instance with Cloudflare for SaaS, a verified customer

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import TYPE_CHECKING, Protocol
 
-from app.modules.google.oauth import SCOPE_ADS, SCOPE_ANALYTICS, SCOPE_SEARCH_CONSOLE
+from app.integrations.google.oauth import SCOPE_ADS, SCOPE_ANALYTICS, SCOPE_SEARCH_CONSOLE
 from app.modules.marketing.models import MarketingSource
 
 if TYPE_CHECKING:

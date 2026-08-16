@@ -726,6 +726,22 @@ async def test_ingress_fragment_only_lists_verified_domains(
     assert "agency-b" not in content
     assert "certResolver: letsencrypt" in content
 
+    # Every middleware a router names is defined *in this fragment*. Traefik does not degrade a
+    # router whose middleware it cannot resolve — it drops the router — so a name borrowed from
+    # `00-base.yml` would take every customer domain dark on any host whose base file was older
+    # than this image. That already cost us once with `compress`; the two branded-error
+    # middlewares are the same trap with the same answer.
+    declared = {
+        line.strip().rstrip(":")
+        for line in content.splitlines()
+        if line.startswith("    ") and not line.startswith("      ") and line.rstrip().endswith(":")
+    }
+    for line in content.splitlines():
+        if "middlewares: [" in line:
+            named = line.split("[", 1)[1].rstrip("]").split(", ")
+            assert set(named) <= declared, f"{named} not all defined in the fragment"
+    assert "custdom-api-unreachable" in declared and "custdom-web-unreachable" in declared
+
     empty = render_fragment([])
     assert "http: {}" in empty
 

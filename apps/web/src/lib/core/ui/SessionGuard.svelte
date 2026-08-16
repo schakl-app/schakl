@@ -215,147 +215,163 @@
 {#if ended && !minimized}
   <!-- Not `Modal`: this one must not close on Escape or on a backdrop click. Behind it the
        page is intact and legible on purpose — anything unsaved there is still copyable. -->
-  <div class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4">
+  <div class="fixed inset-0 z-[60] overflow-y-auto overscroll-contain">
     <div class="fixed inset-0 bg-neutral-900/50 backdrop-blur-[2px]"></div>
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="session-ended-title"
-      class="relative w-full max-w-sm rounded-2xl border border-border bg-surface-raised p-7 shadow-2xl"
-    >
-      <div class="mb-5 text-center">
-        {#if page.data.theme?.logoUrl}
-          <img src={page.data.theme.logoUrl} alt="" class="mx-auto mb-4 h-9" />
-        {:else}
-          <div
-            class="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-          >
-            <ShieldAlert size={22} />
-          </div>
-        {/if}
-        <h2 id="session-ended-title" class="text-base font-semibold text-text">
-          {t("session.ended.title")}
-        </h2>
-        <p class="mt-1.5 text-sm text-text-muted">
-          {ended === "signed_out" ? t("session.ended.signed_out") : t("session.ended.expired")}
-        </p>
-        <p class="mt-1 text-sm text-text-muted">{t("session.ended.hint")}</p>
-      </div>
-
-      {#if challenge}
-        <!-- The second factor, in place: the challenge redeems exactly as it does on the
-             login screen, because it is the same call. -->
-        <form onsubmit={submit} class="space-y-4">
-          <p class="text-sm text-text-muted">
-            {#if challenge.smsSentTo}
-              {t("auth.two_factor_sms_sent", { phone: challenge.smsSentTo })}
-            {:else if method === "backup"}
-              {t("auth.two_factor_backup_hint")}
-            {:else}
-              {t("auth.two_factor_hint")}
-            {/if}
-          </p>
-          <div>
-            <label for="session-code" class="mb-1 block text-sm font-medium text-text">
-              {method === "backup" && !challenge.smsSentTo
-                ? t("auth.two_factor_backup_code")
-                : t("auth.two_factor_code")}
-            </label>
-            <input
-              id="session-code"
-              bind:value={code}
-              use:focusOnMount
-              type="text"
-              required
-              autocomplete="one-time-code"
-              inputmode={method === "backup" ? "text" : "numeric"}
-              class={inputClass}
-            />
-          </div>
-
-          {#if errorKey}
-            <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
-          {/if}
-
-          <Button type="submit" class="w-full" loading={busy}>{t("auth.two_factor_verify")}</Button>
-
-          <div class="space-y-1 text-center text-sm">
-            <button
-              type="button"
-              class="block w-full text-text-muted hover:text-brand"
-              onclick={() => (method = method === "totp" ? "backup" : "totp")}
+    <!-- Centred on a wrapper that is *at least* the viewport rather than on the scroll port
+         itself: a flex item centred inside its own scroll container overflows equally in both
+         directions, and the part above the top is unreachable — no scroll position exposes it.
+         On a short window (a laptop with the 2FA step showing, a phone in landscape) that is the
+         product name and the title, and this dialog cannot be dismissed to read them. -->
+    <div class="relative flex min-h-full items-center justify-center p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="session-ended-title"
+        class="relative w-full max-w-sm rounded-2xl border border-border bg-surface-raised p-7 shadow-2xl"
+      >
+        <div class="mb-5 text-center">
+          {#if page.data.theme?.logoUrl}
+            <img src={page.data.theme.logoUrl} alt="" class="mx-auto mb-4 h-9" />
+          {:else}
+            <div
+              class="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
             >
-              {method === "totp" ? t("auth.two_factor_use_backup") : t("auth.two_factor_use_totp")}
-            </button>
-            {#if canSms && !challenge.smsSentTo}
+              <ShieldAlert size={22} />
+            </div>
+          {/if}
+          <h2 id="session-ended-title" class="text-base font-semibold text-text">
+            {t("session.ended.title")}
+          </h2>
+          <p class="mt-1.5 text-sm text-text-muted">
+            {ended === "signed_out" ? t("session.ended.signed_out") : t("session.ended.expired")}
+          </p>
+          <p class="mt-1 text-sm text-text-muted">{t("session.ended.hint")}</p>
+        </div>
+
+        {#if challenge}
+          <!-- The second factor, in place: the challenge redeems exactly as it does on the
+             login screen, because it is the same call. -->
+          <form onsubmit={submit} class="space-y-4">
+            <p class="text-sm text-text-muted">
+              {#if challenge.smsSentTo}
+                {t("auth.two_factor_sms_sent", { phone: challenge.smsSentTo })}
+              {:else if method === "backup"}
+                {t("auth.two_factor_backup_hint")}
+              {:else}
+                {t("auth.two_factor_hint")}
+              {/if}
+            </p>
+            <div>
+              <label for="session-code" class="mb-1 block text-sm font-medium text-text">
+                {method === "backup" && !challenge.smsSentTo
+                  ? t("auth.two_factor_backup_code")
+                  : t("auth.two_factor_code")}
+              </label>
+              <input
+                id="session-code"
+                bind:value={code}
+                use:focusOnMount
+                type="text"
+                required
+                autocomplete="one-time-code"
+                inputmode={method === "backup" ? "text" : "numeric"}
+                class={inputClass}
+              />
+            </div>
+
+            {#if errorKey}
+              <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
+            {/if}
+
+            <Button type="submit" class="w-full" loading={busy}
+              >{t("auth.two_factor_verify")}</Button
+            >
+
+            <div class="space-y-1 text-center text-sm">
               <button
                 type="button"
                 class="block w-full text-text-muted hover:text-brand"
-                onclick={sendSms}
+                onclick={() => (method = method === "totp" ? "backup" : "totp")}
               >
-                {t("auth.two_factor_send_sms")}
+                {method === "totp"
+                  ? t("auth.two_factor_use_backup")
+                  : t("auth.two_factor_use_totp")}
               </button>
-            {/if}
-          </div>
-        </form>
-      {:else if localLogin}
-        <form onsubmit={submit} class="space-y-4">
-          <div>
-            <label for="session-email" class="mb-1 block text-sm font-medium text-text">
-              {t("auth.email")}
-            </label>
-            <input
-              id="session-email"
-              bind:value={email}
-              type="email"
-              name="email"
-              required
-              autocomplete="username"
-              class={inputClass}
-            />
-          </div>
-          <div>
-            <label for="session-password" class="mb-1 block text-sm font-medium text-text">
-              {t("auth.password")}
-            </label>
-            <!-- Focus lands here, not on the address: the address is already filled in with
-                 whoever was using this tab. -->
-            <div use:focusOnMount>
-              <PasswordInput id="session-password" name="password" bind:value={password} required />
+              {#if canSms && !challenge.smsSentTo}
+                <button
+                  type="button"
+                  class="block w-full text-text-muted hover:text-brand"
+                  onclick={sendSms}
+                >
+                  {t("auth.two_factor_send_sms")}
+                </button>
+              {/if}
             </div>
-          </div>
+          </form>
+        {:else if localLogin}
+          <form onsubmit={submit} class="space-y-4">
+            <div>
+              <label for="session-email" class="mb-1 block text-sm font-medium text-text">
+                {t("auth.email")}
+              </label>
+              <input
+                id="session-email"
+                bind:value={email}
+                type="email"
+                name="email"
+                required
+                autocomplete="username"
+                class={inputClass}
+              />
+            </div>
+            <div>
+              <label for="session-password" class="mb-1 block text-sm font-medium text-text">
+                {t("auth.password")}
+              </label>
+              <!-- Focus lands here, not on the address: the address is already filled in with
+                 whoever was using this tab. -->
+              <div use:focusOnMount>
+                <PasswordInput
+                  id="session-password"
+                  name="password"
+                  bind:value={password}
+                  required
+                />
+              </div>
+            </div>
 
-          {#if errorKey}
-            <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
-          {/if}
+            {#if errorKey}
+              <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
+            {/if}
 
-          <Button type="submit" class="w-full" loading={busy}>{t("auth.sign_in_action")}</Button>
-        </form>
-      {:else}
-        <!-- An org that enforces SSO has no password form to offer; say so and hand over. -->
-        <p class="text-center text-sm text-text-muted">{t("auth.local_login_disabled")}</p>
-      {/if}
+            <Button type="submit" class="w-full" loading={busy}>{t("auth.sign_in_action")}</Button>
+          </form>
+        {:else}
+          <!-- An org that enforces SSO has no password form to offer; say so and hand over. -->
+          <p class="text-center text-sm text-text-muted">{t("auth.local_login_disabled")}</p>
+        {/if}
 
-      {#if options?.oidcEnabled}
-        <a
-          href="/api/v1/auth/oidc/login"
-          class="mt-3 block w-full rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-text hover:bg-surface"
-        >
-          {t("auth.sign_in_with_sso", { name: options.oidcName || "SSO" })}
-        </a>
-      {/if}
+        {#if options?.oidcEnabled}
+          <a
+            href="/api/v1/auth/oidc/login"
+            class="mt-3 block w-full rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-text hover:bg-surface"
+          >
+            {t("auth.sign_in_with_sso", { name: options.oidcName || "SSO" })}
+          </a>
+        {/if}
 
-      <div class="mt-5 flex items-center justify-between border-t border-border pt-4 text-sm">
-        <a href={loginHref} data-sveltekit-reload class="text-text-muted hover:text-brand">
-          {t("session.ended.other_account")}
-        </a>
-        <button
-          type="button"
-          class="text-text-muted hover:text-text"
-          onclick={() => (minimized = true)}
-        >
-          {t("session.ended.later")}
-        </button>
+        <div class="mt-5 flex items-center justify-between border-t border-border pt-4 text-sm">
+          <a href={loginHref} data-sveltekit-reload class="text-text-muted hover:text-brand">
+            {t("session.ended.other_account")}
+          </a>
+          <button
+            type="button"
+            class="text-text-muted hover:text-text"
+            onclick={() => (minimized = true)}
+          >
+            {t("session.ended.later")}
+          </button>
+        </div>
       </div>
     </div>
   </div>

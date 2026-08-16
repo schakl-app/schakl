@@ -77,6 +77,11 @@ class Project(
         index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    #: Nobody has named this project yet — see ``Task.unnamed`` (#350) for the whole argument.
+    #: Cleared by the first write that sets a name.
+    unnamed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=ProjectStatus.ACTIVE.value, index=True

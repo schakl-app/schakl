@@ -216,6 +216,13 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     #: dashboard where GA4 reads against last year and Search Console against last month is not
     #: a screen anyone can summarise.
     compare: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: This client's keyword-positions settings for a report (#373) — the same shape as
+    #: ``MarketingSettings.rankings``, validated by ``marketing.rankings.RankingSettings``.
+    #: **NULL = follow the org default**, the ``compare`` idiom above: an agency decides once
+    #: how it reports positions and overrides it for the client whose situation differs — the
+    #: one with an SE Ranking project where the rest are on Search Console, or the one whose
+    #: long tail is worth printing where most clients' is not.
+    rankings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -245,3 +252,8 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: reports the same way for nearly all of its clients, so this is set once and overridden
     #: per client only where the client's own history says otherwise.
     default_compare: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: The house keyword-positions settings every client's report inherits (#373). NULL = the
+    #: code defaults in ``marketing.rankings.RankingSettings``, which are what an agency that
+    #: never opens this screen should get: **positions from whichever source the client
+    #: actually has**, the terms they rank best for first, and nothing shown twice all month.
+    rankings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

@@ -875,6 +875,43 @@ def test_wire_tool_names_sanitized_and_mapped_back() -> None:
     assert wired[1].name == "submit_time_entry"
 
 
+def test_a_tool_call_we_could_not_finish_reading_says_so() -> None:
+    """A tool call's arguments stream as one JSON string, so a run that hits the token ceiling
+    ends mid-object. Both adapters used to answer that with ``{}`` and say nothing, which made
+    "cut off" and "submitted an empty form" the same value — and #327's email enrichment read
+    the first as the second, telling the user the mail contained nothing to add.
+
+    ``{}`` stays a legitimate answer (a forced tool with no required properties may be called
+    with one), so the two are told apart by the flag rather than by the dict.
+    """
+    from app.core.ai.providers import _tool_arguments
+
+    assert _tool_arguments('{"summary": "Volgende week"}') == ({"summary": "Volgende week"}, False)
+    # Nothing at all is an empty call, not a broken one.
+    assert _tool_arguments("") == ({}, False)
+    assert _tool_arguments("{}") == ({}, False)
+    # Cut off mid-string, mid-array and at the first brace: unread, every time.
+    for fragment in ('{"summary": "Volgende week te', '{"checklist_items": [{"title"', "{"):
+        assert _tool_arguments(fragment) == ({}, True), fragment
+    # Valid JSON that is not an object is not a set of arguments either.
+    assert _tool_arguments('"nope"') == ({}, True)
+
+
+def test_renaming_a_wire_tool_does_not_forget_what_the_adapter_learned() -> None:
+    """``stream_chat`` maps the dotted registry names (§12) back after the adapter yields.
+
+    It rebuilt the call to do that, which quietly dropped every field the adapter had set — so
+    the dotted-name tools, the ones the assistant actually uses, would have lost ``incomplete``
+    on the way out. A rename is a rename.
+    """
+    from dataclasses import replace
+
+    call = ToolCall("c1", "companies_find", {}, incomplete=True)
+    assert replace(call, name="companies.find") == ToolCall(
+        "c1", "companies.find", {}, incomplete=True
+    )
+
+
 async def test_provider_failure_is_a_502_envelope(client_for, monkeypatch) -> None:
     """A provider refusal is the standard envelope on the non-streaming endpoints, never a
     bare 500 (the settings test button alone shows the provider's own words)."""

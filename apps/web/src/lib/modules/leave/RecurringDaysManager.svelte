@@ -18,7 +18,13 @@
   import { Clock, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
+  import {
+    capitalizeFirst,
+    fmtClockTime,
+    fmtNumericDate,
+    fmtWeekdayShort,
+    RANGE_DASH,
+  } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
@@ -121,9 +127,9 @@
       {#each patterns as pattern (pattern.id)}
         <li class="flex items-center gap-3 px-3 py-2 text-sm">
           <div class="min-w-0 flex-1">
-            <span class="font-medium capitalize text-text">
-              {fmtWeekdayShort(pattern.anchor_date)}
-              <span class="font-normal normal-case text-text-muted">
+            <span class="font-medium text-text">
+              {capitalizeFirst(fmtWeekdayShort(pattern.anchor_date))}
+              <span class="font-normal text-text-muted">
                 · {rhythmText(pattern)}
                 {#if windowText(pattern)}
                   · {windowText(pattern)}

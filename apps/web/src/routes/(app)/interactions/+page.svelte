@@ -7,7 +7,17 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import { ArrowRightLeft, Check, Link2, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import {
+    ArrowRightLeft,
+    Check,
+    Link2,
+    Mail,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+    X,
+  } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -33,6 +43,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
@@ -303,6 +314,8 @@
 
   let showCreate = $state(false);
   let showUpload = $state(false);
+  /** Set when the upload dialog is opened to fill the gaps in one conversation (#342). */
+  let gapThreadId = $state<string | null>(null);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   const busy = new InFlight();
@@ -394,6 +407,20 @@
         },
       });
     }
+    // "Mist er een bericht?" (#342): the rest of *this* conversation, with the gaps named. The
+    // thread id came off this very row, so it asks about a conversation the poller already told
+    // us about — no search, no mailbox listing, nothing new to consent to. Owner-only for the
+    // same reason every other Gmail action here is: it reads through their grant, not ours.
+    if (item.source === "gmail" && item.gmail_thread_id && isOwner(item)) {
+      entries.push({
+        label: t("interactions.gmail.thread_open"),
+        icon: Search,
+        onclick: () => {
+          gapThreadId = item.gmail_thread_id ?? null;
+          showUpload = true;
+        },
+      });
+    }
     if (item.source === "gmail" && item.status === "pending" && isOwner(item)) {
       entries.push({
         label: t("interactions.reject"),
@@ -452,13 +479,21 @@
   <h1 class="text-xl font-semibold text-text">
     {navLabel("interactions", t("interactions.title"))}
   </h1>
-  {#if canWrite}
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
+    <!-- Whether the feed is up to date, and a way to make it so (#341). Outside `canWrite`:
+         scanning your own mailbox writes nothing here that you did not already receive, and the
+         person who most needs to know the timeline is stale is the one who cannot add rows by
+         hand. It draws itself only when this user's own mailbox is actually syncing. -->
+    <GmailRefreshButton status={data.gmailStatus} result={form?.gmailRefresh ?? null} />
+    {#if canWrite}
       <!-- An email from outside a connected mailbox is logged from its .eml export (#262). -->
       <button
         type="button"
         class="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
-        onclick={() => (showUpload = true)}
+        onclick={() => {
+          gapThreadId = null;
+          showUpload = true;
+        }}
       >
         <Mail size={15} aria-hidden="true" />
         {t("interactions.eml.add")}
@@ -471,8 +506,8 @@
         <Plus size={15} aria-hidden="true" />
         {t("interactions.add")}
       </button>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 {#if form?.error}
@@ -834,9 +869,16 @@
 </Modal>
 
 <!-- Upload an exported email (#262): the same inline-create dialogs the manual form uses. -->
-<Modal bind:open={showUpload} title={t("interactions.eml.title")}>
+<Modal
+  bind:open={showUpload}
+  title={gapThreadId ? t("interactions.gmail.title") : t("interactions.eml.title")}
+>
   {#if showUpload}
-    <EmlUploadForm onsaved={() => (showUpload = false)} />
+    <EmlUploadForm
+      threadId={gapThreadId}
+      gmailAvailable={data.gmailStatus?.available ?? null}
+      onsaved={() => (showUpload = false)}
+    />
   {/if}
 </Modal>
 

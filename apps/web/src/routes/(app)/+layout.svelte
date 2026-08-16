@@ -32,12 +32,19 @@
   import { t } from "$lib/core/i18n";
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import { returnQueries, trackScreenPositions } from "$lib/core/screen-position.svelte";
   import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
+  import { measureStyle, providePageMeasure } from "$lib/core/ui/measure.svelte";
   import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
+  import ToastHost from "$lib/core/ui/ToastHost.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
+
+  // How wide this page's own grid asked to be — see the `<main>` comment below and
+  // `measure.svelte.ts`. 0 while nothing claims, which is every screen that is not a table.
+  const pageMeasure = providePageMeasure();
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
@@ -56,6 +63,11 @@
   // `afterNavigate` may only be called during component init; the trail itself is drawn only
   // over links the landing record confirms (core/breadcrumb-trail).
   trackCrumbTrail();
+  // Remember where on a screen the visitor was, so leaving it and coming back returns them there
+  // and not to the top of page 1 (core/screen-position). Registered here for the same reason the
+  // trail is: `beforeNavigate`/`afterNavigate` may only be called during component init, and this
+  // layout is the one component every app screen mounts inside.
+  trackScreenPositions();
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
   const showSettings = $derived(!isPortal && canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
@@ -265,9 +277,14 @@
         {:else}
           {@const open = isGroupOpen(entry)}
           {@const GroupIcon = entry.items[0].icon ?? Handshake}
+          <!-- Tighter than a leaf row on purpose (#347): a group carries a chevron the leaves
+               do not, and at `gap-3 px-3` that left `Domeinen & websites` one pixel short of
+               its own box — the permanent navigation read `Domeinen & websit…`. The gap and the
+               right padding are the two places that pixel can come from without shortening a
+               label a tenant reads a hundred times a day. -->
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface"
+            class="flex w-full items-center gap-2.5 rounded-lg py-2 pl-3 pr-2 text-sm text-text hover:bg-surface"
             onclick={() => toggleGroup(entry.key)}
             aria-expanded={open}
           >
@@ -424,6 +441,7 @@
     <header class="h-14 border-b border-border bg-surface-raised px-4 text-sm sm:px-6">
       <div
         class="mx-auto flex h-full w-full max-w-content items-center justify-between gap-4 sm:justify-end"
+        style={measureStyle(pageMeasure())}
       >
         <button
           type="button"
@@ -527,9 +545,15 @@
          truncating both*, and a dashboard tile put "Bakkerij Jansen" and its number at opposite
          ends of the screen. Wider is not more readable past a point; it is further to look. The
          cap binds only above a 1888px window (a 1920 desktop loses 16px a side, a laptop
-         nothing), and it centres, so the space beyond it becomes margin rather than stretch. -->
+         nothing), and it centres, so the space beyond it becomes margin rather than stretch.
+
+         It is a measure for *reading*, though, and a grid is not read — its width is the sum of
+         the columns the user switched on, and that sum is knowable. A page-level table that
+         outgrows the measure claims what it needs (`measure.svelte.ts`), bounded below by the
+         measure and above by the room that exists, so /tasks with every column on stops
+         truncating the record's own name while 720px of monitor sits empty beside it. -->
     <main class="flex-1 p-6">
-      <div class="mx-auto w-full max-w-content">
+      <div class="mx-auto w-full max-w-content" style={measureStyle(pageMeasure())}>
         {#if !isPortal}
           <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
                path, the route's own parameter names, the page's own loaded data and the nav this
@@ -542,6 +566,7 @@
               data: page.data,
               nav,
               trail: crumbTrail(),
+              returnQueries: returnQueries(),
             })}
           />
         {/if}
@@ -561,3 +586,7 @@
      claims to be signed in, and the root also wraps /login, /setup and the public invoice page,
      where "sign back in" would be an answer to a question nobody asked. -->
 <SessionGuard />
+
+<!-- The app's one toast queue (#364). Mounted beside SessionGuard for the same reason: it belongs
+     to the surface that is signed in and doing work, not to /login. -->
+<ToastHost />

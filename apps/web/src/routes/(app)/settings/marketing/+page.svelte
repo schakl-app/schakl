@@ -11,6 +11,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { compareModeLabel } from "$lib/modules/marketing/format";
   import { COMPARE_PERIODS } from "$lib/modules/marketing/types";
 
@@ -89,6 +90,81 @@
         {/each}
       </select>
       <p class="mt-1 text-xs text-text-muted">{t("settings.marketing.default_compare_hint")}</p>
+    </div>
+
+    <!-- The house rule for keyword positions (#373). Every client's report inherits this; the
+         one whose situation differs overrides it on their own reporting page. "Automatisch" is
+         the default and the only value that is right for a mixed client list without anyone
+         visiting a screen: SE Ranking where the client has a project, Search Console otherwise. -->
+    <div class="border-t border-border pt-5">
+      <h3 class="mb-1 text-sm font-semibold text-text">{t("settings.marketing.rankings")}</h3>
+      <p class="mb-3 text-xs text-text-muted">{t("settings.marketing.rankings_hint")}</p>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="rankings-source" class="mb-1 block text-sm font-medium text-text">
+            {t("reporting.rankings.source")}
+          </label>
+          <select
+            id="rankings-source"
+            name="rankings_source"
+            value={settings?.rankings?.source ?? "auto"}
+            class={inputClass}
+          >
+            <option value="auto">{t("reporting.rankings.source_auto")}</option>
+            <option value="seranking">{t("reporting.rankings.source_seranking")}</option>
+            <option value="search_console">{t("reporting.rankings.source_search_console")}</option>
+            <option value="off">{t("reporting.rankings.source_off")}</option>
+          </select>
+        </div>
+        <div>
+          <label for="rankings-limit" class="mb-1 block text-sm font-medium text-text">
+            {t("reporting.rankings.limit")}
+          </label>
+          <input
+            id="rankings-limit"
+            name="rankings_limit"
+            type="number"
+            min="1"
+            max="200"
+            value={settings?.rankings?.limit ?? 25}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("reporting.rankings.limit_hint")}</p>
+        </div>
+        <div>
+          <label for="rankings-impressions" class="mb-1 block text-sm font-medium text-text">
+            {t("reporting.rankings.min_impressions")}
+          </label>
+          <input
+            id="rankings-impressions"
+            name="rankings_min_impressions"
+            type="number"
+            min="0"
+            max="10000"
+            value={settings?.rankings?.min_impressions ?? 10}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("reporting.rankings.min_impressions_hint")}</p>
+        </div>
+      </div>
+      <div class="mt-3 space-y-2">
+        <label class="flex items-center gap-2 text-sm text-text">
+          <FormCheckbox
+            name="rankings_grouped"
+            checked={settings?.rankings?.grouped ?? true}
+            class="rounded border-border"
+          />
+          <span>{t("reporting.rankings.grouped")}</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text">
+          <FormCheckbox
+            name="rankings_show_landing_pages"
+            checked={settings?.rankings?.show_landing_pages ?? true}
+            class="rounded border-border"
+          />
+          <span>{t("reporting.rankings.show_landing_pages")}</span>
+        </label>
+      </div>
     </div>
 
     {#if form?.saved}

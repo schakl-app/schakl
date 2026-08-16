@@ -57,6 +57,13 @@ async def list_projects(
         ),
     ),
     q: str | None = Query(None, max_length=200),
+    unnamed: bool | None = Query(
+        None,
+        description=(
+            "Only projects nobody named (create-then-edit rows never finished), or only named "
+            "ones. Omitted returns both."
+        ),
+    ),
     mine: bool = Query(False, description="Only projects I'm assigned to (primary or not)"),
     sort: str | None = Query(
         None, description="name | status | start_date | end_date | budget_hours | …, '-' desc"
@@ -73,6 +80,7 @@ async def list_projects(
         company_id=company_id,
         status=status,
         q=q,
+        unnamed=unnamed,
         mine=mine,
         sort=sort,
         hours=hours,

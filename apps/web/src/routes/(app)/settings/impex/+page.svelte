@@ -105,6 +105,7 @@
 
 <ImportWizard
   bind:open={importOpen}
+  entity={importEntity}
   action={`?/impex&entity=${importEntity}`}
   locale={data.locale}
   report={form?.impex ?? null}

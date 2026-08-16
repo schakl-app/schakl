@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
@@ -27,11 +28,28 @@ export const actions: Actions = {
     // is dropped rather than written.
     const raw = String(form.get("default_compare") ?? "");
     const default_compare = raw === "year" || raw === "previous" ? raw : null;
+    // The house rule for keyword positions (#373). Same shape as the comparison above: a plain
+    // choice, so an unrecognised source is dropped rather than written. The two checkboxes are
+    // read by presence (`checked`), never against a literal — a control that posts "true" and a
+    // check for "on" is the silent-false bug this codebase has already paid for once.
+    const source = String(form.get("rankings_source") ?? "");
     const { error } = await apiFor(event).PUT("/api/v1/marketing/settings", {
       body: {
         ads_developer_token: token,
         seranking_api_key: seranking,
         default_compare,
+        rankings: {
+          source: (["auto", "seranking", "search_console", "off"].includes(source)
+            ? source
+            : null) as "auto" | "seranking" | "search_console" | "off" | null,
+          limit: Number(form.get("rankings_limit")) || null,
+          min_impressions:
+            form.get("rankings_min_impressions") === ""
+              ? null
+              : Number(form.get("rankings_min_impressions")),
+          grouped: checked(form, "rankings_grouped"),
+          show_landing_pages: checked(form, "rankings_show_landing_pages"),
+        },
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

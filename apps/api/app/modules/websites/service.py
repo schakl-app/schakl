@@ -20,6 +20,7 @@ from sqlalchemy.sql.expression import table as sa_table
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
+from app.core.monitoring import website_statuses
 from app.core.party import PartyService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
@@ -134,6 +135,7 @@ def _blank_display_fields(websites: Sequence[Website]) -> None:
         w.company_id = None  # type: ignore[attr-defined]
         w.company_name = None  # type: ignore[attr-defined]
         w.technical_owner = None  # type: ignore[attr-defined]
+        w.uptime_status = None  # type: ignore[attr-defined]
 
 
 class WebsiteService:
@@ -379,7 +381,11 @@ class WebsiteService:
                 for w in websites
             ]
         )
+        # One batched question to whichever module watches these sites — or to nobody, on an
+        # instance without the uptime module, where an empty answer is the honest one (#356).
+        statuses = await website_statuses(self.ctx, {w.id for w in websites})
         for i, w in enumerate(websites):
+            w.uptime_status = statuses.get(w.id)  # type: ignore[attr-defined]
             w.domain_name = domain_names.get(w.domain_id, "")  # type: ignore[attr-defined]
             w.hosting_name = hosting_names.get(w.hosting_id)  # type: ignore[attr-defined]
             w.company_id = domain_company.get(w.domain_id)  # type: ignore[attr-defined]

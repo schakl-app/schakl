@@ -11,6 +11,7 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { projectName, UNNAMED_CLASS } from "$lib/core/unnamed";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -202,8 +203,11 @@
 {#snippet nameCell(project: Project)}
   <!-- `block`, because `overflow` does not apply to an inline box: on a bare `<a>` the class
        would set `nowrap` and nothing else, and the name would spill into Klant. -->
-  <a href="/projects/{project.id}" class="block truncate font-medium text-text hover:text-brand"
-    >{project.name}</a
+  <a
+    href="/projects/{project.id}"
+    class="block truncate font-medium text-text hover:text-brand {project.unnamed
+      ? UNNAMED_CLASS
+      : ''}">{projectName(project)}</a
   >
 {/snippet}
 
@@ -282,7 +286,9 @@
     <a href="/projects/{project.id}" class="min-w-0 flex-1">
       <!-- No client suffix here: the phone list keeps the sections, so the row already sits
            under its client's heading and repeating it costs the name its width. -->
-      <span class="block truncate font-medium text-text">{project.name}</span>
+      <span class="block truncate font-medium text-text {project.unnamed ? UNNAMED_CLASS : ''}"
+        >{projectName(project)}</span
+      >
       {#if table.visibleKeys.includes("hours") && project.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
       {/if}
@@ -386,6 +392,17 @@
       onclick={() => setStatusFilter(status)}>{t(`projects.status.${status}`)}</button
     >
   {/each}
+  <!-- The abandoned create-then-edit rows (#350), gathered so they can be renamed or deleted.
+       Orthogonal to the status pills: a nameless project has a status like any other. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.unnamed
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    aria-pressed={data.unnamed}
+    onclick={() => setFilter("unnamed", data.unnamed ? "" : "1")}
+    >{t("projects.filter.unnamed")}</button
+  >
   <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
        with the list sits at the far end, and that is the same on every list here. -->
   <div class="ml-auto flex flex-wrap items-center gap-2">

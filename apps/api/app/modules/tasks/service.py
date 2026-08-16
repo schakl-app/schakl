@@ -16,6 +16,7 @@ from sqlalchemy import and_, case, column, func, or_, select, table
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
+from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.directory import visible_ids
 from app.core.entitlements import OrgPlan, refusal_for, sku_writable
@@ -39,6 +40,7 @@ from app.modules.tasks.models import (
     RecurrenceMode,
     Task,
     TaskActivity,
+    TaskAssignee,
     TaskChecklist,
     TaskChecklistItem,
     TaskChecklistTemplate,
@@ -276,6 +278,8 @@ class TaskService:
             if ctx.is_portal
             else ctx.repo(Task)
         )
+        # One primary, N others — the core shape companies and projects already ride (#375).
+        self.assignees = AssigneeService(ctx, TaskAssignee, "task_id")
 
     # --- access scoping (issue #19) ------------------------------------------ #
     async def _writable_task_or_403(self, task_id: uuid.UUID) -> Task:
@@ -286,15 +290,23 @@ class TaskService:
         404: tasks are readable by everyone who can read the module, so nothing is leaked.
         """
         task = await self.repo.get_or_404(task_id)
-        self._ensure_task_writable(task)
+        await self._ensure_task_writable(task)
         return task
 
-    def _ensure_task_writable(self, task: Task) -> None:
+    async def _ensure_task_writable(self, task: Task) -> None:
         if self.ctx.can("tasks.task.write", scope="any"):
             return
-        if task.assignee_user_id == self.ctx.user.id and self.ctx.can(
-            "tasks.task.write", scope="own"
-        ):
+        if not self.ctx.can("tasks.task.write", scope="own"):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        # ``:own`` means assignee, and since #375 a task has a *roster* — so it means **any** of
+        # them. Reading only the mirrored primary would hand a second assignee a task they can
+        # see, are expected to work, and cannot tick off; the same rule "mijn taken" follows
+        # (docs/UX.md). The mirror is checked first because it answers without a query for the
+        # ordinary one-assignee task, which is most of them.
+        if task.assignee_user_id == self.ctx.user.id:
+            return
+        roster = await self.assignees.for_entity(task.id)
+        if any(link.user_id == self.ctx.user.id for link in roster):
             return
         raise AppError("forbidden", "errors.forbidden", status_code=403)
 
@@ -347,11 +359,17 @@ class TaskService:
     # List / aggregates
     # ------------------------------------------------------------------ #
     async def _list_items(self, tasks: Sequence[Task]) -> list[TaskListItem]:
-        """Decorate tasks with label chips, checklist progress and comment counts."""
+        """Decorate tasks with assignee rosters, label chips, checklist progress and comments."""
         items = [TaskListItem.model_validate(t) for t in tasks]
         task_ids = [t.id for t in tasks]
         if not task_ids:
             return items
+
+        # One query for the whole page, never one per row (docs/PERFORMANCE.md) — the shape that
+        # is invisible in the JSON and only shows up at three hundred rows.
+        assignees_by_task = await self.assignees.for_entities(task_ids)
+        for item in items:
+            item.assignees = assignees_by_task.get(item.id, [])
 
         label_rows = (
             await self.ctx.session.execute(
@@ -455,6 +473,7 @@ class TaskService:
         due_from: date | None = None,
         due_to: date | None = None,
         q: str | None = None,
+        unnamed: bool | None = None,
         sort: str | None = None,
         with_meta: bool = True,
         hours: bool = False,
@@ -463,6 +482,11 @@ class TaskService:
         stmt = self.repo.scoped_select()
         if q:
             stmt = stmt.where(Task.title.ilike(f"%{q.strip()}%"))
+        # "The ones nobody named" (#350): a create-then-edit row whose author never finished is
+        # indistinguishable from real work by its title, so the flag is the only thing that can
+        # gather them — and gathering them is what makes clearing them possible at all.
+        if unnamed is not None:
+            stmt = stmt.where(Task.unnamed.is_(unnamed))
         if company_id is not None:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
@@ -473,7 +497,13 @@ class TaskService:
         if unlinked:
             stmt = stmt.where(Task.company_id.is_(None), Task.project_id.is_(None))
         if assignee_user_id is not None:
-            stmt = stmt.where(Task.assignee_user_id == assignee_user_id)
+            # **Any** assignee, never only the primary (docs/UX.md, #375). The filter is what
+            # "mijn taken" and the person switcher are both built on, so matching the mirrored
+            # star alone would make every shared task invisible to everyone but its owner —
+            # which is the whole complaint a roster exists to answer.
+            stmt = stmt.where(
+                Task.id.in_(self.assignees.entity_ids_for_user(assignee_user_id))
+            )
         if assignee_contact_id is not None:
             stmt = stmt.where(Task.assignee_contact_id == assignee_contact_id)
         if status is not None:
@@ -541,7 +571,9 @@ class TaskService:
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         stmt = (
             self.repo.scoped_select()
-            .where(Task.assignee_user_id == self.ctx.user.id)
+            # Any assignee, not the star (#375) — My Day is exactly the screen a shared task
+            # must not fall off.
+            .where(Task.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
             .where(Task.status.in_(non_terminal_keys(statuses)))
             .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
@@ -594,7 +626,9 @@ class TaskService:
                     _dashboard_project_companies.c.id == _dashboard_projects.c.company_id,
                 ),
             )
-            .where(visible.c.assignee_user_id == self.ctx.user.id)
+            # Any assignee (#375), same rule as the list and My Day — a personal tile that
+            # disagreed with "mijn taken" about which tasks are mine would be worse than none.
+            .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
             .where(visible.c.status.in_(non_terminal_keys(statuses)))
             .order_by(visible.c.due_date.asc().nulls_last(), visible.c.created_at.desc())
             .limit(limit)
@@ -699,6 +733,7 @@ class TaskService:
 
         list_item = (await self._list_items([task]))[0]
         detail.labels = list_item.labels
+        detail.assignees = list_item.assignees
 
         checklists = (
             await self.ctx.session.execute(
@@ -862,25 +897,41 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.require("tasks.task.create")
         values = data.model_dump()
+        # Nullable on the wire so an existing caller need not mention it (#350); the column is
+        # `NOT NULL`, and "the caller said nothing" means the task has a title somebody chose.
+        values["unnamed"] = bool(values.get("unnamed"))
         # A task's company/project FKs must live in this tenant (audit F19).
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
         # Markdown source is stored; strip any raw HTML on write (issue #66, app/core/richtext).
         values["description"] = sanitize_markdown(values.get("description"))
-        # An employee or a client contact, never both, and a contact only from this task's own
-        # company (#273). Validate the pair as given before any default fills the employee slot.
+        # The roster (#375). ``assignees=None`` means the caller didn't say, and the single
+        # ``assignee_user_id`` it did send decides — the pre-roster shape. A list with nobody
+        # starred promotes its first entry, exactly as the picker would.
+        values.pop("assignees", None)
+        links = self.assignees.normalize(
+            data.assignees, fallback_primary=values.get("assignee_user_id")
+        )
+        values["assignee_user_id"] = self.assignees.primary_of(links)
+        # Employees or a client contact, never both, and a contact only from this task's own
+        # company (#273). The exclusivity is against the **whole roster**, not against the star:
+        # a second employee beside a client contact is the same forbidden pair one layer out.
+        # Validated as given, before any default fills the employee slot.
         await self._validate_assignee(
             user_id=values.get("assignee_user_id"),
             contact_id=values.get("assignee_contact_id"),
             company_id=values.get("company_id"),
+            roster_size=len(links),
         )
         # Verantwoordelijke defaults down: project's responsible → else the company's, when the
         # task names neither an employee nor a contact (a contact assignee is a deliberate choice
         # that must not be silently overwritten by the client's responsible employee).
-        if values.get("assignee_user_id") is None and values.get("assignee_contact_id") is None:
-            values["assignee_user_id"] = await self._default_assignee(
+        if not links and values.get("assignee_contact_id") is None:
+            inherited = await self._default_assignee(
                 values.get("project_id"), values.get("company_id")
             )
+            values["assignee_user_id"] = inherited
+            links = self.assignees.normalize(None, fallback_primary=inherited)
         # Status is a tenant-configured key (issue #62): unset falls to the org's default status,
         # anything else must be one the org actually defined.
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
@@ -895,6 +946,8 @@ class TaskService:
         )
         values["position"] = await self._next_position()
         task = await self.repo.create(**values)
+        await self.assignees.replace(task.id, links)
+        task.assignees = await self.assignees.for_entity(task.id)
         await self._record(task.id, "created")
         # Automation trigger (issue #27); deliberately not in the notifications vocabulary,
         # so it fans out to nobody. Status/company/project ride along for condition matching.
@@ -908,9 +961,13 @@ class TaskService:
                 "project_id": task.project_id,
             },
         )
-        if task.assignee_user_id is not None:
-            # Assigning yourself is silent — the fan-out drops the actor (issue #16).
-            await self._emit_task("task.assigned", task, [task.assignee_user_id])
+        if task.assignees:
+            # Everyone on it is told, not only the star (#375): a colleague added as the second
+            # assignee has exactly as much reason to hear about it as the first. Assigning
+            # yourself stays silent — the fan-out drops the actor (issue #16).
+            await self._emit_task(
+                "task.assigned", task, [link.user_id for link in task.assignees]
+            )
         return task
 
     async def _default_assignee(
@@ -937,11 +994,16 @@ class TaskService:
         user_id: uuid.UUID | None,
         contact_id: uuid.UUID | None,
         company_id: uuid.UUID | None,
+        roster_size: int = 0,
     ) -> None:
-        """Guard the two mutually exclusive assignee kinds (#273).
+        """Guard the two mutually exclusive assignee kinds (#273, #375).
 
-        A task is assigned to an employee **or** to a contact of its own client company, never
-        both. And a contact assignee is company-scoped one level deeper than the usual org
+        A task is assigned to employees **or** to a contact of its own client company, never
+        both — and since a task holds a roster, "never both" is a claim about the whole roster,
+        not about the mirrored star: ``roster_size`` is what closes the gap a request with a
+        contact and a starless list of colleagues would otherwise walk through.
+
+        A contact assignee is company-scoped one level deeper than the usual org
         isolation: it must be linked to *this task's* ``company_id`` through ``company_contacts``,
         so staff can never attach an unrelated client's contact. Both checks reject through the
         standard i18n envelope.
@@ -951,7 +1013,7 @@ class TaskService:
         (another org, or another company in this org) is refused here and never reaches the
         FK check that would otherwise turn into a cross-tenant existence oracle (audit F19).
         """
-        if user_id is not None and contact_id is not None:
+        if contact_id is not None and (user_id is not None or roster_size > 0):
             raise AppError(
                 "validation",
                 "errors.validation",
@@ -1101,15 +1163,45 @@ class TaskService:
         # pair must stay exclusive, and a contact assignee must still belong to the resulting
         # company — so re-homing a task to another client, or clearing its company, is refused
         # while it holds that client's contact rather than silently orphaning the assignment.
-        if {"assignee_user_id", "assignee_contact_id", "company_id"} & values.keys():
+        # The roster this update resolves to (#375), decided before anything is written so the
+        # exclusivity refusal is about the request rather than a rollback. Sending ``assignees``
+        # replaces it wholesale; sending only ``assignee_user_id`` moves the star and leaves the
+        # others where they are (``CompanyUpdate``'s rule); sending neither touches nothing.
+        replace_roster = "assignees" in values
+        values.pop("assignees", None)
+        # ``data.assignees``, not the dumped dicts: ``normalize`` reads ``AssigneeWrite`` objects.
+        new_links = self.assignees.normalize(
+            data.assignees if replace_roster else None,
+            fallback_primary=values.get("assignee_user_id"),
+        )
+        if replace_roster:
+            values["assignee_user_id"] = self.assignees.primary_of(new_links)
+        if replace_roster or {"assignee_user_id", "assignee_contact_id", "company_id"} & (
+            values.keys()
+        ):
+            # ``roster_size`` is the resulting one: a wholesale replace knows it outright, and
+            # any other update inherits whatever is stored — so clearing the star on a two-person
+            # task does not read as "no employees" and let a client contact in beside them.
+            roster_size = (
+                len(new_links)
+                if replace_roster
+                else len(await self.assignees.for_entity(task.id))
+            )
             await self._validate_assignee(
                 user_id=values.get("assignee_user_id", task.assignee_user_id),
                 contact_id=values.get("assignee_contact_id", task.assignee_contact_id),
                 company_id=values.get("company_id", task.company_id),
+                roster_size=roster_size,
             )
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])
+        # Naming the thing is what un-marks it (#350). Cleared here rather than left to the
+        # caller, so no write path can set a real title and leave the row filed under "nobody
+        # named this"; a caller cannot set the flag through an update at all.
+        values.pop("unnamed", None)
+        if values.get("title") and task.unnamed:
+            values["unnamed"] = False
 
         # Accountability: pushing an existing deadline back requires a reason, which lands
         # in the activity feed.
@@ -1203,13 +1295,34 @@ class TaskService:
         ]
         status_changed = "status" in values and old_status != new_status
         old_due = task.due_date
-        # Read the old assignee before the write; the diff drives who is told (issue #16).
-        old_assignee = task.assignee_user_id
-        assignee_changed = (
-            "assignee_user_id" in values and old_assignee != values["assignee_user_id"]
+        # Read the old roster before the write; the diff drives who is told (issue #16, #375).
+        # A *set* difference, not a "did the star move": adding a second assignee changes nobody's
+        # primary and is precisely the event the new person needs to hear about.
+        roster_touched = replace_roster or "assignee_user_id" in values
+        before = (
+            {link.user_id for link in await self.assignees.for_entity(task.id)}
+            if roster_touched
+            else set()
         )
 
         task = await self.repo.update(task, **values)
+
+        if replace_roster:
+            await self.assignees.replace(task.id, new_links)
+        elif "assignee_user_id" in values:
+            # A bare ``assignee_user_id`` on a *task* is a hand-off: it replaces the roster with
+            # that one person, rather than starring them and keeping the old assignee on as a
+            # colleague the way ``CompanyUpdate`` does. Tasks differ from clients here on purpose,
+            # because "reassign this to Sanne" has always meant Jan is off it — and a Jan who
+            # silently stayed would keep the task in his "mijn taken" forever. It is also what
+            # every pre-roster caller means: the bulk editor, an import, an automation rule.
+            # Adding somebody *beside* the assignee is what ``assignees`` is for.
+            await self.assignees.replace(
+                task.id,
+                self.assignees.normalize(None, fallback_primary=values["assignee_user_id"]),
+            )
+        task.assignees = await self.assignees.for_entity(task.id)
+        after = {link.user_id for link in task.assignees}
 
         if status_changed:
             status_payload: dict[str, Any] = {"from": old_status, "to": new_status}
@@ -1226,14 +1339,21 @@ class TaskService:
             await self._emit_task(
                 "task.status_changed",
                 task,
-                [task.assignee_user_id],
+                # Everyone on it (#375) — someone doing half the work has the same reason to
+                # hear it was finished as the person holding the star.
+                [link.user_id for link in task.assignees],
                 {"from": old_status, "to": new_status},
             )
-        if assignee_changed:
-            if task.assignee_user_id is not None:
-                await self._emit_task("task.assigned", task, [task.assignee_user_id])
-            if old_assignee is not None:
-                await self._emit_task("task.unassigned", task, [old_assignee])
+        if roster_touched:
+            # A colleague joining or leaving moves no star, so ``changed`` (which reads the
+            # column diff) records nothing — and "who is on this" is exactly the kind of change
+            # §16 exists for. Only when the star itself did not already say it.
+            if before != after and "assignee_user_id" not in changed:
+                changed.append("assignees")
+            if added := after - before:
+                await self._emit_task("task.assigned", task, sorted(added, key=str))
+            if dropped := before - after:
+                await self._emit_task("task.unassigned", task, sorted(dropped, key=str))
         if due_extended:
             await self._record(
                 task.id,
@@ -1892,7 +2012,7 @@ class TaskService:
         )
 
     async def _comment_audience(self, task: Task) -> list[uuid.UUID]:
-        """Who is in this conversation: the assignee and everyone who commented before."""
+        """Who is in this conversation: every assignee and everyone who commented before."""
         authors = set(
             (
                 await self.ctx.session.execute(
@@ -1906,8 +2026,9 @@ class TaskService:
                 )
             ).scalars()
         )
-        if task.assignee_user_id is not None:
-            authors.add(task.assignee_user_id)
+        # The whole roster (#375), not the star: a comment on a task two people share is
+        # addressed to both of them.
+        authors.update(link.user_id for link in await self.assignees.for_entity(task.id))
         return list(authors)
 
     async def _thread_audience(self, task: Task, root_id: uuid.UUID) -> list[uuid.UUID]:

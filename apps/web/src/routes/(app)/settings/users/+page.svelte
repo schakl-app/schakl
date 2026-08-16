@@ -3,6 +3,7 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
@@ -292,7 +293,7 @@
           {#if data.rates && effectiveRateByUser[member.user_id] != null}
             <p class="mt-0.5 text-xs text-text-muted">
               {t("settings.users.rate_value", {
-                rate: String(effectiveRateByUser[member.user_id]),
+                rate: fmtMoney(Number(effectiveRateByUser[member.user_id])),
               })}
               {#if rateByUser[member.user_id] == null}
                 {t("settings.users.rate_default_marker")}

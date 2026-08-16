@@ -46,7 +46,7 @@ app/core/payments/            vocabulary + callback addressing   ← names no pr
   backend.py                    PaymentProvider, PaymentRequest, PaymentSnapshot, PaymentStatus
   accounts.py                   PaymentAccount + the per-provider account resolver registry
   tokens.py                     {org}.{account}.{secret}
-app/modules/mollie/           one provider's protocol            ← knows Mollie, knows no invoice
+app/integrations/mollie/           one provider's protocol            ← knows Mollie, knows no invoice
 app/modules/invoicing/        what a payment *means*             ← knows invoices, names no provider
   payments.py                   InvoicePaymentService + handle_webhook
 ```

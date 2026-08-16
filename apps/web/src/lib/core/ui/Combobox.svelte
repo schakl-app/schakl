@@ -206,6 +206,12 @@
     } else if (e.key === "Escape") {
       open = false;
       query = selectedLabel;
+      // Escape closed *this* list and nothing else (#361). Without stopping it, the event
+      // reached the enclosing Modal's window handler and the reflex "dismiss the dropdown"
+      // threw away the whole import wizard — the pasted table and every mapping decision —
+      // with no confirmation and no way back.
+      e.stopPropagation();
+      e.preventDefault();
     } else if (e.key === "Tab") {
       // Commit the highlighted option and let focus move on naturally — never
       // preventDefault here. `highlighted` only ever indexes `options`, so this

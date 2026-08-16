@@ -70,6 +70,13 @@ def render_fragment(domains: list[str]) -> str:
     which is an ordering requirement nobody should have to know about. Self-contained, the
     fragment works against an old base file and a new one alike. The distinct name keeps it from
     colliding with the base config's own `compress` in the shared file provider.
+
+    The two ``errors`` middlewares are here for the same reason and carry the same rule as the
+    base config: an error page cannot live in the service that is down, so the API's routes take
+    theirs from the web app and the web route takes its from the API (``app/core/errorpage.py``,
+    ``apps/web/src/routes/edge-error/``). A customer's own domain is the *most* visible place a
+    bare Traefik ``502`` can appear, so leaving it off the generated fragment would have meant
+    the branded outage page existed everywhere except where the client actually looks.
     """
     if not domains:
         return "# schakl cloud: no verified custom domains.\nhttp: {}\n"
@@ -82,6 +89,16 @@ def render_fragment(domains: list[str]) -> str:
         "        minResponseBodyBytes: 1024",
         "        excludedContentTypes:",
         "          - text/event-stream",
+        "    custdom-api-unreachable:",
+        "      errors:",
+        '        status: ["502-504"]',
+        "        service: schakl-web",
+        '        query: "/edge-error/api/{status}"',
+        "    custdom-web-unreachable:",
+        "      errors:",
+        '        status: ["502-504"]',
+        "        service: schakl-api",
+        '        query: "/error/{status}"',
         "  routers:",
     ]
     for index, domain in enumerate(domains):
@@ -92,14 +109,14 @@ def render_fragment(domains: list[str]) -> str:
             f"      rule: \"Host(`{host}`) && (PathPrefix(`/api/`) || PathPrefix(`/mcp`))\"",
             "      priority: 1000",
             "      service: schakl-api",
-            "      middlewares: [custdom-compress]",
+            "      middlewares: [custdom-compress, custdom-api-unreachable]",
             "      entryPoints: [websecure]",
             "      tls:",
             "        certResolver: letsencrypt",
             f"    {name}-web:",
             f"      rule: \"Host(`{host}`)\"",
             "      service: schakl-web",
-            "      middlewares: [custdom-compress]",
+            "      middlewares: [custdom-compress, custdom-web-unreachable]",
             "      entryPoints: [websecure]",
             "      tls:",
             "        certResolver: letsencrypt",

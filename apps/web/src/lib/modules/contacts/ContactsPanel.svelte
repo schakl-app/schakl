@@ -19,11 +19,13 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import EditToggle from "$lib/core/ui/EditToggle.svelte";
+  import PanelHeader from "$lib/core/ui/PanelHeader.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { data, title = "" }: { companyId: string; data: Record<string, unknown>; title?: string } =
+    $props();
 
   interface PanelContact {
     id: string;
@@ -113,7 +115,9 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body.
+<!-- The toggle rides the heading line (`ownsHeader`, #364): the host used to draw the <h2> and
+     this row sat under it, so the card opened with a band of empty space and one floating ⋯.
+
      The edit toggle is the *only* switch that reveals LinkField's link/unlink/promote and the
      create-contact dialog, so it must carry the same gate as the quick-add below, or a read-only
      portal client (#244) could enter edit mode. The company detail page renders panels without an
@@ -123,16 +127,16 @@
      for — including the create dialog, whose action posts `company_ids: [this company]`. Gated on
      `contacts.contact.write` alone, the whole panel was a control that 403s for anyone holding
      only the write, with a message naming neither permission (#310). -->
-{#if canLink}
-  <div class="mb-3 flex justify-end">
+<PanelHeader {title}>
+  {#if canLink}
     <EditToggle
       compact
       {editing}
       onedit={() => (editing = true)}
       onexit={() => (editing = false)}
     />
-  </div>
-{/if}
+  {/if}
+</PanelHeader>
 
 {#if links.length === 0}
   <p class="mb-3 text-sm text-text-muted">{t("contacts.empty")}</p>
@@ -154,6 +158,7 @@
     makePrimary: t("contacts.make_primary"),
     remove: t("contacts.unlink"),
   }}
+  hint={t("contacts.primary_hint")}
   oncreate={canCreate ? openCreate : undefined}
   onsearch={searchContacts}
   {searching}

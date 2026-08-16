@@ -46,8 +46,11 @@ export const load: PageServerLoad = async (event) => {
     schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
     schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
     rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
-    // Employment contracts (#65) — the whole roster in one call, like schedules.
-    schedules
+    // Employment contracts (#65) — the whole roster in one call, like schedules. Read for
+    // `availability` too: the ⋯ offers availability only on a freelance period, and that set is
+    // derived from these rows — so a holder of `leave.availability.write:any` who lacked
+    // `leave.profile.manage` got an empty set and therefore never got the menu item (#368).
+    schedules || availability
       ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
       : Promise.resolve({ data: null }),
     // Recurring free-day patterns (#107) — employment data, same home.

@@ -10,8 +10,8 @@ import importlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -32,6 +32,7 @@ from app.core.email.kinds import validate_email_kinds
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
 from app.core.entitlements.service import AI_SKU, MCP_SKU, LicenseGateASGI, license_write_gate
+from app.core.errorpage import error_page
 from app.core.impex.router import build_impex_router
 from app.core.instance.admins import router as instance_admins_router
 from app.core.instance.router import router as instance_router
@@ -48,12 +49,24 @@ from app.core.system import readiness
 from app.core.system import router as system_router
 from app.core.userprefs import router as userprefs_router
 from app.errors import register_error_handlers
-from app.registry import registry
+from app.registry import MODULE_ROOTS, module_package, registry
 
 
 def _load_enabled_modules() -> None:
+    """Import every enabled module and integration so it self-registers (CLAUDE.md §6a).
+
+    A name may live in either package root; ``module_package`` is the only thing that knows both,
+    and an unresolvable name is fatal here rather than skipped. Booting with a module silently
+    absent from the registry 404s every route it owns with nothing having said why.
+    """
     for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+        package = module_package(name)
+        if package is None:
+            raise ModuleNotFoundError(
+                f"enabled module {name!r} is in neither {' nor '.join(MODULE_ROOTS)}",
+                name=f"app.modules.{name}",
+            )
+        importlib.import_module(package)
 
 
 @asynccontextmanager
@@ -207,6 +220,16 @@ def create_app() -> FastAPI:
         # The MCP surface is a licensed sku (issue #137). It is read-first by design, so
         # instead of a read/write split the whole surface answers 402 when not covered.
         app.mount("/mcp", LicenseGateASGI(mcp_asgi, sku=MCP_SKU))
+
+    # The branded page the edge serves when the SSR web app is unreachable
+    # (app/core/errorpage.py, infra/traefik/dynamic.yml). Outside /api/v1 and out of the schema
+    # on purpose: it is not product API, so it must not become an MCP tool (CLAUDE.md §12) or a
+    # method on the generated client, and the deny-by-default sweep enumerates /api/v1 only —
+    # the same posture /health has, for the same reason. Unauthenticated because the situation it
+    # renders in has no session to read: it serves the public branding /meta/tenant already does.
+    @app.get("/error/{status}", include_in_schema=False)
+    async def edge_error_page(request: Request, status: int) -> HTMLResponse:
+        return await error_page(request, status)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

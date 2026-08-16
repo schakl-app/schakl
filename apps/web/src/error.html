@@ -1,0 +1,98 @@
+<!doctype html>
+<!--
+  SvelteKit's last-resort fallback: the document served when the framework cannot render a page
+  at all — a throw in the hook chain before routing, or a failure inside the error page itself.
+
+  It is the one surface in the product that is **not** internationalised and **not** branded, and
+  both are structural rather than an oversight (Golden Rule 2, Golden Rule 4):
+
+    - i18n runs through Paraglide, which is exactly the runtime that just failed. This file is a
+      static template with two placeholder substitutions; there is no message lookup available to
+      it. So it says one short thing in both shipped locales rather than picking one — a Dutch
+      default UI that falls back to English-only prose is a worse answer than two lines.
+    - branding comes from the API, and every path that could have fetched it has already been
+      tried by the time this renders. The palette below is the neutral fallback, never a product
+      brand.
+
+  It deliberately does **not** print `%sveltekit.error.message%`: our own errors carry i18n
+  *keys*, so that placeholder shows "errors.server" to a visitor about half the time. The status
+  is the only part that is legible without a catalogue.
+
+  Practically nothing should reach this page. The two situations that used to — an unreachable
+  API and an unreachable backend at the edge — are answered by `hooks.server.ts` and
+  `routes/edge-error/` with a branded, translated page instead.
+-->
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>%sveltekit.status%</title>
+    <style>
+      :root {
+        --bg: #fafafa;
+        --surface: #fff;
+        --text: #171717;
+        --muted: #737373;
+        --border: #e5e5e5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0a0a0a;
+          --surface: #171717;
+          --text: #fafafa;
+          --muted: #a3a3a3;
+          --border: #262626;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 26rem;
+        box-sizing: border-box;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 2rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      p {
+        margin: 0 0 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>%sveltekit.status%</h1>
+      <p lang="nl">Er ging iets mis. Probeer het over een moment opnieuw.</p>
+      <p lang="en">Something went wrong. Please try again in a moment.</p>
+    </main>
+  </body>
+</html>

@@ -64,6 +64,9 @@ export const TAILS: Record<string, string> = {
 
 /** Root-specific tail labels — the same segment reads differently per section (#229). */
 export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
+  leave: {
+    availability: "leave.availability.title",
+  },
   invoices: {
     uninvoiced: "invoicing.uninvoiced.title",
   },
@@ -80,6 +83,7 @@ export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
   },
   marketing: {
     "google-ads": "nav.google_ads",
+    "tag-manager": "nav.gtm",
     decisions: "google_ads.view.decisions",
     policy: "settings.google_ads.policy.title",
   },

@@ -36,6 +36,7 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.service import _display_name, _rich_items
 from app.modules.tasks.statuses import default_key, load_statuses
+from app.modules.tasks.system import mirror_primary_assignee
 
 
 class TemplateService:
@@ -219,6 +220,9 @@ class TemplateService:
             )
             session.add(task)
             await session.flush()
+            # The roster behind the column (#375) — a template-spawned task assigned to nobody's
+            # "mijn taken" is the failure this mirrors away.
+            await mirror_primary_assignee(session, org_id, task.id, task.assignee_user_id)
 
             checklist_items = _rich_items(item.checklist_items_rich, item.checklist_items)
             if checklist_items:

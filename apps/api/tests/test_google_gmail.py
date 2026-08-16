@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from contextlib import asynccontextmanager
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
 
 from app.core.crypto import encrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.google.gmail import matching
-from app.modules.google.gmail.models import GmailSuppression
-from app.modules.google.gmail.service import fetch_body, poll_connection
-from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_GMAIL
+from app.integrations.google.gmail import matching
+from app.integrations.google.gmail.gates import SkipReason
+from app.integrations.google.gmail.models import GmailSkip, GmailSuppression
+from app.integrations.google.gmail.service import (
+    SKIP_RETENTION_DAYS,
+    fetch_body,
+    poll_connection,
+    reap_skips,
+)
+from app.integrations.google.models import GoogleConnection, GoogleSettings
+from app.integrations.google.oauth import SCOPE_GMAIL
 from app.modules.interactions.models import Interaction
 from tests.conftest import auth_cookie, make_tenant
 
@@ -388,7 +396,7 @@ async def _seed(
 
 
 async def _poll(tenant, connection_id, stub, monkeypatch) -> int:
-    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         connection = await session.get(GoogleConnection, connection_id)
@@ -1578,3 +1586,952 @@ async def test_approval_keeps_the_html_formatting_and_inlines_the_logo(
         await set_current_org(session, t.org.id)
         stored = (await session.execute(select(StoredFile))).scalars().all()
         assert [(f.content_id, f.size_bytes) for f in stored] == [("logo@bureau", 6)]
+
+
+# --------------------------------------------------------------------------- #
+# The manual "scan my mailbox now" button (#341)
+# --------------------------------------------------------------------------- #
+
+
+async def test_manual_refresh_polls_once_and_then_cools_down(client_for, monkeypatch) -> None:
+    """One press logs the mail; the next press inside the minute is refused, not re-polled.
+
+    The cooldown is the whole rate limit, so the assertion that matters is not the status
+    string but ``stub.calls``: a second poll that quietly happened while the response said
+    "cooldown" would spend Gmail quota with nothing on the screen to show for it.
+    """
+    t = await make_tenant("gmail-refresh")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+        stub = _StubGmail(
+            history=["msg-1"],
+            messages={"msg-1": _message("msg-1", sender="Klant <klant@client.nl>")},
+            history_id="9100",
+        )
+        polls = []
+        factory = _stub_acting_as(stub)
+
+        @asynccontextmanager
+        async def _counting(session, org, connection):  # noqa: ANN001
+            polls.append(connection.id)
+            async with factory(session, org, connection) as inner:
+                yield inner
+
+        monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _counting)
+
+        first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["status"] == "polled" and body["logged"] == 1
+        assert body["sync"]["available"] is True
+        assert body["sync"]["last_polled_at"] is not None
+        assert body["sync"]["retry_after_seconds"] > 0  # the press it just spent
+
+        second = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert second.status_code == 200, second.text
+        cooled = second.json()
+        assert cooled["status"] == "cooldown" and cooled["logged"] == 0
+        assert 0 < cooled["sync"]["retry_after_seconds"] <= 60
+        # Still one poll: the refusal never reached Gmail.
+        assert len(polls) == 1
+
+        # And the status read agrees with the refresh's own answer.
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status["available"] is True
+        assert status["last_polled_at"] == body["sync"]["last_polled_at"]
+        assert status["retry_after_seconds"] > 0
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.kind == "email" and row.status == "pending"
+
+
+async def test_manual_refresh_is_refused_when_the_mailbox_is_not_syncing(
+    client_for,
+) -> None:
+    """A control that would always refuse is never drawn — and the API says why it would."""
+    t = await make_tenant("gmail-refresh-off")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Nothing connected at all: the org has not even switched Gmail on.
+        assert (await c.post("/api/v1/google/gmail/refresh", headers=headers)).status_code == 409
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status == {
+            "connected": False,
+            "gmail_enabled": False,
+            "sync_enabled": False,
+            "scope_granted": False,
+            "connection_error": False,
+            "last_polled_at": None,
+            "available": False,
+            "retry_after_seconds": 0,
+        }
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(GoogleSettings(org_id=t.org.id, gmail_enabled=True))
+        session.add(
+            GoogleConnection(
+                org_id=t.org.id,
+                user_id=t.user.id,
+                google_sub="sub",
+                email="me@agency.nl",
+                scopes=["openid", "email", SCOPE_GMAIL],
+                refresh_token_encrypted=encrypt("rt"),
+                gmail_sync_enabled=False,  # connected, mailbox opted out
+            )
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        refused = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert refused.status_code == 409
+        assert refused.json()["error"]["message"] == "errors.gmail_sync_off"
+        status = (await c.get("/api/v1/google/gmail/status", headers=headers)).json()
+        assert status["connected"] is True and status["available"] is False
+
+
+async def test_manual_refresh_spends_its_budget_even_when_gmail_fails(
+    client_for, monkeypatch
+) -> None:
+    """A failing mailbox must not become a control anyone can hold down.
+
+    The stamp is written before the poll and outside its savepoint precisely so this holds:
+    the poll rolls back, the cooldown does not.
+    """
+    t = await make_tenant("gmail-refresh-fail")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    @asynccontextmanager
+    async def _broken(session, org, connection):  # noqa: ANN001, ARG001
+        raise RuntimeError("gmail is having a day")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _broken)
+
+    async with client_for(t.host) as c:
+        first = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert first.status_code == 200, first.text
+        assert first.json()["status"] == "error"
+        # The failure is reported, the budget is spent.
+        second = await c.post("/api/v1/google/gmail/refresh", headers=headers)
+        assert second.json()["status"] == "cooldown"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_manual_poll_at is not None
+        assert connection.gmail_last_polled_at is None  # the poll itself never landed
+
+
+# --------------------------------------------------------------------------- #
+# Pulling a message in by hand (#342)
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_reference_accepts_the_three_things_that_actually_resolve() -> None:
+    """Hex ids, ``msg-f:`` decimals and Message-IDs — and a named refusal for the rest.
+
+    The last case is the one worth pinning: what a person copies out of Gmail's address bar
+    today is an opaque ``FMfcgz…`` web id the API cannot read *or* convert, so answering it
+    with the generic "unreadable" error would send them off to re-copy a link that will never
+    work. It gets its own key, which is what lets the screen name the two things that do.
+    """
+    from app.errors import AppError
+    from app.integrations.google.gmail import manual
+
+    assert manual.parse_reference("18c2d3e4f5a6b7c8") == manual.Reference(
+        kind="id", value="18c2d3e4f5a6b7c8"
+    )
+    assert manual.parse_reference("  18C2D3E4F5A6B7C8 ").value == "18c2d3e4f5a6b7c8"
+    # Same id, other base — Gmail's own links mix the two.
+    assert manual.parse_reference("msg-f:1785443000000000000").kind == "id"
+    assert manual.parse_reference("msg-f:1785443000000000000").value == format(
+        1785443000000000000, "x"
+    )
+    assert manual.parse_reference("<CAF=abc123@mail.gmail.com>") == manual.Reference(
+        kind="rfc822", value="CAF=abc123@mail.gmail.com"
+    )
+    assert manual.parse_reference("CAF=abc123@mail.gmail.com").kind == "rfc822"
+    # A URL carrying a usable id, in the fragment and in the older `th=` query.
+    assert (
+        manual.parse_reference(
+            "https://mail.google.com/mail/u/0/#all/18c2d3e4f5a6b7c8"
+        ).value
+        == "18c2d3e4f5a6b7c8"
+    )
+    assert (
+        manual.parse_reference(
+            "https://mail.google.com/mail/u/0/#inbox/18c2d3e4f5a6b7c8/18c2d3e4f5a6b7ff"
+        ).value
+        == "18c2d3e4f5a6b7ff"  # the *last* segment: an opened message inside its thread
+    )
+    assert (
+        manual.parse_reference("https://mail.google.com/mail/u/0/?th=18c2d3e4f5a6b7c8").value
+        == "18c2d3e4f5a6b7c8"
+    )
+
+    for opaque in (
+        "https://mail.google.com/mail/u/0/#inbox/FMfcgzGtxSrbLZwqPjRmVXbKlnTwWQqd",
+        "https://mail.google.com/mail/u/0/#inbox",
+    ):
+        try:
+            manual.parse_reference(opaque)
+        except AppError as exc:
+            assert exc.message_key == "errors.gmail_reference_web_id", opaque
+        else:  # pragma: no cover
+            raise AssertionError(f"{opaque} should not resolve")
+
+    for junk in ("", "   ", "not a reference"):
+        try:
+            manual.parse_reference(junk)
+        except AppError as exc:
+            assert exc.message_key in {
+                "errors.gmail_reference_unreadable",
+            }, junk
+        else:  # pragma: no cover
+            raise AssertionError(f"{junk!r} should not resolve")
+
+
+class _StubManualGmail:
+    """Gmail for the manual paths: message/thread reads plus the one rfc822msgid lookup."""
+
+    def __init__(
+        self,
+        *,
+        messages: dict[str, dict],
+        threads: dict[str, list[str]],
+        labels: list[dict] | None = None,
+    ) -> None:
+        self.messages = messages
+        self.threads = threads
+        self.labels = labels or []
+        self.calls: list[str] = []
+        #: Every ``q`` this stub was asked, so a test can assert what the search *became*
+        #: rather than only what it returned — the injection boundary is the query string.
+        self.queries: list[str] = []
+
+    async def get(self, url: str, **kwargs) -> _StubResponse:
+        params = kwargs.get("params") or {}
+        self.calls.append(url)
+        if url.endswith("/labels"):
+            return _StubResponse(200, {"labels": self.labels})
+        if url.endswith("/messages") and "q" in params:
+            query = str(params["q"])
+            self.queries.append(query)
+            if query.startswith("rfc822msgid:"):
+                wanted = query.removeprefix("rfc822msgid:")
+                hits = [
+                    {"id": mid}
+                    for mid, message in self.messages.items()
+                    if any(
+                        h["name"] == "Message-ID" and h["value"].strip("<>") == wanted
+                        for h in message["payload"]["headers"]
+                    )
+                ]
+                return _StubResponse(200, {"messages": hits})
+            # A search: Gmail matches however it likes, so the stub answers on the one term
+            # a test can control — an address anywhere in the headers.
+            addresses = re.findall(r"[\w.+-]+@[\w.-]+", query)
+            hits = [
+                {"id": mid}
+                for mid, message in self.messages.items()
+                if any(
+                    any(a in h["value"] for a in addresses)
+                    for h in message["payload"]["headers"]
+                    if h["name"] in ("From", "To", "Cc")
+                )
+            ]
+            return _StubResponse(200, {"messages": hits})
+        if "/threads/" in url:
+            thread_id = url.rsplit("/", 1)[-1]
+            ids = self.threads.get(thread_id)
+            if ids is None:
+                return _StubResponse(404)
+            return _StubResponse(
+                200, {"id": thread_id, "messages": [self.messages[i] for i in ids]}
+            )
+        message_id = url.rsplit("/", 1)[-1]
+        message = self.messages.get(message_id)
+        if message is None:
+            return _StubResponse(404)
+        return _StubResponse(200, message)
+
+
+def _manual_stub() -> _StubManualGmail:
+    first = _message(
+        "msg-a",
+        sender="Nieuwe Klant <nieuw@prospect.nl>",
+        subject="Offerteaanvraag",
+        thread="thr-9",
+        rfc822="<aanvraag-1@prospect.nl>",
+        body_text="Graag een offerte voor een nieuwe website.",
+    )
+    reply = _message(
+        "msg-b",
+        sender="me@agency.nl",
+        to="nieuw@prospect.nl",
+        subject="Re: Offerteaanvraag",
+        thread="thr-9",
+        labels=["SENT"],
+        rfc822="<antwoord-1@agency.nl>",
+    )
+    return _StubManualGmail(
+        messages={"msg-a": first, "msg-b": reply},
+        threads={"thr-9": ["msg-a", "msg-b"]},
+    )
+
+
+async def test_manual_lookup_and_import_logs_a_message_the_poller_skipped(
+    client_for, monkeypatch
+) -> None:
+    """The headline case: a prospect who is nobody's contact yet, logged by id.
+
+    ``has_external_match`` drops exactly this message on every poll — correctly, since there is
+    no contact to match — so the auto path can never produce this row. The import writes it
+    from the real headers, files it where the caller said, and pulls the body in the same
+    request (a person is waiting, and they already decided it belongs on the timeline).
+    """
+    t = await make_tenant("gmail-manual")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Prospect BV"}, headers=headers)
+        ).json()
+
+        found = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "<aanvraag-1@prospect.nl>"},
+            headers=headers,
+        )
+        assert found.status_code == 200, found.text
+        body = found.json()
+        # One message named, the whole conversation shown (#372). It used to answer with just
+        # that message when the reference resolved cleanly — so the better your reference, the
+        # less you saw, and "which of these are missing?" could only be asked by accident.
+        assert [m["message_id"] for m in body["messages"]] == ["msg-a", "msg-b"]
+        assert body["widened_to_thread"] is True
+        assert body["thread_id"] == "thr-9"
+        candidate = body["messages"][0]
+        assert candidate["subject"] == "Offerteaanvraag"
+        assert candidate["from_email"] == "nieuw@prospect.nl"
+        assert candidate["logged"] is False and candidate["interaction_id"] is None
+        # And it says *why* it is not here, out of the ingest's own chain: a prospect nobody
+        # has made a contact of yet is exactly what `has_external_match` declines.
+        assert candidate["skip_reason"] == "no_external_match"
+
+        created = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "company_id": company["id"]},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        result = created.json()
+        assert result["subject"] == "Offerteaanvraag"
+
+        detail = (
+            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+        ).json()
+        assert detail["kind"] == "email"
+        assert detail["status"] == "logged"  # never pending: somebody went and fetched it
+        assert detail["source"] == "gmail"
+        assert detail["company_id"] == company["id"]
+        assert detail["deep_link"] and "msg-a" in detail["deep_link"]
+
+        # And now the lookup says so, with the row to open instead of a button that would 409.
+        again = (
+            await c.get(
+                "/api/v1/google/gmail/lookup",
+                params={"reference": "<aanvraag-1@prospect.nl>"},
+                headers=headers,
+            )
+        ).json()
+        assert again["messages"][0]["logged"] is True
+        assert again["messages"][0]["interaction_id"] == result["interaction_id"]
+
+        # The same message twice in one mailbox is never what anybody meant.
+        repeat = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "company_id": company["id"]},
+            headers=headers,
+        )
+        assert repeat.status_code == 409
+        assert repeat.json()["error"]["message"] == "errors.interactions_gmail_already_logged"
+
+
+async def test_thread_gap_fill_marks_what_is_already_on_the_timeline(
+    client_for, monkeypatch
+) -> None:
+    """Tier 2: the conversation we already hold the id for, with the gaps named.
+
+    No search and no new reach — the thread id came off a row the poller wrote. What the screen
+    needs is which of its messages are missing, so that is what the read answers.
+    """
+    t = await make_tenant("gmail-thread-gap")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        listed = await c.get("/api/v1/google/gmail/threads/thr-9", headers=headers)
+        assert listed.status_code == 200, listed.text
+        body = listed.json()
+        assert body["thread_id"] == "thr-9"
+        assert [m["message_id"] for m in body["messages"]] == ["msg-a", "msg-b"]
+        assert [m["logged"] for m in body["messages"]] == [False, False]
+        # Our own reply reads as outbound off its SENT label, the way the feed reads it.
+        assert body["messages"][1]["direction"] == "outbound"
+
+        await c.post(
+            "/api/v1/google/gmail/import", json={"message_id": "msg-a"}, headers=headers
+        )
+        after = (
+            await c.get("/api/v1/google/gmail/threads/thr-9", headers=headers)
+        ).json()
+        assert [m["logged"] for m in after["messages"]] == [True, False]
+
+        missing = await c.get("/api/v1/google/gmail/threads/thr-nope", headers=headers)
+        assert missing.status_code == 404
+
+
+async def test_manual_gmail_refuses_a_mailbox_that_is_not_ours_to_read(client_for) -> None:
+    """Every gate answers before Gmail is called at all — and none of them is a 500."""
+    t = await make_tenant("gmail-manual-gate")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        blocked = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "18c2d3e4f5a6b7c8"},
+            headers=headers,
+        )
+        assert blocked.status_code == 409
+        assert blocked.json()["error"]["message"] == "errors.gmail_disabled"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(GoogleSettings(org_id=t.org.id, gmail_enabled=True))
+        session.add(
+            GoogleConnection(
+                org_id=t.org.id,
+                user_id=t.user.id,
+                google_sub="sub",
+                email="me@agency.nl",
+                scopes=["openid", "email"],  # connected, but never granted Gmail
+                refresh_token_encrypted=encrypt("rt"),
+            )
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        refused = await c.get(
+            "/api/v1/google/gmail/lookup",
+            params={"reference": "18c2d3e4f5a6b7c8"},
+            headers=headers,
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["message"] == "errors.gmail_sync_off"
+
+
+async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch) -> None:
+    """#342's point: the enrichment offer hangs off filing onto a task, not off review."""
+    t = await make_tenant("gmail-manual-enrich")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
+
+    offered: list[tuple[str, str]] = []
+
+    async def _capture(ctx, interaction_id, task_id):  # noqa: ANN001, ARG001
+        offered.append((str(interaction_id), str(task_id)))
+        return object()
+
+    monkeypatch.setattr("app.modules.interactions.jobs.schedule_enrichment", _capture)
+    monkeypatch.setattr(
+        "app.modules.interactions.enrich.available",
+        lambda ctx: _true(),  # noqa: ARG005
+    )
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Prospect BV"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Offerte maken", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        created = await c.post(
+            "/api/v1/google/gmail/import",
+            json={"message_id": "msg-a", "task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert offered == [(created.json()["interaction_id"], task["id"])]
+
+
+async def _true() -> bool:
+    return True
+
+
+# --------------------------------------------------------------------------- #
+# The dry run: why is this email not on the timeline? (#372)
+# --------------------------------------------------------------------------- #
+
+
+async def test_the_explainer_and_the_ingest_are_the_same_function(
+    client_for, monkeypatch
+) -> None:
+    """The point of the refactor, asserted as behaviour rather than as structure.
+
+    A message the poller declines must be *reported* as declined for the same reason, and one
+    it would accept must report no reason at all — without this test naming the gate. The only
+    thing that changes between the two halves is a contact row, which opens
+    ``has_external_match``, so the explainer's verdict has to flip with the ingest's. An
+    explainer that had drifted would pass one half and fail the other.
+    """
+    t = await make_tenant("gmail-explain-same")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+
+        async def _reason() -> str | None:
+            body = (
+                await c.get(
+                    "/api/v1/google/gmail/lookup",
+                    params={"reference": "<aanvraag-1@prospect.nl>"},
+                    headers=headers,
+                )
+            ).json()
+            return next(
+                m for m in body["messages"] if m["message_id"] == "msg-a"
+            )["skip_reason"]
+
+        assert await _reason() == SkipReason.NO_EXTERNAL_MATCH.value
+
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Prospect BV"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Nieuwe",
+                "last_name": "Klant",
+                "email": "nieuw@prospect.nl",
+                "company_id": company["id"],
+            },
+            headers=headers,
+        )
+        # Same message, same mailbox, one contact row later: the gate that declined it is open,
+        # so the explainer must stop naming it — and nothing here mentions the gate by name.
+        assert await _reason() is None
+
+
+async def test_a_reason_names_the_label_that_caused_it(client_for, monkeypatch) -> None:
+    """"A label excluded it" is unactionable when you cannot see which label.
+
+    The reason travels with the one string it needs and no more: the label's name, never the
+    subject or the participants — ``skip_row_values``' rule, held to on the read side too.
+    """
+    t = await make_tenant("gmail-explain-label")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        connection.gmail_excluded_label = "geen-crm"
+        await session.commit()
+
+    stub = _StubManualGmail(
+        messages={
+            "msg-x": _message(
+                "msg-x",
+                sender="Klant <klant@client.nl>",
+                subject="Nieuwsbrief",
+                thread="thr-x",
+                labels=["INBOX", "Label_7"],
+                rfc822="<nieuws-1@client.nl>",
+            )
+        },
+        threads={"thr-x": ["msg-x"]},
+        labels=[{"id": "Label_7", "name": "geen-crm"}],
+    )
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        body = (
+            await c.get(
+                "/api/v1/google/gmail/lookup",
+                params={"reference": "<nieuws-1@client.nl>"},
+                headers=headers,
+            )
+        ).json()
+        message = body["messages"][0]
+        assert message["skip_reason"] == SkipReason.EXCLUDED_LABEL.value
+        assert message["skip_detail"] == {"label": "geen-crm"}
+        assert "Nieuwsbrief" not in str(message["skip_detail"])
+
+
+async def test_a_message_older_than_the_mailbox_says_it_was_never_offered(
+    client_for, monkeypatch
+) -> None:
+    """The honest limit: the chain never ran for these, so no gate verdict is the truth.
+
+    The first poll baselines and imports nothing — connecting a mailbox is opt-in going forward
+    — so a message from before that day was never offered to any gate. Reporting one anyway
+    would be a confident answer to a question nobody asked; the screen says "from before you
+    connected this mailbox", and the response is simply to import it.
+    """
+    t = await make_tenant("gmail-explain-old")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        connection.created_at = datetime.now(UTC) - timedelta(days=30)
+        await session.commit()
+
+    old = _message(
+        "msg-old",
+        sender="Klant <klant@client.nl>",
+        subject="Vorig jaar",
+        thread="thr-old",
+        rfc822="<oud-1@client.nl>",
+    )
+    old["internalDate"] = str(
+        int((datetime.now(UTC) - timedelta(days=200)).timestamp() * 1000)
+    )
+    stub = _StubManualGmail(messages={"msg-old": old}, threads={"thr-old": ["msg-old"]})
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        body = (
+            await c.get(
+                "/api/v1/google/gmail/lookup",
+                params={"reference": "<oud-1@client.nl>"},
+                headers=headers,
+            )
+        ).json()
+        message = body["messages"][0]
+        assert message["before_connection"] is True
+        # Never both: "it was never offered" and "we looked and saw it" cannot both be true.
+        assert message["never_offered"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Searching the caller's own mailbox (#372)
+# --------------------------------------------------------------------------- #
+
+
+def test_a_search_field_can_never_become_a_gmail_operator() -> None:
+    """What makes searching safe is that *we* build the query, not that it is absent.
+
+    A free-text box would forward whatever was typed — every operator Google has, and every one
+    it adds later. The fields are stripped of the characters Gmail reads as syntax, so a value
+    carrying a colon or a quote lands as a value, and what comes out is only ever the operators
+    named here.
+    """
+    from app.integrations.google.gmail.manual import GmailSearchQuery, build_search_query
+
+    wire = build_search_query(
+        GmailSearchQuery(participant="devrim@oosgroup.com", subject="verhuur")
+    )
+    assert (
+        "(from:devrim@oosgroup.com OR to:devrim@oosgroup.com OR cc:devrim@oosgroup.com)" in wire
+    )
+    assert 'subject:"verhuur"' in wire
+    # Never the bin, never spam: this looks for a message somebody means to file.
+    assert "-in:spam -in:trash" in wire
+
+    hostile = build_search_query(
+        GmailSearchQuery(participant='x" OR has:attachment larger:10M in:anywhere "')
+    )
+    for operator in ("has:attachment", "larger:", "in:anywhere"):
+        assert operator not in hostile, hostile
+
+    # An inclusive `before` on the screen is an exclusive one on the wire.
+    dated = build_search_query(
+        GmailSearchQuery(participant="a@b.nl", after=date(2026, 8, 1), before=date(2026, 8, 31))
+    )
+    assert "after:2026-08-01" in dated and "before:2026-09-01" in dated
+
+
+async def test_search_finds_a_message_by_who_it_was_with(client_for, monkeypatch) -> None:
+    """The user-facing point of #372: you no longer have to copy an id out of Gmail by hand.
+
+    What the search returns is the same row a paste returns — the same explanation, the same
+    import — so the two ways in cannot come to offer different things.
+    """
+    t = await make_tenant("gmail-search")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+
+    async with client_for(t.host) as c:
+        found = await c.get(
+            "/api/v1/google/gmail/search",
+            params={"participant": "nieuw@prospect.nl"},
+            headers=headers,
+        )
+        assert found.status_code == 200, found.text
+        body = found.json()
+        assert {m["message_id"] for m in body["messages"]} == {"msg-a", "msg-b"}
+        # The query is echoed back: an empty result is otherwise indistinguishable from a
+        # search that asked the wrong thing.
+        assert "nieuw@prospect.nl" in body["query"]
+        # And the explanation rides along, exactly as it does on a paste.
+        first = next(m for m in body["messages"] if m["message_id"] == "msg-a")
+        assert first["skip_reason"] == SkipReason.NO_EXTERNAL_MATCH.value
+
+        # No fields at all is "list my mailbox", which is the one thing this is not.
+        empty = await c.get("/api/v1/google/gmail/search", headers=headers)
+        assert empty.status_code == 422
+        assert empty.json()["error"]["message"] == "errors.gmail_search_empty"
+
+
+async def test_explaining_a_long_thread_does_not_cost_a_query_per_message(
+    client_for, monkeypatch, count_queries
+) -> None:
+    """The shape docs/PERFORMANCE.md calls invisible: correct at three rows, a stall at three
+    hundred, and identical in every functional test either way.
+
+    ``classify`` asks four per-row questions, which is right for the poller — it holds one
+    message at a time, in a worker. Run unchanged over a fifty-message conversation inside a
+    request somebody is waiting on, that is two hundred queries. ``GateCache`` moves the *data
+    source* for those four and nothing about the questions, so the cost is flat in the number
+    of messages instead of linear. Written down as a number, so a per-message regression has to
+    argue with it.
+    """
+    t = await make_tenant("gmail-explain-budget")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    def _thread(n: int) -> _StubManualGmail:
+        messages = {
+            f"msg-{i}": _message(
+                f"msg-{i}",
+                sender="Klant <klant@client.nl>",
+                subject="Lange draad",
+                thread="thr-long",
+                rfc822=f"<lang-{i}@client.nl>",
+            )
+            for i in range(n)
+        }
+        return _StubManualGmail(messages=messages, threads={"thr-long": list(messages)})
+
+    async def _cost(n: int) -> int:
+        monkeypatch.setattr(
+            "app.integrations.google.gmail.manual.acting_as", _stub_acting_as(_thread(n))
+        )
+        async with client_for(t.host) as c:
+            with count_queries() as counter:
+                response = await c.get(
+                    "/api/v1/google/gmail/threads/thr-long", headers=headers
+                )
+            assert response.status_code == 200, response.text
+            assert len(response.json()["messages"]) == n
+        return len(counter.statements)
+
+    few, many = await _cost(3), await _cost(30)
+    # Ten times the messages must not cost anything like ten times the queries.
+    assert many <= few + 6, (few, many)
+    assert many < 40, many
+
+
+async def test_search_reads_only_the_caller_s_own_mailbox(client_for, monkeypatch) -> None:
+    """Golden Rule 1 for a surface whose ids are Google's rather than ours.
+
+    The grant comes from the *caller's* connection, so somebody in another org holds none and
+    gets the module's "you have not connected Google" answer — never another mailbox's mail.
+    """
+    other = await make_tenant("gmail-search-other")
+    headers = await auth_cookie(other.user)
+    stub = _manual_stub()
+    monkeypatch.setattr("app.integrations.google.gmail.manual.acting_as", _stub_acting_as(stub))
+    async with client_for(other.host) as c:
+        response = await c.get(
+            "/api/v1/google/gmail/search",
+            params={"participant": "nieuw@prospect.nl"},
+            headers=headers,
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["message"] in (
+            "errors.gmail_disabled",
+            "errors.google_not_connected",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# The two skips that are worth a row (#372)
+# --------------------------------------------------------------------------- #
+
+
+async def test_only_the_failures_are_persisted_never_the_policy(monkeypatch) -> None:
+    """A row per skip would be a log of every email the mailbox receives — the thing this
+    design refuses (``gates.PERSISTED_REASONS``).
+
+    A newsletter from nobody we know is *policy*: the dry run explains it on demand and nothing
+    is stored. The poller here sees exactly that, and must leave the table empty.
+    """
+    t = await make_tenant("gmail-skips-policy")
+    connection_id = await _seed(t)
+    stub = _StubGmail(
+        history=["m1"],
+        messages={
+            "m1": _message("m1", sender="Nieuwsbrief <news@vendor.com>", subject="Aanbieding")
+        },
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(GmailSkip))).scalars().all()
+    assert rows == []
+
+
+async def _colleague_with_mailbox(client_for, tenant, email: str) -> None:
+    """A second member whose own mailbox polls — what makes a deferral possible at all."""
+    from tests.test_notification_channels import _member
+
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as c:
+        await _member(c, headers, email)
+    await _colleague_mailbox(tenant, email, syncing=True)
+
+
+async def test_a_deferral_leaves_a_row_and_the_reaper_takes_it(
+    client_for, monkeypatch
+) -> None:
+    """The other half: two skips *are* stored, because nobody would know to look for them.
+
+    A deferral to a colleague's mailbox is invisible by construction — the email is simply not
+    there, and the person waiting for it has no reason to suspect a second mailbox is involved.
+    The row carries ids, a reason and a time; the subject and participants stay in Gmail,
+    fetched on demand under the user's own grant like everything else here.
+    """
+    t = await make_tenant("gmail-skips-defer")
+    connection_id = await _seed(t)
+    await _colleague_with_mailbox(client_for, t, "collega@gmail-skips-defer-example.nl")
+
+    # Addressed to the colleague and sitting in *this* mailbox: their own poll will log it.
+    stub = _StubGmail(
+        history=["m9"],
+        messages={
+            "m9": _message(
+                "m9",
+                sender="Klant <klant@client.nl>",
+                to="collega@gmail-skips-defer-example.nl",
+                subject="Vraag",
+                thread="thr-9",
+            )
+        },
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(GmailSkip))).scalars().one()
+        assert row.reason == SkipReason.DEFERRED_TO_OWNER.value
+        assert row.gmail_message_id == "m9"
+        assert row.gmail_thread_id == "thr-9"
+        assert row.detail == {"owner": "collega@gmail-skips-defer-example.nl"}
+        # Ids, a reason and a time — and nothing that came out of the message.
+        assert "Vraag" not in str(row.detail)
+
+        # Retention: a permanent record of a transient failure is a log by another name.
+        row.created_at = datetime.now(UTC) - timedelta(days=SKIP_RETENTION_DAYS + 1)
+        await session.commit()
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await reap_skips(t.org, session)
+        await session.commit()
+        assert (await session.execute(select(GmailSkip))).scalars().all() == []
+
+
+async def test_a_re_offered_message_leaves_one_row_not_one_per_poll(
+    client_for, monkeypatch
+) -> None:
+    """The upsert, and why the retention window means what it says.
+
+    A deferred message is re-offered on every poll until the other mailbox takes it. Appending
+    a row each time would turn a bounded record into the volume problem this whole design is
+    avoiding, and would make "kept for 60 days" false — the newest row keeping the oldest alive.
+    """
+    t = await make_tenant("gmail-skips-upsert")
+    connection_id = await _seed(t)
+    await _colleague_with_mailbox(client_for, t, "collega@gmail-skips-upsert-example.nl")
+
+    def _stub() -> _StubGmail:
+        return _StubGmail(
+            history=["m7"],
+            messages={
+                "m7": _message(
+                    "m7",
+                    sender="Klant <klant@client.nl>",
+                    to="collega@gmail-skips-upsert-example.nl",
+                    thread="t7",
+                )
+            },
+        )
+
+    await _poll(t, connection_id, _stub(), monkeypatch)
+    await _poll(t, connection_id, _stub(), monkeypatch)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(GmailSkip))).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_skip_rows_are_tenant_isolated(client_for, monkeypatch) -> None:
+    """Golden Rule 1, on the new table."""
+    t = await make_tenant("gmail-skips-rls-a")
+    connection_id = await _seed(t)
+    await _colleague_with_mailbox(client_for, t, "collega@gmail-skips-rls-a-example.nl")
+    stub = _StubGmail(
+        history=["m5"],
+        messages={
+            "m5": _message(
+                "m5",
+                sender="Klant <klant@client.nl>",
+                to="collega@gmail-skips-rls-a-example.nl",
+                thread="t5",
+            )
+        },
+    )
+    await _poll(t, connection_id, stub, monkeypatch)
+
+    other = await make_tenant("gmail-skips-rls-b")
+    async with async_session_maker() as session:
+        await set_current_org(session, other.org.id)
+        assert (await session.execute(select(GmailSkip))).scalars().all() == []

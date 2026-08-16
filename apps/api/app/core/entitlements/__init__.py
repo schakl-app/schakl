@@ -17,6 +17,7 @@ the one place that decides which of the two applies — see ``service.py``'s doc
 from app.core.entitlements.service import (
     OrgPlan,
     ensure_modules_enableable,
+    ensure_requirements_met,
     invalidate_license_cache,
     invalidate_plan_cache,
     license_exempt,
@@ -30,6 +31,7 @@ from app.core.entitlements.service import (
 __all__ = [
     "OrgPlan",
     "ensure_modules_enableable",
+    "ensure_requirements_met",
     "invalidate_license_cache",
     "invalidate_plan_cache",
     "license_exempt",

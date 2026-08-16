@@ -7,9 +7,11 @@
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
-  import { burnPct } from "$lib/core/burn";
+  import { untrack } from "svelte";
+
   import { formatDurationInput, parseDurationText } from "$lib/core/duration";
-  import { fmtDateTime, fmtNumber, fmtNumericDate } from "$lib/core/format";
+  import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
+  import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
@@ -94,6 +96,7 @@
     ondone,
     oncreatecompany,
     oncreateproject,
+    onscope,
   }: {
     action: string;
     entry?: EntryLike | null;
@@ -129,6 +132,13 @@
     /** The form's currently-picked client rides along (#247), so the project quick-create
      *  dialog opens with the same client instead of blank. */
     oncreateproject?: (name: string, companyId: string) => void;
+    /**
+     * What this entry is about, whenever it changes: the client and project it is being logged
+     * on. The selection lives in here and moves while the form is filled, so anything drawn
+     * *beside* the form that is about the same entry — today the "Beschikbare uren" panel — is
+     * told, rather than guessing from the entry the host handed in.
+     */
+    onscope?: (scope: { companyId: string; projectId: string }) => void;
   } = $props();
 
   // --- form state (prefilled when editing; a restored draft fills the create form, #44) ---
@@ -257,6 +267,19 @@
     if (project && !billableTouched) fBillable = project.billable_default ?? true;
   }
 
+  // Tell the host what this entry is about — on mount and on every change of either field, so a
+  // panel drawn beside the form narrows with it instead of listing the whole agency.
+  //
+  // The two fields are read *outside* `untrack` — they are the dependencies — and the callback is
+  // both read and called *inside* it, so this effect depends on the selection and on nothing else.
+  // A tracked read of `onscope` would add the host's closure identity to that list: it stores what
+  // we hand it, re-renders, and passes down a fresh function, which is a feedback edge into an
+  // effect whose whole job is to write to the host.
+  $effect(() => {
+    const scope = { companyId: fCompany, projectId: fProject };
+    untrack(() => onscope?.(scope));
+  });
+
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
   // picked project's budget is left *before* saving, not on another screen afterwards. Hours
   // only — money is priced per logging employee (#226), so there is no client-side rate to
@@ -267,17 +290,11 @@
   // **is** the agreement's included hours (#225). One number, named after where it comes from.
   const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
   const pickedBurn = $derived.by(() => {
-    const hours = pickedProject?.hours;
-    if (!hours || hours.budget_hours == null) return null;
-    const spent = hours.spent_hours ?? 0;
-    return {
-      spent,
-      budget: hours.budget_hours,
-      // The API's own remainder (unclamped, so an over-budget project reads negative).
-      remaining: hours.remaining_hours ?? Math.round((hours.budget_hours - spent) * 100) / 100,
-      pct: burnPct(spent, hours.budget_hours),
-      sources: pickedProject?.budget_sources ?? [],
-    };
+    // Numbers and words alike from the one helper (core/hours.ts, #340), so the form, the
+    // Beschikbare uren panel beside it and the lists cannot word the same burn three ways.
+    const burn = hoursBurn(pickedProject?.hours);
+    if (!burn || burn.budget == null) return null;
+    return { ...burn, sources: pickedProject?.budget_sources ?? [] };
   });
 
   // The same question about the *task* (#313). Both bars are drawn when both exist: a task's
@@ -616,13 +633,8 @@
           spent={pickedBurn.spent}
           budget={pickedBurn.budget}
           label={t("time.budget.remaining_label")}
-          remainingText={pickedBurn.remaining < 0
-            ? t("time.budget.over", { hours: fmtNumber(-pickedBurn.remaining, 1) })
-            : t("time.budget.remaining", { hours: fmtNumber(pickedBurn.remaining, 1) })}
-          spentText={t("time.budget.spent", {
-            spent: fmtNumber(pickedBurn.spent, 1),
-            budget: fmtNumber(pickedBurn.budget, 1),
-          })}
+          remainingText={pickedBurn.remainingText}
+          spentText={t("time.budget.spent", { hours: pickedBurn.spentText })}
           noteText={pickedBurn.sources.length > 0
             ? t("time.budget.from_subscription", {
                 name: pickedBurn.sources.map((s) => s.name).join(", "),

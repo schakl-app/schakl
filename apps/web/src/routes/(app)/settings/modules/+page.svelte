@@ -1,31 +1,21 @@
 <script lang="ts">
-  import { enhance } from "$app/forms";
+  /**
+   * Instellingen → Modules: what schakl itself does for this workspace (CLAUDE.md §6a).
+   *
+   * The integrations moved to a screen of their own (#378). One list holding both said the two
+   * were the same decision, and they are not: a module is switched on and works, an integration is
+   * switched on and then needs a credential somebody else issues. Keeping them together also put
+   * the switch for the whole Integraties group on a page called Modules, while a *group heading*
+   * further down the index read "Modules" too — one word, two meanings, on one page.
+   *
+   * Everything hard is shared with the other screen (`EnablementForm`): the two edit one list.
+   */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
-  import { InFlight } from "$lib/core/submit.svelte";
+  import EnablementForm from "$lib/core/settings/EnablementForm.svelte";
   import { pageTitle } from "$lib/core/title";
-  import Button from "$lib/core/ui/Button.svelte";
-  import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
-
-  const busy = new InFlight();
-
-  // Component state via bind:group, never one-way checked={…} (docs/UX.md): a checkbox
-  // rendered one-way loses its mark on hydration, and the next save then silently strips
-  // every module the user never touched — only the freshly ticked ones survived.
-  let selected = $state<string[]>([...data.enabled]);
-
-  // A locked module means two different things, and only one of them is something the reader
-  // can act on. On a self-hosted box a licence key is missing and the instance owner installs
-  // one; on cloud the workspace's plan does not cover it and only the operator can change that,
-  // so pointing at Instellingen → Licentie would be a control that always refuses (#253).
-  const lockedHint = $derived(
-    t(
-      data.deployment === "cloud"
-        ? "settings.modules.locked_hint_cloud"
-        : "settings.modules.locked_hint",
-    ),
-  );
 </script>
 
 <svelte:head>
@@ -37,62 +27,9 @@
   <p class="mt-1 text-sm text-text-muted">{t("settings.modules.subtitle")}</p>
 </div>
 
-<form
-  method="POST"
-  action="?/update"
-  use:enhance={busy.wrap("", () => async ({ update }) => {
-    // Keep the ticked state after save (docs/UX.md): the default reset would wipe the
-    // checkboxes back to their SSR attributes.
-    await update({ reset: false });
-  })}
-  class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
->
-  <ul class="space-y-2">
-    {#each data.available as moduleName (moduleName)}
-      {@const isHub = moduleName === "companies"}
-      <!-- Locked (issue #137): needs a license, isn't covered, and isn't already enabled —
-           an enabled-but-uncovered module stays toggleable so it can at least be dropped. -->
-      {@const locked =
-        data.licensed.includes(moduleName) &&
-        !data.entitled.includes(moduleName) &&
-        !data.enabled.includes(moduleName)}
-      <li>
-        <label
-          class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 {isHub ||
-          locked
-            ? 'opacity-70'
-            : 'hover:border-brand/50'}"
-        >
-          <input
-            type="checkbox"
-            name="modules"
-            value={moduleName}
-            bind:group={selected}
-            disabled={isHub || locked}
-            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-          />
-          {#if isHub}<input type="hidden" name="modules" value="companies" />{/if}
-          <span class="flex-1 text-sm font-medium text-text">{moduleLabel(moduleName)}</span>
-          {#if isHub}
-            <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
-              {t("settings.modules.always_on")}
-            </span>
-          {:else if locked}
-            <span
-              class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400"
-              title={lockedHint}
-            >
-              {t("settings.modules.locked")}
-            </span>
-          {/if}
-        </label>
-      </li>
-    {/each}
-  </ul>
-  <p class="mt-3 text-xs text-text-muted">{t("settings.modules.hint")}</p>
-  {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
-  {#if form?.updated}<p class="mt-2 text-sm text-green-600">{t("settings.account.saved")}</p>{/if}
-  <Button class="mt-4" loading={busy.active}>
-    {t("common.save")}
-  </Button>
-</form>
+<EnablementForm
+  {data}
+  {form}
+  kind="module"
+  isInstanceOwner={page.data.user?.isInstanceOwner ?? false}
+/>

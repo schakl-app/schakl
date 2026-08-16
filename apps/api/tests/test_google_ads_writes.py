@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
-from app.modules.google_ads.models import GoogleAdsDecision, GoogleAdsSettings
+from app.integrations.google_ads.models import GoogleAdsDecision, GoogleAdsSettings
 from tests.conftest import auth_cookie, make_tenant
 from tests.googleads_fake import failure
 from tests.test_google_ads_reads import CUSTOMER, _linked, fake  # noqa: F401 — transport fixture
@@ -637,3 +637,217 @@ async def test_the_four_write_keys_are_separate_grants(client_for, fake) -> None
             response = await client.post(path, headers=headers, json=body)
             assert response.status_code in (403, 404), (path, response.status_code)
     assert fake.mutations() == []
+
+
+# --- what the live account taught us (#379) ---------------------------------------------------- #
+#
+# Every test below pins a behaviour that the stubbed transport agreed with and Google did not.
+# That is the general lesson of the audit: a fake accepts whatever payload you send it, so a
+# create can be "tested" for a year and fail on the first real call.
+
+
+async def test_a_campaign_create_declares_eu_political_advertising(client_for, fake) -> None:  # noqa: F811
+    """Required on create in v25; without it Google refuses **every** campaign create.
+
+    The field appears in no integration guide and the refusal arrived as a bare 502, so this is
+    pinned rather than trusted: it is the single line between a write surface that works and one
+    whose entry point is dead.
+    """
+    t, account_id = await _linked("gads-eu-political")
+    headers = await auth_cookie(t.user)
+    fake.mutation("campaigns", resource_names=[f"customers/{CUSTOMER}/campaigns/9"])
+    async with client_for(t.host) as client:
+        response = await client.post(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns",
+            headers=headers,
+            json={"name": "Merk", "budget_id": "77"},
+        )
+    assert response.status_code == 201
+    created = fake.mutations("campaigns")[0][1]["operations"][0]["create"]
+    assert created["containsEuPoliticalAdvertising"] == "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
+
+
+async def test_a_political_advertiser_can_say_so(client_for, fake) -> None:  # noqa: F811
+    """It is a legal declaration about the advertiser, so it is asked rather than assumed."""
+    t, account_id = await _linked("gads-eu-political-yes")
+    headers = await auth_cookie(t.user)
+    fake.mutation("campaigns", resource_names=[f"customers/{CUSTOMER}/campaigns/9"])
+    async with client_for(t.host) as client:
+        await client.post(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns",
+            headers=headers,
+            json={"name": "Merk", "budget_id": "77", "eu_political_advertising": True},
+        )
+    created = fake.mutations("campaigns")[0][1]["operations"][0]["create"]
+    assert created["containsEuPoliticalAdvertising"] == "CONTAINS_EU_POLITICAL_ADVERTISING"
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("campaigns/9", {"status": "REMOVED"}),
+        ("ad-groups/9", {"status": "REMOVED"}),
+        ("ads", {"ad_group_id": "9", "ad_id": "8", "status": "REMOVED"}),
+    ],
+)
+async def test_removed_is_refused_as_a_status_and_never_sent(client_for, fake, path, body) -> None:  # noqa: F811
+    """``REMOVED`` is output-only at Google: sending it answers ``INVALID_ENUM_VALUE``.
+
+    Refused here, where the message can name the route that works, rather than as somebody
+    else's enum complaint after a round trip — and refused on *every* route that used to
+    document removal through the status field.
+    """
+    t, account_id = await _linked(f"gads-removed-{path.replace('/', '-')}".lower())
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as client:
+        response = await client.patch(
+            f"/api/v1/google-ads/accounts/{account_id}/{path}", headers=headers, json=body
+        )
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"]["status"] == "errors.google_ads_status_removed"
+    assert fake.mutations() == []
+
+
+@pytest.mark.parametrize(
+    ("path", "resource"),
+    [
+        ("budgets/77", "campaignBudgets"),
+        ("campaigns/9", "campaigns"),
+        ("ad-groups/8", "adGroups"),
+        ("ad-groups/8/ads/7", "adGroupAds"),
+        ("negative-lists/6", "sharedSets"),
+    ],
+)
+async def test_every_created_resource_can_be_deleted(client_for, fake, path, resource) -> None:  # noqa: F811
+    """A `remove` operation, which is the only thing Google accepts as a deletion.
+
+    Before #379 only keywords and negatives could be removed — the two resources that happened
+    to have a route building this operation — so an agent that created a campaign had no way
+    back and had to be undone by hand in Google's own interface.
+    """
+    t, account_id = await _linked(f"gads-del-{resource.lower()}")
+    headers = await auth_cookie(t.user)
+    fake.mutation(resource, resource_names=[f"customers/{CUSTOMER}/{resource}/1"])
+    async with client_for(t.host) as client:
+        response = await client.delete(
+            f"/api/v1/google-ads/accounts/{account_id}/{path}", headers=headers
+        )
+    assert response.status_code == 200, response.text
+    operation = fake.mutations(resource)[0][1]["operations"][0]
+    assert "remove" in operation, operation
+    assert "update" not in operation
+
+
+async def test_a_delete_can_be_validated_without_deleting(client_for, fake) -> None:  # noqa: F811
+    """`validate_only` rides the query string: a DELETE body is dropped by too many proxies for
+    "it validated" and "it deleted" to be one silently-ignored field apart."""
+    t, account_id = await _linked("gads-del-validate")
+    headers = await auth_cookie(t.user)
+    fake.mutation("campaigns", resource_names=[f"customers/{CUSTOMER}/campaigns/9"])
+    async with client_for(t.host) as client:
+        response = await client.delete(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns/9?validate_only=true",
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.json()["validate_only"] is True
+    assert fake.mutations("campaigns")[0][1]["validateOnly"] is True
+
+
+async def test_a_ceiling_refusal_says_what_the_ceiling_is(client_for, fake) -> None:  # noqa: F811
+    """`fields` values are i18n keys and a key cannot carry a number, so the figure rides in
+    `details` — otherwise an agent is told it went over and not what it went over, and cannot
+    correct itself without a second call."""
+    t, account_id = await _linked("gads-ceiling-detail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as client:
+        await client.put(
+            f"/api/v1/google-ads/accounts/{account_id}/policy",
+            headers=headers,
+            json={"max_daily_budget": 50},
+        )
+        response = await client.post(
+            f"/api/v1/google-ads/accounts/{account_id}/budgets",
+            headers=headers,
+            json={"name": "te groot", "amount": 500},
+        )
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "google_ads_budget_over_ceiling"
+    assert error["details"]["limit"] == 50
+    assert fake.mutations() == []
+
+
+async def test_a_banned_phrase_names_the_phrase_and_the_field_it_is_in(client_for, fake) -> None:  # noqa: F811
+    """It used to blame `headlines` whatever the phrase was in, and never say which phrase."""
+    t, account_id = await _linked("gads-banned-detail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as client:
+        await client.put(
+            f"/api/v1/google-ads/accounts/{account_id}/policy",
+            headers=headers,
+            json={"banned_phrases": ["gratis"]},
+        )
+        response = await client.post(
+            f"/api/v1/google-ads/accounts/{account_id}/ads",
+            headers=headers,
+            json={
+                "ad_group_id": "9",
+                "headlines": ["Website laten maken", "Webdesign Zeeland", "Snel online"],
+                "descriptions": ["Volledig Gratis offerte binnen een dag.", "Vraag het ons."],
+                "final_urls": ["https://breik.nl/"],
+            },
+        )
+    assert response.status_code == 422
+    error = response.json()["error"]
+    # The description, not the headlines — the box the writer actually has to edit.
+    assert set(error["fields"]) == {"descriptions"}
+    assert error["details"]["blocks"] == "gratis"
+
+
+async def test_a_refused_payload_is_a_422_carrying_googles_own_error_code(client_for, fake) -> None:  # noqa: F811
+    """A named `errorCode` is Google refusing what we sent, not an outage.
+
+    It used to answer 502 with `{"code": "google_ads_error"}` and nothing else, so the field
+    Google named was discarded by the one class built to preserve it — and 502 reads as "Google
+    is down", which sends somebody to a status page over a missing field.
+    """
+    t, account_id = await _linked("gads-request-error")
+    headers = await auth_cookie(t.user)
+    fake.mutation(
+        "campaigns",
+        response=failure("fieldError", "REQUIRED", status=400, message="The required field..."),
+    )
+    async with client_for(t.host) as client:
+        response = await client.post(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns",
+            headers=headers,
+            json={"name": "Merk", "budget_id": "77"},
+        )
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "google_ads_request"
+    assert error["details"]["google_error_code"] == "fieldError.REQUIRED"
+    # Google's prose still stays out of the envelope — identifiers only (§9).
+    assert "required field" not in response.text.lower()
+
+
+async def test_an_account_policy_can_be_dropped_rather_than_emptied(client_for, fake) -> None:  # noqa: F811
+    """Saving every field null leaves a row that reports `stored: true` and holds nothing, which
+    is a different fact from "this account has no policy of its own"."""
+    t, account_id = await _linked("gads-policy-clear")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as client:
+        await client.put(
+            f"/api/v1/google-ads/accounts/{account_id}/policy",
+            headers=headers,
+            json={"max_cpc": 3.0, "protected_terms": ["breik"]},
+        )
+        response = await client.delete(
+            f"/api/v1/google-ads/accounts/{account_id}/policy", headers=headers
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stored"] is False
+    assert body["resolved"]["max_cpc"] is None
+    assert body["resolved"]["max_budget_increase"] == 1.0

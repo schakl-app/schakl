@@ -18,14 +18,13 @@ import uuid
 from app.core.tenancy import RequestContext
 from app.modules.reporting.models import ReportAudience
 from app.modules.reporting.service import ProfileService, ReportService
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 _RECENT = 6
 
 
 async def _reporting_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    if not ctx.can("reporting.report.read"):
-        return {"forbidden": True}
+    # Declared on the spec (#365) — the composer never calls this without the read grant.
     reports = await ReportService(ctx).list(
         company_id=company_id, limit=_RECENT, count=False
     )
@@ -52,6 +51,11 @@ reporting_company_panel = PanelSpec(
     title_key="reporting.panel.title",
     provider=_reporting_provider,
     position=55,
+    requires_permission="reporting.report.read",
+    size=SIZE_HALF,
+    # "No report yet **and** no schedule" is nothing-yet; a configured client with an empty
+    # history has a next run to show, which is news.
+    empty_when=lambda data: not data.get("reports") and not data.get("configured"),
 )
 
 __all__ = ["ReportAudience", "reporting_company_panel"]

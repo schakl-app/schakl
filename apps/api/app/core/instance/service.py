@@ -20,7 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth.models import User
-from app.core.entitlements.service import OrgPlan, ensure_modules_enableable
+from app.core.entitlements.service import (
+    OrgPlan,
+    ensure_modules_enableable,
+    ensure_requirements_met,
+)
 from app.core.instance import audit, repo
 from app.core.models import Org, OrgSettings, OrgStatus
 from app.core.permissions.catalog import ROLE_OWNER
@@ -68,6 +72,10 @@ def validate_modules(modules: list[str]) -> list[str]:
             status_code=422,
             fields={"enabled_modules": "errors.validation"},
         )
+    # An integration without the module it attaches to (CLAUDE.md §6a). Here as well as inside
+    # ``ensure_modules_enableable`` because the first-run wizard reaches this function and not
+    # that one: a box could otherwise be *installed* into the state the settings screen refuses.
+    ensure_requirements_met(modules)
     return modules
 
 

@@ -192,6 +192,20 @@ class TenantBrandingUpdate(BaseModel):
 
 class ModulesMeta(BaseModel):
     enabled_modules: list[str]
+    # Modules vs integrations (CLAUDE.md §6a). A map rather than a second list of names, because
+    # every consumer holds a name and wants to *classify* it — the modules settings screen, the
+    # first-run wizard, the instance-admin org editor — and two membership lists that can
+    # disagree is how a name ends up drawn in both groups or in neither.
+    #
+    # It covers everything this build mounts, not only what the tenant enabled: the screens that
+    # read it are exactly the screens that must also offer the switched-off ones.
+    module_kinds: dict[str, str] = Field(default_factory=dict)
+    # name → the modules it has nowhere to put its data without. Only entries that have any, so
+    # this is a handful of pairs rather than an empty list per module. The API refuses an invalid
+    # set either way (``ensure_requirements_met``); this is what lets the screen name *which*
+    # integration needs *what* before anyone presses save — which an envelope carrying only an
+    # i18n key cannot (§9).
+    module_requires: dict[str, list[str]] = Field(default_factory=dict)
     customizable_entity_types: list[str]
     default_locale: str
     supported_locales: list[str]
@@ -585,6 +599,8 @@ async def modules(request: Request) -> ModulesMeta:
     mcp_enabled, mcp_entitled = await _mcp_availability(plan)
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
+        module_kinds=registry.kinds(),
+        module_requires=registry.requirements(),
         customizable_entity_types=customizable_entity_types(),
         default_locale=settings.default_locale,
         supported_locales=settings.supported_locales,

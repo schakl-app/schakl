@@ -266,7 +266,30 @@ class Product(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
 
     __tablename__ = "invoicing_products"
 
+    __table_args__ = (
+        # Unique **where present**: a code is optional (every product predating #377 has none)
+        # and two products sharing one would make an export, an import and an accounting push
+        # each pick a different row without saying so.
+        Index(
+            "uq_invoicing_products_org_code",
+            "org_id",
+            "code",
+            unique=True,
+            postgresql_where=text("code IS NOT NULL"),
+        ),
+    )
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The tenant's own article code — an artikelnummer, an SKU, a service code (#377).
+    #:
+    #: What makes a product *identifiable* rather than merely named: it is what an export
+    #: round-trips on, what an import matches on, and what pairs this row with an ``artikel`` in
+    #: an accounting package. Free text and nullable, because the rules differ per destination
+    #: and this column must not encode one of them — SnelStart, for instance, decides
+    #: ``Numeriek`` vs ``Alfanumeriek`` and a maximum length **per administration**, so the
+    #: validation belongs where the administration is known, not here where it would be wrong
+    #: for the next package.
+    code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     #: The line description the pick fills in; empty = use the name.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     unit: Mapped[str | None] = mapped_column(String(20), nullable=True)

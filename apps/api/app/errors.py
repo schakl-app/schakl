@@ -38,6 +38,21 @@ class AppError(Exception):
     ``message_key`` and any ``fields`` values must be i18n keys.
     """
 
+    #: Every attribute the handler reads has a class-level default, so a subclass that builds
+    #: itself **field by field** rather than calling this initialiser cannot lose one. Two do,
+    #: for the same stated reason (``AdsError``, ``GtmError``: ``str(exc)`` must stay the
+    #: provider's own text for ``last_error``, which ``super().__init__(message_key)`` would
+    #: overwrite) — and when ``details`` was added to the envelope, ``GtmError`` was written in
+    #: a parallel worktree off an older base and rebased clean on top of it, so the attribute
+    #: simply was not there. Every refusal from that integration then answered 500 from the
+    #: handler itself. A default costs nothing and makes the next such addition inert rather
+    #: than fatal; ``tests/test_error_envelope.py`` sweeps the subclasses for the same reason.
+    code: str = "error"
+    message_key: str = "errors.server"
+    status_code: int = status.HTTP_400_BAD_REQUEST
+    fields: dict[str, str] | None = None
+    details: dict[str, Any] | None = None
+
     def __init__(
         self,
         code: str,
@@ -45,20 +60,33 @@ class AppError(Exception):
         *,
         status_code: int = status.HTTP_400_BAD_REQUEST,
         fields: dict[str, str] | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message_key)
         self.code = code
         self.message_key = message_key
         self.status_code = status_code
         self.fields = fields
+        #: Machine-readable facts about *this* refusal — the ceiling that was exceeded, the
+        #: upstream provider's own error code. Deliberately separate from ``fields``, whose
+        #: values are i18n keys and therefore cannot carry a number or a vendor string: a
+        #: caller told "over the ceiling" and not what the ceiling is cannot correct itself
+        #: without a second call. Values are literals, never translated, so nothing here may
+        #: substitute for the message a person reads.
+        self.details = details
 
 
 def _envelope(
-    code: str, message: str, fields: dict[str, str] | None = None
+    code: str,
+    message: str,
+    fields: dict[str, str] | None = None,
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     error: dict[str, Any] = {"code": code, "message": message}
     if fields:
         error["fields"] = fields
+    if details:
+        error["details"] = details
     return {"error": error}
 
 
@@ -84,7 +112,7 @@ def _field_key(err: dict[str, Any]) -> str:
 async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
-        content=_envelope(exc.code, exc.message_key, exc.fields),
+        content=_envelope(exc.code, exc.message_key, exc.fields, exc.details),
     )
 
 

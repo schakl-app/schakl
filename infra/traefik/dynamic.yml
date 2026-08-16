@@ -12,21 +12,49 @@ http:
       entryPoints:
         - web
       service: api
-      middlewares: [compress]
+      middlewares: [compress, api-unreachable]
     api:
       rule: "Host(`api.localhost`)"
       entryPoints:
         - web
       service: api
-      middlewares: [compress]
+      middlewares: [compress, api-unreachable]
     web:
       rule: "Host(`app.localhost`)"
       entryPoints:
         - web
       service: web
-      middlewares: [compress]
+      middlewares: [compress, web-unreachable]
 
   middlewares:
+    # --- What the edge serves when the edge is the one producing the error -------------------
+    #
+    # An error page cannot live in the service that is down, so the two cross-cover: the API's
+    # routes take their error page from `web`, and the web route takes its from `api`. Both are
+    # branded per tenant, because both sides resolve the tenant from the same Host header this
+    # request already carries (CLAUDE.md §7).
+    #
+    # `status: 502-504` is exact, not cautious: those are the codes Traefik itself invents when a
+    # backend does not answer. Every other status was produced by an app that already has a
+    # better page for it — a 404 from the SSR app is our own branded 404, and intercepting it
+    # here would replace a good page with a generic one.
+    #
+    # Both are down at once only if the whole stack is, in which case Traefik is down too and
+    # nothing here is serving anyway.
+    api-unreachable:
+      errors:
+        status: ["502-504"]
+        service: web
+        # A JSON envelope, not a page: these paths are answered by the generated client, by
+        # `fetch` and by MCP clients, all of which parse `{ error: { code, message } }`
+        # (CLAUDE.md §9). HTML here would surface as a JSON parse error in a console.
+        query: "/edge-error/api/{status}"
+    web-unreachable:
+      errors:
+        status: ["502-504"]
+        service: api
+        # A page, because the caller is a browser that asked for one (app/core/errorpage.py).
+        query: "/error/{status}"
     # Compress responses at the edge, not in the app (#290). The SSR HTML and the JSON list
     # payloads behind it are highly compressible text, and this is the one place that can
     # gzip/brotli them without a Python process spending CPU on it per request.

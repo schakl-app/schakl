@@ -53,8 +53,14 @@
    * not against prose: 1600px still gives ten columns room, while wider only spreads a row's
    * first and last cell further apart. Past the 240px sidebar and the shell's 24px padding it
    * binds above a 1888px window — so a 1366 or 1512 laptop is untouched, a 1920 desktop loses
-   * 16px a side, and only genuinely wide monitors gain real margin. A screen that needs the
-   * whole width (none today) opts out by not using it, never by raising this for everyone. */
+   * 16px a side, and only genuinely wide monitors gain real margin.
+   *
+   * Never raise it for everyone: it is a rule about *reading*, and the screens that outgrow it
+   * are grids, whose width is the arithmetic of the columns the user switched on rather than a
+   * taste. /tasks with all twelve on wants 1812px and was truncating nine titles of eleven
+   * inside this number with 360px of monitor spare either side. Such a table asks for what it
+   * needs and the shell grants it as far as the room allows (`core/ui/measure.svelte.ts`); this
+   * stays the floor under every claim, and the whole answer for anything that is read. */
   --container-content: 1600px;
 }
 

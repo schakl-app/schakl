@@ -71,6 +71,8 @@ registerWebModule({
       module: "marketing",
       component: MarketingCompanyPanel,
       position: 50,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/companies/${id}/marketing`,
     },
   ],
 });

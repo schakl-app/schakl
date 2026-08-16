@@ -8,7 +8,7 @@
    * The viewBox is measured rather than fixed — see `geometry.ts`: a constant one scales every
    * user unit with the container, so a wide screen inflated the chart and its type together.
    */
-  import { fmtMoney, monthLabels } from "$lib/core/format";
+  import { capitalizeFirst, fmtMoney, monthLabels } from "$lib/core/format";
 
   import { barWidth, chartWidth } from "./geometry";
 
@@ -129,7 +129,7 @@
       class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs shadow-lg"
       style="left: {tooltip.x}px; top: {tooltip.y}px"
     >
-      <p class="mb-1 font-semibold capitalize text-text">{tooltip.month}</p>
+      <p class="mb-1 font-semibold text-text">{capitalizeFirst(tooltip.month)}</p>
       <p class="flex items-center gap-1.5 tabular-nums text-text-muted">
         <span class="h-2 w-2 rounded-full" style="background:{CURRENT_COLOR}"></span>
         {currentLabel}: {fmtMoney(tooltip.cur)}

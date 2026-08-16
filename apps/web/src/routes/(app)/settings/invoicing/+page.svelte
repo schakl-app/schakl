@@ -2,6 +2,7 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import CountryInput from "$lib/core/ui/CountryInput.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -166,13 +167,9 @@
         <label for="seller-country" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.invoicing.country")}</label
         >
-        <input
-          id="seller-country"
-          name="country"
-          maxlength="2"
-          value={seller.country ?? ""}
-          class={inputClass}
-        />
+        <!-- The same shared picker the client form uses (#349): a country is chosen from a
+             searchable list of names, never typed as two letters nobody is expected to know. -->
+        <CountryInput id="seller-country" name="country" value={seller.country ?? ""} />
       </div>
       <div>
         <label for="seller-taxcountry" class="mb-1 block text-sm font-medium text-text"
@@ -342,6 +339,13 @@
               <span class="ml-2 text-xs text-text-muted">
                 {docMoney(Number(product.unit_price), getCurrency(), data.locale)}
                 {#if product.unit}/ {product.unit}{/if}
+                <!-- The article code, where there is one: it is what a push matches on, so
+                     "which of these will reach the bookkeeping?" is answerable from the list
+                     rather than by opening every row (#377).
+                     TODO(schema): cast until `code` is in the generated client. -->
+                {#if product.code}
+                  · {product.code}
+                {/if}
               </span>
             </div>
             <ActionsMenu
@@ -872,6 +876,27 @@
           value={editingProduct?.name ?? ""}
           class={inputClass}
         />
+      </div>
+      <div>
+        <label for="product-code" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.invoicing.product_code")}</label
+        >
+        <!-- The article code (#377): what pairs this product with the same article in the
+             bookkeeping, so a push matches an existing article instead of creating a second one.
+             Optional — a tenant with no accounting integration never fills it in — and what an
+             administration accepts (numeric only, a maximum length) is *its* rule, reported by
+             the push rather than guessed at here: a client-side rule stricter than the server's
+             is a control refusing valid input.
+             TODO(schema): `code` is not in the generated client yet, hence the cast; drop it
+             after `pnpm gen:client`. -->
+        <input
+          id="product-code"
+          name="code"
+          maxlength="30"
+          value={editingProduct?.code ?? ""}
+          class={inputClass}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.product_code_hint")}</p>
       </div>
       <div>
         <label for="product-description" class="mb-1 block text-sm font-medium text-text"

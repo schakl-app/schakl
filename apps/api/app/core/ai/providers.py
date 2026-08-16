@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -82,9 +82,21 @@ class ToolDef:
 
 @dataclass(frozen=True)
 class ToolCall:
+    """One call the model made, and whether we actually received all of it.
+
+    ``incomplete`` is the difference between *"the model submitted an empty form"* and *"the
+    model was cut off mid-word and we could not read the form"*. Both arrive here as
+    ``input={}`` — a tool call's arguments stream as a JSON **string**, so a run that hits the
+    token ceiling ends in a fragment like ``{"summary": "Volgende week te`` that no parser
+    accepts. Reporting the second as the first is how a mail full of work came back as *"schakl
+    found nothing in this email"* (#327): a caller cannot ask a question the type cannot answer.
+    """
+
     id: str
     name: str
     input: dict[str, Any]
+    #: The arguments did not parse — an empty ``input`` here means *unread*, never *empty*.
+    incomplete: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +127,30 @@ class AIEvent:
     stop_reason: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
+
+
+#: Stop reasons that mean "the answer stopped because the budget ran out", per provider —
+#: OpenAI says ``length``, Anthropic says ``max_tokens``. Both are the *run's* verdict; a call's
+#: own :attr:`ToolCall.incomplete` is the per-call one, and they are separate because a run can
+#: hit the ceiling after a tool call has already closed cleanly.
+TRUNCATED_STOP_REASONS = frozenset({"length", "max_tokens"})
+
+
+def _tool_arguments(raw: str) -> tuple[dict[str, Any], bool]:
+    """Parse a streamed tool call's arguments; report whether they arrived whole.
+
+    Both adapters used to answer an unparseable fragment with ``{}`` and say nothing, which
+    made "cut off" and "submitted nothing" the same value. Empty *is* a legitimate answer here
+    — a tool with no required properties may be called with ``{}`` — so the two are told apart
+    by the flag rather than by the dict.
+    """
+    if not raw:
+        return {}, False
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {}, True
+    return (parsed, False) if isinstance(parsed, dict) else ({}, True)
 
 
 @dataclass
@@ -203,9 +239,12 @@ async def stream_chat(
             and event.tool_call.name in from_wire
         ):
             call = event.tool_call
+            # ``replace``, not a fresh three-argument ``ToolCall``: this only renames, and a
+            # rebuild silently drops whatever the adapter learned about the call — which is how
+            # ``incomplete`` would have been lost on exactly the dotted-name tools (§12) that
+            # need it most.
             event = AIEvent(
-                kind="tool_call",
-                tool_call=ToolCall(call.id, from_wire[call.name], call.input),
+                kind="tool_call", tool_call=replace(call, name=from_wire[call.name])
             )
         yield event
 
@@ -392,13 +431,12 @@ async def _anthropic_stream(
             elif etype == "content_block_stop":
                 partial = open_tools.pop(event.get("index"), None)
                 if partial is not None:
-                    try:
-                        args = json.loads(partial["json"]) if partial["json"] else {}
-                    except ValueError:
-                        args = {}
+                    args, incomplete = _tool_arguments(partial["json"])
                     yield AIEvent(
                         kind="tool_call",
-                        tool_call=ToolCall(partial["id"], partial["name"], args),
+                        tool_call=ToolCall(
+                            partial["id"], partial["name"], args, incomplete=incomplete
+                        ),
                     )
             elif etype == "message_delta":
                 stop_reason = event.get("delta", {}).get("stop_reason") or stop_reason
@@ -533,11 +571,11 @@ async def _openai_stream(
             if choice.get("finish_reason"):
                 stop_reason = choice["finish_reason"]
     for partial in partials.values():
-        try:
-            args = json.loads(partial.arguments) if partial.arguments else {}
-        except ValueError:
-            args = {}
-        yield AIEvent(kind="tool_call", tool_call=ToolCall(partial.id, partial.name, args))
+        args, incomplete = _tool_arguments(partial.arguments)
+        yield AIEvent(
+            kind="tool_call",
+            tool_call=ToolCall(partial.id, partial.name, args, incomplete=incomplete),
+        )
     yield AIEvent(
         kind="done",
         stop_reason="tool_use" if partials and stop_reason == "tool_calls" else stop_reason,

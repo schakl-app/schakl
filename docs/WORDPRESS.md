@@ -158,7 +158,7 @@ month of `ai_visibility_score` would produce a four-figure visibility score — 
 
 ## 4. The module
 
-`apps/api/app/modules/wordpress/` mirrors `cloudflare` and `uptime` one level down the tree:
+`apps/api/app/integrations/wordpress/` mirrors `cloudflare` and `uptime` one level down the tree:
 Cloudflare is something a **domain** has; uptime and WordPress are things a **website** has.
 
 - **`wordpress_sites`** — one row per website, `UNIQUE (org_id, website_id)`. That index *is*
@@ -310,7 +310,7 @@ caching.
 
 ### The seam, and why the client rides on it
 
-`marketing` may not import `app.modules.wordpress` (§6), so `app/core/wordpress.py` holds a
+`marketing` may not import `app.integrations.wordpress` (§6), so `app/core/wordpress.py` holds a
 registered `resolve_credential` **and** a registered `open_client` factory — the
 `app/core/registrar/presence.py` shape. The factory is there because the *transport* is the
 module's decision too: the day the client grows a retry policy or a per-site TLS quirk, it

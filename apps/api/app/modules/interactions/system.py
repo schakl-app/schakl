@@ -323,3 +323,61 @@ async def bodyless_logged_email_ids(ctx: EmitContext, limit: int = 50) -> list[u
         )
     ).all()
     return [row[0] for row in rows]
+
+
+async def logged_state_for_messages(
+    ctx: EmitContext,
+    owner_user_id: uuid.UUID,
+    gmail_message_ids: list[str],
+    rfc822_message_ids: list[str],
+) -> dict[str, uuid.UUID]:
+    """Which of these messages already have a row — keyed by *both* ids, in one query.
+
+    The manual-import screen (#342) lists a thread's messages and has to say which are already
+    on the timeline, and there are two ways for that to be true: this mailbox logged it
+    (``gmail_message_id``, scoped to the owner because the id only means anything inside their
+    mailbox) or a colleague's did (``rfc822_message_id``, the global one). Both are answered
+    here so the caller can render "al vastgelegd" without a query per row — a thread of twenty
+    is one statement, not twenty (docs/PERFORMANCE.md).
+    """
+    if not gmail_message_ids and not rfc822_message_ids:
+        return {}
+    conditions = []
+    if gmail_message_ids:
+        conditions.append(
+            (Interaction.owner_user_id == owner_user_id)
+            & Interaction.gmail_message_id.in_(gmail_message_ids)
+        )
+    if rfc822_message_ids:
+        conditions.append(Interaction.rfc822_message_id.in_(rfc822_message_ids))
+    rows = (
+        await ctx.session.execute(
+            select(
+                Interaction.id, Interaction.gmail_message_id, Interaction.rfc822_message_id
+            ).where(Interaction.org_id == ctx.org.id, or_(*conditions))
+        )
+    ).all()
+    seen: dict[str, uuid.UUID] = {}
+    for row_id, gmail_id, rfc822_id in rows:
+        # The rfc822 key is written first so a row from *this* mailbox wins the collision: it
+        # is the one whose deep link opens in the caller's Gmail (docs/GOOGLE.md §6).
+        if rfc822_id:
+            seen.setdefault(rfc822_id, row_id)
+        if gmail_id:
+            seen[gmail_id] = row_id
+    return seen
+
+
+async def record_manual_gmail_email(ctx, **fields) -> Interaction:  # noqa: ANN001, ANN003
+    """Log one message a person pulled out of their own mailbox by id (#342).
+
+    The boundary the licensed ``google`` module writes through, exactly like
+    :func:`record_email` above — except this one runs as a **person**, not as the poller, so it
+    takes a ``RequestContext`` and goes through the ordinary service: the caller's permissions,
+    the link validation, the contact roster, the activity trail and the "let schakl fill the
+    task in" offer are all things a system actor has no business skipping just because the
+    bytes happen to arrive over the same API.
+    """
+    from app.modules.interactions.service import InteractionService
+
+    return await InteractionService(ctx).create_from_gmail_message(**fields)

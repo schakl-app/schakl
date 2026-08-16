@@ -13,13 +13,13 @@ from datetime import date
 
 import pytest
 
+from app.integrations.wordpress import client as wp_client
 from app.modules.marketing.sources.base import (
     AVERAGED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
 )
 from app.modules.marketing.sources.rankmath import RankMathAdapter
-from app.modules.wordpress import client as wp_client
 from tests.conftest import auth_cookie, make_tenant
 from tests.wordpress_fake import FakeWordPress
 

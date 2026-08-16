@@ -279,6 +279,7 @@ class ProjectService:
         company_id: uuid.UUID | None = None,
         status: str | None = None,
         q: str | None = None,
+        unnamed: bool | None = None,
         mine: bool = False,
         sort: str | None = None,
         hours: bool = False,
@@ -300,6 +301,9 @@ class ProjectService:
                 conditions.append(Project.status.in_(wanted))
         if q:
             conditions.append(Project.name.ilike(f"%{q.strip()}%"))
+        # "The ones nobody named" (#350) — see the twin in ``tasks/service.py``.
+        if unnamed is not None:
+            conditions.append(Project.unnamed.is_(unnamed))
         if mine:
             # "My projects" matches *any* assignee, not just the primary.
             conditions.append(
@@ -380,6 +384,8 @@ class ProjectService:
     async def create(self, data: ProjectCreate) -> Project:
         self.ctx.require("projects.project.write")
         values = data.model_dump()
+        # See the twin in ``tasks/service.py``: nullable on the wire, `NOT NULL` in the column.
+        values["unnamed"] = bool(values.get("unnamed"))
         # The description is markdown source (issue #66/#255): strip raw HTML on write.
         values["description"] = sanitize_markdown(values.get("description"))
         values.pop("assignees", None)
@@ -453,6 +459,11 @@ class ProjectService:
         values = data.model_dump(exclude_unset=True)
         if "description" in values:
             values["description"] = sanitize_markdown(values.get("description"))
+        # Naming the thing is what un-marks it (#350) — enforced here, not asked of the caller,
+        # so no write path can set a real name and leave the row filed under "nobody named this".
+        values.pop("unnamed", None)
+        if values.get("name") and project.unnamed:
+            values["unnamed"] = False
         # While an active subscription sources the hours (#225), the project's own
         # ``budget_hours`` is not writable — the API guards it, not just the form, so an MCP
         # or script client can't create the drift the UI prevents. Echoing the stored value

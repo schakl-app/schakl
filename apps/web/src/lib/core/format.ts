@@ -2,11 +2,15 @@
  * Locale-aware date/number formatting (CLAUDE.md §8) with a European preference:
  * the UI locale maps to a European Intl locale (en → en-GB), so English users still get
  * day-month ordering and 24-hour clocks. Date-only ISO strings are wall-clock values and
- * are formatted in UTC so they never shift a day.
+ * are formatted in UTC so they never shift a day; an instant is formatted in the tenant's zone.
+ *
+ * Which of the two a value is comes from the value (`wire-date.ts`), not from which function was
+ * called — a date formatter handed a timestamp used to print `NaN-NaN-0NaN`.
  */
 import { getCurrency } from "$lib/core/currency";
 import { getClock, getDateFormat } from "$lib/core/dateformat";
 import { getTimeZone } from "$lib/core/timezone";
+import { numericDate, parseWireDate, wireZone } from "$lib/core/wire-date";
 import { getLocale } from "$lib/paraglide/runtime";
 
 const INTL_LOCALE: Record<string, string> = {
@@ -31,19 +35,25 @@ function fmt(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   return formatter;
 }
 
-function dateOnly(iso: string): Date {
-  return new Date(iso + "T00:00:00Z");
+/**
+ * The zone this value's calendar date is read in — UTC for a wall-clock date, the tenant's for an
+ * instant. Every date formatter below asks, so any of them may be handed either shape.
+ */
+function zone(iso: string): string {
+  return wireZone(iso, getTimeZone());
 }
 
 /** "7 jul" — for due dates, list rows, chips. Takes a date-only ISO string. */
 export function fmtDayMonth(isoDate: string): string {
-  return fmt({ day: "numeric", month: "short", timeZone: "UTC" }).format(dateOnly(isoDate));
+  return fmt({ day: "numeric", month: "short", timeZone: zone(isoDate) }).format(
+    parseWireDate(isoDate),
+  );
 }
 
 /** "7 jul 2027" — day-month with its year, for dates outside the current year. */
 export function fmtDayMonthYear(isoDate: string): string {
-  return fmt({ day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
-    dateOnly(isoDate),
+  return fmt({ day: "numeric", month: "short", year: "numeric", timeZone: zone(isoDate) }).format(
+    parseWireDate(isoDate),
   );
 }
 
@@ -75,46 +85,52 @@ export function fmtPeriod(startIso: string, endIso: string = startIso): string {
   return `${fmtDayMonth(startIso)} ${RANGE_DASH} ${end}`;
 }
 
+/**
+ * Sentence-case a rendered string: the first letter only, everything else untouched.
+ *
+ * Tailwind's `capitalize` is `text-transform: capitalize`, which uppercases **every word** —
+ * so "zaterdag 15 augustus" printed "Zaterdag 15 Augustus", and Dutch capitalises neither
+ * weekday nor month names (#344). `first-letter:uppercase` is not the fix either: CSS
+ * `::first-letter` only applies to block containers, and most of these labels are `<span>`s.
+ * The decision therefore lives with the formatter, so a caller cannot choose the wrong one.
+ */
+export function capitalizeFirst(text: string): string {
+  return text ? text[0].toLocaleUpperCase(dateLocale()) + text.slice(1) : text;
+}
+
 /** "ma 7" — weekday + day, for grid column headers. Date-only ISO string. */
 export function fmtWeekdayDay(isoDate: string): string {
-  return fmt({ weekday: "short", day: "numeric", timeZone: "UTC" }).format(dateOnly(isoDate));
+  return fmt({ weekday: "short", day: "numeric", timeZone: zone(isoDate) }).format(
+    parseWireDate(isoDate),
+  );
 }
 
 /** "ma" — weekday abbreviation. Date-only ISO string. */
 export function fmtWeekdayShort(isoDate: string): string {
-  return fmt({ weekday: "short", timeZone: "UTC" }).format(dateOnly(isoDate));
+  return fmt({ weekday: "short", timeZone: zone(isoDate) }).format(parseWireDate(isoDate));
 }
 
 /** "maandag 7 juli" — the day heading. Date-only ISO string. */
 export function fmtLongDay(isoDate: string): string {
-  return fmt({ weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(
-    dateOnly(isoDate),
+  return fmt({ weekday: "long", day: "numeric", month: "long", timeZone: zone(isoDate) }).format(
+    parseWireDate(isoDate),
   );
 }
 
 /** "juli 2026" — calendar popover heading. Takes a "yyyy-mm" month. */
 export function fmtMonthYear(month: string): string {
-  return fmt({ month: "long", year: "numeric", timeZone: "UTC" }).format(dateOnly(`${month}-01`));
+  return fmt({ month: "long", year: "numeric", timeZone: "UTC" }).format(
+    parseWireDate(`${month}-01`),
+  );
 }
 
 /**
  * "07-07-2026" — full numeric date in the user's preferred order (issue #13; default `dd-mm-yyyy`).
- * Date-only ISO string. Assembled from the parts rather than from a locale, so the order is the
- * personal choice and never a side effect of the UI language.
+ * Assembled from the parts rather than from a locale, so the order is the personal choice and
+ * never a side effect of the UI language.
  */
 export function fmtNumericDate(isoDate: string): string {
-  const d = dateOnly(isoDate);
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const yyyy = String(d.getUTCFullYear()).padStart(4, "0");
-  switch (getDateFormat()) {
-    case "yyyy-mm-dd":
-      return `${yyyy}-${mm}-${dd}`;
-    case "mm-dd-yyyy":
-      return `${mm}-${dd}-${yyyy}`;
-    default:
-      return `${dd}-${mm}-${yyyy}`;
-  }
+  return numericDate(isoDate, getTimeZone(), getDateFormat());
 }
 
 /**
@@ -173,6 +189,22 @@ export function fmtMoney(amount: number): string {
     currency: getCurrency(),
     trailingZeroDisplay: "stripIfInteger",
   }).format(amount);
+}
+
+/**
+ * The tenant currency's own symbol ("€", "£", "$") for a label that has to *name* the unit
+ * rather than format an amount — "Uurtarief (€)", an input's suffix.
+ *
+ * It exists so no catalogue ever hardcodes one (#357): the currency is per-org configuration
+ * and a message file cannot know it. Derived from `Intl` rather than a table, so a tenant on a
+ * currency nobody anticipated still gets its own mark.
+ */
+export function currencySymbol(): string {
+  const parts = new Intl.NumberFormat(dateLocale(), {
+    style: "currency",
+    currency: getCurrency(),
+  }).formatToParts(0);
+  return parts.find((p) => p.type === "currency")?.value ?? getCurrency();
 }
 
 /** Short month labels for chart axes ("jan" … "dec") in the active locale. */

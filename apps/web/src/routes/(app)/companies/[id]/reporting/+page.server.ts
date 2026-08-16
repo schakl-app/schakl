@@ -23,28 +23,41 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const company_id = event.params.id;
 
-  const [profile, tones, templates, reports, contacts, company] = await Promise.all([
-    api.GET("/api/v1/reporting/companies/{company_id}/profile", {
-      params: { path: { company_id } },
-    }),
-    api.GET("/api/v1/reporting/tones"),
-    api.GET("/api/v1/reporting/templates"),
-    api.GET("/api/v1/reporting/reports", {
-      params: { query: { company_id, limit: 12, count: false } },
-    }),
-    // The client's own people, so recipients are picked rather than typed. A typed address is
-    // a typo waiting to send a client's report to nobody.
-    api.GET("/api/v1/contacts", {
-      params: { query: { company_id, limit: 100, meta: false, count: false } },
-    }),
-    // For the display-name placeholder: the name a report carries when nobody overrides it.
-    // A field whose "leave empty" behaviour is invisible is a field people fill in twice.
-    api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
-  ]);
+  const [profile, tones, templates, reports, contacts, company, sections, marketing] =
+    await Promise.all([
+      api.GET("/api/v1/reporting/companies/{company_id}/profile", {
+        params: { path: { company_id } },
+      }),
+      api.GET("/api/v1/reporting/tones"),
+      api.GET("/api/v1/reporting/templates"),
+      api.GET("/api/v1/reporting/reports", {
+        params: { query: { company_id, limit: 12, count: false } },
+      }),
+      // The client's own people, so recipients are picked rather than typed. A typed address is
+      // a typo waiting to send a client's report to nobody.
+      api.GET("/api/v1/contacts", {
+        params: { query: { company_id, limit: 100, meta: false, count: false } },
+      }),
+      // For the display-name placeholder: the name a report carries when nobody overrides it.
+      // A field whose "leave empty" behaviour is invisible is a field people fill in twice.
+      api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
+      // The section catalog (#373), so this client's own on/off list is built from the registry
+      // rather than from a hardcoded list that would go stale the day a module ships a section.
+      api.GET("/api/v1/reporting/templates/sections"),
+      // Which sources this client actually has, so the picker can say whether a section will have
+      // anything in it — and the resolved keyword-positions settings it inherits.
+      api.GET("/api/v1/marketing/companies/{company_id}/settings", {
+        params: { path: { company_id } },
+      }),
+    ]);
 
   return {
     companyId: company_id,
     companyName: company.data?.name ?? "",
+    sections: sections.data ?? [],
+    // `null` where the marketing module is off or the caller may not read it: the section
+    // picker degrades to "no source hints" rather than to a 500.
+    marketing: marketing.data ?? null,
     // The record this screen is about, under the key every other company page uses: the crumb row
     // names its `[id]` segment from it, and the trail hangs the next page off it. Already fetched
     // above for the display-name placeholder, so this costs nothing.
@@ -61,6 +74,10 @@ export const load: PageServerLoad = async (event) => {
         name: [c.first_name, c.last_name].filter(Boolean).join(" ") || String(c.email),
       })),
     canWrite: can(event.locals.user, "reporting.report.write"),
+    // The keyword-positions block writes to *marketing*, so it is gated on the key that call
+    // actually makes rather than on the one this screen is about (#310). A control that renders
+    // for somebody whose save will 403 is a broken screen, and the 403 cannot explain itself.
+    canManageMarketing: can(event.locals.user, "marketing.link.manage"),
     locale: event.locals.locale,
   };
 };
@@ -69,6 +86,34 @@ export const load: PageServerLoad = async (event) => {
 function inherited(raw: FormDataEntryValue | null): string | null {
   const value = String(raw ?? "").trim();
   return value || null;
+}
+
+/** A number field left blank means *inherit*, not zero. */
+function inheritedNumber(raw: FormDataEntryValue | null): number | undefined {
+  const value = String(raw ?? "").trim();
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * The section diff the picker posted (#373).
+ *
+ * One JSON field rather than a checkbox per section, and that is the point: a checkbox that is
+ * not ticked posts *nothing*, so nine checkboxes could not tell "off for this client" apart
+ * from "follow the template" — the very distinction the control exists to hold.
+ */
+function sectionOverrides(raw: FormDataEntryValue | null): Record<string, boolean> {
+  try {
+    const parsed = JSON.parse(String(raw ?? "{}")) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, value]) => typeof value === "boolean")
+        .map(([key, value]) => [key, value as boolean]),
+    );
+  } catch {
+    return {};
+  }
 }
 
 export const actions: Actions = {
@@ -116,11 +161,40 @@ export const actions: Actions = {
           delivery: delivery as "review" | "auto" | null,
           publish_to_portal: triflag(form, "publish_to_portal"),
         },
+        sections: sectionOverrides(form.get("sections")),
         internal_enabled: checked(form, "internal_enabled"),
         active: checked(form, "active"),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
+
+    // Keyword-positions settings live on the *marketing* row, because that is the module that
+    // owns rankings (CLAUDE.md §6) — but the choice belongs on the screen where somebody is
+    // deciding what this client's report contains, so this form saves both. A failure here is
+    // reported rather than swallowed: half a save that looks like a whole one is worse than an
+    // error message.
+    // Only where the caller may actually make that call — the block is not rendered otherwise,
+    // and posting it anyway would turn a hidden control into a 403 on an unrelated save.
+    if (!can(event.locals.user, "marketing.link.manage")) return { saved: true };
+    const source = inherited(form.get("rankings_source"));
+    const limit = inheritedNumber(form.get("rankings_limit"));
+    const minImpressions = inheritedNumber(form.get("rankings_min_impressions"));
+    const anyRanking = source !== null || limit !== undefined || minImpressions !== undefined;
+    const marketing = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
+      params: { path: { company_id: event.params.id } },
+      body: {
+        // An explicit `null` is how "volg de standaard" is posted — omitting the key would mean
+        // "leave alone", which cannot clear an override somebody is trying to remove (§18).
+        rankings: anyRanking
+          ? {
+              source: source as "auto" | "seranking" | "search_console" | "off" | null,
+              limit: limit ?? null,
+              min_impressions: minImpressions ?? null,
+            }
+          : null,
+      },
+    });
+    if (marketing.error) return fail(400, { error: apiErrorKey(marketing.error).key });
     return { saved: true };
   },
 

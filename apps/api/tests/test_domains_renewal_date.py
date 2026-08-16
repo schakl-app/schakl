@@ -27,9 +27,9 @@ from datetime import date
 
 import pytest
 
-from app.modules.cloudflare import client as cf_client
+from app.integrations.cloudflare import client as cf_client
+from app.integrations.oxxa import client as oxxa_client
 from app.modules.domains.service import add_months
-from app.modules.oxxa import client as oxxa_client
 from tests.cloudflare_fake import FakeCloudflare
 from tests.conftest import auth_cookie, make_tenant, org_today
 from tests.oxxa_fake import FakeOxxa

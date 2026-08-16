@@ -10,14 +10,13 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.interactions.service import InteractionService
-from app.registry import PanelSpec
+from app.registry import PROMINENCE_PRIMARY, PanelSpec
 
 PANEL_LIMIT = 8
 
 
 async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    if not ctx.can("interactions.interaction.read"):
-        return {"items": [], "total": 0, "forbidden": True}
+    # The permission is declared on the spec (#365); the composer is the gate.
     # ``count`` stays on: the panel footer says "8 of 214", so the total is rendered and
     # skipping it would be a lie, not a saving. ``with_body`` stays off (the default): the
     # panel draws snippets, and the detail modal fetches the row it opens (#290).
@@ -75,4 +74,7 @@ interactions_company_panel = PanelSpec(
     # Right under the working surfaces (contacts/projects/tasks): the communication timeline
     # is daily-use, unlike the asset panels (websites/domains) that sit near the bottom.
     position=35,
+    requires_permission="interactions.interaction.read",
+    prominence=PROMINENCE_PRIMARY,
+    empty_when=lambda data: not data.get("items"),
 )

@@ -20,21 +20,41 @@ export const TIME_REPORT_TABLE_ID = "time-report";
 export const TIME_REPORT_COLUMNS: ColumnMeta[] = [
   // The report's identity column: an entry is a moment. It has no detail page, so no `rowHref` —
   // the ⋯ menu is how you open one.
-  { key: "date", labelKey: "time.field.date", sortKey: "date", primary: true, width: 150 },
+  // Every column declares a width and **`description` carries the `flex`** (#346). Under
+  // `table-fixed` a column with no declared width shares the slack equally with every other
+  // undeclared one — five of them here — so Datum got 102 px for a value needing 112 and
+  // rendered "04-08-2026 1(", cut mid-glyph. The identity column is `date`, but the column that
+  // should absorb slack is the free text beside it, so `flex` says so rather than `primary`
+  // deciding it by default.
+  { key: "date", labelKey: "time.field.date", sortKey: "date", primary: true, width: 170 },
   {
     key: "employee",
     labelKey: "time.overview.employee",
     sortKey: "employee",
     defaultVisible: true,
+    width: 170,
   },
-  { key: "company", labelKey: "time.field.company", sortKey: "company", defaultVisible: true },
-  { key: "project", labelKey: "time.field.project", sortKey: "project", defaultVisible: true },
-  { key: "task", labelKey: "time.field.task", sortKey: "task" },
+  {
+    key: "company",
+    labelKey: "time.field.company",
+    sortKey: "company",
+    defaultVisible: true,
+    width: 180,
+  },
+  {
+    key: "project",
+    labelKey: "time.field.project",
+    sortKey: "project",
+    defaultVisible: true,
+    width: 180,
+  },
+  { key: "task", labelKey: "time.field.task", sortKey: "task", width: 180 },
   {
     key: "description",
     labelKey: "time.field.description",
     sortKey: "description",
     defaultVisible: true,
+    flex: true,
     width: 260,
   },
   // Tenant-defined type (#176). Label is tenant data, so the server can't order by what the
@@ -58,11 +78,12 @@ export const TIME_REPORT_COLUMNS: ColumnMeta[] = [
     width: 120,
   },
   { key: "status", labelKey: "time.overview.column.status", defaultVisible: true, width: 150 },
-  { key: "approver", labelKey: "time.overview.column.approver", sortKey: "approver" },
+  { key: "approver", labelKey: "time.overview.column.approver", sortKey: "approver", width: 170 },
   {
     key: "invoiced_at",
     labelKey: "time.overview.invoiced",
     sortKey: "invoiced_at",
     align: "right",
+    width: 140,
   },
 ];
