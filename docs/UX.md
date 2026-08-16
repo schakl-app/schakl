@@ -610,6 +610,30 @@
       *collapsed* bar from silently explaining an empty list — and an empty list under a filter
       says `common.no_results`, never "je hebt nog geen domeinen", which sends the reader
       hunting for the wrong problem.
+  - **A screen that holds a queue opens on the queue, and the queue carries its size.**
+    Interacties opened on the whole timeline with the unreviewed e-mails scattered through it
+    wearing an amber pill, and its two views were a pair of borderless words whose *selected*
+    half painted itself `bg-surface` — the page's own colour (`app.css`). So the primary switch
+    on the busiest screen in the app was invisible, and the one job the screen exists for was
+    something you scrolled for. Four rules came out of fixing it and none is about interactions.
+    **A pressed control must not be painted the colour it is standing on**: `bg-surface` marks
+    nothing on a `--surface` page; a chosen tab is raised and ringed, or carries the brand, the
+    way a card sits above the page it is on. **The count is the control**: "Te beoordelen 11"
+    says there is work, says how much, and — because it is read in the *layout* load, never the
+    page's — keeps saying it while the list below is searched, dated and paged, which is what
+    lets a reader tell an empty queue from a filtered one. **A default that hides rows owes the
+    hidden state a URL** (`?status=all`) and owes the *endpoint* nothing: the API's own filter
+    stays unset, because the pickers, the panels and the generated MCP surface read the same
+    route and must still be told everything (CLAUDE.md §9, #329). And **a view that cannot be
+    narrowed does not draw the narrowing control**: the queue is one person's mailbox by
+    construction, so the owner select would have only one non-empty answer, and every pending row
+    is an e-mail, so the kind select would have one too — both stand down there, and both come
+    back the moment a link arrives with the parameter set, or the list is narrowed by something
+    the screen does not show. The empty states then split three ways, because they are three
+    different facts: filtered → `common.no_results`; queue empty → *say it is done* and put a
+    real button to the full list in the middle of it; nothing at all → the old line. The one an
+    inbox-zero screen must never show is "Geen interacties in deze weergave", which on the view a
+    user now lands on first reads as a page that failed to load.
 - **A panel is the first page of the list it links to.** A client card shows five domains and
   five websites and then hands over — but only if the three things that make the hand-over
   honest hold. It shows the **whole count**, not the shown one, because five rows with nothing

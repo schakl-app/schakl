@@ -42,6 +42,48 @@ export function recordLabelKey(field: RecordField): string {
   return `interactions.field.${field.slice(0, -"_id".length)}`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The records a URL narrows the list to, in the order the chips render.
+ *
+ * A non-uuid is dropped rather than 422'd — these arrive from a query string anyone can edit and
+ * an old bookmark can carry. It is here rather than in the load because `interactionView` below
+ * has to answer "is this list scoped?" with *exactly* the same rule: a `?company_id=nonsense`
+ * that the load throws away and the view rule believes would open the firehose under no chip.
+ */
+export function scopedRecords(params: URLSearchParams): { field: RecordField; id: string }[] {
+  return RECORD_FIELDS.flatMap((field) => {
+    const id = params.get(field);
+    return id && UUID_RE.test(id) ? [{ field, id }] : [];
+  });
+}
+
+/** The two views the list page has: the review queue, and every contact moment. */
+export type InteractionView = "pending" | "all";
+
+/**
+ * Which of the two views a URL asks for — the one rule the load, the tabs and the tests share.
+ *
+ * It lives here rather than inline in `+page.server.ts` because it is the sort of default that
+ * regresses silently: nothing crashes when it flips, the list simply stops being the queue, and
+ * only somebody who already knew would notice. Three clauses, and each is a decision:
+ *
+ * - **Absent means the queue.** The screen opens on the work that is waiting; the *endpoint*
+ *   keeps answering every status, so only this page narrows (CLAUDE.md §9, #329).
+ * - **Unless the URL names a record.** A panel's "8 van 137" must land on 137, and nobody
+ *   reviews a client — the same carve-out #323 made for the owner default, decided off the same
+ *   fact so the two cannot disagree about which link is the firehose.
+ * - **Anything that is not `pending` is everything.** `all` is what the tab writes; a stale
+ *   bookmark carrying some third token gets the whole list rather than a 422, because this
+ *   arrives from a query string anyone can edit.
+ */
+export function interactionView(params: URLSearchParams): InteractionView {
+  const asked = params.get("status");
+  if (asked === null) return scopedRecords(params).length > 0 ? "all" : "pending";
+  return asked === "pending" ? "pending" : "all";
+}
+
 /**
  * The paged list a panel is a summary of, filtered to the panel's own record.
  *

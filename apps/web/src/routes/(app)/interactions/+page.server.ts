@@ -10,7 +10,7 @@ import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { gmailActions } from "$lib/integrations/google/gmail-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
-import { RECORD_FIELDS, type RecordField } from "$lib/modules/interactions/scope";
+import { interactionView, type RecordField, scopedRecords } from "$lib/modules/interactions/scope";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -69,16 +69,14 @@ export const load: PageServerLoad = async (event) => {
   const params = event.url.searchParams;
   const q = params.get("q")?.trim() || undefined;
   const kind = params.get("kind") || undefined;
-  const pending = params.get("status") === "pending";
   // What record this list is scoped to (#323) — the destination a panel's "8 van 137" links
   // to. All four have been API filters since #147; only this page never asked, so a hand-typed
   // `?company_id=` was silently ignored and listed everything. Several at once is legal (the
   // API ANDs them) and each gets its own chip; a non-uuid is dropped rather than 422'd, because
-  // these arrive from a query string anyone can edit and an old bookmark can carry.
-  const scoped = RECORD_FIELDS.flatMap((field) => {
-    const id = params.get(field);
-    return id && UUID_RE.test(id) ? [{ field, id }] : [];
-  });
+  // these arrive from a query string anyone can edit and an old bookmark can carry. The reading
+  // itself lives in `scope.ts`, because `interactionView` below has to answer "is this scoped?"
+  // with the same rule and a second copy is how the two come to disagree.
+  const scoped = scopedRecords(params);
   const byField = (field: RecordField) => scoped.find((r) => r.field === field)?.id;
   // The one roll-up this list takes (#147): a project's own moments plus its tasks'. The panel
   // link carries it so the page counts what the panel counted.
@@ -94,6 +92,15 @@ export const load: PageServerLoad = async (event) => {
   // here would land a link that said 137 on a list of 12 — #323's own bug, one screen to the
   // right. The owner select still narrows it, and it writes `owner=me` out loud so it can.
   const ownerParam = params.get("owner") || (scoped.length > 0 ? "all" : "me");
+  // Which of the two views this is (`scope.ts::interactionView`, where the rule and its three
+  // clauses are written down). **The screen opens on the work that is waiting** — the review
+  // queue — and everything else is one click away under a URL of its own (`?status=all`), the
+  // shape #329 gave Klanten. Two things make that safe as a default. The **endpoint** is
+  // untouched: absent still means every status to the API, so the pickers, the panels and the
+  // generated MCP surface are told what they were always told, and only this page narrows
+  // (CLAUDE.md §9). And the narrowing **says so** — the tab is drawn selected with the number
+  // beside it, because a list that quietly leaves rows out looks identical to one that has none.
+  const pending = interactionView(params) === "pending";
   const everyone = ownerParam === "all";
   const owner = canReadAll && ownerParam !== "all" && ownerParam !== "me" ? ownerParam : undefined;
   const mine = !everyone && !owner;
@@ -123,8 +130,13 @@ export const load: PageServerLoad = async (event) => {
           q,
           kind,
           status: pending ? "pending" : undefined,
-          mine: mine || undefined,
-          owner_user_id: !mine ? owner : undefined,
+          // The review queue is the caller's own by construction: an unreviewed e-mail is the
+          // mailbox owner's mail and the API answers nobody else about it (#172). So the owner
+          // filter is *not applied* here rather than merely hidden — a `?status=pending&owner=<a
+          // colleague>` bookmark ANDs to nothing, and an empty list whose reason is a control
+          // this view does not draw is the worst of both rules.
+          mine: pending || mine || undefined,
+          owner_user_id: !pending && !mine ? owner : undefined,
           company_id: byField("company_id"),
           project_id: byField("project_id"),
           contact_id: byField("contact_id"),
@@ -174,6 +186,17 @@ export const load: PageServerLoad = async (event) => {
       q: q ?? "",
       kind: kind ?? null,
       pending,
+      /**
+       * Whether anything *besides* the view is narrowing this list.
+       *
+       * It decides which empty state the screen may honestly show: "niets meer te beoordelen"
+       * is a fact about the queue, and printing it over a search that matched nothing sends the
+       * reader hunting for the wrong problem (docs/UX.md — an empty list under a filter says
+       * `common.no_results`). The owner and the record chips are left out on purpose: both draw
+       * their own visible control saying what they are set to, and neither can empty the review
+       * queue, which is always the caller's own.
+       */
+      narrowed: !!(q || kind || from || to),
       mine,
       everyone,
       owner: owner ?? null,

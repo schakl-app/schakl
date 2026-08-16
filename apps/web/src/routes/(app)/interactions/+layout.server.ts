@@ -22,20 +22,39 @@ import type { LayoutServerLoad } from "./$types";
  * and needed them up front. The dialog now sits inside the form and fetches its own on first
  * open, so this no longer bills every visit for a modal most of them never open.
  *
+ * The **size of the review queue** is the fourth, and it belongs here for the same reason the
+ * other three do: it is a property of the viewer's mailbox, not of the filters on screen, so it
+ * must read the same whatever the page is narrowed to — a "Te beoordelen 11" that fell to 2
+ * because somebody searched would be counting the search. `limit: 1` because only the total is
+ * drawn; the page below fetches its own rows.
+ *
  * No `await event.parent()` — nothing here depends on the app layout.
  */
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
   const wantsGmail = can(event.locals.user, "google.connection.manage");
-  const [kinds, members, gmail] = await Promise.all([
+  const wantsQueue = can(event.locals.user, "interactions.interaction.read");
+  const [kinds, members, gmail, queue] = await Promise.all([
     api.GET("/api/v1/interactions/kinds", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/members/lookup"),
     wantsGmail ? api.GET("/api/v1/google/gmail/status") : Promise.resolve(null),
+    wantsQueue
+      ? api.GET("/api/v1/interactions", {
+          params: { query: { status: "pending", mine: true, limit: 1 } },
+        })
+      : Promise.resolve(null),
   ]);
   return {
     kinds: kinds.data ?? [],
     members: members.data ?? [],
     /** `null` on an instance without the Google module, or for a caller who cannot connect one. */
     gmailStatus: gmail?.data ?? null,
+    /**
+     * How many of the viewer's own contact moments are still unreviewed — the number on the
+     * Te beoordelen tab, and the only thing on the screen that says an empty queue is empty
+     * rather than filtered. A pending row is private to its owner (#172), so this is always
+     * "mine": there is no team total to disagree with it.
+     */
+    pendingTotal: queue?.data?.total ?? 0,
   };
 };
