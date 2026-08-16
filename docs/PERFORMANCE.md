@@ -94,6 +94,22 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
   key, which by definition cannot be computed before the reads answer — one such key holds the
   whole shell back however many promises sit beside it. It belongs *inside* the promise, resolved
   with the rows it describes.
+- **And a streamed promise may never reject.** That rule was written about the API's own
+  `{error: {code, message}}` envelope, and it does not cover the other refusal — openapi-fetch lets
+  a `fetch` throw propagate, so an API that is restarting **rejects** the promise instead of
+  answering one with an envelope in it. A rejection is not an error the section can draw:
+  SvelteKit has already sent the shell, so the browser gets a promise that rejects, the `.then`
+  that was going to clear the pending flag never runs, and the page sits on "Laden…" for as long
+  as the tab is open — on a screen whose whole design is that a refusal is a state it renders. It
+  is docs/DEPLOY.md's rule inside one page: the part that says what went wrong must not be behind
+  the thing that went wrong. So the throw is folded into the envelope the answer arrives in
+  (`streamed()`, `$lib/core/errors.ts`), and the consumer's `.then` carries a rejection branch
+  anyway — a pending state must not be able to outlive the request that set it, whatever the
+  reason it did not arrive. Two details ride along. The fallback key is **stated, never
+  inherited**: `apiErrorKey`'s own default is `errors.validation`, "controleer de ingevulde
+  velden", which is the wrong sentence about a read and a badly wrong one about an API that is not
+  answering. And `data == null` is **not** an error — "the read answered, and the answer was
+  nothing" drawn as a refusal replaces an empty report with an apology for it.
 - **Nothing fetches on mount for a dropdown nobody opened.** `RichTextEditor` fetches its `@`/`#`
   candidates on first focus from a TTL cache (`lib/core/richtext/candidates.ts`); pass it a
   `scope`, never a pre-fetched list. Where several components on one page want the same browser-
@@ -530,7 +546,8 @@ makes every dev server start faster.
 - [ ] Counted the calls/queries; each one is necessary.
 - [ ] Independent calls run in `Promise.all`, not in series; the entity is *in* the fan.
 - [ ] URL-independent lookups are in the **section layout**, not the page load.
-- [ ] Modal-only and report payloads stream, resolved into `$state` (never a raw `{#await}`).
+- [ ] Modal-only and report payloads stream, resolved into `$state` (never a raw `{#await}`), and
+      every streamed promise settles rather than rejects (`streamed()`, or a `.catch`).
 - [ ] `count=false` / `meta=false` / `with_body` / `lines=false` on anything whose extra work
       you discard — and a new opt-out if this list ships what its screen never draws. Never
       `count=false` on the read behind a `<Pagination>`: the pager would print `len(items)`.

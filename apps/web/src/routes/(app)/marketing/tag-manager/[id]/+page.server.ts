@@ -26,10 +26,17 @@ import type { Actions, PageServerLoad } from "./$types";
  * the container's workspaces — so the page cost nine Google requests where it now costs six, on
  * an API whose quota is counted **per user per minute**. `/workspace` answers the four at once.
  */
-/** The first refusal among several calls, as an i18n key — or `null` when they all answered. */
+/**
+ * The first refusal among several calls, as an i18n key — or `null` when they all answered.
+ *
+ * The fallback is stated rather than inherited: `apiErrorKey`'s own default is
+ * `errors.validation`, "controleer de ingevulde velden", which is the wrong sentence about a
+ * read and a badly wrong one about the case the `.catch`es above produce — an API that is not
+ * answering at all, where there is no field to check and nothing the reader can do.
+ */
 function firstError(...errors: unknown[]): string | null {
   const failed = errors.find(Boolean);
-  return failed ? apiErrorKey(failed).key : null;
+  return failed ? apiErrorKey(failed, "errors.server").key : null;
 }
 
 export const load: PageServerLoad = async (event) => {

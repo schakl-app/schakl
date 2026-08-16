@@ -46,13 +46,26 @@
   $effect(() => {
     const promise = data.report;
     pending = true;
-    void promise.then((value) => {
-      // A stale resolution loses: clicking two tabs quickly leaves two loads in flight.
-      if (data.report !== promise) return;
-      report = value.data as GoogleAdsReport | GoogleAdsTrendReport | null;
-      errorKey = value.errorKey;
-      pending = false;
-    });
+    void promise.then(
+      (value) => {
+        // A stale resolution loses: clicking two tabs quickly leaves two loads in flight.
+        if (data.report !== promise) return;
+        report = value.data as GoogleAdsReport | GoogleAdsTrendReport | null;
+        errorKey = value.errorKey;
+        pending = false;
+      },
+      // `streamed` folds a refused *and* an unreachable API into the value, so this branch is
+      // only reached if SvelteKit itself cannot deliver the promise. It exists because the cost
+      // of missing it is unbounded: with no rejection handler `pending` never clears and the
+      // page shows "Laden…" for as long as the tab is open. A pending state must not be able to
+      // outlive the request that set it, whatever the reason it did not arrive.
+      () => {
+        if (data.report !== promise) return;
+        report = null;
+        errorKey = "errors.server";
+        pending = false;
+      },
+    );
   });
 
   // Narrowed once, here, rather than by `data.view` at each use site: the view name and the

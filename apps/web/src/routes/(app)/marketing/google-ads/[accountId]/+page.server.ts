@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
+import { apiErrorKey, streamed } from "$lib/core/errors";
 import { readFilters } from "$lib/core/filters/types";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -104,13 +104,16 @@ export const load: PageServerLoad = async (event) => {
     paging,
     // The API's own error envelope reaches the page as an **i18n key** rather than throwing: a
     // refused Google call is a state this screen draws ("reconnect", "the developer token is
-    // not approved", "this API version is sunset"), not a 500. Narrowed here with
-    // `apiErrorKey`, because the envelope is not in the OpenAPI spec and the generated error
-    // type describes only FastAPI's default validation shape.
-    report: report.then((r) => ({
-      data: r.data ?? null,
-      errorKey: r.error ? apiErrorKey(r.error, "errors.server").key : null,
-    })),
+    // not approved", "this API version is sunset"), not a 500. Narrowed by `streamed`, because
+    // the envelope is not in the OpenAPI spec and the generated error type describes only
+    // FastAPI's default validation shape.
+    //
+    // `streamed` rather than a bare `.then` because there is a second way this read refuses and
+    // it has no envelope: openapi-fetch lets a `fetch` throw propagate, so an API that is
+    // restarting rejected the promise, the browser's `.then` never ran, and the page stayed on
+    // "Laden…" until the tab was closed — the one outcome this screen's whole error branch
+    // exists to prevent (`$lib/core/errors.ts`).
+    report: streamed(report),
   };
 };
 
