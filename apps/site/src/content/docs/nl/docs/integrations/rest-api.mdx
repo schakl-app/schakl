@@ -12,16 +12,26 @@ via dezelfde REST API. Die API staat ook voor jou open. Je maakt een sleutel aan
 sleutel mag, en je script, je n8n-flow of je koppeling met een ander pakket kan aan de slag, onder
 dezelfde rechten en dezelfde afscherming als een medewerker in het scherm.
 
+![Instellingen → API en MCP: waar je een persoonlijke sleutel maakt en aanvinkt wat hij mag.](/img/docs/nl-settings-api.png)
+
 ## Waar je het vindt
 
+- **De endpointlijst**: [API-referentie](/nl/docs/api/), elk endpoint op deze site, gegroepeerd per
+  gebied, met het recht dat ervoor nodig is. Leesbaar zonder eigen omgeving.
 - **De interactieve referentie**: `https://<jouw-adres>/api/docs` (Swagger UI). Daarnaast
   `https://<jouw-adres>/api/redoc` en het document zelf op `https://<jouw-adres>/api/openapi.json`.
-- **Persoonlijke sleutels**: *Instellingen → Mijn account*, blok **API-sleutels**.
+- **Persoonlijke sleutels**: *Instellingen → Mijn account*, blok **API en MCP**.
 - **Sleutels voor automatisering**: *Instellingen → Service-accounts* (groep "Team & toegang").
 
-De referentie staat bewust onder `/api/`: de reverse proxy stuurt alleen `/api/` en `/mcp` naar de
-API-container en al het andere naar de webapp. Op `/docs` kom je dus op de 404-pagina van de app
-terecht.
+Gebruik ze allebei, voor verschillende vragen. De referentie hier is de **kaart**: wat er bestaat,
+en wat je sleutel moet dragen om het aan te roepen, zonder dat er ergens een server hoeft te
+draaien. Die op je eigen omgeving is de **autoriteit**: hij wordt gegenereerd uit de code die daar
+werkelijk draait, hij weet welke modules jij hebt aangezet, en je kunt er meteen vanaf de pagina
+een aanroep doen.
+
+De referentie op je eigen omgeving staat bewust onder `/api/`: de reverse proxy stuurt alleen
+`/api/` en `/mcp` naar de API-container en al het andere naar de webapp. Op `/docs` kom je dus op
+de 404-pagina van de app terecht.
 
 ## Twee soorten sleutels
 

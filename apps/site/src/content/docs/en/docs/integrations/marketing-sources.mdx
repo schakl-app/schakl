@@ -1,15 +1,15 @@
 ---
 title: Marketing sources
-description: "What Google Analytics, Search Console, Google Ads and SE Ranking each need, and what every source contributes to the client dashboard."
+description: "What Google Analytics, Search Console, Google Ads, SE Ranking and Rank Math each need, and what every source contributes to the client dashboard."
 sidebar:
   order: 5
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The marketing module reads four sources, and each has its own requirements: three ride an
-employee's Google connection, one rides a single API key held by the whole agency. This page is
-about the linking itself. What you then see on the dashboard is covered under
+The marketing module reads five sources, and each has its own requirements: three ride an
+employee's Google connection, one rides a single API key held by the whole agency, and one rides a
+credential stored on a single website. This page is about the linking itself. What you then see on the dashboard is covered under
 [Marketing](/en/docs/modules/marketing/).
 
 ## Where to find it
@@ -18,10 +18,12 @@ about the linking itself. What you then see on the dashboard is covered under
   accounts per client.
 - *Instellingen → Marketing* (Settings → Marketing): the **Google Ads-ontwikkelaarstoken** (Google
   Ads developer token) and the **SE Ranking API-sleutel** (SE Ranking API key).
-- *Instellingen → Google Workspace*: the OAuth client three of the four sources ride on. See
+- *Instellingen → Google Workspace*: the OAuth client three of the five sources ride on. See
   [Google Workspace](/en/docs/integrations/google-workspace/).
+- The **WordPress** card on a website: the Application Password the Rank Math source rides on. See
+  [WordPress](/en/docs/integrations/wordpress/).
 
-## The four sources
+## The five sources
 
 | Source | What you link | What you prepare first | What it gives you |
 | --- | --- | --- | --- |
@@ -29,6 +31,7 @@ about the linking itself. What you then see on the dashboard is covered under
 | Search Console | a verified site (domain or URL prefix) | Search Console API | Clicks, Impressions, CTR, Average position |
 | Google Ads | a client account, never a manager account | Google Ads API and a developer token | Cost, Clicks, Impressions, Conversions, Conversion value |
 | SE Ranking | a project | one API key for the agency | Average position, Top 3, Top 10, Top 30, Ranking and Tracked keywords |
+| Rank Math | a connected website | an Application Password on that WordPress site, and a Content AI subscription | AI visibility score, Mentions, Citations, Average sentiment, Average rank |
 
 You enable the APIs in the Google Cloud project of your own OAuth client, under **APIs & Services
 → Library**.
@@ -73,11 +76,11 @@ that too.
 
 <Aside type="caution" title="SE Ranking: the key, but not yet the screens">
 The account pickers on the client page currently offer Google Analytics, Search Console and Google
-Ads only. The SE Ranking figures end up in the keyword-positions, site-audit and
-AI-search-visibility chapters of the [monthly report](/en/docs/modules/reporting/). Two things
-about this connection have also never been exercised against a live key: the exact
-`Authorization` header scheme and the path the project list is read from. Both are taken from SE
-Ranking's own documentation.
+Ads only; an SE Ranking project is linked over the API today. The SE Ranking figures end up in the
+keyword-positions, site-audit and AI-search-visibility chapters of the
+[monthly report](/en/docs/modules/reporting/). If SE Ranking refuses your key, look first at the
+`Authorization` header scheme and at the path the project list is read from: those are the two
+places accounts can differ.
 </Aside>
 
 ## What happens after you link

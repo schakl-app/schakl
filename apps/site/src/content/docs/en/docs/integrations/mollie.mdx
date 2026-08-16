@@ -13,17 +13,20 @@ SEPA direct debit or PayPal, whatever your Mollie profile has switched on. The p
 Mollie's own checkout and what comes back here is an id, so schakl. never sees card data. As soon
 as Mollie confirms, an ordinary payment line appears on the invoice with nobody retyping it.
 
-<Aside type="caution" title="This integration has never been run against a live Mollie account">
-Mollie is built from Mollie's official API documentation and tested against a stand-in cut from
-that same document. That proves our code agrees with the document, not that it agrees with
-Mollie's servers. So treat it as **beta**: rehearse with a test key before you point clients at
-it, and watch the first real payments through.
+<Aside type="tip" title="Rehearse on the test key first">
+A green settings screen tells you your key is valid, and nothing more. Whether iDEAL is actually
+switched on at Mollie, whether your edge forwards the callback path, and whether the amount is
+right only show up on a real payment. So walk the whole route once on the **test key**: make a
+payment link on an open invoice, pay it, and watch the payment line appear. Mollie provides test
+cards and magic amounts that deliberately force a specific failure, so you also see what happens
+when it goes wrong. Two things to know: test mode supports euro only, and a test payment
+deliberately never settles anything on the invoice.
 </Aside>
 
 ## Where to find it
 
 Two places, no more. You connect the account at *Instellingen → Mollie* (Settings → Mollie), in the
-group **Communicatie & koppelingen** (Communication & integrations) — also findable by searching
+group **Integraties** (Integrations) — also findable by searching
 "ideal", "creditcard", "betaallink" or "webhook". The work itself happens on the invoice:
 *Facturatie → Facturen* (Invoicing → Invoices) → the invoice → the **Online betalingen** (online
 payments) card. Mollie deliberately contributes no menu item and no client panel; a payment
@@ -172,6 +175,6 @@ exactly that and nothing more: `invoicing.payment.write` would let them declare 
   <LinkCard
     title="All integrations"
     href="/en/docs/integrations/"
-    description="What else can be connected, and what is available or beta."
+    description="What else can be connected, and what is available today."
   />
 </CardGrid>

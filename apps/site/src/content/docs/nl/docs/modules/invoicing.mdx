@@ -12,6 +12,8 @@ uren, abonnementsperiodes en domeinverlengingen. Je maand hoeft dus niet nog een
 worden in een apart pakket, en wat één keer gefactureerd is, kan niet nog eens op een factuur
 belanden.
 
+![De facturenlijst met de tegels die hem filteren: openstaand, vervallen, concepten en betaald dit jaar.](/img/docs/nl-invoices.png)
+
 ## Waar je het vindt
 
 In het hoofdmenu onder **Facturatie**: *Facturen* (met bovenaan de tabbladen Facturen en Offertes)
@@ -70,6 +72,8 @@ eenheid in. Btw wordt per tariefgroep over het hele document berekend en afgeron
    Pin of Anders) en een notitie. Deelbetalingen mogen: openstaand is totaal min betaald min
    gecrediteerd.
 
+![Een definitieve factuur: het bedrag ligt vast, de betalingen staan eronder, en corrigeren gaat met een creditfactuur.](/img/docs/nl-invoice-detail.png)
+
 In het ⋯-menu staan verder Herinnering sturen, Crediteren, Factuur annuleren, PDF downloaden,
 Afdrukken / PDF en UBL downloaden. De status *Vervallen* wordt afgeleid, niet gezet: open, de
 vervaldatum voorbij, en er staat nog iets uit.
@@ -82,6 +86,8 @@ Versturen, **Accepteren** of **Afwijzen**, en dan **Omzetten naar factuur**, waa
 meekomen met de prijzen en btw waarop de offerte is geaccepteerd. Een open offerte verloopt vanzelf
 op haar "Geldig tot". Verwijder je de factuur die eruit ontstond nog als concept, dan staat de
 offerte weer op geaccepteerd.
+
+![Een offerte is hetzelfde document met een andere levensloop; omzetten neemt de prijzen mee waarop hij is geaccepteerd.](/img/docs/nl-quote-detail.png)
 
 ## Corrigeren met een creditfactuur
 
@@ -121,9 +127,9 @@ toegangsproxy voor je installatie, geef dan precies dat pad vrij; anders komen b
 binnen maar worden ze niet geboekt, zonder foutmelding. Roteer je de API-sleutel, dan verandert dat
 adres.
 
-De Mollie-koppeling is gebouwd op Mollie's officiële API-documentatie, maar nooit tegen een echte
-Mollie-sleutel gedraaid. Reken hem dus als onbewezen en doe eerst een proefronde met een
-testsleutel.
+Doe daarom eerst één keer de hele route met de testsleutel van Mollie: een betaallink maken, hem
+betalen, en kijken of de betaalregel op de factuur verschijnt. Dat is de enige controle die
+bewijst dat het meldingsadres werkelijk bereikbaar is.
 </Aside>
 
 ## Automatisch factureren en herinneringen
@@ -159,6 +165,8 @@ Domeinen, Totaal nog te factureren) die altijd het hele beeld tellen, boven een 
 filtert op Soort en groepeert. Uren groepeer je op dag, week, maand, jaar, klant, project of
 medewerker; het terugkerende deel op klant, maand of soort. Groepeer je op klant, dan staat er per
 klant een link **Factuur maken**.
+
+![Nog te factureren doet hetzelfde voor de hele organisatie, met een groepering per dag, week, maand, klant, project of medewerker.](/img/docs/nl-uninvoiced.png)
 
 Elke definitieve factuur download je als **UBL 2.1** voor Exact Online, SnelStart, Moneybird of
 e-Boekhouden; dat is vandaag het hele boekhoudverhaal, want het scherm Boekhouding meldt zelf dat

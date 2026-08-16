@@ -12,18 +12,18 @@ het verhuisslot aanstaat, wat het register werkelijk gedelegeerd heeft of wie de
 vier feiten vraagt deze koppeling op bij OXXA. Daarnaast doet ze precies één schrijfactie: de
 nameservers van een domein verzetten, waarmee de overstap naar Cloudflare af is.
 
-<Aside type="caution">
-Deze koppeling is nooit tegen een echt OXXA-account uitgeprobeerd. Ze is geschreven op basis van
-de officiële API-documentatie van OXXA (v1.2) en elk veld wordt behoedzaam gelezen, maar er was
-geen inloggegeven om het mee te toetsen. Beschouw een groen instellingenscherm dus als bewijs dat
-de inloggegevens kloppen en niet meer dan dat, en controleer bij de eerste synchronisatie zelf of
-de verloopdatums en de nameservers overeenkomen met wat je in het OXXA-portaal ziet.
+<Aside type="tip" title="Loop de eerste synchronisatie na">
+Een groen instellingenscherm bewijst dat je resellerlogin klopt, en verder niets. Neem voor de
+eerste **Register ophalen** een half uur de tijd: controleer of de verloopdatums en de nameservers
+overeenkomen met wat je in het OXXA-portaal ziet, en lees wat er terugkomt als het register van
+OXXA en niet als het jouwe. Bij vrijwel elk bureau lopen die twee lijsten uiteen, en juist dat
+verschil is de winst: het is wat je verlengt zonder dat het hier bekend is.
 </Aside>
 
 ## Waar je het vindt
 
 De resellerlogins staan onder *Instellingen → OXXA* ("Resellerlogins, het domeinregister en
-nameservers"), in de groep **Communicatie & koppelingen**. Het werk per domein staat op de
+nameservers"), in de groep **Integraties**. Het werk per domein staat op de
 domeinpagina: *Domeinen & websites → Domeinen*, open een domein, en daar staat het paneel
 **Registrar (OXXA)**, direct onder het Cloudflare-paneel. De module voegt bewust geen menu-item
 toe: een registrar is geen plek waar je heen gaat, het is iets wat een domein heeft.

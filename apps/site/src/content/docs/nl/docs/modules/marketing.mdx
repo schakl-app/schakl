@@ -11,6 +11,8 @@ Elke klant heeft zijn eigen Analytics-property, Search Console-site en Ads-accou
 allemaal ergens anders. De marketingmodule koppelt ze aan de klant in schakl., haalt elke nacht
 de dagcijfers op en toont ze op de plek waar de rest van het klantdossier ook staat.
 
+![Het marketingoverzicht over alle klanten heen, met de periode en de vergelijking als besturing erboven.](/img/docs/nl-marketing.png)
+
 ## Waar je het vindt
 
 - **Marketing** in het hoofdmenu: kies bovenin een klant en je krijgt precies hetzelfde
@@ -117,10 +119,11 @@ Instellen doe je per rol onder *Instellingen → Rollen*.
 De SE Ranking API-sleutel (één sleutel voor het hele bureau, in *Instellingen → Marketing*)
 levert de hoofdstukken zoekwoordposities, website-audit en zichtbaarheid in AI-zoekresultaten
 aan de [maandrapportage](/nl/docs/modules/reporting/). De keuzelijsten op de klantpagina bieden
-op dit moment alleen Google Analytics, Search Console en Google Ads. Twee dingen aan de
-SE Ranking-koppeling zijn bovendien nooit tegen een echte sleutel getest: de precieze opzet van
-de `Authorization`-header en het pad waarop de projectenlijst wordt opgehaald. Beide zijn
-overgenomen uit de documentatie van SE Ranking.
+op dit moment alleen Google Analytics, Search Console en Google Ads; een SE Ranking-project koppel
+je vandaag via de API. Weigert SE Ranking je sleutel, kijk dan eerst naar de opzet van de
+`Authorization`-header en naar het pad waarop de projectenlijst wordt opgehaald: dat zijn de twee
+plekken waar accounts van elkaar kunnen verschillen, en alles eromheen leest defensief, dus een
+afwijking valt op als een lege lijst en niet als een half gevulde.
 </Aside>
 
 ## Verder lezen

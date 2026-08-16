@@ -1,15 +1,15 @@
 ---
 title: Marketingbronnen
-description: "Wat Google Analytics, Search Console, Google Ads en SE Ranking elk nodig hebben, en wat elke bron aan het klantdashboard bijdraagt."
+description: "Wat Google Analytics, Search Console, Google Ads, SE Ranking en Rank Math elk nodig hebben, en wat elke bron aan het klantdashboard bijdraagt."
 sidebar:
   order: 5
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-De marketingmodule leest vier bronnen, en die stellen elk hun eigen eisen: drie rijden op de
-Google-koppeling van een medewerker, één op één API-sleutel van het hele bureau. Deze pagina gaat
-over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
+De marketingmodule leest vijf bronnen, en die stellen elk hun eigen eisen: drie rijden op de
+Google-koppeling van een medewerker, één op één API-sleutel van het hele bureau, en één op een
+inlog die bij één website hoort. Deze pagina gaat over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
 [Marketing](/nl/docs/modules/marketing/).
 
 ## Waar je het vindt
@@ -18,10 +18,12 @@ over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
   klant.
 - *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken** en de **SE Ranking
   API-sleutel**.
-- *Instellingen → Google Workspace*: de OAuth-client waar drie van de vier bronnen op rijden. Zie
+- *Instellingen → Google Workspace*: de OAuth-client waar drie van de vijf bronnen op rijden. Zie
   [Google Workspace](/nl/docs/integrations/google-workspace/).
+- De kaart **WordPress** op een website: het applicatiewachtwoord waar de Rank Math-bron op rijdt.
+  Zie [WordPress](/nl/docs/integrations/wordpress/).
 
-## De vier bronnen
+## De vijf bronnen
 
 | Bron | Wat je koppelt | Wat je vooraf klaarzet | Wat het oplevert |
 | --- | --- | --- | --- |
@@ -29,6 +31,7 @@ over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
 | Search Console | een geverifieerde site (domein of URL-prefix) | Search Console API | Kliks, Vertoningen, CTR, Gem. positie |
 | Google Ads | een klantaccount, nooit een beheerdersaccount | Google Ads API en een ontwikkelaarstoken | Uitgaven, Kliks, Vertoningen, Conversies, Conversiewaarde |
 | SE Ranking | een project | één API-sleutel voor het bureau | Gem. positie, Top 3, Top 10, Top 30, Scorende en Gevolgde zoekwoorden |
+| Rank Math | een gekoppelde website | een applicatiewachtwoord op die WordPress-site, en een Content AI-abonnement | AI-zichtbaarheidsscore, Vermeldingen, Bronvermeldingen, Gem. sentiment, Gem. plaats |
 
 De API's zet je aan in het Google Cloud-project van je eigen OAuth-client, onder **APIs & Services
 → Library**.
