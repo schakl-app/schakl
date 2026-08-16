@@ -213,6 +213,39 @@ async def test_relations_are_matched_on_identifiers_and_only_proposed_on_a_name(
         assert by_name["Onbekende klant uit 2019"]["match_on"] is None
 
 
+async def test_snelstarts_own_fixtures_are_never_offered_for_review(
+    client_for, snelstart
+) -> None:
+    """Every administration ships three rows that are not clients.
+
+    The agency's own relation (still called *"<Vul hier uw bedrijfsnaam in>"* in a fresh one) and
+    the reserved ``-1``/``-2`` placeholders. Left in, they are two thirds of a first review's
+    "needs a decision" list — noise in the one place an admin has to read every row, and the
+    list is only worth reading if every row on it is a real question.
+    """
+    t: Tenant = await make_tenant("snel-fixtures")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _connected(c, headers)
+        snelstart.add_relatie(
+            naam="<Vul hier uw bedrijfsnaam in>",
+            relatiecode=1,
+            relatiesoort=["Klant", "Leverancier", "Eigen"],
+        )
+        snelstart.add_relatie(naam="Klant onbekend", relatiecode=-2)
+        snelstart.add_relatie(naam="Een echte klant bv", relatiecode=1005)
+
+        review = await c.get(
+            f"/api/v1/snelstart/accounts/{account['id']}/relations", headers=headers
+        )
+        assert [row["name"] for row in review.json()] == ["Een echte klant bv"], review.text
+
+        run = await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/sync/relations", headers=headers
+        )
+        assert run.json()["counts"]["read"] == 1, run.text
+
+
 async def test_an_ambiguous_identifier_matches_nothing_rather_than_the_first_row(
     client_for, snelstart
 ) -> None:
@@ -896,3 +929,37 @@ async def test_a_failed_nightly_sync_reaches_somebody_who_can_fix_it(
         items = after.json().get("items", after.json())
         assert len(items) > seen_before, after.text
         assert any(row["event_type"] == "snelstart.sync.failed" for row in items), after.text
+
+
+async def test_pairing_a_client_who_is_already_paired_is_refused_not_a_500(
+    client_for, snelstart
+) -> None:
+    """The partial unique index is the guarantee; without a check it *enforces* it as a 500.
+
+    Not a theoretical path either: a bookkeeper with the same client entered twice is the
+    ordinary reason somebody opens the review screen, so the honest answer has to be "that client
+    is already paired", not "server error".
+    """
+    t: Tenant = await make_tenant("snel-double-adopt")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _connected(c, headers)
+        company_id = await _company(c, headers, name="Camping De Duinen", coc_number="11223344")
+        snelstart.add_relatie(naam="Camping De Duinen", kvkNummer="11223344")
+        snelstart.add_relatie(naam="Camping de Duinen bv")
+
+        await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/sync/relations", headers=headers
+        )
+        review = await c.get(
+            f"/api/v1/snelstart/accounts/{account['id']}/relations", headers=headers
+        )
+        loose = next(row for row in review.json() if not row["linked"])
+
+        res = await c.post(
+            f"/api/v1/snelstart/accounts/{account['id']}/links/{loose['link_id']}/adopt",
+            json={"local_id": company_id},
+            headers=headers,
+        )
+        assert res.status_code == 409, res.text
+        assert res.json()["error"]["message"] == "errors.snelstart.already_linked"

@@ -59,6 +59,25 @@
 
   const accounts = $derived(data.accounts as SnelstartAccount[]);
   const relations = $derived(data.relations as SnelstartCandidate[]);
+
+  /**
+   * The clients this review may still pair, which is every client **not already paired**.
+   *
+   * One schakl record pairs with one SnelStart record per administration, so offering a client
+   * who is already taken is offering a control that can only refuse — and the refusal a reviewer
+   * gets is about a row they cannot see from here. A bookkeeper with the same client entered
+   * twice is the ordinary reason this screen is open, so this is the common case, not an edge.
+   */
+  const adoptable = $derived(
+    (() => {
+      const taken = new Set(
+        relations.filter((c) => c.linked && c.company_id).map((c) => c.company_id),
+      );
+      return data.companies
+        .filter((company) => !taken.has(company.id))
+        .map((company) => ({ value: company.id, label: company.name }));
+    })(),
+  );
   const runs = $derived(data.runs as SnelstartRun[]);
   const selected = $derived(accounts.find((a) => a.id === data.selectedId) ?? null);
 
@@ -1062,10 +1081,7 @@
                                 value={candidate.company_id ?? ""}
                                 ariaLabel={t("settings.snelstart.col.company")}
                                 placeholder={t("settings.snelstart.adopt_placeholder")}
-                                items={data.companies.map((company) => ({
-                                  value: company.id,
-                                  label: company.name,
-                                }))}
+                                items={adoptable}
                               />
                             </div>
                             <Button

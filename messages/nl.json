@@ -5297,6 +5297,7 @@
   "errors.snelstart.invoice_differs": "Deze factuur stond al in de administratie, met een ander bedrag. We hebben hem overgenomen en niets overschreven; kijk zelf welke van de twee klopt.",
   "errors.snelstart.push_unknown": "SnelStart gaf geen duidelijk antwoord op deze schrijfactie. Er is niets dubbel verstuurd: bij een volgende poging wordt het eerst opgezocht.",
   "errors.snelstart.relation_failed": "De klant kon in SnelStart niet aangemaakt of bijgewerkt worden, dus de factuur is ook niet verstuurd.",
+  "errors.snelstart.already_linked": "Deze klant is al aan een andere SnelStart-relatie gekoppeld. Maak die koppeling eerst los, of kies een andere klant.",
   "errors.snelstart.link_not_adoptable": "Dit soort record is niet met de hand te koppelen.",
   "errors.snelstart.push_failed": "SnelStart weigert dit record.",
   "permissions.group.reporting": "Rapportages",

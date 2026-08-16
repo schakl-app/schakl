@@ -91,6 +91,24 @@ logger = logging.getLogger("schakl.snelstart")
 AUTO_MATCH_FIELDS = ("coc", "vat", "client_number")
 
 
+def is_reviewable(row: Mapping[str, Any]) -> bool:
+    """Is this relation a *client* worth pairing, or one of SnelStart's own fixtures?
+
+    Every administration ships with three rows that are not clients: the agency's own relation
+    (``Relatiesoort`` contains ``Eigen``, and in a fresh administration it is still called
+    *"<Vul hier uw bedrijfsnaam in>"*), and the reserved placeholders ``-1 Leverancier onbekend``
+    and ``-2 Klant onbekend``. SnelStart reserves negative relatiecodes for exactly this.
+
+    Left in, they are two thirds of a first review's "needs a decision" list — noise in the one
+    place an admin has to read every row, and the list is only useful if every row on it is a
+    real question.
+    """
+    if "Eigen" in (row.get("relatiesoort") or []):
+        return False
+    code = row.get("relatiecode")
+    return not (isinstance(code, int) and code < 0)
+
+
 class SnelstartSyncService:
     """The four syncs. One service, because they share a client, a run log and a link table."""
 
@@ -120,7 +138,8 @@ class SnelstartSyncService:
             rows = await client.fetch_all(
                 "relaties",
                 filter_="Relatiesoort/any(r:r eq 'Klant')",
-                match=lambda row: "Klant" in (row.get("relatiesoort") or []),
+                match=lambda row: "Klant" in (row.get("relatiesoort") or [])
+                and is_reviewable(row),
             )
         linked = {
             link.external_id: link
@@ -172,7 +191,8 @@ class SnelstartSyncService:
                 rows = await client.fetch_all(
                     "relaties",
                     filter_="Relatiesoort/any(r:r eq 'Klant')",
-                    match=lambda row: "Klant" in (row.get("relatiesoort") or []),
+                    match=lambda row: "Klant" in (row.get("relatiesoort") or [])
+                    and is_reviewable(row),
                 )
         except SnelstartError as exc:
             return await self.accounts._fail_run(
@@ -1240,6 +1260,26 @@ class SnelstartSyncService:
         link = await self.links.get_or_404(link_id)
         if link.account_id != account_id:
             raise AppError("not_found", "errors.not_found", status_code=404)
+        # One schakl record pairs with one SnelStart record per account — the partial unique
+        # index says so, and without this check it *enforces* it as a 500. That is not a
+        # theoretical path: a bookkeeper with the same client entered twice is the ordinary
+        # reason somebody opens this screen at all, and the honest answer is "that client is
+        # already paired with another relation", not "server error".
+        taken = await self.ctx.session.scalar(
+            self.links.scoped_select().where(
+                SnelstartLink.account_id == account_id,
+                SnelstartLink.kind == link.kind,
+                SnelstartLink.local_id == local_id,
+                SnelstartLink.id != link.id,
+            )
+        )
+        if taken is not None:
+            raise AppError(
+                "snelstart_already_linked",
+                "errors.snelstart.already_linked",
+                status_code=409,
+                fields={"local_id": "errors.snelstart.already_linked"},
+            )
         if link.kind == SnelstartLinkKind.RELATION.value:
             from app.modules.companies.models import Company
 

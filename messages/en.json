@@ -5297,6 +5297,7 @@
   "errors.snelstart.invoice_differs": "This invoice was already in the administration, for a different amount. We adopted it and overwrote nothing: check which of the two is right.",
   "errors.snelstart.push_unknown": "SnelStart gave no clear answer to this write. Nothing was sent twice: the next attempt looks it up first.",
   "errors.snelstart.relation_failed": "The client could not be created or updated in SnelStart, so the invoice was not sent either.",
+  "errors.snelstart.already_linked": "This client is already paired with another SnelStart relation. Undo that pairing first, or choose a different client.",
   "errors.snelstart.link_not_adoptable": "This kind of record cannot be paired by hand.",
   "errors.snelstart.push_failed": "SnelStart refused this record.",
   "permissions.group.reporting": "Reporting",
