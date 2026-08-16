@@ -3,24 +3,26 @@
 Upsert matches on ``email`` — the one natural key a contact spreadsheet reliably carries; a
 row without one always creates. The ``company`` column is the FK case the issue calls out:
 export writes the contact's first-listed (primary-first) company name, import resolves the
-cell **by exact name or UUID**, tenant-scoped, and an unresolved or ambiguous reference is a
-row error — never a silently orphaned contact. A contact linked to several companies keeps
-its extra links on a round-trip (the import only ever *adds* a link, an empty cell never
-unlinks); only the first link is what the CSV can express.
+cell **by exact name (label or legal name) or UUID**, tenant-scoped, and an unresolved or
+ambiguous reference is a row error — never a silently orphaned contact. A contact linked to
+several companies keeps its extra links on a round-trip (the import only ever *adds* a link, an
+empty cell never unlinks); only the first link is what the CSV can express.
 
-``companies`` belongs to another module: the resolver references it as a bare table by name,
-exactly like the service does (CLAUDE.md §3 — modules never import each other's internals).
+``companies`` belongs to another module, so the reference is resolved by core's shared
+``name_or_id_resolver`` — which reaches the table as a bare name (CLAUDE.md §3 — modules never
+import each other's internals). This file held a hand-rolled copy of that function until the
+client label / legal-name split gave the two copies something to disagree about.
 """
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import column, select, table
+from sqlalchemy import select
 
 from app.core.impex import ImpexColumn, ImpexDescriptor
+from app.core.impex.resolvers import name_or_id_resolver
 from app.core.impex.spec import ImpexExtension
 from app.core.tenancy import RequestContext
 from app.modules.contacts.models import CompanyContact, Contact
@@ -28,8 +30,6 @@ from app.modules.contacts.schemas import ContactCreate, ContactUpdate
 from app.modules.contacts.service import ContactService
 
 _TEXT_FIELDS = ("first_name", "last_name", "email", "phone", "job_title", "notes")
-
-_companies = table("companies", column("id"), column("name"), column("org_id"))
 
 
 def _first_company_name(contact: Any) -> str | None:
@@ -60,61 +60,6 @@ async def _find_existing(
     for contact in (await ctx.session.execute(stmt)).scalars():
         found.setdefault(contact.email, []).append(contact)
     return found
-
-
-async def _resolve_company(
-    ctx: RequestContext, refs: list[str]
-) -> dict[str, uuid.UUID | str]:
-    """Batch-resolve ``company`` cells to tenant-scoped company ids.
-
-    A cell that parses as a UUID resolves by id; anything else by **exact** name. Two grouped
-    queries for the whole file, never one per row. A name carried by two companies is
-    ambiguous — erroring beats silently picking one.
-    """
-    by_id: dict[str, uuid.UUID] = {}
-    names: list[str] = []
-    for ref in refs:
-        try:
-            by_id[ref] = uuid.UUID(ref)
-        except ValueError:
-            names.append(ref)
-
-    resolved: dict[str, uuid.UUID | str] = {}
-    if by_id:
-        rows = (
-            await ctx.session.execute(
-                select(_companies.c.id).where(
-                    _companies.c.org_id == ctx.org.id,
-                    _companies.c.id.in_(list(by_id.values())),
-                )
-            )
-        ).scalars()
-        found = set(rows)
-        for ref, company_id in by_id.items():
-            resolved[ref] = (
-                company_id if company_id in found else "impex.errors.unresolved_reference"
-            )
-    if names:
-        rows = (
-            await ctx.session.execute(
-                select(_companies.c.id, _companies.c.name).where(
-                    _companies.c.org_id == ctx.org.id,
-                    _companies.c.name.in_(names),
-                )
-            )
-        ).all()
-        by_name: dict[str, list[uuid.UUID]] = {}
-        for company_id, name in rows:
-            by_name.setdefault(name, []).append(company_id)
-        for name in names:
-            matches = by_name.get(name, [])
-            if len(matches) == 1:
-                resolved[name] = matches[0]
-            elif matches:
-                resolved[name] = "impex.errors.ambiguous_match"
-            else:
-                resolved[name] = "impex.errors.unresolved_reference"
-    return resolved
 
 
 async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
@@ -349,5 +294,8 @@ CONTACT_IMPEX = ImpexDescriptor(
     find_existing=_find_existing,
     create_row=_create,
     update_row=_update,
-    fk_resolvers={"company": _resolve_company},
+    # The shared resolver, not a copy of it: it answers to a client's label *and*
+    # its legal name (``app/core/naming.py``), and this file held a verbatim
+    # duplicate that would have kept answering to only one of them.
+    fk_resolvers={"company": name_or_id_resolver("companies")},
 )

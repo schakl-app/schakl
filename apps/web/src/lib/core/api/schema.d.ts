@@ -14754,6 +14754,8 @@ export interface components {
             house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
+            /** Legal Name */
+            legal_name?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -14882,6 +14884,8 @@ export interface components {
             id: string;
             /** Invoice Email */
             invoice_email?: string | null;
+            /** Legal Name */
+            legal_name?: string | null;
             /** Logo File Id */
             logo_file_id?: string | null;
             /** Name */
@@ -15002,6 +15006,8 @@ export interface components {
             house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
+            /** Legal Name */
+            legal_name?: string | null;
             /** Name */
             name?: string | null;
             /** Notes */
@@ -15482,6 +15488,8 @@ export interface components {
             name?: string | null;
             /** Postal Code */
             postal_code?: string | null;
+            /** Trade Name */
+            trade_name?: string | null;
             /** Vat Number */
             vat_number?: string | null;
         };

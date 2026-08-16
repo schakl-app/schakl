@@ -220,7 +220,11 @@ def build_snapshot(
 
 
 def client_name(company_name: str, profile: ReportProfile | None) -> str:
-    """What this client is called **on their report** — the profile's name, or the CRM's.
+    """What this client is called **on their report** — the profile's name, or the CRM's label.
+
+    ``company_name`` is ``Company.name``, the label. A report is read by a human, so it never
+    reaches for ``legal_name``: that one is the invoice's, and putting a holding company on the
+    front of a monthly traffic report is the mistake this whole pair of columns exists to stop.
 
     One function, because the answer has to be the same in five places at once: the title, the
     cover, the PDF filename, the covering e-mail and the snapshot the model reads. It resolves

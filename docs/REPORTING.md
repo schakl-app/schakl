@@ -362,14 +362,21 @@ control: the failure it describes is now unreachable rather than discouraged.
 
 ## What a client is called
 
-`report_profiles.display_name`. A CRM holds the name an invoice needs — the legal entity, its
-B.V., its holding — and a document somebody reads is not an invoice. "Camping De Zeehoeve" and
-"Zeehoeve Recreatie Beheer B.V." are one client, and only one of them belongs on the front of a
-monthly report.
+`report_profiles.display_name`, and it means less than it used to. This section originally
+argued that a CRM holds the name an invoice needs — the legal entity, its B.V., its holding —
+that a document somebody reads is not an invoice, and that a second name on `companies` would
+quietly re-title invoices and the client list along with the report.
 
-Deliberately **not** a second name on `companies`: the CRM's name is what every other module
-means by it, and a global alias would quietly re-title invoices, contracts and the client list
-along with the report. It resolves once at generation (`generate.client_name`) and is
+Right about the danger, wrong about which name was which. `companies.name` was never the
+invoice's name: it is what every list, picker, panel and notification prints, which is to say
+the friendly one. The field genuinely missing was the **legal** one, and it now exists as
+`companies.legal_name`, read only by documents (`app/core/naming.py`, `docs/INVOICING.md`).
+"Camping De Zeehoeve" is the label and "Zeehoeve Recreatie Beheer B.V." is what the invoice
+says; neither has to be typed twice, and a report left to itself already carries the right one.
+
+So what survives here is a **report-only third name**, for the agency that wants a cover reading
+just "Zeehoeve". Left blank — the normal case now — the report follows the label.
+`generate.client_name` is unchanged: it resolves once at generation and is
 snapshotted onto `Report.company_name`, like every other fact a report freezes — so a rename
 re-titles next month's document and leaves the twelve already sent saying what they said. The
 title, the cover, the PDF filename and the covering e-mail all read that one column.

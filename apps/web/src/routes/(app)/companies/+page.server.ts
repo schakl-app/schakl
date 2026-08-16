@@ -152,6 +152,8 @@ export const actions: Actions = {
     const { data: company, error } = await api.POST("/api/v1/companies", {
       body: {
         name,
+        // Blank means "the label is also the legal name" — never a guess at one.
+        legal_name: String(form.get("legal_name") ?? "").trim() || null,
         // Blank means "allocate one" on create; the API decides per the org's settings.
         client_number: String(form.get("client_number") ?? "").trim() || null,
         website: website || null,

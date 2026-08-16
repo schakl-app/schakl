@@ -50,11 +50,16 @@ async def _find(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
     query = args.get("query")
     stmt = ctx.repo(Company).scoped_select()
     if isinstance(query, str) and query.strip():
-        # Name or klantnummer, ranked by name — the same fields (and the same case-insensitive
-        # ordering) the list API searches, so "who is K0042" answers.
+        # Label, legal name or klantnummer, ranked by label — the same fields (and the same
+        # case-insensitive ordering) the list API searches, so "who is K0042" answers, and so
+        # does an agent handed the entity name off an invoice.
         pattern = f"%{query.strip()}%"
         stmt = stmt.where(
-            or_(Company.name.ilike(pattern), Company.client_number.ilike(pattern))
+            or_(
+                Company.name.ilike(pattern),
+                Company.legal_name.ilike(pattern),
+                Company.client_number.ilike(pattern),
+            )
         )
         stmt = stmt.order_by(func.lower(Company.name))
     else:
@@ -66,6 +71,10 @@ async def _find(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
                 {
                     "id": str(c.id),
                     "name": c.name,
+                    # Only where it differs, and never resolved: an agent that reads a second
+                    # name on every row learns nothing, and one that reads the label under a
+                    # "legal_name" key would put it on a document.
+                    "legal_name": c.legal_name or None,
                     "client_number": c.client_number,
                     "status": c.status,
                 }
@@ -87,6 +96,7 @@ async def _get(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
         data={
             "id": str(company.id),
             "name": company.name,
+            "legal_name": company.legal_name or None,
             "client_number": company.client_number,
             "status": company.status,
             "website": company.website,

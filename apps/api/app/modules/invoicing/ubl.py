@@ -52,9 +52,17 @@ def _el(parent: ET.Element, ns: str, tag: str, text: str | None = None, **attrs:
 def _party(parent: ET.Element, role: str, details: dict[str, Any]) -> None:
     wrapper = _el(parent, _CAC, role)
     party = _el(wrapper, _CAC, "Party")
+    # EN 16931 draws the same distinction the CRM now does, and the two halves are different
+    # elements: BT-45 ``PartyName/Name`` is the **trading name** a human recognises, BT-47
+    # ``PartyLegalEntity/RegistrationName`` is the registered entity. Both were fed the one
+    # string this file had. The snapshot carries both since the client label / legal-name split
+    # (``_customer_snapshot``), so each element gets the one it is for — and each falls back to
+    # the other, because a document issued before the split has no ``trade_name`` and a seller
+    # block has no second name at all. Neither element may be empty.
     name = details.get("name") or ""
+    trade_name = details.get("trade_name") or name
     party_name = _el(party, _CAC, "PartyName")
-    _el(party_name, _CBC, "Name", name)
+    _el(party_name, _CBC, "Name", trade_name)
     address = _el(party, _CAC, "PostalAddress")
     if details.get("address_line1"):
         _el(address, _CBC, "StreetName", details["address_line1"])

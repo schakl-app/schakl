@@ -106,6 +106,7 @@
     cells: () => ({
       client_number: clientNumberCell,
       name: nameCell,
+      legal_name: legalNameCell,
       website: websiteCell,
       phone: phoneCell,
       status: statusCell,
@@ -161,6 +162,15 @@
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
+{/snippet}
+
+{#snippet legalNameCell(company: Company)}
+  <!-- A dash where the client has none, exactly as every other optional cell reads: the column
+       answers "does this client invoice under another name?", and a blank cell cannot be told
+       from one that failed to load. -->
+  {#if company.legal_name}
+    <span class="block truncate text-text-muted">{company.legal_name}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet websiteCell(company: Company)}

@@ -542,7 +542,14 @@ class CustomerRead(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    #: Who the document is **addressed to** — the client's legal name where they have one,
+    #: else their label (``app/core/naming.py``). Resolved once, at snapshot time, so a later
+    #: rename never rewrites a document that was already sent.
     name: str | None = None
+    #: What the agency **calls** them (EN 16931 BT-45's trading name), carried beside it so the
+    #: covering e-mail can greet a human and a document read back in two years can say which
+    #: client it was without a join. ``None`` on documents issued before the split.
+    trade_name: str | None = None
     address_line1: str | None = None
     address_line2: str | None = None
     postal_code: str | None = None

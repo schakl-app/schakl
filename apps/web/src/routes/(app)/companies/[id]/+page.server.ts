@@ -128,6 +128,7 @@ export const actions: Actions = {
     const country = text("country");
     const body = {
       name: text("name") ?? undefined,
+      legal_name: text("legal_name"),
       client_number: text("client_number"),
       website: text("website"),
       phone: text("phone"),

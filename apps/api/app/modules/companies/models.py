@@ -69,7 +69,21 @@ class Company(
         ),
     )
 
+    #: What this client is **called** — the label. Every list, picker, panel, dashboard, report,
+    #: notification, Drive folder and breadcrumb in the product prints this one, and that is the
+    #: point of it: "Bakkerij Jansen" is who the agency works with.
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    #: The entity a **document** is addressed to — "J. Jansen Holding B.V.". Read by exactly the
+    #: surfaces where being wrong is a legal problem rather than an awkward one: an invoice's and
+    #: a quote's frozen bill-to block, its UBL ``RegistrationName``, and the relation pushed to
+    #: the tenant's accounting package.
+    #:
+    #: ``NULL`` is **inherit, not unfilled** — the label is also the legal name, which is the
+    #: honest state of most clients and of every row that existed before this column. So every
+    #: read goes through ``invoice_name`` (``legal_name or name``) and nothing was migrated out
+    #: of ``name``: which of two names is the legal one is a fact only the agency holds, and a
+    #: backfill would have had to guess it.
+    legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Klantnummer / klantcode — the key a client list actually carries between systems, so
     #: the importer upserts on it before falling back to the name (a company can be renamed;
     #: its number does not change). Allocated from ``CompanySettings.client_number_format``

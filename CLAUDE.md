@@ -877,6 +877,38 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a `relatiecode` failed the whole create, when the relation is the requirement and the shared
   number is only a convenience — so the collision is resolved by *looking at who holds it* and
   either adopting them or letting SnelStart allocate its own.
+- **A client has two names, and only documents may read the second one** (`app/core/naming.py`,
+  `docs/INVOICING.md`). `companies.name` is the **label** — what every list, picker, panel,
+  dashboard, report, notification, Drive folder and breadcrumb prints — and `companies.legal_name`
+  is the entity an invoice, a quote, a UBL file and a ledger relation must be addressed to. Five
+  rules generalise past this column. **The nullable half is the new one, and `NULL` means
+  *inherit*, not *unfilled***: which of a client's two names is the legal one is a fact only the
+  agency holds, so nothing was migrated out of `name` and no backfill guessed — an instance that
+  upgrades and types nothing invoices, exports and pushes to its ledger exactly as it did, which
+  is the whole safety argument for shipping this into a live install and is pinned by a test that
+  says so. **The resolution is one rule in one place** (`document_name`, taking a mapping *or* an
+  object, because invoicing reads companies through hand-written SQL and SnelStart imports the
+  model): `legal_name or name` written in eight files is how the ninth forgets the `or`, prints an
+  empty bill-to on exactly the clients who have a legal name, and is found by a customer. **A
+  snapshot records both halves**, because two readers want different ones — EN 16931 says so
+  outright (`PartyName/Name` is BT-45's *trading* name, `PartyLegalEntity/RegistrationName` is
+  BT-47's *registered* one, and both were fed one string until now), and the covering e-mail
+  greets a human. **A search that only knows the half you already have is half a register**: the
+  list, the MCP tool and the voice-entry shortlist all match either name, and so do the import
+  resolvers — a spreadsheet from the bookkeeper carries the name this product does not print, and
+  reporting half of it as "unresolved reference" is a refusal nobody can act on. Widening a lookup
+  is safe precisely because the ambiguity rule counts *clients* rather than the ways one was
+  found. And the fifth is about the screen (`docs/UX.md`): two name fields side by side is a
+  question where a form should be an answer, so the legal name sits inside **Factuurgegevens**
+  with the label as its placeholder, and every surface that reads it draws nothing when the two
+  agree. Its sibling is the older decision this **reverses**: `report_profiles.display_name` (#300)
+  was introduced with an explicit argument against a second name on `companies`, on the grounds
+  that a global alias would re-title invoices along with the report. Right about the danger, wrong
+  about which name was which — `name` was already the friendly one, so the missing field was the
+  legal one, and the reporting override survives as a genuine third name that is now almost always
+  blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
+  the subscription cron having grown a hand-written copy that already omitted `client_number`, so
+  "which name does an invoice say?" would have depended on who raised it.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

@@ -23,6 +23,10 @@ from app.modules.companies.service import CompanyService
 # column at the front silently shift every billing value one field along on create, with no
 # error anywhere. The duplication is the point.
 _BILLING_FIELDS = (
+    # The name an invoice is addressed to, grouped with the rest of the billing identity rather
+    # than beside ``name``: what it belongs to is the block a document snapshots, not the block
+    # a screen prints. Empty means "the label is also the legal name".
+    "legal_name",
     "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
     "postal_code", "city", "country",
 )
@@ -137,6 +141,21 @@ COMPANY_IMPEX = ImpexDescriptor(
             clearable=False,
             options=tuple(status.value for status in CompanyStatus),
             option_label_key="companies.status.{option}",
+        ),
+        # Clearable, unlike ``client_number``: an empty cell here is a real state ("this client
+        # invoices under the name we call them"), not an absence of information, and a tenant
+        # who removes a legal name in the spreadsheet means it.
+        #
+        # Deliberately *not* aliased to "bedrijfsnaam" or "company name" even though a
+        # bookkeeping export means the legal entity by those: they are already ``name``'s
+        # aliases and moving them would silently re-target every file that imports cleanly
+        # today, landing the only name such a file carries in a column nothing displays.
+        ImpexColumn(
+            "legal_name",
+            aliases=(
+                "statutaire naam", "juridische naam", "legal name", "registered name",
+                "factuurnaam", "naam op factuur", "tenaamstelling",
+            ),
         ),
         ImpexColumn("vat_number", aliases=("btw", "btw-nummer", "vat", "vat number")),
         ImpexColumn("coc_number", aliases=("kvk", "kvk-nummer", "kvknummer", "coc")),

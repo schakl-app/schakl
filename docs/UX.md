@@ -1280,6 +1280,24 @@
   *any* assignee server-side (`caller_may_write_task`), while the browser's `canWriteTask` read
   only the starred one; harmless while a quick-created task had exactly one assignee, and a
   disappearing control the moment it could have two.
+- **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
+  Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
+  addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and
+  "Juridische naam", that is a *question* — which one do I fill in? — where the screen should be
+  giving an *answer*. So the label keeps the top of the form and the H1, and the second name
+  sits inside **Factuurgegevens**, first, above the address: what it belongs to is the block a
+  document freezes, not the block a screen prints. Its placeholder is the label, so leaving it
+  empty **shows** what will happen instead of describing it.
+  Where it is *read* follows the same rule, and the operative word is **differs**: the API sends
+  `null` for "the label is also the legal name", so the header line, the billing card and the
+  panel all draw nothing at all for the ordinary client — a value equal to the label is treated
+  as absent too, because it arrives from an import or from somebody being cautious and is still
+  not a second fact. Where it does differ, the client page says so under the H1 (muted, prefixed
+  with its label, so it reads as a fact about the record and not as a second title): the invoice
+  this client gets will be headed with a name the H1 does not contain, and nobody should have to
+  open a card to discover that. The list column is opt-in and not sortable, because the register
+  is read by label; it exists for the one job — reconciling a bank statement, a bookkeeper's
+  list — where the other name is the only one you have. Search matches **both**, always.
 - **A picker that hides what it has already done.** A billed subscription period is listed and
   disabled with "al gefactureerd", not omitted: "did I invoice March?" is the question the
   picker exists to answer, and answering it by omission is what produces the duplicate.

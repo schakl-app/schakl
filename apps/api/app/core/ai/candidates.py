@@ -198,8 +198,15 @@ async def gather(ctx: RequestContext, text: str) -> ParseCandidates:
 
     if ctx.can("companies.company.read"):
         stmt = ctx.repo(Company).scoped_select()
+        # Both names and the klantnummer — the same fields the list and the MCP tool search
+        # (``app/core/naming.py``), so somebody dictating "twee uur voor Jansen Holding" reaches
+        # the same client the search box would have.
         matches = [
-            or_(Company.name.ilike(f"%{t}%"), Company.client_number.ilike(f"%{t}%"))
+            or_(
+                Company.name.ilike(f"%{t}%"),
+                Company.legal_name.ilike(f"%{t}%"),
+                Company.client_number.ilike(f"%{t}%"),
+            )
             for t in tokens
         ]
         # An empty line still gets the recent set: "2 uur" on the client you always book to.

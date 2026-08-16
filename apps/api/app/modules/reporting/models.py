@@ -228,14 +228,21 @@ class ReportProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
         ForeignKey("report_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
-    #: What this client is **called on their report**. ``NULL`` = the company's own name.
+    #: What this client is **called on their report**. ``NULL`` = the company's own label.
     #:
-    #: A CRM holds the name an invoice needs — the legal entity, its B.V., its holding — and a
-    #: document somebody reads is not an invoice. "Camping De Zeehoeve" and "Zeehoeve Recreatie
-    #: Beheer B.V." are the same client and only one of them belongs on the front of a monthly
-    #: report. Deliberately *not* a second name on ``companies``: the CRM's name is what every
-    #: other module means by it, and a global alias would quietly re-title invoices, contracts
-    #: and the client list along with the report.
+    #: This column was originally the *whole* answer to "a document somebody reads is not an
+    #: invoice", and it argued against a second name on ``companies`` on the grounds that a
+    #: global alias would re-title invoices and the client list along with the report. That was
+    #: right about the danger and wrong about which name was which. ``companies.name`` is not
+    #: the invoice's name and never was — it is what every list, picker, panel and notification
+    #: prints, which is to say the friendly one — so the field genuinely missing was the *legal*
+    #: one, and it now exists as ``companies.legal_name`` (``app/core/naming.py``), read only by
+    #: documents. "Camping De Zeehoeve" is the label; "Zeehoeve Recreatie Beheer B.V." is what
+    #: the invoice says; neither had to be typed twice.
+    #:
+    #: So this stays, and it means less than it did: a **report-only** third name, for the
+    #: agency that wants a cover reading "Zeehoeve" where the CRM says "Camping De Zeehoeve".
+    #: Left blank — which is the normal case now — the report simply follows the label.
     #:
     #: Resolved at generation and snapshotted into ``Report.company_name`` like every other
     #: fact a report freezes — so a rename re-titles next month's document and leaves the twelve

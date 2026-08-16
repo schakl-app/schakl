@@ -57,6 +57,11 @@
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const company = $derived(data.company);
   const assignees = $derived(company.assignees ?? []);
+  /** The legal name, but only where it is a *second* fact — see the header comment below. */
+  const legalName = $derived.by(() => {
+    const value = (company.legal_name ?? "").trim();
+    return value && value !== company.name ? value : null;
+  });
 
   // The edit surface's lookups stream in behind the page (#290) — nothing here draws them, and
   // most visits never open it. Held in state rather than awaited in the markup: a re-run
@@ -269,6 +274,18 @@
           </svelte:element>
         {/if}
       </div>
+      <!-- The name a document is addressed to, and only when it is not the one above it: the
+           API sends `null` for "the label is also the legal name", so most clients draw nothing
+           here and the header stays one name long. Where it *does* differ, this is the one
+           screen that has to say so — the invoice this client gets will be headed with a name
+           the H1 does not contain, and nobody should have to open the billing card to discover
+           that. Muted and prefixed, so it reads as a fact about the record rather than as a
+           second title. -->
+      {#if legalName}
+        <p class="mt-1 text-sm text-text-muted">
+          {t("companies.legal_name")}: <span class="text-text">{legalName}</span>
+        </p>
+      {/if}
       {#if company.website}
         <a
           href={company.website.startsWith("http") ? company.website : `https://${company.website}`}

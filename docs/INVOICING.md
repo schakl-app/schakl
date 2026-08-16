@@ -48,6 +48,24 @@ invoice that owes nothing.
 - **Snapshots over joins** (#64's rule): a line freezes `tax_rate_pct` + `tax_name` (in the
   document's locale) when written; a document freezes its `customer` bill-to block at issue.
   Re-rating a tax or moving a company never rewrites what a client was sent.
+- **The bill-to is addressed to the client's *legal* name, and that is not what the app calls
+  them.** `companies.name` is the label — what every list, picker, panel, report and
+  notification prints — and `companies.legal_name` is the entity a document must be addressed
+  to. `NULL` there means *the label is also the legal name*, which is the honest state of most
+  clients and of every row that existed before the column, so the resolution is one rule stated
+  once (`app/core/naming.document_name`) and an instance that upgrades and types nothing
+  invoices exactly as it did. The snapshot carries **both**: `customer.name` is the resolved
+  addressee, `customer.trade_name` the label. Two keys because two different readers want
+  different halves — EN 16931 splits them too (`PartyName/Name` is BT-45's trading name,
+  `PartyLegalEntity/RegistrationName` is BT-47's registered one, and both were fed the same
+  string until the split), and the covering e-mail's `{company}` greets a human, so it reads
+  `trade_name` and falls back to `name` for documents issued before any of this existed. It is
+  called `trade_name` and not `label` because the renderer's own `customer_values` already has
+  a `label` and there it means the *heading* over the block ("Aan:"); two keys one dict apart
+  meaning different things is a bug with a long fuse. `_customer_snapshot` is the only builder
+  — the subscription cron had grown a hand-written copy of the dict, and the two had already
+  drifted (it omitted `client_number`), which is exactly how "which name does an invoice say?"
+  comes to depend on who raised it.
 - **Numbers allocate at issue, under a row lock.** Drafts have no number; issuing allocates
   from the per-org sequence on `invoicing_settings` (`SELECT … FOR UPDATE`), formatted by
   the tenant's `{year}`/`{yy}`/`{seq}`/`{seq:N}` template, optionally resetting each

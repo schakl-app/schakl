@@ -50,7 +50,7 @@ from app.modules.invoicing.models import (
     LineKind,
     TaxRate,
 )
-from app.modules.invoicing.service import street_line, tax_label
+from app.modules.invoicing.service import tax_label
 
 logger = logging.getLogger("schakl.invoicing")
 
@@ -124,9 +124,9 @@ async def _auto_issue(
         company = (
             await ctx.session.execute(
                 text(
-                    "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                    " house_number, address_line2, postal_code, city, country, client_number"
-                    " FROM companies WHERE id = :cid AND org_id = :oid"
+                    "SELECT id, name, legal_name, invoice_email, vat_number, coc_number,"
+                    " address_line1, house_number, address_line2, postal_code, city, country,"
+                    " client_number FROM companies WHERE id = :cid AND org_id = :oid"
                 ),
                 {"cid": invoice.company_id, "oid": ctx.org.id},
             )
@@ -179,9 +179,9 @@ async def _draft_period_invoice(
     org_id = ctx.org.id
     company = (
         await ctx.session.execute(
-            text("SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                 " house_number, address_line2, postal_code, city, country"
-                 " FROM companies WHERE id = :cid AND org_id = :oid"),
+            text("SELECT id, name, legal_name, invoice_email, vat_number, coc_number,"
+                 " address_line1, house_number, address_line2, postal_code, city, country,"
+                 " client_number FROM companies WHERE id = :cid AND org_id = :oid"),
             {"cid": company_id, "oid": org_id},
         )
     ).mappings().first()
@@ -250,17 +250,14 @@ async def _draft_period_invoice(
         prices_include_tax=include_tax,
     )
 
-    customer = {
-        "name": company["name"],
-        "address_line1": street_line(company["address_line1"], company["house_number"]),
-        "address_line2": company["address_line2"],
-        "postal_code": company["postal_code"],
-        "city": company["city"],
-        "country": company["country"],
-        "vat_number": company["vat_number"],
-        "coc_number": company["coc_number"],
-        "email": company["invoice_email"],
-    }
+    from app.modules.invoicing.service import _customer_snapshot
+
+    # The shared builder, not a second copy of it. This was a hand-written dict, and the two
+    # had already drifted: it omitted ``client_number``, so a draft the subscription cron raised
+    # printed a bill-to without the klantnummer the same client's hand-made invoice carries.
+    # The client-label / legal-name split gave the copies a second thing to disagree about, and
+    # the answer to "which name does an invoice say?" must not depend on who raised it.
+    customer = _customer_snapshot(company, email=None)
     invoices = ctx.repo(Invoice)
     invoice = await invoices.create(
         company_id=uuid.UUID(str(company_id)),
