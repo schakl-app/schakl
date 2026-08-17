@@ -12,6 +12,7 @@
   interface ProjectRow {
     id: string;
     name: string;
+    company_name?: string | null;
     hours?: HoursFields | null;
   }
   // `/projects/dashboard-budgets` returns the budgeted projects already sorted by burn and cut
@@ -20,6 +21,7 @@
     ((data ?? []) as ProjectRow[]).map((p) => ({
       id: p.id,
       name: p.name,
+      companyName: p.company_name,
       burn: hoursBurn(p.hours),
       pct: burnPct(p.hours?.spent_hours ?? 0, p.hours?.budget_hours ?? null),
     })),
@@ -38,11 +40,16 @@
       {#each rows as project (project.id)}
         <li>
           <div class="flex items-center justify-between gap-2 text-sm">
-            <a
-              href={`/projects/${project.id}`}
-              class="min-w-0 truncate font-medium text-text hover:text-brand"
-            >
-              {project.name}
+            <a href={`/projects/${project.id}`} class="group min-w-0 flex-1">
+              <span class="block truncate font-medium text-text group-hover:text-brand">
+                {project.name}
+              </span>
+              <!-- Whose budget this is. "Onderhoud" is four indistinguishable rows on a tile
+                   spanning four clients, and only opening one told them apart (MyTasksWidget's
+                   fix, same reason). -->
+              {#if project.companyName}
+                <span class="block truncate text-xs text-text-muted">{project.companyName}</span>
+              {/if}
             </a>
             <!-- The burn is a total of time entries, so it opens the report those entries are
                  in — filtered to this project (issue #15). Spent of budget, with what is left on

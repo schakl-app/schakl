@@ -136,6 +136,31 @@ export const actions: Actions = {
     return { changed: true };
   },
 
+  /**
+   * The member's own account: their name, and whether they still work here.
+   *
+   * Two callers, one action, and the difference between them is what `absent means leave alone`
+   * (§18) is for: the Bewerken dialog posts both fields, the ⋯ Deactiveren / Activeren item posts
+   * only the status. So `full_name` is sent **only** when the form carried the input — a status
+   * toggle that also posted an empty name would clear it on every use.
+   */
+  saveAccount: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("membership_id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+
+    const body: { full_name?: string | null; active?: boolean } = {};
+    if (form.has("full_name")) body.full_name = String(form.get("full_name") ?? "").trim();
+    if (form.has("active")) body.active = String(form.get("active")) === "true";
+
+    const { error } = await apiFor(event).PATCH("/api/v1/members/{membership_id}/account", {
+      params: { path: { membership_id: id } },
+      body,
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { accountSaved: true };
+  },
+
   revoke: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("membership_id") ?? "");

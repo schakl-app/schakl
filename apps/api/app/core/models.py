@@ -156,6 +156,21 @@ class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    #: When this person stopped working here. The org's answer to "are they still staff", and
+    #: deliberately not ``users.is_active``: ``users`` is instance-level, so a tenant screen
+    #: writing it would disable an account another org uses (§5). Set, everything the person
+    #: ever wrote keeps their name and only their *access* ends — which is the difference
+    #: between this and deleting the row, where the name goes with it.
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Who ended it. NULL on the rows the migration backfilled from ``users.is_active``: nobody
+    #: recorded an actor for those, and inventing one is worse than admitting none (§16).
+    deactivated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    @property
+    def is_deactivated(self) -> bool:
+        return self.deactivated_at is not None
 
 
 class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

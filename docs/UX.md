@@ -407,6 +407,38 @@
 - **Activate/deactivate lives in the ⋯ menu too**, not as a bare inline button (custom-field
   definitions: ⋯ → Bewerken / Deactiveren / Verwijderen). It's a non-destructive toggle so it
   doesn't confirm, but it belongs with the record's other actions, not loose in the row.
+- **A destructive action states its consequences in the dialog, and the reversible neighbour it
+  should probably have been sits above it** (`ConfirmDialog`'s `consequences`). One sentence is
+  enough for "delete this row?" and stops being enough the moment an action has effects the
+  record it names does not show. Instellingen → Gebruikers offered exactly one way to off-board
+  somebody — "Toegang intrekken", asking *"Toegang van dit lid intrekken?"* — which deletes the
+  membership: accurate, complete as a question, and silent about the two things that actually
+  happen. Roles and klantgroep assignments go with it (`ON DELETE CASCADE`), and every screen
+  that names a person resolves the name *through* a membership, so a departing colleague's
+  thousand logged hours, their tasks and their contactmomenten all went nameless the moment it
+  was pressed. Nothing in the database was lost and nothing on any screen said so. Three rules
+  come out of it. **The list is what makes a choice between two actions informed**: Deactiveren
+  says what is kept (the name everywhere, the roles, the contract, the rooster, the tarief) and
+  that Activeren undoes it; Intrekken says what is lost and *names Deactiveren as the thing you
+  probably want*. **The gentler action goes above the destructive one and is not red** — it
+  destroys nothing, so it takes `variant="primary"`, and it still confirms, because ending a
+  colleague's access deserves a pause even when it is reversible. And **an entity with a
+  lifecycle needs the lifecycle before it needs the delete**: the read half of "deactivated
+  colleague" had been built for a year (the picker split, the roster badge, the login refusal)
+  against a column no screen could write, so the only lever an admin had was the destructive one.
+  A status a screen can *display* and cannot *set* is a missing control, not a finished feature.
+- **A member is edited in a modal, because a member has no detail page.** The #78 rule below —
+  row ⋯ → Bewerken is a link carrying `?edit=1` to the record's own page — needs a page to link
+  to. Instellingen → Gebruikers is the record surface for a colleague, so its Bewerken opens a
+  `Modal` over the roster (name and status; the e-mail address is shown read-only, because it is
+  the account's identity across the whole instance and the key an OIDC login matches on, so
+  editing it here can silently detach somebody's Google sign-in). Two states are drawn
+  differently on purpose: an account this org deactivated offers Activeren, and one disabled
+  *outside* this workspace (`is_active` false with no `deactivated_at` — the instance's own axis,
+  §5) says so instead, rather than drawing a control that would refuse (#253). The one residual
+  caveat, stated where it happens: reactivating a staff account also lifts the instance flag, so
+  on a multi-org instance that re-enables their login in their other org too — which is why it
+  takes an explicit press and never rides along with a rename.
 - **Personal view options are inline "customize" affordances** that only touch the current
   user's own view (UX Principle 6) — e.g. the timesheet's 7-day vs Mon–Fri **Weergave** switch
   and its jump-to-date picker sit quietly in the toolbar and persist per user (via

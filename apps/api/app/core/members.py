@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import secrets
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 from pwdlib import PasswordHash
@@ -72,7 +73,13 @@ class MemberRead(BaseModel):
     #: Every role this membership holds. The Users screen derives the effective permission set
     #: from these plus ``GET /roles`` — one grouped query here, never one per member.
     role_ids: list[str] = []
+    #: The conjunction ``account_active`` documents: still a member here *and* not disabled
+    #: instance-wide. A screen asks one question and gets one answer.
     is_active: bool
+    #: When they were taken off the team, for the roster's "Gedeactiveerd op …". ``None`` for an
+    #: account that is active, **and** for one disabled through ``users.is_active`` alone — those
+    #: two are different facts and an admin reading the row should be able to tell them apart.
+    deactivated_at: datetime | None = None
     is_self: bool
     #: The member's account demands a second factor at login — what makes the admin's
     #: "reset 2FA" action (a lost-phone escape hatch) appear only where it means something.
@@ -128,6 +135,25 @@ class MemberRoleUpdate(BaseModel):
     role: str
 
 
+class MemberAccountUpdate(BaseModel):
+    """What Instellingen → Gebruikers → Bewerken may change about a colleague's account.
+
+    Both fields are optional and **absent means leave alone** (§18): the dialog opens over one
+    member and shows both, but a partial caller — the ⋯ Deactiveren item, which posts only the
+    status — must not blank a name by omitting it.
+
+    ``full_name`` is nullable on purpose, so absent and ``null`` have to be told apart by
+    ``model_fields_set`` rather than by truthiness: an explicit ``null`` — or the blank string an
+    emptied input actually posts — clears the name back to "we don't know it", and the account
+    reads as its e-mail address again. ``email`` is absent by design; see the endpoint.
+    """
+
+    full_name: str | None = None
+    #: ``True`` = works here, ``False`` = has left. Not a free-text status: an account has one
+    #: bit, which is the whole of the members' lifecycle vocabulary (`$lib/core/members`).
+    active: bool | None = None
+
+
 def _system_role_key_or_422(key: str) -> str:
     if key not in PRIVILEGE_ORDER:
         raise AppError(
@@ -170,11 +196,26 @@ def _member_read(
         full_name=user.full_name,
         avatar_url=effective_avatar_url(user),
         role_ids=[str(role_id) for role_id in role_ids or []],
-        is_active=user.is_active,
+        is_active=account_active(membership, user),
+        deactivated_at=membership.deactivated_at,
         is_self=user.id == ctx.user.id,
         two_factor_enabled=two_factor_enabled,
         company_scope_empty=company_scope_empty,
     )
+
+
+def account_active(membership: Membership, user: User) -> bool:
+    """Can this person still work here — the one definition, read by every surface.
+
+    Two bits, and they answer different questions. ``memberships.deactivated_at`` is the org's:
+    "they have left". ``users.is_active`` is the instance's: "this account is disabled
+    everywhere", which only an instance owner (or, before this endpoint existed, somebody with a
+    SQL prompt) sets. Either one refuses, so a screen only ever needs the conjunction — which is
+    why the *field* stayed ``is_active`` when the column arrived beside it: every consumer of
+    ``MemberRead`` / ``MemberLookup`` (the picker split, the roster badge, ``$lib/core/members``)
+    kept working without being touched.
+    """
+    return user.is_active and membership.deactivated_at is None
 
 
 async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
@@ -275,7 +316,7 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
     ]
 
 
-def staff_select(org_id: uuid.UUID, *, include_clients: bool = False):  # noqa: ANN201
+def staff_select(org_id: uuid.UUID, *, include_clients: bool = False, active_only: bool = False):  # noqa: ANN201
     """The org's **staff** accounts, name-ordered — the one definition of "a colleague".
 
     Extracted from ``lookup_members`` when a second caller appeared (#382: the AI candidate
@@ -283,6 +324,13 @@ def staff_select(org_id: uuid.UUID, *, include_clients: bool = False):  # noqa: 
     part worth having exactly one copy of: a portal contact holds a membership too, and a
     second hand-written version of this join is how one of them comes to offer clients as
     assignees months after the other stopped.
+
+    ``active_only`` is the same argument one predicate later. "Who still works here" is now two
+    columns (``account_active``), so a caller that hand-wrote ``User.is_active.is_(True)`` was
+    right about the question and half-right about the answer the moment a membership could be
+    deactivated on its own. It stays **off** by default, because the picker endpoint's whole
+    contract is that a departed colleague is still nameable (§9's lifecycle rule); a caller that
+    is generating *new* work — never a list, never a filter — opts in.
     """
     stmt = (
         select(User)
@@ -290,6 +338,8 @@ def staff_select(org_id: uuid.UUID, *, include_clients: bool = False):  # noqa: 
         .where(Membership.org_id == org_id)
         .order_by(func.lower(User.full_name).asc().nulls_last(), func.lower(User.email).asc())
     )
+    if active_only:
+        stmt = stmt.where(User.is_active.is_(True), Membership.deactivated_at.is_(None))
     if not include_clients:
         stmt = stmt.where(
             Membership.id.in_(
@@ -354,7 +404,9 @@ async def lookup_members(
             )
         stmt = stmt.where(User.id.in_(permission_holder_ids(ctx.org.id, permission)))
 
-    rows = (await ctx.session.execute(stmt)).scalars().all()
+    # ``deactivated_at`` rides the statement rather than being asked for per row: the flag this
+    # endpoint promises is the conjunction of two columns and only one of them is on ``User``.
+    rows = (await ctx.session.execute(stmt.add_columns(Membership.deactivated_at))).all()
     # An **external (client) login** gets the names and not the addresses (§15). This endpoint
     # declares no permission — "open to every member" — and a portal contact holds a membership
     # too, so a client was handed every employee's e-mail address the moment any client-reachable
@@ -373,9 +425,9 @@ async def lookup_members(
             full_name=u.full_name,
             email=None if hide_email else u.email,
             avatar_url=effective_avatar_url(u),
-            is_active=u.is_active,
+            is_active=u.is_active and deactivated_at is None,
         )
-        for u in rows
+        for u, deactivated_at in rows
     ]
 
 
@@ -513,6 +565,140 @@ async def update_member_role(
 
     user = await ctx.session.get(User, membership.user_id)
     return _member_read(ctx, membership, user)  # type: ignore[arg-type]
+
+
+@router.patch(
+    "/{membership_id}/account",
+    response_model=MemberRead,
+    dependencies=[require_permission("members.member.write")],
+)
+async def update_member_account(
+    membership_id: uuid.UUID,
+    payload: MemberAccountUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> MemberRead:
+    """Edit a colleague's account: their name, and whether they still work here.
+
+    This is the control the product was missing, and its absence had a cost worth writing down.
+    Off-boarding offered only "Toegang intrekken", which deletes the membership — so an agency
+    with a departing colleague either kept a live login for someone who had left, or deleted the
+    row and watched a thousand hours of their work go nameless on every screen. Neither is what
+    anybody meant by "they don't work here any more".
+
+    Deactivating keeps everything and ends only the access. The name still renders on every hour,
+    task, contactmoment and activity line; the roles, contract, rooster and tarief stay on the
+    row; the account drops out of the pickers that offer *new* work and stays findable behind
+    every search and filter (§9's lifecycle rule, the one clients and projects already follow).
+    One press of Activeren undoes it.
+
+    Absent means leave alone (§18): the dialog opens over one member, but a form that posts a
+    field it did not show is how a rename quietly reactivates somebody.
+
+    Three refusals:
+
+    - **Not yourself.** ``cannot_deactivate_self`` — for the reason ``cannot_remove_self`` exists,
+      minus the drama: the request would succeed and the next one would 403.
+    - **Not the last administrator.** ``ensure_a_role_manager_remains`` counts only accounts that
+      can actually sign in (see ``role_manager_count``), so deactivating the last owner is refused
+      exactly as revoking them is. Applied *after* the flush, so the guard sees the world being
+      proposed and the ``AppError`` rolls it back.
+    - **The e-mail address is not editable here** — it is not on the schema at all. It is the
+      account's identity across the whole instance and the key an OIDC login matches on, so a
+      tenant screen renaming it can silently detach somebody's Google sign-in. A typo is fixed by
+      inviting the right address and revoking the wrong one, which is the rare case this whole
+      endpoint exists to make *unnecessary* for the common one.
+
+    Deactivating writes only this org's column. **Reactivating** may also lift
+    ``users.is_active``, under two narrow conditions stated at the call site — that column is the
+    instance's answer and, separately, the client portal's own "login enabled" flag, so the two
+    principals it belongs to are the two exemptions.
+    """
+    membership = await _membership_or_404(ctx, membership_id)
+    user = await ctx.session.get(User, membership.user_id)
+    if user is None:  # pragma: no cover — the FK makes this unreachable
+        raise AppError("not_found", "errors.not_found", status_code=404)
+
+    if "full_name" in payload.model_fields_set:
+        renamed = (payload.full_name or "").strip() or None
+        if renamed != user.full_name:
+            previous, user.full_name = user.full_name, renamed
+            await audit.record(
+                ctx.session,
+                org_id=ctx.org.id,
+                actor=ctx.user,
+                action="membership.renamed",
+                target_user_id=user.id,
+                detail={"from": previous, "to": renamed},
+            )
+
+    if payload.active is not None and payload.active is not account_active(membership, user):
+        if membership.user_id == ctx.user.id:
+            raise AppError(
+                "cannot_deactivate_self", "errors.cannot_deactivate_self", status_code=400
+            )
+        if payload.active:
+            membership.deactivated_at = None
+            membership.deactivated_by_user_id = None
+            # Clearing our own column is not enough to make the roster's "Actief" true. An
+            # account can also be off through ``users.is_active`` — every account deactivated
+            # before this endpoint existed is, because a SQL prompt was the only way — and
+            # leaving that set would print Actief over somebody who still cannot sign in.
+            #
+            # So it is lifted, under two narrow conditions, and both are about *whose bit it is*.
+            # Not a superuser: instance administration is its own authorization axis (§5) and no
+            # tenant screen overrules it. Not a ``client`` membership: the portal uses the very
+            # same column as its "login enabled" flag, so lifting it there would switch a client
+            # login the agency disabled back on from a screen that does not even list it. What
+            # remains — a staff account of this org, disabled by hand — is exactly the case an
+            # admin pressing Activeren means, and the residual cross-org caveat is stated in
+            # ``docs/UX.md``: on a multi-org instance this re-enables a colleague's login in
+            # their other org too, which is why it takes an explicit press and never rides along
+            # with a rename.
+            if (
+                not user.is_active
+                and not user.is_superuser
+                and not await _holds_client_role(ctx, membership.id)
+            ):
+                user.is_active = True
+        else:
+            membership.deactivated_at = datetime.now(UTC)
+            membership.deactivated_by_user_id = ctx.user.id
+        await ctx.session.flush()
+        await ensure_a_role_manager_remains(ctx)
+        await audit.record(
+            ctx.session,
+            org_id=ctx.org.id,
+            actor=ctx.user,
+            action="membership.activated" if payload.active else "membership.deactivated",
+            target_user_id=user.id,
+        )
+
+    await ctx.session.flush()
+    held = await membership_role_ids(ctx.session, ctx.org.id, membership.id)
+    row = await twofactor.row_for(ctx.session, user.id)
+    return _member_read(
+        ctx,
+        membership,
+        user,
+        list(held),
+        two_factor_enabled=twofactor.is_active(row),
+    )
+
+
+async def _holds_client_role(ctx: RequestContext, membership_id: uuid.UUID) -> bool:
+    """Is this an external login? The seeded ``client`` role is the definition (#274)."""
+    return (
+        await ctx.session.scalar(
+            select(MembershipRole.membership_id)
+            .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+            .where(
+                MembershipRole.org_id == ctx.org.id,
+                MembershipRole.membership_id == membership_id,
+                RoleRow.key == ROLE_CLIENT,
+            )
+            .limit(1)
+        )
+    ) is not None
 
 
 @router.delete(

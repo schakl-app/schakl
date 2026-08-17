@@ -60,6 +60,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_today
 from app.integrations.timeon.client import TimeonClient, TimeonError
 from app.integrations.timeon.mapping import (
     Resolver,
@@ -174,7 +175,7 @@ class TimeonSyncService:
         the state an integration is least able to explain afterwards. (``require_context`` rolls
         back on an exception, so the route catches; see :meth:`_finish`.)
         """
-        start, end = self._window(window_from, window_to)
+        start, end = await self._window(window_from, window_to)
         run = await self.ctx.repo(TimeonSyncRun).create(
             account_id=self.account.id,
             kind=kind.value,
@@ -203,15 +204,20 @@ class TimeonSyncService:
             return await self._finish(run, message=str(exc)[:500], ok=False, dry_run=dry_run)
         return await self._finish(run, ok=self.report.ok, dry_run=dry_run)
 
-    def _window(self, start: date | None, end: date | None) -> tuple[date, date]:
+    async def _window(self, start: date | None, end: date | None) -> tuple[date, date]:
         """The span this run covers, with the history floor applied.
 
         An explicit window is honoured (a repair of one month, a full resync); otherwise it is
         the account's rolling ``window_days`` back from today. The floor clamps either — nothing
         on or before it is read, written or deleted, which is what keeps a sync away from three
         years of settled history the migration already marked invoiced.
+
+        "Today" is the **org's** today (§8), not UTC's. An hour row carries a local date, so a
+        window ending on the UTC day drops the hours somebody logged this evening in any zone
+        ahead of UTC — and picks up tomorrow's a few hours early in any zone behind it. The
+        nightly job runs at 04:20 local, which is exactly when the two clocks disagree.
         """
-        today = datetime.now(UTC).date()
+        today = await org_today(self.ctx.session, self.ctx.org.id)
         win_end = end or today
         win_start = start or (win_end - timedelta(days=max(1, self.account.window_days)))
         floor = self.account.history_floor

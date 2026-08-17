@@ -356,9 +356,18 @@ class ProjectService:
             key=lambda p: p.hours.spent_hours / p.hours.budget_hours,  # type: ignore[attr-defined]
             reverse=True,
         )
+        # After the cut, never before: the tile draws four rows, so the client labels are one
+        # query over at most four clients rather than over every active project in the org.
+        rows = budgeted[:limit]
+        await self._attach_company_names(rows)
         return [
-            DashboardBudgetProject(id=p.id, name=p.name, hours=p.hours)  # type: ignore[attr-defined]
-            for p in budgeted[:limit]
+            DashboardBudgetProject(
+                id=p.id,
+                name=p.name,
+                company_name=p.company_name,  # type: ignore[attr-defined]
+                hours=p.hours,  # type: ignore[attr-defined]
+            )
+            for p in rows
         ]
 
     async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:

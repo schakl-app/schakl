@@ -32,7 +32,6 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_
 
-from app.core.auth.models import User
 from app.core.members import staff_select
 from app.core.tenancy import RequestContext
 from app.modules.companies.models import Company
@@ -309,10 +308,15 @@ async def gather(
         # same answer by the same statement, so it carries no gate of its own either. What it
         # does carry is that endpoint's client-role exclusion, via the shared `staff_select`:
         # a portal contact holds a membership and is never an assignee.
+        #
+        # `active_only` rather than a local `User.is_active` filter: this shortlist is offered to
+        # a model that is about to *assign* work, so "who still works here" has to be the whole
+        # answer, and a colleague deactivated on their membership alone would otherwise come back
+        # onto the list the day the column shipped.
         rows = (
             (
                 await ctx.session.execute(
-                    staff_select(ctx.org.id).where(User.is_active.is_(True)).limit(_MEMBER_LIMIT)
+                    staff_select(ctx.org.id, active_only=True).limit(_MEMBER_LIMIT)
                 )
             )
             .scalars()

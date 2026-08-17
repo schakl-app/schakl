@@ -753,8 +753,13 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         assert [r["name"] for r in rows] == ["Heet", "Warm"]
         assert rows[0]["hours"]["spent_hours"] == 6.0
         assert rows[0]["hours"]["budget_hours"] == 8.0
+        # Whose budget it is — four rows called "Onderhoud" are one row without it.
+        assert [r["company_name"] for r in rows] == ["Acme", "Acme"]
         # The burn enrichment stays one grouped aggregate, whatever the project count.
         assert len(counter.matching("from time_entries")) == 1
+        # And the client labels are one lookup over the rows that survived the cut, never one
+        # per row and never over every active project in the org.
+        assert len(counter.matching("from companies")) == 1
 
 
 # --- the company hub: an umbrella budget over every panel ----------------------------------- #
