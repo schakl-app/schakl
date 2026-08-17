@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -1176,3 +1177,31 @@ async def test_the_window_is_recorded_so_a_narrow_run_cannot_look_complete(
     body = resp.json()
     span = date.fromisoformat(body["window_to"]) - date.fromisoformat(body["window_from"])
     assert span == timedelta(days=7)
+
+
+async def test_the_rolling_window_ends_on_the_org_s_own_today(client_for, timeon) -> None:
+    """A rolling window ends on the tenant's today, never on UTC's (§8).
+
+    An hour row carries a local date, so a window ending on the UTC day misses the hours logged
+    this evening in any zone ahead of UTC — which is exactly the state the 04:20 nightly job
+    runs in. The two zones here are 25 hours apart, so at *every* instant of the day at least
+    one of them disagrees with UTC: a run that read its own clock fails this whichever hour it
+    is started in, and a developer in Europe/Amsterdam sees the same red as CI does.
+    """
+    tenant, headers, client = await _tenant(client_for)
+    await _seed_remote(timeon, tenant)
+    account_id = await _connect(client, headers, timeon, hours_direction="pull")
+
+    for zone in ("Pacific/Kiritimati", "Pacific/Midway"):
+        assert (
+            await client.patch(
+                "/api/v1/meta/tenant", json={"timezone": zone}, headers=headers
+            )
+        ).status_code == 200
+        resp = await client.post(
+            f"/api/v1/timeon/accounts/{account_id}/sync",
+            json={"kind": "hours", "dry_run": True},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["window_to"] == datetime.now(ZoneInfo(zone)).date().isoformat(), zone
