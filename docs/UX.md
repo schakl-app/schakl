@@ -1272,6 +1272,21 @@
   its ancestors is worse than a long one: those crumbs are the only link to the records they name.
   A label is clipped by width with its full text in `title`, never shortened in JavaScript, which
   would mean deciding where a name may break.
+  **A record may name its client through a collection as well as through a column** (#401). The
+  confirmation was a scalar foreign key read off the record, which modelled one-to-many and nothing
+  else — and a contact belongs to its clients through `company_contacts`, so `ContactRead` answers
+  with a *list* and carries no `company_id`. `record["company_id"]` was `undefined`, which reads as
+  "not this client" and never as "this record cannot answer the question": the trail reset, and "up"
+  from a client's contact person became the org-wide address book. That was the team's complaint,
+  and it failed on exactly one entity — a task opened from the same page kept its client, which is
+  what makes the mechanism worth fixing rather than replacing. So `PARENT_RULES` takes a column
+  *or* a collection and confirms on the first that matches. The safety property is untouched: the
+  record still decides, it is still the record's own data, and a contact of a different client
+  still refuses the crumb. This is CLAUDE.md §15's "failure mode (1) — no anchor" one layer out,
+  which is why the test sweeps every record type the row can be about against the **generated API
+  types** rather than against this paragraph: a model whose client link is indirect declares
+  `__company_horizon_clause__` on the server for the same reason, and a new detail page now has to
+  say which of the two it is.
   `tests/unit/breadcrumbs.test.ts` sweeps the real route tree and fails on any segment nothing
   names. That is the enforcement this row needs: it is rendered by the layout for every page, so a
   new screen gets one whether or not anyone thought about it, and "nobody thought about it" looked
