@@ -10,6 +10,9 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { dashboardWidgetsFor } from "$lib/core/registry";
+  import Card from "$lib/core/ui/Card.svelte";
+  import PageHeader from "$lib/core/ui/PageHeader.svelte";
+  import { PANEL_HEADING } from "$lib/core/ui/headings";
   import WidgetGallery from "$lib/core/ui/WidgetGallery.svelte";
 
   let { data, form } = $props();
@@ -171,27 +174,27 @@
   {/if}
 {/snippet}
 
-<div class="mb-6 flex items-start justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">
-      {t(data.portal ? "portal.home.title" : "dashboard.my_day.title")}
-    </h1>
-    <p class="mt-1 text-sm text-text-muted">
-      {t("dashboard.welcome", { name: user?.full_name || user?.email || "" })}
-    </p>
-  </div>
-  {#if !data.portal || portalCompanies.length > 0}
-    <button
-      class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm {editMode
-        ? 'border-brand text-brand'
-        : 'text-text-muted hover:border-brand hover:text-brand'}"
-      onclick={() => (editMode = !editMode)}
-    >
-      {#if editMode}<Check size={15} /> {t("dashboard.done")}{:else}<Pencil size={15} />
-        {t("dashboard.edit")}{/if}
-    </button>
-  {/if}
-</div>
+<!-- The title band (#404). The dashboard used to open with a bespoke flex row and no shared
+     shape at all, which is what let three screens the team lives in disagree about where a
+     page's own name sits. `PageHeader` is that shape; what it contains is still this page's. -->
+<PageHeader title={t(data.portal ? "portal.home.title" : "dashboard.my_day.title")}>
+  {#snippet subtitle()}
+    {t("dashboard.welcome", { name: user?.full_name || user?.email || "" })}
+  {/snippet}
+  {#snippet actions()}
+    {#if !data.portal || portalCompanies.length > 0}
+      <button
+        class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm {editMode
+          ? 'border-brand text-brand'
+          : 'text-text-muted hover:border-brand hover:text-brand'}"
+        onclick={() => (editMode = !editMode)}
+      >
+        {#if editMode}<Check size={15} /> {t("dashboard.done")}{:else}<Pencil size={15} />
+          {t("dashboard.edit")}{/if}
+      </button>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if data.portal}
   {#if portalCompanies.length > 1}
@@ -221,9 +224,9 @@
 {/if}
 
 {#if data.portal && portalCompanies.length === 0}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
+  <Card kind="strip" class="p-8 text-center">
     <p class="text-sm text-text-muted">{t("portal.home.empty")}</p>
-  </div>
+  </Card>
 {:else}
   <form
     method="POST"
@@ -240,9 +243,9 @@
   <!-- The board. In use mode it is a plain grid — tiles are not draggable and a stray drag can't
        disturb the layout (UX §3). Edit mode turns on the drag zone and the per-tile remove. -->
   {#if activeKeys.length === 0}
-    <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <Card kind="strip" class="p-10 text-center">
       <p class="text-sm text-text-muted">{t("dashboard.my_day.empty")}</p>
-    </div>
+    </Card>
   {:else if editMode}
     <!-- The same two stacks as use mode, each a drag zone. A drop writes that column and saves
          it; the columns are the layout, so a tile crossing does not move anything else. -->
@@ -309,27 +312,29 @@
   {/if}
 
   {#if editMode}
-    <section class="mt-6 rounded-xl border border-border bg-surface-raised p-5">
-      <div class="mb-3 flex items-center justify-between">
-        <div>
-          <h2 class="text-sm font-semibold text-text">{t("dashboard.gallery.title")}</h2>
-          <p class="mt-0.5 text-xs text-text-muted">{t("dashboard.gallery.hint")}</p>
+    <Card class="mt-6">
+      {#snippet header()}
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <h2 class={PANEL_HEADING}>{t("dashboard.gallery.title")}</h2>
+            <p class="mt-0.5 text-xs text-text-muted">{t("dashboard.gallery.hint")}</p>
+          </div>
+          {#if data.prefsSource === "user"}
+            <form
+              method="POST"
+              action="?/resetLayout"
+              use:enhance={() =>
+                ({ update }) =>
+                  void update()}
+            >
+              <button class="text-xs text-text-muted hover:text-text">
+                {t("dashboard.customize.reset")}
+              </button>
+            </form>
+          {/if}
         </div>
-        {#if data.prefsSource === "user"}
-          <form
-            method="POST"
-            action="?/resetLayout"
-            use:enhance={() =>
-              ({ update }) =>
-                void update()}
-          >
-            <button class="text-xs text-text-muted hover:text-text">
-              {t("dashboard.customize.reset")}
-            </button>
-          </form>
-        {/if}
-      </div>
+      {/snippet}
       <WidgetGallery widgets={allWidgets} {activeKeys} onadd={addWidget} />
-    </section>
+    </Card>
   {/if}
 {/if}
