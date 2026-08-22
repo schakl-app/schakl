@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.core.auth.models import User
 from app.db import async_session_maker
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 def _iso(dt: datetime) -> str:
@@ -43,6 +43,7 @@ async def _task(
     res = await client.post(
         "/api/v1/tasks",
         json={
+            "due_date": FAR_FUTURE_DUE,
             "title": title,
             "company_id": company_id,
             "allocated_minutes": allocated_minutes,

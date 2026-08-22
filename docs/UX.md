@@ -2011,3 +2011,37 @@
   port itself. Those two are the app's only full-screen scroll ports; everything else that scrolls
   is a `max-h-*` list inside a card.
 
+
+- **A field that is required is asked for at every door, and a screen may not offer a way to
+  empty it** (#392, tasks' deadline). *"Binnen het CRM moet altijd een datum bekend zijn, zodat de
+  taak zichtbaar blijft en niet kan worden overgeslagen."* An undated task is not merely
+  unscheduled: it is missing from `?due=overdue`, from the Agenda's deadline feed and from both
+  dashboards' overdue counts, so it is invisible to the whole urgency vocabulary — which is why
+  the answer is a required field rather than a warning. Four rules generalise past this one field.
+  **Every create surface asks, and there is one place that makes them.** The task board's ＋, the
+  client header, the client's Taken panel, a project's to-do list and every picker's inline-create
+  are five doors onto one write, and a rule enforced at four of them is a rule with a hole in it —
+  so the deadline joined the title inside `taskCreateBody` (#391), which refuses without either
+  rather than inventing one, and `TaskQuickCreate` and the dictation sheet mark both fields
+  `required` so the refusal is met before the round trip. The API is still the boundary
+  (`TaskCreate.due_date` is required; `TaskUpdate` refuses an explicit `null`).
+  **A deadline is not a calendar booking.** `Vervaldatum` and `Geplande blokken` sit in one
+  Planning section (#335) and only the first is mandatory: setting one never implies the other,
+  and planning the work into the agenda stays optional.
+  **`required` on a control the form does not own validates nothing, and it looks identical to
+  one that does.** A control is a candidate for constraint validation only while it is associated
+  with the form being submitted, so on the single-save detail layouts — where the field sits
+  outside `<form id="task-edit">` and joins it by `form=` — `required` on `DateInput`'s visible
+  box was inert, and putting it on the hidden input beside it would have been inert too (a hidden
+  control is barred from validation by definition). The visible box now carries `form={formId}`
+  as well; it has no `name`, so it submits nothing and only validates. Invisible in review, and
+  invisible in use until somebody saves an empty field: check `form.checkValidity()` in a browser
+  rather than reading the attribute. Its sibling: **a required field's picker loses its
+  "Wissen"** — a control that empties a box the very next submit refuses is #253's control that
+  can only refuse, and drawing it teaches the user a gesture the form will punish.
+  **The rows written before the rule are a design problem, not a migration problem.** The column
+  stays nullable for a release (expand/contract, docs/WORKFLOW.md), so an instance upgrades
+  carrying tasks the new rule forbids: they open, they render and they save in every field, the
+  edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
+  edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
+  have been the first thing an agency met after upgrading.

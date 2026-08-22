@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import TaskActivity
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 
 
 def _actions(detail: dict) -> list[str]:
@@ -35,7 +35,11 @@ async def test_checklist_lifecycle_lands_in_the_activity_trail(client_for) -> No
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         task = (
-            await c.post("/api/v1/tasks", json={"title": "Onboarding"}, headers=headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Onboarding"},
+                headers=headers,
+            )
         ).json()
         tid = task["id"]
 
@@ -93,7 +97,11 @@ async def test_reordering_a_checklist_is_not_activity(client_for) -> None:
     t = await make_tenant("trail-reorder")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
         cid = (
             await c.post(
@@ -113,7 +121,11 @@ async def test_comment_activity_carries_an_excerpt_and_the_comment_id(client_for
     t = await make_tenant("trail-comment")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
 
         body = "Klant wil de nieuwe huisstijl vóór vrijdag zien"
@@ -148,7 +160,11 @@ async def test_a_long_comment_is_excerpted_not_stored_whole(client_for) -> None:
     t = await make_tenant("trail-excerpt")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
         await c.post(
             f"/api/v1/tasks/{tid}/comments", json={"body": "x" * 500}, headers=headers
@@ -165,7 +181,11 @@ async def test_activity_and_comments_snapshot_the_actor_name(client_for) -> None
     t = await make_tenant("attr-snapshot")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         await c.post(f"/api/v1/tasks/{task['id']}/comments", json={"body": "hoi"}, headers=headers)
         detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
 
@@ -187,7 +207,11 @@ async def test_a_deleted_user_keeps_their_name_and_is_marked_deleted(client_for)
     author_email = t.user.email
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
         await c.post(f"/api/v1/tasks/{tid}/comments", json={"body": "hoi"}, headers=headers)
 
@@ -245,7 +269,11 @@ async def test_a_null_actor_with_no_snapshot_is_still_the_system(client_for) -> 
     t = await make_tenant("attr-system")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
 
         async with async_session_maker() as session:

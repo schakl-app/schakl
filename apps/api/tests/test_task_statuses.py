@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def test_statuses_seeded_on_first_read(client_for) -> None:
@@ -21,7 +21,11 @@ async def test_new_task_lands_in_default_status(client_for) -> None:
     t = await make_tenant("status-default")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         assert task["status"] == "open"
         assert task["completed_at"] is None
 
@@ -41,7 +45,11 @@ async def test_completed_at_keys_off_is_terminal(client_for) -> None:
         ).json()
         assert shipped["is_terminal"] is True
 
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         done = (
             await c.patch(
                 f"/api/v1/tasks/{task['id']}", json={"status": "shipped"}, headers=headers
@@ -63,7 +71,9 @@ async def test_unknown_status_key_is_rejected(client_for) -> None:
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         resp = await c.post(
-            "/api/v1/tasks", json={"title": "T", "status": "nope"}, headers=headers
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T", "status": "nope"},
+            headers=headers,
         )
         assert resp.status_code == 422
 
@@ -85,7 +95,11 @@ async def test_single_default_and_delete_guards(client_for) -> None:
         assert defaults == ["review"]
 
         # A status still holding a task can't be deleted.
-        await c.post("/api/v1/tasks", json={"title": "T", "status": "review"}, headers=headers)
+        await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T", "status": "review"},
+            headers=headers,
+        )
         blocked = await c.delete(f"/api/v1/tasks/statuses/{review['id']}", headers=headers)
         assert blocked.status_code == 409
 
@@ -125,9 +139,17 @@ async def test_closing_interaction_gate_and_designation(client_for) -> None:
         )
         assert flagged.status_code == 200 and flagged.json()["requires_interaction"] is True
 
-        task = (await c.post("/api/v1/tasks", json={"title": "Bel klant"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Bel klant"},
+            headers=headers,
+        )).json()
         other_task = (
-            await c.post("/api/v1/tasks", json={"title": "Andere"}, headers=headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Andere"},
+                headers=headers,
+            )
         ).json()
 
         # No contact moment: the gate refuses.

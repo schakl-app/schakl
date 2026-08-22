@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from app.config import settings
 from app.core.events import SystemContext
+from app.core.timezone import org_today
 from app.modules.automation.models import AutomationRun
 from app.modules.automation.webhook import WebhookError, post_webhook
 from app.registry import AutomationActionSpec, registry
@@ -85,6 +87,23 @@ def _entity_uuid(action_ctx: ActionContext) -> uuid.UUID:
     return action_ctx.run.entity_id
 
 
+async def _configured_due(action_ctx: ActionContext, config: dict) -> date:
+    """The deadline a ``task.create`` rule gives what it makes (#392).
+
+    ``due_days`` is counted from the day the rule **fires**, on the org's own calendar
+    (CLAUDE.md §8) — never the container's. Absent or unreadable means the same day: a
+    deadline is required and a rule with nobody in front of it states a default rather than
+    raising a 422 nobody would ever read.
+    """
+    today = await org_today(action_ctx.ctx.session, action_ctx.ctx.org.id)
+    raw = config.get("due_days")
+    try:
+        days = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return today
+    return today + timedelta(days=max(0, min(days, 3650)))
+
+
 # --------------------------------------------------------------------------- #
 # task.* — via the tasks module's published system surface
 # --------------------------------------------------------------------------- #
@@ -122,6 +141,7 @@ async def _task_create(action_ctx: ActionContext, config: dict) -> dict:
         assignee_user_id=_uuid_or_none(config.get("assignee_user_id")),
         description=config.get("description") or None,
         priority=str(config.get("priority") or "normal"),
+        due_date=await _configured_due(action_ctx, config),
         actor_name=action_ctx.actor_name,
         extra_payload=action_ctx.chain_payload(),
     )

@@ -19,7 +19,7 @@ from app.core.ai.models import AIUsage
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant, org_today
 
 _password_hash = PasswordHash.recommended()
 
@@ -406,6 +406,7 @@ async def test_create_carries_its_checklist_links_and_labels(client_for) -> None
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "due_date": FAR_FUTURE_DUE,
                 "title": "Homepageteksten herschrijven",
                 "checklist": {
                     "title": "Aanpak",
@@ -448,7 +449,11 @@ async def test_create_without_the_composite_fields_is_unchanged(client_for) -> N
     t = await make_tenant("composite-none")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        created = await c.post("/api/v1/tasks", json={"title": "Gewoon"}, headers=headers)
+        created = await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Gewoon"},
+            headers=headers,
+        )
         assert created.status_code == 201, created.text
         detail = (
             await c.get(f"/api/v1/tasks/{created.json()['id']}", headers=headers)
@@ -467,7 +472,11 @@ async def test_create_checklist_without_a_title_borrows_the_task_s(client_for) -
     async with client_for(t.host) as c:
         created = await c.post(
             "/api/v1/tasks",
-            json={"title": "Oplevering", "checklist": {"items": [{"title": "Stap"}]}},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Oplevering",
+                "checklist": {"items": [{"title": "Stap"}]},
+            },
             headers=headers,
         )
         assert created.status_code == 201, created.text
@@ -493,7 +502,7 @@ async def test_composite_create_never_crosses_a_tenant(client_for) -> None:
     async with client_for(t.host) as c:
         refused = await c.post(
             "/api/v1/tasks",
-            json={"title": "Iets", "label_ids": [foreign_label]},
+            json={"due_date": FAR_FUTURE_DUE, "title": "Iets", "label_ids": [foreign_label]},
             headers=await auth_cookie(t.user),
         )
         assert refused.status_code == 404, refused.text

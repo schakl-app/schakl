@@ -1366,10 +1366,18 @@
                 name="due_date"
                 value={task.due_date ?? ""}
                 formId="task-edit"
+                required
                 onchange={onDueChanged}
               />
             </div>
             <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            <!-- Rows written before #392 open, render and edit exactly as before — but saving
+                 one asks for the date it never had, which is the way out rather than a refusal. -->
+            {#if !task.due_date}
+              <p class="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                {t("tasks.detail.due_required_hint")}
+              </p>
+            {/if}
           {:else}
             <span class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.due_date")}</span
