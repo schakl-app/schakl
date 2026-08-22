@@ -62,6 +62,23 @@ export const driveActions = {
     return { driveUnlinked: true };
   },
 
+  /**
+   * Move the file itself to Drive's bin (#394). The *other* act from `unlinkDriveFile`, and
+   * never a rename of it: unlink says "this file is not about this record" and touches
+   * nothing in Drive, this says "this file should not exist". The API runs it as the signed-in
+   * user, so Drive's own permissions answer, and it drops every link naming that file.
+   */
+  deleteDriveFile: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const drive_file_id = String(form.get("drive_file_id") ?? "");
+    if (!drive_file_id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).DELETE("/api/v1/google/drive/files/{drive_file_id}", {
+      params: { path: { drive_file_id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { driveFileTrashed: true };
+  },
+
   provisionDriveFolder: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const entity_type = String(form.get("entity_type") ?? "");
