@@ -1820,6 +1820,31 @@
   standing in the Agenda and in Google (removable in the same confirm, named with its date), and
   the good news that the rule has already scheduled the next one.
 
+- **A page with two orderings cannot be reordered** (#393, the task page). The same card asked
+  *when* before it had said *what*: Planning sat above Omschrijving and Checklists, which is not
+  a decision anybody made — #335 pulled three scattered widgets into one Planning card and left it
+  where the old details card had been. Moving it was one line. The other half of the request was
+  not: Drive had to sit between the task's own content and Reacties, and it could not, because the
+  page had **two** orderings with no way to interleave them — the source order of its hand-written
+  sections, and the `position` each contributed panel declares (`google` 55, `interactions` 60) —
+  and every panel therefore rendered after every section. So the page's own sections are snippets
+  now, each carrying a number on the *same scale the panels already use*, and one `{#each}` renders
+  the merged list. Three things follow. **The page still names no module** (CLAUDE.md §6): both
+  panels keep the position they declare and neither file was touched, so what changed is that the
+  page stopped assuming its sections all come first. **Moving a section is one number in one
+  array**, which is what makes the next "put X above Y" a five-second change rather than this one
+  again. And **a load that hands a panel to a page must hand over its `position` too** — the server
+  had been dropping it as a detail of sorting, which is exactly why the page could not sort.
+
+  Its sibling on the same screen: **two surfaces for one idea have to say which is which.**
+  Links & bijlagen (files stored here) and Drive (references into the client's Google Drive) read
+  as one question to a colleague — *waar staan de bestanden van deze taak* — and now sit next to
+  each other, which makes the difference more pressing rather than less: "verwijderen" means
+  destroying a file in one and unlinking a reference in the other. They are not merged for exactly
+  that reason; the card carries one line naming where its bytes live instead. The line it replaced
+  had promised *"een Google Drive-koppeling volgt in een latere fase"* to a page that was by then
+  rendering the Drive panel directly underneath it.
+
 - **A page that only *composes* has no foreground, and every card on it is equally unimportant**
   (#364, the client hub). The registry handed the company page a list of panels, the page drew
   each as a full-width card in `position` order, and that was the whole layout. A card holding

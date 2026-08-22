@@ -784,7 +784,7 @@
   "tasks.links.delete_confirm": "Remove this link?",
   "tasks.links.url_placeholder": "https://…",
   "tasks.links.title_placeholder": "Label (optional)",
-  "tasks.links.files_hint": "Files are stored on this instance; a Google Drive integration follows in a later phase.",
+  "tasks.links.stored_here": "Stored on this instance, not with an outside service.",
   "tasks.field.allocated": "Time budget",
   "tasks.field.checklist": "Checklist",
   "tasks.field.comments": "Comments",
