@@ -5,6 +5,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
+import { orgToday } from "$lib/core/today";
 import { Clock } from "@lucide/svelte";
 
 import EntriesPanel from "./EntriesPanel.svelte";
@@ -101,7 +102,7 @@ registerWebModule({
       category: "dashboard.category.time",
       size: "md",
       load: async (api) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = orgToday();
         const monthStart = today.slice(0, 8) + "01";
         const { data } = await api.GET("/api/v1/time/stats/team-summary", {
           params: { query: { date_from: monthStart, date_to: today } },

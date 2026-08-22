@@ -350,6 +350,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a test computing it from `date.today()` or UTC agrees with the app only on a developer's
   machine and fails on CI, which runs in UTC. A test may still *name* a zone when the zone is its
   subject (a DST boundary); that is an input, not an assumption.
+- **The browser is a module too, and it kept its own clock for a year** (#396). The rule above was
+  written after the API was fixed, and the web app was never brought along: twenty call sites read
+  `new Date().toISOString().slice(0, 10)`, which is not the org's calendar date and not even the
+  viewer's — it is **UTC's**. In `Europe/Amsterdam` the UTC date rolls over at 02:00 local, so for
+  two hours a night a task due today compared as `> today` and was filed under *Binnenkort*, while
+  one due yesterday compared as `== today` and was drawn in black rather than overdue red — in the
+  exact colour the urgency work is about, in `TaskRow`, which every board, panel and widget draws.
+  The two `+page.server.ts` cases were worse in kind: they read the **Node process's** clock, whose
+  `TZ` is UTC in the shipped image, so they were a day out *all day* for every tenant east of it.
+  `$lib/core/today.ts` is the one answer now (`orgToday` / `orgYear` / the pure `todayIn`), reading
+  the same `getTimeZone()` every date on screen is formatted with, so a date the app computes and a
+  date it prints can never disagree. Three things generalise. **A helper that already exists is not
+  a fix** — `getTimeZone()` was wired both sides and used by `format.ts` throughout; these call
+  sites were not missing a mechanism, they were bypassing one, which is why two private copies of
+  the same three lines had also grown (`availabilityToday`, `anchorMonth`) and now delegate. **The
+  sibling unit fails the same way and was missed the same way**: nine places asked
+  `new Date().getUTCFullYear()`, so a leave balance and the revenue report opened on the year that
+  had just ended. And **a bug class invisible in review needs a lint, not a memory** —
+  `YYYY-MM-DD` is well-formed whichever clock made it, the types agree, `svelte-check` is happy,
+  and a developer looking at the screen in the afternoon sees the right answer, so
+  `scripts/today-check.mjs` (`pnpm today:check`, CI + pre-commit, beside `forms:check` for exactly
+  the same reason) refuses a **clock read** by shape and never by filename: converting a value you
+  were handed stays legal, because there is no clock in it to get wrong.
 
 ## 9. Conventions
 

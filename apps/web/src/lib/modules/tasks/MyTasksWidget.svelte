@@ -2,6 +2,7 @@
   /** My Day widget: overdue / due-today / upcoming partitions of my open tasks. */
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { orgToday } from "$lib/core/today";
 
   let { data }: { data: unknown } = $props();
 
@@ -13,7 +14,7 @@
     company_name?: string | null;
   }
   const tasks = $derived((data ?? []) as MyTask[]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgToday();
 
   const overdue = $derived(tasks.filter((task) => task.due_date != null && task.due_date < today));
   const dueToday = $derived(tasks.filter((task) => task.due_date === today));

@@ -7,6 +7,8 @@
   import { enhance } from "$app/forms";
   import { COMMON_CURRENCIES, otherCurrencies } from "$lib/core/currencies";
   import { getCurrency } from "$lib/core/currency";
+  import { isoAddDays } from "$lib/core/calendar";
+  import { orgToday } from "$lib/core/today";
   import { LOCALES, t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -200,11 +202,9 @@
   // Show the inherited defaults, don't hide them behind empty fields (docs/UX.md #81): a
   // fresh document pre-fills today and the org's payment term / quote validity — visibly,
   // exactly what the API would fall back to at issue time.
-  function isoInDays(days: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-  }
+  // Calendar arithmetic on the tenant's own today (§8): the old shape stepped a
+  // browser-local `Date` and then printed it in UTC, so both halves could slip a day.
+  const isoInDays = (days: number): string => isoAddDays(orgToday(), days);
   const defaultIssueDate = isoInDays(0);
   const defaultDeadline = isoInDays(
     kind === "invoice" ? (settings?.default_due_days ?? 14) : (settings?.quote_valid_days ?? 30),

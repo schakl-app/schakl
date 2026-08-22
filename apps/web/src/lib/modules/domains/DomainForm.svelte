@@ -8,6 +8,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
+  import { orgToday } from "$lib/core/today";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import type { components } from "$lib/core/api/schema";
@@ -170,7 +171,7 @@
         name="start_date"
         id="{idPrefix}-start-date"
         required
-        value={domain?.start_date ?? new Date().toISOString().slice(0, 10)}
+        value={domain?.start_date ?? orgToday()}
       />
       <p class="mt-1 text-xs text-text-muted">{t("domains.start_date_hint")}</p>
     </div>

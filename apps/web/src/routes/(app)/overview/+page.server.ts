@@ -3,6 +3,7 @@ import { fail } from "@sveltejs/kit";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { orgToday } from "$lib/core/today";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TIME_REPORT_COLUMNS, TIME_REPORT_TABLE_ID } from "$lib/modules/time/columns";
@@ -29,8 +30,9 @@ function statusFlags(status: string): {
   }
 }
 
+/** The first of the month the tenant is in (§8), never the Node process's UTC month. */
 function monthStartIso(): string {
-  return new Date().toISOString().slice(0, 8) + "01";
+  return orgToday().slice(0, 8) + "01";
 }
 
 export const load: PageServerLoad = async (event) => {

@@ -16,6 +16,7 @@
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -708,7 +709,7 @@
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgToday();
   const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 

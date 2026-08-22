@@ -18,6 +18,7 @@
     "site:links": "node scripts/site-links-check.mjs",
     "site:marks": "node scripts/site-integration-marks.mjs",
     "forms:check": "node scripts/forms-check.mjs",
+    "today:check": "node scripts/today-check.mjs",
     "pwa:check": "node scripts/pwa-check.mjs",
     "gen:client": "bash scripts/gen-client.sh",
     "web": "pnpm --filter @schakl/web",
