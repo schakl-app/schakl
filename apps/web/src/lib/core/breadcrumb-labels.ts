@@ -187,6 +187,13 @@ const RECORDS: {
   },
 ];
 
+/**
+ * Every record type the crumb row can be about. Exported for the sweep in
+ * `tests/unit/breadcrumbs.test.ts`, which asks of each one whether it can confirm a client — a
+ * question a new detail page has to answer rather than fail silently (#401).
+ */
+export const RECORD_TYPES: string[] = RECORDS.map((spec) => spec.type);
+
 /** What the page in front of the visitor is about, in the shape its own load left it. */
 export interface PageRecord {
   type: string;
@@ -224,21 +231,52 @@ export interface CrumbLink {
 }
 
 /**
- * Which column on a record points back at an ancestor of that type. This is the whole of the
- * "is the way in true?" check — an ancestor the record does not name is never drawn.
+ * How a record names an ancestor of a given type: a **column** it carries, or a **collection** of
+ * rows each carrying that column. Either way it is the record's own data that decides, which is
+ * the whole of the "is the way in true?" check — an ancestor the record does not name is never
+ * drawn.
  */
-const PARENT_FK: Record<string, string> = {
-  company: "company_id",
-  project: "project_id",
-  domain: "domain_id",
-  contact: "contact_id",
-  task: "task_id",
+export type ParentRule = { fk: string } | { collection: string; fk: string };
+
+/**
+ * The rules per ancestor type, tried in order.
+ *
+ * `company` carries two because a client link is not always a column (#401). A contact belongs to
+ * its clients through `company_contacts`, so `ContactRead` answers with a *list* and there is no
+ * `company_id` to read — which meant a contact opened from a client's page confirmed nothing, the
+ * trail reset, and "up" became the org-wide address book. Every other record the crumb row can be
+ * about does carry a scalar `company_id` (a website's is its domain's, resolved by the API), and
+ * `tests/unit/breadcrumbs.test.ts` checks that against the generated schema rather than trusting
+ * this comment: CLAUDE.md §15's "failure mode (1) — no anchor" is the same shape one layer out,
+ * and the models that hit it declare `__company_horizon_clause__` for the same reason.
+ */
+const PARENT_RULES: Record<string, ParentRule[]> = {
+  company: [{ fk: "company_id" }, { collection: "companies", fk: "company_id" }],
+  project: [{ fk: "project_id" }],
+  domain: [{ fk: "domain_id" }],
+  contact: [{ fk: "contact_id" }],
+  task: [{ fk: "task_id" }],
 };
+
+/** The rules that could confirm an ancestor of this type — read by the schema sweep. */
+export function parentRules(type: string): ParentRule[] {
+  return PARENT_RULES[type] ?? [];
+}
+
+function names(rule: ParentRule, fields: Fields, id: string): boolean {
+  if ("collection" in rule) {
+    const rows = fields[rule.collection];
+    return (
+      Array.isArray(rows) &&
+      rows.some((row) => row !== null && typeof row === "object" && (row as Fields)[rule.fk] === id)
+    );
+  }
+  return fields[rule.fk] === id;
+}
 
 export function isParentOf(link: CrumbLink, record: PageRecord): boolean {
   // A tab of a record is not a child of it: `/companies/<id>/reporting` is still about that
   // company, and without this the row would name it twice in a row.
   if (link.type === record.type && link.id === record.record.id) return false;
-  const fk = PARENT_FK[link.type];
-  return Boolean(fk) && record.record[fk] === link.id;
+  return parentRules(link.type).some((rule) => names(rule, record.record, link.id));
 }
