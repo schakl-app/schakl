@@ -47,6 +47,7 @@
   import SummaryStrip from "$lib/core/ui/SummaryStrip.svelte";
   import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { arrangePanels, type HubRow } from "$lib/modules/companies/hub";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
@@ -127,59 +128,25 @@
   // A chip whose module has no screen of its own to send you to unfolds its card here instead
   // (see the strip below), so nothing an empty panel offered is lost by absorbing it.
   const unfolded = new SvelteSet<string>();
-  const drawn = $derived(data.panels.filter((p: Panel) => !p.empty || unfolded.has(p.key)));
-  const primary = $derived(drawn.filter((p: Panel) => p.prominence === "primary"));
-  const registers = $derived(drawn.filter((p: Panel) => p.prominence !== "primary"));
   const empties = $derived(data.panels.filter((p: Panel) => p.empty && !unfolded.has(p.key)));
 
-  /**
-   * How the cards fit together.
-   *
-   * `size` said how wide a panel wants to be and the page drew one two-column grid, which is a
-   * *row* layout: every row is as tall as its tallest card, so a short card leaves the gap under
-   * it empty, and a full-width panel after an odd number of halves leaves half a row empty beside
-   * the one before it. On a real client that came to a 271 px void under Abonnementen, a whole
-   * empty half-row beside Uren, and four ragged bottom edges — the page looked unfinished rather
-   * than composed, which is the same complaint #364 set out to fix, one layer down.
-   *
-   * A row layout cannot answer it, so the ordered panels are cut into **blocks** and each block
-   * gets the layout its own count deserves. Three kinds, and each one is hole-free by
-   * construction rather than by luck:
-   *
-   * - `solo` — a full-width panel, **or a half-width one with no half-width neighbour**. A card
-   *   alone on its row takes the row; the alternative is a bordered rectangle beside nothing.
-   * - `pair` — exactly two halves, in a two-column grid that *stretches*. With two cards there is
-   *   nothing to pack, so the tidy answer is a matched pair: bottoms level, one edge, no gap.
-   * - `stack` — three or more halves, packed by CSS multi-column. Each card keeps its natural
-   *   height and the browser balances the two lanes, which is real masonry with no measuring, no
-   *   layout jump after hydration, and no second opinion about a height the browser already knows.
-   *
-   * `items-start` is therefore gone, and so is stretching a two-row list to match a tall card
-   * beside it — the mistake the old comment here rightly warned about. What replaced it is not
-   * "stretch everything": a pair matches because a pair has nothing else to do, and a stack packs
-   * because packing is what three cards want.
-   *
-   * One constraint a contributing module should know: a `stack` is a fragmentation context, so a
-   * panel that opens a dropdown wants `prominence: primary` (where pairs and solos live) or a
-   * popover anchored to the viewport. No panel does that today.
-   */
-  type Block = { key: string; kind: "solo" | "pair" | "stack"; panels: Panel[] };
-
-  function blocksOf(panels: Panel[]): Block[] {
-    const runs: Panel[][] = [];
-    for (const panel of panels) {
-      const run = runs.at(-1);
-      // A full-width panel always starts (and ends) its own run; halves collect into one.
-      if (panel.size !== "half" || !run || run[0].size !== "half") runs.push([panel]);
-      else run.push(panel);
-    }
-    return runs.map((run) => ({
-      key: run[0].key,
-      kind:
-        run[0].size !== "half" || run.length === 1 ? "solo" : run.length === 2 ? "pair" : "stack",
-      panels: run,
-    }));
-  }
+  // How the cards fit together (#403) — the rules, and what they replaced, live beside the
+  // function in `$lib/modules/companies/hub.ts`, where they are unit-tested. In one sentence:
+  // a panel is drawn at the width it declared, into a lane it was dealt over the *full* ordered
+  // list, so a client with nothing in a panel sees the rest exactly where a client who has
+  // everything sees them.
+  const primaryRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence === "primary"),
+      unfolded,
+    ),
+  );
+  const registerRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence !== "primary"),
+      unfolded,
+    ),
+  );
 
   // ---- tier 1: the status pill edits in place ---------------------------- //
   // Most real edits are one field, and none of them should cost a dialog, a scroll position and
@@ -417,27 +384,24 @@
   </section>
 {/snippet}
 
-{#snippet lane(panels: Panel[], heading: 2 | 3)}
-  <!-- A column of blocks; each block decides how its own cards sit beside each other. Every kind
-       collapses to one column below `lg`, so a phone gets one stack and the rule that fits the
-       cards together is a desktop rule only. -->
+{#snippet lane(rows: HubRow<Panel>[], heading: 2 | 3)}
+  <!-- A column of rows: a full-width panel is its own row, a run of halves is two lanes. Both
+       collapse to one column below `lg` — the lane wrappers go `display: contents` and each card
+       carries its seat as a flex `order` — so a phone reads one stack in declared order and the
+       two-lane rule is a desktop rule only. -->
   <div class="flex flex-col gap-4">
-    {#each blocksOf(panels) as block (block.key)}
-      {#if block.kind === "solo"}
-        {@render card(block.panels[0], heading)}
-      {:else if block.kind === "pair"}
-        <div class="grid gap-4 lg:grid-cols-2">
-          {#each block.panels as panel (panel.key)}
-            {@render card(panel, heading)}
-          {/each}
-        </div>
+    {#each rows as row (row.key)}
+      {#if row.kind === "full"}
+        {@render card(row.panel, heading)}
       {:else}
-        <!-- `-mb-4` cancels the last card's own bottom margin, which is what a multi-column
-             container has instead of `gap` for the vertical direction. -->
-        <div class="-mb-4 lg:columns-2 lg:gap-4">
-          {#each block.panels as panel (panel.key)}
-            <div class="mb-4 break-inside-avoid">
-              {@render card(panel, heading)}
+        <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
+          {#each row.lanes as seats, index (index)}
+            <div class="contents lg:flex lg:flex-col lg:gap-4">
+              {#each seats as { panel, seat } (panel.key)}
+                <div style:order={seat}>
+                  {@render card(panel, heading)}
+                </div>
+              {/each}
             </div>
           {/each}
         </div>
@@ -446,17 +410,17 @@
   </div>
 {/snippet}
 
-{#if primary.length > 0}
-  {@render lane(primary, 2)}
+{#if primaryRows.length > 0}
+  {@render lane(primaryRows, 2)}
 {/if}
 
-{#if registers.length > 0}
+{#if registerRows.length > 0}
   <!-- Reference material: correct, occasionally consulted, never news. It keeps its own lane
        and its own heading so the working surfaces above are unmistakably the foreground. -->
   <h2 class="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-text-muted">
     {t("companies.section.registers")}
   </h2>
-  {@render lane(registers, 3)}
+  {@render lane(registerRows, 3)}
 {/if}
 
 {#if empties.length > 0}
