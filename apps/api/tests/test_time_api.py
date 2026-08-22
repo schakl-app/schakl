@@ -5,7 +5,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import auth_cookie, make_tenant
+from app.db import async_session_maker, set_current_org
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
 async def test_timer_start_stop(client_for) -> None:
@@ -254,9 +255,7 @@ async def test_time_tenant_isolation(client_for) -> None:
         a_entry_id = created.json()["id"]
 
     async with client_for(b.host) as cb:
-        assert (
-            await cb.get("/api/v1/time/entries", headers=b_headers)
-        ).json()["total"] == 0
+        assert (await cb.get("/api/v1/time/entries", headers=b_headers)).json()["total"] == 0
         assert (
             await cb.get(f"/api/v1/time/entries/{a_entry_id}", headers=b_headers)
         ).status_code == 404
@@ -461,3 +460,76 @@ async def test_hours_reach_an_agreement_through_its_project(client_for) -> None:
         assert hours["budget_hours"] == 10.0
         assert hours["spent_hours"] == 2.0
         assert hours["remaining_hours"] == 8.0
+
+
+async def test_company_panel_names_the_day_and_the_colleague(client_for) -> None:
+    """The client's Uren panel answers *when* and *by whom*, not only *what* and *how long*.
+
+    #400's reproduction: three rows reading "Back-up teruggezet op de testomgeving", on three
+    different days by three different colleagues, rendered identically. The date was already in
+    the payload and never drawn; **who** was not in the payload at all. Both are on the row now,
+    and so is the number of rows the ten are a prefix of — a panel that truncates says so.
+    """
+    t = await make_tenant("time-panel-context")
+    mate = await make_tenant("time-panel-context-mate", email="mate-panel@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, mate.user.id, role="admin")
+        await session.commit()
+
+    headers = await auth_cookie(t.user)
+    mate_headers = await auth_cookie(mate.user, org_id=t.org.id)
+    day = datetime(2026, 3, 2, 9, 0, tzinfo=UTC)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        # Eleven rows, so the panel's ten are visibly a prefix — and the eleventh is a
+        # colleague's, on a different day, with the same words on it.
+        for index in range(10):
+            started = day + timedelta(days=index)
+            created = await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "company_id": company["id"],
+                    "started_at": started.isoformat(),
+                    "ended_at": (started + timedelta(minutes=30)).isoformat(),
+                    "description": "Back-up teruggezet op de testomgeving",
+                    "billable": False,
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+        newest = day + timedelta(days=20)
+        theirs = await c.post(
+            "/api/v1/time/entries",
+            json={
+                "company_id": company["id"],
+                "started_at": newest.isoformat(),
+                "ended_at": (newest + timedelta(minutes=90)).isoformat(),
+                "description": "Back-up teruggezet op de testomgeving",
+            },
+            headers=mate_headers,
+        )
+        assert theirs.status_code == 201, theirs.text
+
+        panels = (await c.get(f"/api/v1/companies/{company['id']}/panels", headers=headers)).json()
+        data = next(p for p in panels if p["key"] == "time.company")["data"]
+
+        assert data["total_minutes"] == 10 * 30 + 90
+        # Eleven exist, ten are shown — the sentence the panel prints over the list.
+        assert data["total_entries"] == 11
+        assert len(data["recent"]) == 10
+
+        top = data["recent"][0]
+        assert top["user_id"] == str(mate.user.id), "the colleague who logged it is unnamed"
+        assert top["started_at"].startswith(newest.date().isoformat())
+        assert top["billable"] is True
+        assert top["approved_at"] is None
+        # What the panel's own correct-this-row dialog posts back.
+        assert top["ended_at"] is not None
+        assert top["break_minutes"] == 0
+        # The other ten are this user's, and non-billable — the marker has both states to draw.
+        assert {row["user_id"] for row in data["recent"][1:]} == {str(t.user.id)}
+        assert all(row["billable"] is False for row in data["recent"][1:])

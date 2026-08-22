@@ -1000,6 +1000,7 @@
   "time.panel.empty": "Nog geen uren geregistreerd in deze periode.",
   "time.panel.truncated": "De {shown} meest recente van {total} worden getoond.",
   "time.panel.view_all": "Alles bekijken",
+  "time.quick_edit.scope_note": "Klant, project en taak blijven ongewijzigd; die pas je aan waar de uren zijn geschreven.",
   "time.timesheet.leave": "Verlof",
   "customfields.entity.company": "Bedrijf",
   "customfields.entity.contact": "Contactpersoon",

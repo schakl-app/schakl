@@ -744,6 +744,27 @@
   lookups it already fetched (`EntityPanelLookups`) rather than letting the panel refetch 200 rows
   the page is holding. A panel that edits its records posts to the **host page's** form actions,
   because that is where SvelteKit actions live.
+- **A row has to identify the record, not merely describe it** (#400). The client's Uren panel
+  showed a description and a duration, so *"Back-up teruggezet op de testomgeving"* appeared three
+  times on one client — three days, three colleagues, three indistinguishable lines — on the
+  screen somebody reads while that client is on the phone. Three rules generalise past it. **What
+  is already over the wire and undrawn is the cheapest fix available**: `started_at` was in the
+  payload *and declared in the component's own interface*, so the whole "when" half cost nothing
+  to fetch — and once there is a date to group by, ten rows across six days read as six days of
+  work rather than as a list. **"Who" is a `PersonChip`, everywhere** — a name beside a face,
+  resolved from the lookup the host page already holds, never a bare user id and never a bare
+  initials disc. And **the fourth fact rides as a marker rather than a column**: whether we bill
+  for an hour is worth a glyph, not a heading, and the glyph carries the state as well as the
+  colour, because a tenant's brand may be green.
+- **A dialog that shows six fields must write six fields** (#400). A record's panel corrects a row
+  in place, and the full form for that row is usually a *scope* form — a client, a project, a task,
+  each a type-ahead over a lookup the host would have to load on every page open for a dialog most
+  opens never reach. So the panel draws the correction (`EntryQuickEdit`) instead, and the safety
+  property is entirely in how the host's action reads it: `form.has()`, `undefined` keys vanishing
+  in `JSON.stringify`, and `exclude_unset` at the API — CLAUDE.md §18's *absent means leave alone*,
+  applied to a form that deliberately shows less than the record holds. Reading the missing fields
+  with `?? null` instead is the same defect as a permission-hidden block wiped by a restricted
+  caller's ordinary save, and it is invisible in review: the diff reads as thorough.
 - **A period an aggregate counts from is the API's, not the browser's.** `budget_period` resolves
   to a *local* Amsterdam day (`projects/budget.py::period_start_date`), and the entries behind a
   budget bar are filtered by exactly that day. A page that recomputed it in UTC landed on the

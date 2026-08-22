@@ -34,6 +34,9 @@ registerWebModule({
       module: "time",
       component: TimePanel,
       position: 40,
+      // "Alle uren →" rides the heading line (#400): the host's <h2> would otherwise have left
+      // the link floating in a band of its own under it.
+      ownsHeader: true,
       // Nothing here yet folds into the hub's one ＋ strip (#364).
       emptyHref: (id: string) => `/time?company=${id}`,
     },

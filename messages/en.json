@@ -1000,6 +1000,7 @@
   "time.panel.empty": "No hours logged in this period yet.",
   "time.panel.truncated": "Showing the {shown} most recent of {total}.",
   "time.panel.view_all": "View all",
+  "time.quick_edit.scope_note": "Client, project and task stay as they are; change those where the hours were logged.",
   "time.timesheet.leave": "Leave",
   "customfields.entity.company": "Company",
   "customfields.entity.contact": "Contact",
