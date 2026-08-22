@@ -12,7 +12,7 @@
 
   import { applyAction, enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { editIntent } from "$lib/core/edit-intent";
+  import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -919,6 +919,7 @@
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
                       editMode = !editMode;
+                      if (!editMode) clearEditIntent();
                     },
                   },
                 ]
@@ -2114,7 +2115,14 @@
         // keeps edit mode open: the user asked to plan, not to stop editing.
         const waiting = pendingSave;
         pendingSave = null;
-        if (result.type === "success") editMode = waiting !== null;
+        if (result.type === "success") {
+          editMode = waiting !== null;
+          // …and the marker that opened it goes with it (#402). A task created from a client
+          // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
+          // means the next visit — a reload, the back button off the client's page — reopens
+          // the form over a save that had already happened. An intent is consumed once.
+          if (!editMode) clearEditIntent();
+        }
         dueReason = "";
         await update();
         waiting?.(result.type === "success");
@@ -2126,7 +2134,10 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (editMode = false)}
+        onclick={() => {
+          editMode = false;
+          clearEditIntent();
+        }}
       >
         {t("common.cancel")}
       </button>
