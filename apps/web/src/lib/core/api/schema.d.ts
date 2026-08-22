@@ -9312,6 +9312,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Portal Logins
+         * @description The org's client logins — the register (#406).
+         *
+         *     ``members.member.write`` on purpose, not a ``portal.login.read`` of its own: it is the key
+         *     every route on this module already declares, and the one the card is gated on. A new key
+         *     would mean a ``DefaultsRevision`` and a section invisible in every existing org until
+         *     somebody edited a role (§15) — for a list whose actions are all this permission anyway.
+         */
+        get: operations["list_portal_logins_api_v1_portal_logins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/logins/{entity_type}/{subject_id}": {
         parameters: {
             query?: never;
@@ -23269,6 +23294,55 @@ export interface components {
             target_name?: string | null;
             /** Token */
             token: string;
+        };
+        /**
+         * PortalLoginClient
+         * @description A client a login belongs to. Two fields, because a register prints a name and links it.
+         */
+        PortalLoginClient: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PortalLoginRow
+         * @description One client login on the register (#406) — *"who at our clients can sign in?"*
+         *
+         *     Never ``status: "none"``: a subject with no login is the absence of a row, not a row saying
+         *     so. And deliberately **not** an editor's payload — the person is edited on their own record,
+         *     which is what ``entity_type`` + ``subject_id`` link to; what lives here is the access.
+         *
+         *     No total beside it, on purpose. The list *is* the count, so the two cannot disagree — a
+         *     hand-built ``count()`` is exactly how a screen comes to say "2" over a list of one (#285).
+         */
+        PortalLoginRow: {
+            /** Clients */
+            clients?: components["schemas"]["PortalLoginClient"][];
+            /** Email */
+            email: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "invited" | "active" | "disabled";
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * PortalLoginState
@@ -49498,6 +49572,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_portal_logins_api_v1_portal_logins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginRow"][];
+                };
             };
         };
     };

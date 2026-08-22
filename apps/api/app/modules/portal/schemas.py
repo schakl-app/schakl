@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Literal
 
@@ -26,6 +27,35 @@ class PortalLoginState(BaseModel):
     invite_email: str | None = None
     invite_email_sent: bool | None = None
     invite_email_error: str | None = None
+
+
+class PortalLoginClient(BaseModel):
+    """A client a login belongs to. Two fields, because a register prints a name and links it."""
+
+    id: uuid.UUID
+    name: str
+
+
+class PortalLoginRow(BaseModel):
+    """One client login on the register (#406) — *"who at our clients can sign in?"*
+
+    Never ``status: "none"``: a subject with no login is the absence of a row, not a row saying
+    so. And deliberately **not** an editor's payload — the person is edited on their own record,
+    which is what ``entity_type`` + ``subject_id`` link to; what lives here is the access.
+
+    No total beside it, on purpose. The list *is* the count, so the two cannot disagree — a
+    hand-built ``count()`` is exactly how a screen comes to say "2" over a list of one (#285).
+    """
+
+    entity_type: str
+    subject_id: uuid.UUID
+    #: The account behind the login. Present on every row by construction (a row exists because
+    #: a login does), and what a caller needs to tell two people with one name apart.
+    user_id: uuid.UUID
+    name: str | None = None
+    email: str
+    status: Literal["invited", "active", "disabled"]
+    clients: list[PortalLoginClient] = Field(default_factory=list)
 
 
 class PortalImpersonateRequest(BaseModel):

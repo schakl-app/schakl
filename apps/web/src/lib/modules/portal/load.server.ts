@@ -20,7 +20,7 @@ import type { ApiClient } from "$lib/core/api/client";
 import type { OrgTheme } from "$lib/core/theme";
 import type { SessionUser } from "$lib/core/session";
 
-import type { PortalCardData } from "./types";
+import type { PortalCardData, PortalRegisterData } from "./types";
 
 const MANAGE = "members.member.write";
 const IMPERSONATE = "portal.login.impersonate";
@@ -60,6 +60,35 @@ export async function loadPortalCard(
     subjectId,
     locked: !usable,
     state: state ?? null,
+    canImpersonate: can(user, IMPERSONATE),
+    deployment: theme?.deployment ?? "self_hosted",
+    isInstanceOwner: user?.isInstanceOwner ?? false,
+  };
+}
+
+/**
+ * The **Klantlogins** register (#406) — the same three questions, one level up.
+ *
+ * A client login used to be reachable from exactly one place, the contact it belongs to, so
+ * "who at our clients can sign in, and is their access still live?" had no answer on any screen.
+ * This is that answer, and it hangs off the *same* gates as the card rather than re-deriving
+ * them: the permission, the module, the entitlement. One difference is deliberate — a workspace
+ * that does not run `portal` gets no section at all, where a record page still draws a locked
+ * card. See `PortalRegisterData.locked`.
+ */
+export async function loadPortalLogins(
+  api: ApiClient,
+  { user, theme }: { user: SessionUser | null; theme: OrgTheme | null | undefined },
+): Promise<PortalRegisterData | null> {
+  if (!can(user, MANAGE)) return null;
+  if (!(theme?.enabledModules?.includes("portal") ?? false)) return null;
+
+  const entitled = theme?.entitledModules?.includes("portal") ?? false;
+  const logins = entitled ? ((await api.GET("/api/v1/portal/logins")).data ?? []) : [];
+
+  return {
+    locked: !entitled,
+    logins,
     canImpersonate: can(user, IMPERSONATE),
     deployment: theme?.deployment ?? "self_hosted",
     isInstanceOwner: user?.isInstanceOwner ?? false,
