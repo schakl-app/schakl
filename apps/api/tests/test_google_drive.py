@@ -57,6 +57,9 @@ class _StubClient:
     async def delete(self, url: str, **kwargs) -> _StubResponse:
         return await self._pop("DELETE", url, **kwargs)
 
+    async def patch(self, url: str, **kwargs) -> _StubResponse:
+        return await self._pop("PATCH", url, **kwargs)
+
 
 def _stub_acting_as(stub: _StubClient):
     @asynccontextmanager
@@ -75,6 +78,9 @@ class _FakeRedis:
 
     async def set(self, key: str, value: str, ex: int | None = None) -> None:  # noqa: ARG002
         self.store[key] = value
+
+    async def delete(self, key: str) -> None:
+        self.store.pop(key, None)
 
 
 async def _seed(
@@ -1257,3 +1263,293 @@ async def test_task_drive_links_stay_one_query_however_many_files(
         assert listed.status_code == 200
         assert len(listed.json()) == 20
         assert len(counter.matching("from drive_links")) == 1
+
+
+# --- trashing a file in Drive (#394) --------------------------------------------------- #
+def _file_meta(
+    file_id: str = "file-1",
+    name: str = "Offerte.pdf",
+    *,
+    mime: str = "application/pdf",
+    parents: list[str] | None = None,
+    trashed: bool = False,
+) -> _StubResponse:
+    return _StubResponse(
+        200,
+        {
+            "id": file_id,
+            "name": name,
+            "mimeType": mime,
+            "parents": parents or ["parent-1"],
+            "trashed": trashed,
+            "webViewLink": f"https://drive.google.com/file/d/{file_id}",
+            "driveId": "sd-1",
+        },
+    )
+
+
+async def test_trashing_bins_the_file_and_drops_every_link_org_wide(
+    client_for, monkeypatch
+) -> None:
+    """#394: the other half of unlink. Drive gets ``trashed: true`` — never ``files.delete`` —
+    and every ``drive_links`` row naming that file goes, for *both* records that linked it."""
+    t = await make_tenant("gdrive-trash")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        task = (
+            await c.post("/api/v1/tasks", json={"title": "Review"}, headers=headers)
+        ).json()
+
+        # One file, linked to two different records.
+        for entity_type, entity_id in (("company", company["id"]), ("task", task["id"])):
+            monkeypatch.setattr(
+                "app.integrations.google.drive.service.acting_as",
+                _stub_acting_as(_StubClient([("GET", _file_meta())])),
+            )
+            created = await c.post(
+                "/api/v1/google/drive/links",
+                json={
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "drive_file_id": "file-1",
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+
+        stub = _StubClient([("GET", _file_meta()), ("PATCH", _StubResponse(200, {"id": "file-1"}))])
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
+        )
+        trashed = await c.delete("/api/v1/google/drive/files/file-1", headers=headers)
+        assert trashed.status_code == 204, trashed.text
+        # Trash, not purge: Drive keeps it recoverable for the owner for 30 days.
+        assert [method for method, _ in stub.calls] == ["GET", "PATCH"]
+        assert stub.call_kwargs[-1]["json"] == {"trashed": True}
+
+        # Both links are gone — a link to a trashed file renders a name and 404s when clicked.
+        for entity_type, entity_id in (("company", company["id"]), ("task", task["id"])):
+            assert (
+                await c.get(
+                    "/api/v1/google/drive/links",
+                    params={"entity_type": entity_type, "entity_id": entity_id},
+                    headers=headers,
+                )
+            ).json() == []
+
+        # And the record says what happened to it (CLAUDE.md §16).
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "company", "entity_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert any(entry["action"] == "drive.file_trashed" for entry in trail)
+
+
+async def test_trashing_refuses_a_folder_that_is_not_empty(client_for, monkeypatch) -> None:
+    """A delete that silently took a client's whole project folder with it is the worst
+    control available on that panel — so the emptiness check comes before the write."""
+    t = await make_tenant("gdrive-trashdir")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    async with client_for(t.host) as c:
+        occupied = _StubClient(
+            [
+                ("GET", _file_meta("folder-x", "Projecten", mime=FOLDER_MIME)),
+                ("GET", _StubResponse(200, {"files": [{"id": "inside-1"}]})),
+            ]
+        )
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(occupied)
+        )
+        refused = await c.delete("/api/v1/google/drive/files/folder-x", headers=headers)
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["error"]["message"] == "errors.google_drive_folder_not_empty"
+        # Nothing was written: the script holds no PATCH and the stub is exhausted.
+        assert [method for method, _ in occupied.calls] == ["GET", "GET"]
+
+        # An empty one goes.
+        empty = _StubClient(
+            [
+                ("GET", _file_meta("folder-y", "Leeg", mime=FOLDER_MIME)),
+                ("GET", _StubResponse(200, {"files": []})),
+                ("PATCH", _StubResponse(200, {"id": "folder-y"})),
+            ]
+        )
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(empty)
+        )
+        assert (
+            await c.delete("/api/v1/google/drive/files/folder-y", headers=headers)
+        ).status_code == 204
+
+
+async def test_trashing_reports_drives_own_refusal_in_its_own_words(
+    client_for, monkeypatch
+) -> None:
+    """*May not open* and *may not delete* have different cures and different people who grant
+    them, so the delete path answers with its own key rather than the folder-access one."""
+    t = await make_tenant("gdrive-trash403")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    async with client_for(t.host) as c:
+        stub = _StubClient(
+            [
+                ("GET", _file_meta()),
+                (
+                    "PATCH",
+                    _google_error(
+                        403, None, "The user does not have sufficient permissions for this file."
+                    ),
+                ),
+            ]
+        )
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(stub)
+        )
+        refused = await c.delete("/api/v1/google/drive/files/file-1", headers=headers)
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["error"]["message"] == "errors.google_drive_delete_forbidden"
+
+        # A file this account cannot see at all is a 404, not a permission sentence.
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _StubResponse(404, {}))])),
+        )
+        assert (
+            await c.delete("/api/v1/google/drive/files/file-9", headers=headers)
+        ).status_code == 404
+
+
+async def test_trashing_a_records_own_folder_needs_manage(client_for, monkeypatch) -> None:
+    """Detaching a record's folder is ``google.drive.manage`` (docs/GOOGLE.md §5) and binning
+    it is strictly the larger act, so it cannot ask for less — and it is refused *before* the
+    file is in the bin, which an empty stub script is the assertion for."""
+    t = await make_tenant("gdrive-trashroot")
+    await _seed(t)
+    owner_headers = await auth_cookie(t.user)
+    member = await _add_member_with_connection(t.org.id, "collega@gdrive-trashroot.test")
+    member_headers = await auth_cookie(member)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=owner_headers)
+        ).json()
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-a", "Klant BV"))])),
+        )
+        assert (
+            await c.put(
+                "/api/v1/google/drive/folder",
+                json={
+                    "entity_type": "company",
+                    "entity_id": company["id"],
+                    "drive_file_id": "folder-a",
+                },
+                headers=owner_headers,
+            )
+        ).status_code == 200
+
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
+        )
+        denied = await c.delete("/api/v1/google/drive/files/folder-a", headers=member_headers)
+        assert denied.status_code == 403, denied.text
+
+        # The owner may, and the record's folder is cleared along with the link.
+        owner_stub = _StubClient(
+            [
+                ("GET", _file_meta("folder-a", "Klant BV", mime=FOLDER_MIME)),
+                ("GET", _StubResponse(200, {"files": []})),
+                ("PATCH", _StubResponse(200, {"id": "folder-a"})),
+            ]
+        )
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as", _stub_acting_as(owner_stub)
+        )
+        assert (
+            await c.delete("/api/v1/google/drive/files/folder-a", headers=owner_headers)
+        ).status_code == 204
+        assert (
+            await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "company", "entity_id": company["id"]},
+                headers=owner_headers,
+            )
+        ).json() == []
+
+
+async def test_trashing_is_tenant_scoped(client_for, monkeypatch) -> None:
+    """Golden Rule 1: another org's link to the same Drive file is not this org's to remove."""
+    a = await make_tenant("gdrive-trash-a")
+    b = await make_tenant("gdrive-trash-b")
+    await _seed(a)
+    await _seed(b)
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+    monkeypatch.setattr("app.integrations.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    async with client_for(a.host) as ca, client_for(b.host) as cb:
+        company_a = (
+            await ca.post("/api/v1/companies", json={"name": "A"}, headers=a_headers)
+        ).json()
+        company_b = (
+            await cb.post("/api/v1/companies", json={"name": "B"}, headers=b_headers)
+        ).json()
+        for c, host_headers, company in (
+            (ca, a_headers, company_a),
+            (cb, b_headers, company_b),
+        ):
+            monkeypatch.setattr(
+                "app.integrations.google.drive.service.acting_as",
+                _stub_acting_as(_StubClient([("GET", _file_meta("shared-1", "Gedeeld.pdf"))])),
+            )
+            assert (
+                await c.post(
+                    "/api/v1/google/drive/links",
+                    json={
+                        "entity_type": "company",
+                        "entity_id": company["id"],
+                        "drive_file_id": "shared-1",
+                    },
+                    headers=host_headers,
+                )
+            ).status_code == 201
+
+        monkeypatch.setattr(
+            "app.integrations.google.drive.service.acting_as",
+            _stub_acting_as(
+                _StubClient(
+                    [("GET", _file_meta("shared-1")), ("PATCH", _StubResponse(200, {"id": "x"}))]
+                )
+            ),
+        )
+        assert (
+            await ca.delete("/api/v1/google/drive/files/shared-1", headers=a_headers)
+        ).status_code == 204
+
+        # Org B's row survives: "org-wide" means this org, never the instance.
+        assert [
+            link["drive_file_id"]
+            for link in (
+                await cb.get(
+                    "/api/v1/google/drive/links",
+                    params={"entity_type": "company", "entity_id": company_b["id"]},
+                    headers=b_headers,
+                )
+            ).json()
+        ] == ["shared-1"]

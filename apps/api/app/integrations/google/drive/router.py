@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.permissions.deps import require_permission
@@ -188,6 +188,28 @@ async def delete_link(
 ) -> None:
     """Unlink only. The Drive file is never touched (issue #21 — the dialog says so too)."""
     await DriveService(ctx).delete_link(link_id)
+
+
+@router.delete(
+    "/files/{drive_file_id}",
+    status_code=204,
+    dependencies=[require_permission("google.drive.write")],
+)
+async def trash_file(
+    drive_file_id: str = Path(..., min_length=1, max_length=128),
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Move a Drive file to Drive's bin — the other half of unlink (#394).
+
+    Unlink says "this file is not about this record" and touches nothing in Drive; this says
+    "this file should not exist". Two acts, two controls, deliberately never one.
+
+    It runs **as the viewing user**, like ``browse``: Drive's permissions decide, so a
+    colleague who could not delete the file in Drive gets Google's own refusal. Every
+    ``drive_links`` row naming the file goes with it, org-wide, in the same transaction, and a
+    non-empty folder is refused. Nothing is ever purged — Drive's bin keeps it for 30 days.
+    """
+    await DriveService(ctx).trash_file(drive_file_id)
 
 
 @router.post(

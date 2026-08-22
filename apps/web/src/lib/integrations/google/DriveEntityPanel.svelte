@@ -17,8 +17,8 @@
    * Auto-provisioning stays off for tasks — numerous and short-lived — so this button is the
    * only way one appears, exactly as it is for a project.
    *
-   * **Host contract:** `?/linkDriveFile`, `?/unlinkDriveFile`, `?/provisionDriveFolder`
-   * (spread `driveActions`).
+   * **Host contract:** `?/linkDriveFile`, `?/unlinkDriveFile`, `?/deleteDriveFile`,
+   * `?/provisionDriveFolder` (spread `driveActions`).
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -119,6 +119,9 @@
   // The browser mounts on demand: no Google (or Redis) traffic for a panel nobody opened.
   // Connection state surfaces inside it — an unconnected viewer reads the reconnect hint there.
   let browsing = $state(false);
+  // Bumped when the list above bins a file: the browser's listing is live and no page
+  // invalidation reaches it, so it would keep showing a file that has left Drive.
+  let driveVersion = $state(0);
 
   async function startBrowsing() {
     if (!ownFolder) await loadParentFolder();
@@ -147,7 +150,7 @@
   );
 </script>
 
-<DriveLinkList links={panel.links} {canWrite} />
+<DriveLinkList links={panel.links} {canWrite} ontrashed={() => (driveVersion += 1)} />
 
 {#if canWrite}
   {#if browsing}
@@ -187,6 +190,7 @@
           entityType={panel.entityType}
           entityId={context.entityId}
           canWrite
+          reloadToken={driveVersion}
         />
       {/key}
     </div>

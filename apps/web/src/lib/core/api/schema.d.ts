@@ -3263,6 +3263,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/files/{drive_file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Trash File
+         * @description Move a Drive file to Drive's bin — the other half of unlink (#394).
+         *
+         *     Unlink says "this file is not about this record" and touches nothing in Drive; this says
+         *     "this file should not exist". Two acts, two controls, deliberately never one.
+         *
+         *     It runs **as the viewing user**, like ``browse``: Drive's permissions decide, so a
+         *     colleague who could not delete the file in Drive gets Google's own refusal. Every
+         *     ``drive_links`` row naming the file goes with it, org-wide, in the same transaction, and a
+         *     non-empty folder is refused. Nothing is ever purged — Drive's bin keeps it for 30 days.
+         */
+        delete: operations["trash_file_api_v1_google_drive_files__drive_file_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/drive/folder": {
         parameters: {
             query?: never;
@@ -38095,6 +38123,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DriveBrowseResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_file_api_v1_google_drive_files__drive_file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                drive_file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
