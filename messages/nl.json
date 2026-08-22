@@ -784,7 +784,7 @@
   "tasks.links.delete_confirm": "Deze link verwijderen?",
   "tasks.links.url_placeholder": "https://…",
   "tasks.links.title_placeholder": "Label (optioneel)",
-  "tasks.links.files_hint": "Bestanden worden op deze omgeving opgeslagen; een Google Drive-koppeling volgt in een latere fase.",
+  "tasks.links.stored_here": "Op deze omgeving opgeslagen, niet bij een externe dienst.",
   "tasks.field.allocated": "Tijdbudget",
   "tasks.field.checklist": "Checklist",
   "tasks.field.comments": "Reacties",

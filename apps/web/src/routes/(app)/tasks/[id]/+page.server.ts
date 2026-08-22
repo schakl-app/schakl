@@ -139,9 +139,14 @@ export const load: PageServerLoad = async (event) => {
     schedules: schedules ?? [],
     companyDefinitions: companyDefinitions ?? [],
     context,
+    // `position` travels with the panel (#393): the page interleaves its own sections with
+    // these on one scale, so Drive can sit above Reacties without `google` being edited.
+    // `entityPanelsFor` already sorted on the same fallback, so a panel that declares none
+    // reads the same number here as it did there.
     panels: panels.map((panel, index) => ({
       key: panel.key,
       titleKey: panel.titleKey,
+      position: panel.position ?? 100,
       data: panelData[index],
     })),
   };
