@@ -44,8 +44,10 @@ _AUDITED_FIELDS = ("first_name", "last_name", "email", "phone", "job_title")
 
 # ``companies`` belongs to another module. Reference it as a bare table by name rather than
 # importing its model — the same FK-name convention ``time.revenue()`` uses to reach `projects`
-# (CLAUDE.md §6: modules never import each other's internals).
-_companies = table("companies", column("id"), column("name"), column("org_id"))
+# (CLAUDE.md §6: modules never import each other's internals). Public within this module because
+# ``portal.py`` names clients too (#406), and a second copy of the same four strings is how the
+# two come to disagree about which columns exist.
+companies_table = table("companies", column("id"), column("name"), column("org_id"))
 
 
 def _company_sort_name() -> Any:
@@ -61,12 +63,12 @@ def _company_sort_name() -> Any:
     changing which contacts land on the page. A contact linked to nobody yields NULL, filed last.
     """
     return (
-        select(func.min(func.lower(_companies.c.name)))
+        select(func.min(func.lower(companies_table.c.name)))
         .select_from(CompanyContact)
         .join(
-            _companies,
-            (_companies.c.id == CompanyContact.company_id)
-            & (_companies.c.org_id == CompanyContact.org_id),
+            companies_table,
+            (companies_table.c.id == CompanyContact.company_id)
+            & (companies_table.c.org_id == CompanyContact.org_id),
         )
         .where(
             CompanyContact.contact_id == Contact.id,

@@ -8,6 +8,8 @@ import { apiFor } from "$lib/core/session";
 import { availabilityActions, availabilityWindow } from "$lib/modules/leave/availability.server";
 import { employmentActions } from "$lib/modules/leave/employment.server";
 import { defaultSchedule } from "$lib/modules/leave/schedule";
+import { portalActions } from "$lib/modules/portal/actions.server";
+import { loadPortalLogins } from "$lib/modules/portal/load.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -33,6 +35,7 @@ export const load: PageServerLoad = async (event) => {
   // with the Rollen screen and not refetched on tab navigation (docs/PERFORMANCE.md).
   const [
     members,
+    portalLogins,
     profiles,
     settings,
     rateRows,
@@ -43,6 +46,10 @@ export const load: PageServerLoad = async (event) => {
     availabilityRows,
   ] = await Promise.all([
     api.GET("/api/v1/members"),
+    // Klantlogins (#406): the *other* half of "who may sign in here". The portal module decides
+    // its own permission, its own entitlement and whether the call is worth making at all —
+    // the same three questions the card on a contact asks, so the two can never disagree.
+    loadPortalLogins(api, { user: event.locals.user, theme: event.locals.theme }),
     schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
     schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
     rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
@@ -75,6 +82,7 @@ export const load: PageServerLoad = async (event) => {
 
   return {
     members: members.data ?? [],
+    portalLogins,
     restrictedMembershipIds,
     schedules,
     rates,
@@ -96,6 +104,20 @@ export const actions: Actions = {
   ...employmentActions,
   // And the availability exceptions on top of them, shared with the freelancer's own /leave.
   ...availabilityActions,
+
+  // Client-portal access, contributed by the portal module the way the contact's own page hosts
+  // it (#193, #406). The subject arrives in the body rather than in the route: this screen is a
+  // register of many logins, so the pressed row is the only thing that says which one.
+  ...portalActions({
+    subject: async (event) => {
+      const form = await event.request.formData();
+      return {
+        entityType: String(form.get("entity_type") ?? ""),
+        subjectId: String(form.get("subject_id") ?? ""),
+        returnPath: "/settings/users",
+      };
+    },
+  }),
 
   invite: async (event) => {
     const form = await event.request.formData();

@@ -1314,3 +1314,48 @@ async def test_composite_create_does_not_scale_with_its_checklist(
         # checklist every time — which is the fan-out this create exists to remove rather than
         # relocate. A small allowance, because a flush boundary is not a promise; a slope is.
         assert ten - two <= 2, (two, ten)
+
+
+# --- /portal/logins: a register, not a state call per row ------------------------------------ #
+async def test_the_portal_login_register_costs_the_same_however_many_logins(
+    client_for, count_queries
+) -> None:
+    """The register (#406) is one batched read whatever it holds.
+
+    The shape it replaces is the one the web would otherwise have had: the login's state is an
+    endpoint addressed *by subject*, so a section listing them all is a call per contact — which
+    at three clients is indistinguishable from this one and at three hundred is the page.
+    """
+    t = await make_tenant("perf-portal-reg")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers, "Portalklant")
+
+        async def _invite(i: int) -> None:
+            person = (
+                await c.post(
+                    "/api/v1/contacts",
+                    json={
+                        "first_name": f"Klant{i}",
+                        "email": f"klant{i}-perf@example.com",
+                        "company_ids": [company],
+                    },
+                    headers=headers,
+                )
+            ).json()
+            res = await c.post(f"/api/v1/portal/logins/contact/{person['id']}", headers=headers)
+            assert res.status_code == 200, res.text
+
+        await _invite(0)
+        with count_queries() as one:
+            assert len((await c.get("/api/v1/portal/logins", headers=headers)).json()) == 1
+        for i in range(1, 4):
+            await _invite(i)
+        with count_queries() as four:
+            assert len((await c.get("/api/v1/portal/logins", headers=headers)).json()) == 4
+
+        assert len(four) == len(one), f"{len(one)} → {len(four)}: {four.statements}"
+        # The three reads that make the rows, once each: the subjects, their links, the names.
+        assert len(four.matching("FROM contacts")) == 1
+        assert len(four.matching("FROM company_contacts")) == 1
+        assert len(four.matching("FROM companies")) == 1

@@ -21,6 +21,7 @@
     type OpenEmployment,
   } from "$lib/modules/leave/EmploymentModals.svelte";
   import { fmtHours, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import PortalLoginsSection from "$lib/modules/portal/PortalLoginsSection.svelte";
   import { weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
@@ -460,6 +461,14 @@
       {/if}
     {/each}
   </ul>
+{/if}
+
+<!-- Klantlogins (#406). Beneath the team, because it answers the same question about a
+     different audience — and the two must not answer "who is still here" differently. Absent
+     when the workspace does not run the portal at all; locked, never hidden, when it does and
+     the licence has lapsed. -->
+{#if data.portalLogins}
+  <PortalLoginsSection data={data.portalLogins} {form} />
 {/if}
 
 <!-- Activeren: no dialog, one shared hidden form (see `activate`). -->
