@@ -42,6 +42,7 @@
   } from "$lib/modules/tasks/statuses";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskDictateSheet from "$lib/modules/tasks/TaskDictateSheet.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -67,6 +68,12 @@
   // after mount; the opener mirrors the two the page already knows, so it is never drawn on a
   // tenant with no speech provider. `micSupported` is the sheet's to answer.
   let dictating = $state(false);
+  // Who the dialog opens with on the roster: yourself, the way this button has always assigned
+  // its rows — but as a chip that can be taken off, not a decision made off screen.
+  const me = $derived((page.data.user?.id as string | undefined) ?? "");
+  // The name is asked for before the row exists (#391): `Nieuwe taak` opens the same dialog every
+  // picker's inline-create opens, and its action redirects into edit mode for the rest.
+  let creating = $state(false);
   const canDictate = $derived(
     canCreate && aiEnabled(page.data.user, "task_assist") && aiEnabled(page.data.user, "speech"),
   );
@@ -248,11 +255,12 @@
       </p>
     {/if}
   </div>
-  <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
-       page in edit mode — creating and editing share one surface (docs/UX.md Principle 3).
-       Beside it, the other way in (#382): a task spoken in one breath, reviewed whole. Not a
-       menu item — this is a primary create path, not a variant of one — and on a phone it is
-       the reachable pair the FAB rule asks for. -->
+  <!-- Ask for the name, then create-then-edit for the rest (#391, #230): the dialog posts a
+       named task and the action redirects to its detail page in edit mode, so creating and
+       editing still share one surface (docs/UX.md Principle 3). Beside it, the other way in
+       (#382): a task spoken in one breath, reviewed whole. Not a menu item — this is a primary
+       create path, not a variant of one — and on a phone it is the reachable pair the FAB rule
+       asks for. -->
   {#if canCreate}
     <div class="flex items-center gap-2">
       {#if canDictate}
@@ -266,13 +274,13 @@
           <span class="hidden sm:inline">{t("tasks.dictate.open")}</span>
         </button>
       {/if}
-      <form method="POST" action="?/create" use:enhance>
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          {t("tasks.new")}
-        </button>
-      </form>
+      <button
+        type="button"
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => (creating = true)}
+      >
+        {t("tasks.new")}
+      </button>
     </div>
   {/if}
 </div>
@@ -287,6 +295,21 @@
     members={data.members}
     companyId={data.filters.company_id ?? null}
     projectId={data.filters.project_id ?? null}
+  />
+{/if}
+
+{#if canCreate}
+  <!-- The list's own filters ride along, so a task made while looking at one client lands on
+       that client (#391) — the same carry-through the dictation sheet already does. -->
+  <TaskQuickCreate
+    bind:open={creating}
+    companyId={data.filters.company_id ?? null}
+    projectId={data.filters.project_id ?? null}
+    members={data.members}
+    assignees={me ? [{ user_id: me, is_primary: true }] : []}
+    action="?/create"
+    error={form?.error ?? null}
+    pickerSlot="tasks_new"
   />
 {/if}
 

@@ -3,7 +3,6 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
-import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -11,6 +10,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -114,33 +114,21 @@ export const actions: Actions = {
   bulkDelete: (event) => bulkDeleteAction(event, "task"),
 
   /**
-   * Create-then-edit (#230, docs/UX.md Principle 3): a new task is created minimal —
-   * placeholder title, assigned to its creator, optionally pre-linked to the client/project
-   * the entry point knew — and the user lands on the detail page in edit mode (#78's
-   * `?edit=1` marker), the one surface where a task's definition is edited. No inline
-   * creation form duplicates those fields anymore.
+   * The one create path behind every "＋ nieuwe taak" (#391) — this list's button, the client's
+   * Taken panel, the client header. The user names the task in `TaskQuickCreate` (the dialog
+   * every picker's inline-create already opens) and *then* lands on the detail page in edit
+   * mode (#78's `?edit=1` marker), so create-then-edit's benefit survives: one editing surface,
+   * no second field set to keep in step.
+   *
+   * What no longer survives is the row this action used to write before anyone had been asked
+   * anything — a placeholder title marked `unnamed` (#350), a due date of nothing and an
+   * assignee it picked itself, left on the board by one click and a closed tab.
    */
   create: async (event) => {
     const form = await event.request.formData();
-    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
-      body: {
-        // The API requires a non-empty title, so the row still carries one — but it is a
-        // placeholder nobody typed, and `unnamed` is what says so (#350). Before the flag, an
-        // abandoned create-then-edit row was indistinguishable from real work, and the
-        // placeholder was frozen in the *creator's* locale, so one org held both "Naamloze
-        // taak" and "Untitled task" and neither was searchable as "the ones nobody named".
-        title: t("tasks.untitled"),
-        unnamed: true,
-        // Status is omitted so the API assigns the org's default status (issue #62).
-        priority: "normal",
-        company_id: String(form.get("company_id") ?? "").trim() || null,
-        project_id: String(form.get("project_id") ?? "").trim() || null,
-        assignee_user_id: event.locals.user?.id ?? null,
-        // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
-        requires_interaction: false,
-        visible_to_client: false,
-      },
-    });
+    const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
+    if (!body) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (error || !data) return fail(400, { error: apiErrorKey(error).key });
     throw redirect(303, editHref(`/tasks/${data.id}`));
   },

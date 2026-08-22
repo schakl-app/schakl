@@ -1383,6 +1383,32 @@
   *any* assignee server-side (`caller_may_write_task`), while the browser's `canWriteTask` read
   only the starred one; harmless while a quick-created task had exactly one assignee, and a
   disappearing control the moment it could have two.
+- **A create that writes the row before it asks anything** (#391). `Nieuwe taak` posted a whole
+  task on one click — a placeholder title ("Naamloze taak"), a due date of nothing, an assignee it
+  picked itself — and landed the user in edit mode over it. That is create-then-edit (#230,
+  Principle 3), and the principle is right: a record's definition is edited on exactly one
+  surface, so there is no second create form to keep in step. What was wrong is *where the line
+  falls*. Closing the tab is not cancelling; the row is on the board, in the client's Taken panel,
+  in the export and in `GET /api/v1/tasks`, and nobody made it. `unnamed` (#350) was the mitigation
+  — mark those rows so a list can italicise them, print the reader's own word for *unnamed*, and
+  offer a filter that finds them — and marking a row is not the same as not writing it.
+  So **what identifies the record is asked for before it exists, and everything else stays behind
+  create-then-edit.** The dialog for that already existed twice over: `TaskQuickCreate`, which
+  every picker's inline-create opens, and the dictation sheet (#382), which refuses
+  create-then-edit outright because a spoken task "arrives with all of them already reviewed on
+  screen". Both produced named rows the whole time; the list's ＋ was the one entry point that
+  skipped the question. It now opens the same dialog — as do the client header, the client's Taken
+  panel and a project's to-do list, so there is one answer to *how does a task get made* — and its
+  action redirects into edit mode exactly as before. Where the user lands still belongs to the
+  surface: a list hands the new task over in edit mode, a to-do list stays where it is, because
+  to-dos are written several at a time.
+  Two smaller rules ride along. **A default the surface used to apply silently becomes a prefilled
+  control, not a dropped feature** — `Nieuwe taak` assigned its creator, so the dialog opens with
+  that person on the roster as a chip that can be taken off, which is the same behaviour and a
+  visible one. And **the body every entry point posts is one function** (`$lib/modules/tasks/create`),
+  because "the title is the caller's" is invisible in a diff and is exactly the kind of rule a
+  later refactor re-introduces a placeholder for; it is asserted without a browser in
+  `tests/unit/task-create.test.ts`.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and

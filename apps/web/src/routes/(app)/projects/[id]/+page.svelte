@@ -31,6 +31,7 @@
   import { PROJECT_STATUSES } from "$lib/modules/projects/status";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
@@ -66,6 +67,10 @@
   // read-only portal client (#244) reaches this page for a readable project but holds none of
   // these, so each control mirrors its own API permission.
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  // A to-do is named before it exists, in the shared dialog (#391). Nobody is prefilled on the
+  // roster: this list has never assigned its rows, and picking a colleague for someone is worse
+  // than leaving it to whoever picks the work up.
+  let addingTask = $state(false);
   const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   let confirmDelete = $state(false);
 
@@ -572,14 +577,22 @@
   </div>
 
   {#if canCreateTask}
-    <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
-      <input type="hidden" name="company_id" value={project.company_id ?? ""} />
-      <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
-      <button
-        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.create")}</button
-      >
-    </form>
+    <!-- The same dialog as every other create path (#391): a to-do is a task, so it is named,
+         dated and staffed in the one place that asks for all three. -->
+    <button
+      type="button"
+      class="mb-4 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (addingTask = true)}>{t("projects.add_todo")}</button
+    >
+    <TaskQuickCreate
+      bind:open={addingTask}
+      companyId={project.company_id ?? null}
+      projectId={project.id}
+      members={data.members}
+      action="?/addTask"
+      error={(form?.error as string | undefined) ?? null}
+      pickerSlot="project_todo"
+    />
   {/if}
 
   {#if tasks.length === 0}
