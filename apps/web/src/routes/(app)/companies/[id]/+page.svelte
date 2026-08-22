@@ -50,6 +50,7 @@
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
+  import LogTimeDialog from "$lib/modules/time/LogTimeDialog.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   let { data, form } = $props();
@@ -211,6 +212,10 @@
     data.members.map((m) => ({ id: m.user_id, name: memberLabel(m) })),
   );
 
+  // Uren boeken from the header (#402): the time module's own form in a dialog, hosted here the
+  // way the contactmoment form already is. Nothing is fetched until it opens.
+  let loggingTime = $state(false);
+
   // Nieuwe taak from the header (#391): the shared dialog, pre-linked to this client and opening
   // with yourself on the roster — the assignee this button always chose, now visible.
   let creatingTask = $state(false);
@@ -331,15 +336,17 @@
         </Button>
       {/if}
       {#if can(page.data.user, "time.entry.write")}
-        <!-- Carry the client through: a bare /time landed on the entry form with whatever
-             client was last used, so the one you were looking at was the one thing the trip
-             lost. Same deep link the time panel below already uses. -->
-        <a
-          href={`/time?company=${company.id}`}
+        <!-- The same act as the Uren panel's ＋ (#402), so it is the same control: the module's
+             own entry form in a dialog, this client preset, and this page still underneath it
+             when it closes. It used to be a link to `/time?company=…` — the client was carried
+             through and the way back was not. -->
+        <button
+          type="button"
+          onclick={() => (loggingTime = true)}
           class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
         >
           {t("companies.actions.log_time")}
-        </a>
+        </button>
       {/if}
       {#if hasReporting}
         <CompanyAIActions companyId={company.id} companyName={company.name} />
@@ -558,6 +565,10 @@
     error={(page.form?.error as string | undefined) ?? null}
     pickerSlot="company_new_task"
   />
+{/if}
+
+{#if can(page.data.user, "time.entry.write")}
+  <LogTimeDialog bind:open={loggingTime} companyId={company.id} />
 {/if}
 
 <Modal bind:open={showLogInteraction} title={t("interactions.add")}>

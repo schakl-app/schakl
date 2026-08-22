@@ -24,8 +24,9 @@
    *   locked to whoever may approve it — the service's `_ensure_writable` / `_ensure_not_locked`
    *   in three lines of `$derived`.
    *
-   * **Host contract:** the page must expose `?/updateEntry` and `?/deleteEntry` form actions, and
-   * `updateEntry` must post **only the fields it was given** — see `EntryQuickEdit`.
+   * **Host contract:** the page must expose `?/updateEntry`, `?/deleteEntry` and (for the ＋,
+   * #402) `?/createEntry` form actions, and `updateEntry` must post **only the fields it was
+   * given** — see `EntryQuickEdit`. All three are `timeEntryActions`, spread by the host.
    */
   import { ArrowRight, Check, Pencil, Trash2 } from "@lucide/svelte";
 
@@ -41,6 +42,7 @@
   import PersonChip from "$lib/core/ui/PersonChip.svelte";
 
   import EntryQuickEdit from "./EntryQuickEdit.svelte";
+  import LogTimeDialog from "./LogTimeDialog.svelte";
   import { formatMinutes } from "./format";
 
   let {
@@ -104,6 +106,7 @@
 
   const memberOf = (userId: string) => members.find((m) => m.user_id === userId);
 
+  let logging = $state(false);
   let editing = $state<RecentEntry | null>(null);
   let showEdit = $state(false);
   let deleteId = $state("");
@@ -209,14 +212,17 @@
 {/each}
 
 {#if canWrite}
-  <!-- Log hours from where the client is (owner feedback): opens the time page's entry form
-       with this client preset. -->
-  <a
-    href={`/time?company=${companyId}`}
+  <!-- Log hours from where the client is, and *stay* there (#402). This used to be a link to
+       `/time?company=…` — the deep link was right and the trip was one-way, which is the one
+       thing every other "record something about this client" on this page does not do. -->
+  <button
+    type="button"
+    onclick={() => (logging = true)}
     class="mt-3 inline-block text-xs text-brand hover:underline"
   >
     ＋ {t("time.log_for_client")}
-  </a>
+  </button>
+  <LogTimeDialog bind:open={logging} {companyId} />
 {/if}
 
 <Modal bind:open={showEdit} title={t("time.edit_entry")}>
