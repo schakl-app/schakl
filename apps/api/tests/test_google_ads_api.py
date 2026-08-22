@@ -321,15 +321,21 @@ async def test_the_seam_answers_not_configured_rather_than_none() -> None:
 # --- performance ----------------------------------------------------------------------------- #
 
 
-async def test_the_company_panel_costs_the_same_whatever_the_client_has_linked(
+async def test_the_company_hub_costs_the_same_whatever_the_client_has_linked(
     client_for, count_queries
 ) -> None:
-    """A panel that is one query at one account and one-per-row at twenty passes every functional
+    """A hub that is one query at one account and one-per-row at twenty passes every functional
     test either way (docs/PERFORMANCE.md), which is why the number is written down.
 
+    This used to be a guard on **this module's own** company panel. That panel is gone (#411)
+    and the guard is not: the question it asks is about the *hub*, and every provider still on
+    it composes in sequence on one session, so a fan-out anywhere is a fan-out here. Keeping it
+    pointed at `/panels` rather than deleting it with its subject is the difference between
+    losing a card and losing the check that came with it.
+
     The existing ``_PANELS_BUDGET`` guard cannot catch this and is not meant to: its fixture
-    company has nothing linked, so this panel short-circuits on an empty list and costs the same
-    whatever it does with a full one.
+    company has nothing linked, so every provider short-circuits on an empty list and costs the
+    same whatever it does with a full one.
     """
     t = await make_tenant("gads-perf-panel")
     headers = await auth_cookie(t.user)
