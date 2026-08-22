@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.config import settings
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
 
@@ -197,7 +197,11 @@ async def test_attachments_list_delete_and_task_activity(client_for, tmp_path, m
     t = await make_tenant("files-att")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "Brief"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Brief"},
+            headers=headers,
+        )).json()
 
         up = await c.post(
             f"/api/v1/files?entity_type=task&entity_id={task['id']}",

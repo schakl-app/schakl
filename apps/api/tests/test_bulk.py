@@ -27,7 +27,7 @@ from app.db import async_session_maker, set_current_org
 from app.main import app
 from app.modules.invoicing.models import Invoice
 from app.registry import registry
-from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant, org_today
 from tests.test_interactions_api import _seed_gmail_row
 from tests.test_invoicing_api import _setup_org as _seed_invoicing_settings
 
@@ -64,7 +64,11 @@ async def _domain(c, headers, name: str, company_id: str, **extra) -> dict:
 
 
 async def _task(c, headers, title: str, **extra) -> dict:
-    r = await c.post("/api/v1/tasks", json={"title": title, **extra}, headers=headers)
+    r = await c.post(
+        "/api/v1/tasks",
+        json={"due_date": FAR_FUTURE_DUE, "title": title, **extra},
+        headers=headers,
+    )
     assert r.status_code == 201, r.text
     return r.json()
 

@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.events import SystemContext
@@ -24,7 +24,7 @@ from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
 from app.modules.interactions.enrich import MAX_EMAIL_LINKS, SUBMIT_PLAN
 from app.modules.tasks.models import Task, TaskAIStatus, TaskChecklistItem, TaskComment, TaskLink
-from tests.conftest import auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
 
@@ -160,6 +160,22 @@ async def _task_row(tenant, task_id: str) -> Task:
         )
 
 
+async def _undate(tenant, task_id: str) -> None:
+    """Take the deadline back off a task — the one shape no API can produce since #392.
+
+    The enrichment only ever *fills a blank*: a deadline a person set is a commitment, and a
+    sentence in somebody else's email is not the thing that gets to move it. Every create
+    surface now asks for one, so the blank this feature writes into is a row an instance
+    carried into that release — which is exactly what this makes.
+    """
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        await session.execute(
+            text("UPDATE tasks SET due_date = NULL WHERE id = :id"), {"id": uuid.UUID(task_id)}
+        )
+        await session.commit()
+
+
 # --------------------------------------------------------------------------- #
 # The feature itself
 # --------------------------------------------------------------------------- #
@@ -172,7 +188,14 @@ async def test_enrichment_writes_notes_checklist_deadline_and_links(
     row_id = await _seed_email(t, t.user.id)
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
+        # The deadline half only writes into a blank (see ``_undate``), so this is a task from
+        # before the date became required — the rows the feature still has one to fill on.
+        await _undate(t, task["id"])
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -228,7 +251,11 @@ async def test_status_moves_queued_to_done_and_is_polled_on_its_own_endpoint(
     row_id = await _seed_email(t, t.user.id)
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         approved = await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -256,7 +283,11 @@ async def test_off_by_default_and_untouched_without_the_tick(client_for, monkeyp
     row_id = await _seed_email(t, t.user.id)
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         monkeypatch.setattr(
             "app.core.ai.providers.stream_chat",
             _fake_stream(_plan(summary="Zou niet geschreven mogen worden.")),
@@ -276,7 +307,11 @@ async def test_an_approve_survives_an_org_with_no_ai_configured(client_for) -> N
     headers = await auth_cookie(t.user)
     row_id = await _seed_email(t, t.user.id)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         approved = await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -319,7 +354,7 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Homepage", "status": "open"},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Homepage", "status": "open"},
                 headers=headers,
             )
         ).json()
@@ -355,8 +390,10 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
         assert detail["status"] == "open", "an email must not be able to close a task"
         assert detail["visible_to_client"] is False, "an email must not reach a client portal"
         assert detail["assignee_user_id"] is None, "an email must not reassign work"
-        # 2099 is outside the bounded window: a deadline read out of a sentence is a guess.
-        assert detail["due_date"] is None
+        # The deadline it arrived with, untouched — and two independent rules say so: the task
+        # already carries a date a person chose (#392), and 2099-01-01 is outside the bounded
+        # window anyway, because a deadline read out of a sentence is a guess.
+        assert detail["due_date"] == FAR_FUTURE_DUE
         # Our own markup is stripped, so the email cannot make the platform notify anyone.
         assert "mention:" not in detail["description"]
         # And an email cannot put a comment on the board at all: the field is off the schema.
@@ -378,7 +415,11 @@ async def test_a_link_the_email_does_not_contain_is_dropped(client_for, monkeypa
     row_id = await _seed_email(t, t.user.id, message_id="msg-links")
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -434,7 +475,11 @@ async def test_a_signature_link_is_in_the_body_and_still_does_not_belong_on_the_
     row_id = await _seed_email(t, t.user.id, message_id="msg-footer")
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Stages"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Stages"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -494,7 +539,11 @@ async def test_more_links_than_a_shortlist_holds_are_cut_to_the_first_few(
     body = "Hoi,\n\n" + "\n".join(f"https://klant.nl/pagina/{n}" for n in range(9))
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Veel"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Veel"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -596,7 +645,11 @@ async def test_the_ride_along_asks_for_the_task_permission_not_the_review_one(
         reviewer_headers = await auth_cookie(reviewer)
         # Unassigned, and created by the owner: nobody's `:own`.
         task = (
-            await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=owner_headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+                headers=owner_headers,
+            )
         ).json()
         assert task["assignee_user_id"] is None
         row_id = await _seed_email(t, reviewer.id, message_id="msg-perm")
@@ -618,7 +671,11 @@ async def test_tenant_isolation_of_the_status_endpoint(client_for) -> None:
     b = await make_tenant("enrich-iso-b")
     a_headers, b_headers = await auth_cookie(a.user), await auth_cookie(b.user)
     async with client_for(a.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "Van A"}, headers=a_headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Van A"},
+            headers=a_headers,
+        )).json()
     async with client_for(b.host) as c:
         assert (
             await c.get(f"/api/v1/tasks/{task['id']}/ai-status", headers=b_headers)
@@ -640,7 +697,11 @@ async def test_a_body_that_never_lands_ends_as_skipped_not_as_a_run_that_waits_f
     row_id = await _seed_email(t, t.user.id, message_id="msg-nobody")
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -659,7 +720,11 @@ async def test_the_reaper_ends_a_run_whose_worker_is_gone(client_for) -> None:
     t = await make_tenant("enrich-reap")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
@@ -685,7 +750,11 @@ async def test_a_run_that_is_merely_slow_is_left_alone_by_the_reaper(client_for)
     t = await make_tenant("enrich-reap-fresh")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
@@ -709,7 +778,11 @@ async def test_an_empty_plan_is_skipped_rather_than_written(client_for, monkeypa
     row_id = await _seed_email(t, t.user.id, message_id="msg-empty")
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},
@@ -763,7 +836,11 @@ async def test_an_answer_that_ran_out_of_room_is_not_an_email_with_nothing_in_it
     row_id = await _seed_email(t, t.user.id, message_id="msg-cut")
     async with client_for(t.host) as c:
         await _configure_ai(c, headers)
-        task = (await c.post("/api/v1/tasks", json={"title": "Homepage"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
         await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_id": task["id"], "enrich_task": True},

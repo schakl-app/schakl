@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 from tests.test_task_subresources import add_member
 
 
@@ -261,7 +261,11 @@ async def test_search_filters(client_for) -> None:
             await c.get("/api/v1/projects", params={"q": "nomatch"}, headers=headers)
         ).json()["total"] == 0
 
-        await c.post("/api/v1/tasks", json={"title": "SEO audit uitvoeren"}, headers=headers)
+        await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "SEO audit uitvoeren"},
+            headers=headers,
+        )
         assert (
             await c.get("/api/v1/tasks", params={"q": "audit"}, headers=headers)
         ).json()["total"] == 1

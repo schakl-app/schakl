@@ -115,6 +115,13 @@ class TaskBase(BaseModel):
     # status. Validated against the org's ``task_statuses`` in the service.
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority = TaskPriority.NORMAL
+    # Nullable *here* because ``TaskRead`` inherits this shape and every instance that upgrades
+    # into #392 carries rows written before the deadline was required — a read model that could
+    # not express them would 500 on the tenant's own backlog. The **write** shapes are where the
+    # rule lives: ``TaskCreate`` overrides this as required, and ``TaskUpdate`` refuses an
+    # explicit ``null`` in the service. Expand/contract (docs/WORKFLOW.md): the column stays
+    # nullable for at least a release, so an unattended ``alembic upgrade head`` on somebody
+    # else's data cannot fail on data this release is the first to forbid.
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     # Per-task close policy (#157 extended): when set, this task can only reach a finished
@@ -125,6 +132,20 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
+    #: **Required** (#392), narrowing ``TaskBase``'s nullable column type. A task with no
+    #: deadline is absent from ``?due=overdue``, from the Agenda's deadline feed and from both
+    #: dashboards' overdue counts — it is not merely unscheduled, it is invisible to the entire
+    #: urgency vocabulary, which is what the team means by *niet kan worden overgeslagen*. So
+    #: every creator states one, and the ones with nobody in front of them state a **default**
+    #: rather than inheriting ``NULL``: the recurrence generator computes it from the rule, a
+    #: template item from its ``relative_due_days`` (else the day it is applied), an automation
+    #: rule from its ``due_days`` (else the day it fires), the import refuses the row by naming
+    #: the column, and create-then-edit writes the org's own today over a placeholder row it is
+    #: about to drop the user into.
+    #:
+    #: A **deadline is not a calendar booking**: ``Geplande blokken`` (#188/#335) stays optional,
+    #: and setting one never implies the other.
+    due_date: date
     #: The employees on this task, one starred as primary (#375). ``None`` means *the caller
     #: didn't say* — and ``assignee_user_id`` alone decides, which is the pre-roster shape every
     #: existing client (and the MCP surface generated from this spec) still posts. ``[]`` is a
@@ -199,6 +220,11 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority | None = None
+    #: Absent leaves the deadline alone; an explicit ``null`` is **refused** (#392). CLAUDE.md
+    #: §18's rule with its second half withdrawn: clearing is what stops being allowed, so a
+    #: ``PATCH`` that mentions nothing but ``status`` still works on a task written before this
+    #: — which is the acceptance criterion that matters most, since an agency's first act after
+    #: upgrading must not be being unable to tick off its own backlog.
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     position: float | None = None

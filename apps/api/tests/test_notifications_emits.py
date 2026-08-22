@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications.models import Notification, NotificationEvent
-from tests.conftest import Tenant, auth_cookie, leave_workday, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, Tenant, auth_cookie, leave_workday, make_tenant
 from tests.test_notifications_fanout import _events, _member
 
 
@@ -49,7 +49,11 @@ async def test_assigning_a_task_notifies_the_assignee(client_for) -> None:
     async with client_for(t.host) as c:
         created = await c.post(
             "/api/v1/tasks",
-            json={"title": "Write the brief", "assignee_user_id": str(member.id)},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Write the brief",
+                "assignee_user_id": str(member.id),
+            },
             headers=owner_headers,
         )
         assert created.status_code == 201
@@ -70,7 +74,11 @@ async def test_assigning_a_task_to_yourself_is_silent(client_for) -> None:
     async with client_for(t.host) as c:
         await c.post(
             "/api/v1/tasks",
-            json={"title": "My own chore", "assignee_user_id": str(t.user.id)},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "My own chore",
+                "assignee_user_id": str(t.user.id),
+            },
             headers=headers,
         )
         assert (await c.get("/api/v1/notifications", headers=headers)).json()["total"] == 0
@@ -88,7 +96,11 @@ async def test_reassigning_tells_the_new_owner_and_the_old_one(client_for) -> No
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Hand-off", "assignee_user_id": str(first.id)},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Hand-off",
+                    "assignee_user_id": str(first.id),
+                },
                 headers=headers,
             )
         ).json()
@@ -116,7 +128,11 @@ async def test_a_status_change_and_a_comment_reach_the_assignee(client_for) -> N
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Ship it", "assignee_user_id": str(member.id)},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Ship it",
+                    "assignee_user_id": str(member.id),
+                },
                 headers=headers,
             )
         ).json()

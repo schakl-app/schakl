@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.core.auth.models import User
 from app.db import async_session_maker
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def test_directly_invited_client_sees_no_companies(client_for) -> None:
@@ -214,7 +214,12 @@ async def test_a_client_cannot_borrow_a_contact_reference_either(client_for) -> 
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Zichtbaar", "company_id": company["id"], "visible_to_client": True},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Zichtbaar",
+                    "company_id": company["id"],
+                    "visible_to_client": True,
+                },
                 headers=headers,
             )
         ).json()

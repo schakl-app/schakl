@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 from tests.test_task_subresources import add_member
 
 # Items are `{title, description}` since issue #66 (a bare title list is no longer accepted).
@@ -93,7 +93,11 @@ async def test_add_checklist_from_template_copies_items(client_for) -> None:
         template = (
             await c.post("/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=headers)
         ).json()
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
 
         added = await c.post(
             f"/api/v1/tasks/{task['id']}/checklists",
@@ -137,7 +141,11 @@ async def test_checklist_templates_tenant_isolation(client_for) -> None:
 
     async with client_for(b.host) as cb:
         assert (await cb.get("/api/v1/tasks/checklist-templates", headers=b_headers)).json() == []
-        task = (await cb.post("/api/v1/tasks", json={"title": "B"}, headers=b_headers)).json()
+        task = (await cb.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "B"},
+            headers=b_headers,
+        )).json()
         assert (
             await cb.post(
                 f"/api/v1/tasks/{task['id']}/checklists",

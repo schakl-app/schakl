@@ -12,7 +12,7 @@ pin the three things that makes possible — marking, clearing, and finding.
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def _company(c, headers) -> str:
@@ -29,7 +29,11 @@ async def test_an_ordinary_create_is_never_unnamed(client_for) -> None:
     t = await make_tenant("unnamed-task-plain")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
-        created = await c.post("/api/v1/tasks", json={"title": "Homepage herzien"}, headers=headers)
+        created = await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage herzien"},
+            headers=headers,
+        )
         assert created.status_code == 201, created.text
         assert created.json()["unnamed"] is False
 
@@ -38,11 +42,15 @@ async def test_a_create_then_edit_task_is_marked_and_findable(client_for) -> Non
     t = await make_tenant("unnamed-task-flag")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
-        await c.post("/api/v1/tasks", json={"title": "Echte taak"}, headers=headers)
+        await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Echte taak"},
+            headers=headers,
+        )
         placeholder = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Naamloze taak", "unnamed": True},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Naamloze taak", "unnamed": True},
                 headers=headers,
             )
         ).json()
@@ -69,7 +77,9 @@ async def test_naming_a_task_clears_the_flag(client_for) -> None:
         headers = await auth_cookie(t.user)
         task = (
             await c.post(
-                "/api/v1/tasks", json={"title": "Naamloze taak", "unnamed": True}, headers=headers
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Naamloze taak", "unnamed": True},
+                headers=headers,
             )
         ).json()
 
@@ -91,7 +101,11 @@ async def test_a_task_update_cannot_set_the_flag(client_for) -> None:
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         task = (
-            await c.post("/api/v1/tasks", json={"title": "Echte taak"}, headers=headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Echte taak"},
+                headers=headers,
+            )
         ).json()
         patched = await c.patch(
             f"/api/v1/tasks/{task['id']}", json={"unnamed": True}, headers=headers
@@ -135,7 +149,9 @@ async def test_the_unnamed_filter_never_crosses_a_tenant(client_for) -> None:
     async with client_for(a.host) as c:
         headers = await auth_cookie(a.user)
         await c.post(
-            "/api/v1/tasks", json={"title": "Naamloze taak", "unnamed": True}, headers=headers
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Naamloze taak", "unnamed": True},
+            headers=headers,
         )
     async with client_for(b.host) as c:
         headers = await auth_cookie(b.user)
