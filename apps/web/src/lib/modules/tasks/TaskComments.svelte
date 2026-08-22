@@ -51,6 +51,7 @@
   import { DEFAULT_COMMENT_SORT, type CommentSort } from "$lib/modules/tasks/comment-prefs";
 
   import type { components } from "$lib/core/api/schema";
+  import { PANEL_HEADING } from "$lib/core/ui/headings";
 
   type Comment = components["schemas"]["CommentRead"];
   type Member = components["schemas"]["MemberLookup"];
@@ -285,7 +286,11 @@
 </script>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-  <h3 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+  <!-- A card's own title, so it is `PANEL_HEADING` (#404). It was the eighth 12 px muted section
+       heading on the task page and the one the page's own sweep could not reach, because it lives
+       a component down — which is the argument for the ladder being a constant rather than a
+       string each surface types. -->
+  <h3 class="flex items-center gap-2 {PANEL_HEADING}">
     {t("tasks.comments.title")}
     <!-- The count is on the heading because "how much is there to read?" is the first question a
          discussion is asked, and a folded list cannot answer it by being looked at. -->

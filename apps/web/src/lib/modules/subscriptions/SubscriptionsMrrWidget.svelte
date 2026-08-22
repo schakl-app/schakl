@@ -23,6 +23,7 @@
 </script>
 
 <DashboardWidgetCard
+  kind="stat"
   title={t("dashboard.widget.subscriptions.mrr")}
   href="/subscriptions"
   linkLabel={t("nav.subscriptions")}

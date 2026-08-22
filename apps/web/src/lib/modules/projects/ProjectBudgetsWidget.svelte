@@ -2,7 +2,7 @@
   /** My Day widget: the budgeted projects burning hottest — the one burn scale (core/burn),
    *  unclamped number, clamped bar, loudly red over budget (UX Principle 4). The figure is
    *  spent-of-budget and says so in the same words as every other surface (core/hours, #340). */
-  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
+  import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
   import { hoursBurn, type HoursFields } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
@@ -60,7 +60,7 @@
               title={project.burn?.title}
               class="shrink-0 tabular-nums hover:underline {project.pct != null &&
               project.pct >= 100
-                ? 'font-medium text-red-600 dark:text-red-400'
+                ? `font-medium ${burnTextClass(project.pct)}`
                 : 'text-text-muted'}"
             >
               {project.burn?.spentText}
