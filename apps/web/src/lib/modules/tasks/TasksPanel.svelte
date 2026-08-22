@@ -1,6 +1,5 @@
 <script lang="ts">
   /** Company-detail panel: the client's task overview (CLAUDE.md §6). */
-  import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -8,6 +7,7 @@
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
 
@@ -34,6 +34,15 @@
   }
   const tasks = $derived((data.tasks ?? []) as PanelTask[]);
   const today = new Date().toISOString().slice(0, 10);
+
+  // The client page's ＋ opens the same dialog as every other create path (#391).
+  let creating = $state(false);
+  const me = $derived((page.data.user?.id as string | undefined) ?? "");
+  const members = $derived(
+    (page.data.members as
+      | { user_id: string; full_name: string | null; email: string | null; is_active?: boolean }[]
+      | undefined) ?? [],
+  );
 </script>
 
 {#if tasks.length === 0}
@@ -100,12 +109,24 @@
     {t("tasks.panel.view_all")}
   </a>
   {#if can(page.data.user, "tasks.task.create")}
-    <!-- Quick-create from the client page (#230): a POST — never a link, which would create on
-         hover-preload — that makes a minimal task pre-linked to this client, then lands on its
-         detail page in edit mode. -->
-    <form method="POST" action="/tasks?/create" use:enhance>
-      <input type="hidden" name="company_id" value={companyId} />
-      <button class="text-xs text-brand hover:underline">＋ {t("tasks.new")}</button>
-    </form>
+    <!-- Quick-create from the client page (#230, #391): the shared dialog asks for the name,
+         pre-linked to this client, and its action lands on the new task in edit mode. -->
+    <button
+      type="button"
+      class="text-xs text-brand hover:underline"
+      onclick={() => (creating = true)}>＋ {t("tasks.new")}</button
+    >
   {/if}
 </div>
+
+{#if can(page.data.user, "tasks.task.create")}
+  <TaskQuickCreate
+    bind:open={creating}
+    {companyId}
+    {members}
+    assignees={me ? [{ user_id: me, is_primary: true }] : []}
+    action="/tasks?/create"
+    error={(page.form?.error as string | undefined) ?? null}
+    pickerSlot="company_tasks_panel"
+  />
+{/if}

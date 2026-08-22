@@ -12,6 +12,7 @@ import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -135,22 +136,17 @@ export const actions: Actions = {
     return { updated: true };
   },
 
+  /**
+   * The project's to-do list creates through the same dialog and the same body builder as
+   * every other "＋ nieuwe taak" (#391) — one answer to how a task gets made, and the only
+   * shape that can carry a deadline and a roster. It stays on this page rather than
+   * redirecting into edit mode: the list is written down the page, several items at a time.
+   */
   addTask: async (event) => {
     const form = await event.request.formData();
-    const title = String(form.get("title") ?? "").trim();
-    if (!title) return fail(400, { error: "errors.required" });
-    const company_id = String(form.get("company_id") ?? "").trim();
-    const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", {
-      body: {
-        title,
-        // Status omitted → the API assigns the org's default status (issue #62).
-        priority: "normal",
-        project_id: event.params.id,
-        company_id: company_id || null,
-        requires_interaction: false,
-        visible_to_client: false,
-      },
-    });
+    const body = taskCreateBody(form, { projectId: event.params.id });
+    if (!body) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { taskAdded: true };
   },

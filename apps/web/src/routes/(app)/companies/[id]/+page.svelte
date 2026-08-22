@@ -50,6 +50,7 @@
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   let { data, form } = $props();
 
@@ -210,6 +211,10 @@
     data.members.map((m) => ({ id: m.user_id, name: memberLabel(m) })),
   );
 
+  // Nieuwe taak from the header (#391): the shared dialog, pre-linked to this client and opening
+  // with yourself on the roster — the assignee this button always chose, now visible.
+  let creatingTask = $state(false);
+
   // AI digest + report drafts (#130): rendered only when the reporting feature is on.
   const hasReporting = $derived(aiEnabled(page.data.user, "reporting"));
 </script>
@@ -312,20 +317,18 @@
         </button>
       {/if}
       {#if can(page.data.user, "tasks.task.create")}
-        <!-- Create-then-edit (#230): a POST that makes a minimal task pre-linked to this client
-             and lands on its detail page in edit mode — never a link, which would create on
-             hover-preload. -->
-        <form method="POST" action="/tasks?/create" use:enhance={busy.wrap("new-task")}>
-          <input type="hidden" name="company_id" value={company.id} />
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={busy.is("new-task")}
-            disabled={busy.active}
-          >
-            {t("companies.actions.new_task")}
-          </Button>
-        </form>
+        <!-- Ask for the name first (#391), then create-then-edit for the rest (#230): the shared
+             dialog posts a named task pre-linked to this client and lands on its detail page in
+             edit mode. -->
+        <Button
+          variant="secondary"
+          size="sm"
+          type="button"
+          disabled={busy.active}
+          onclick={() => (creatingTask = true)}
+        >
+          {t("companies.actions.new_task")}
+        </Button>
       {/if}
       {#if can(page.data.user, "time.entry.write")}
         <!-- Carry the client through: a bare /time landed on the entry form with whatever
@@ -543,6 +546,18 @@
       </div>
     </form>
   </Modal>
+{/if}
+
+{#if can(page.data.user, "tasks.task.create")}
+  <TaskQuickCreate
+    bind:open={creatingTask}
+    companyId={company.id}
+    members={data.members}
+    assignees={page.data.user?.id ? [{ user_id: page.data.user.id, is_primary: true }] : []}
+    action="/tasks?/create"
+    error={(page.form?.error as string | undefined) ?? null}
+    pickerSlot="company_new_task"
+  />
 {/if}
 
 <Modal bind:open={showLogInteraction} title={t("interactions.add")}>
