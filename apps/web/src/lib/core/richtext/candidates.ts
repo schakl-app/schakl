@@ -10,6 +10,7 @@
  * the caches below mean five editors on one form still cost one fetch.
  */
 import type { Candidate } from "$lib/core/richtext/editor";
+import { orgToday } from "$lib/core/today";
 
 export interface CandidateScope {
   companyId?: string | null;
@@ -126,7 +127,7 @@ export function loadTaskCandidates(scope: CandidateScope = {}): Promise<Candidat
       statuses(),
       members(),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = orgToday();
     const memberName = (id: string) => {
       const m = team.find((row) => row.user_id === id);
       return m ? m.full_name || m.email || undefined : undefined;

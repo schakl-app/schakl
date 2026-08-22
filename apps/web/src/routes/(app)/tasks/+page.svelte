@@ -18,6 +18,7 @@
   import { splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -81,7 +82,7 @@
 
   const dueOptions = ["overdue", "today", "week"] as const;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgToday();
 
   // The status vocabulary is per-org (issue #62): "finished" is a terminal status, not the literal
   // "done", and the complete toggle moves between the default and the first terminal status.

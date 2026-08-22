@@ -14,6 +14,7 @@
   import { type DateFormat, getDateFormat } from "$lib/core/dateformat";
   import { capitalizeFirst, fmtLongDay, fmtMonthYear, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { orgToday, orgYear } from "$lib/core/today";
 
   let {
     name,
@@ -86,7 +87,7 @@
   function parseInput(raw: string): string | null {
     const text = raw.trim();
     if (!text) return null;
-    const currentYear = new Date().getUTCFullYear();
+    const currentYear = orgYear();
     const order = ORDER[dateFormat];
     const nonYear = order.filter((r) => r !== "y"); // the two day/month roles, in order
 
@@ -120,7 +121,7 @@
     return null;
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = orgToday();
 
   let text = $state(toDisplay(value));
   let open = $state(false);

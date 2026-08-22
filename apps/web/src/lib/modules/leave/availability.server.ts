@@ -4,7 +4,7 @@ import type { Actions } from "@sveltejs/kit";
 import { isoAddDays } from "$lib/core/calendar";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
-import { getTimeZone } from "$lib/core/timezone";
+import { orgToday } from "$lib/core/today";
 
 /**
  * The availability actions behind {@link AvailabilityManager} — spread into every host route, so
@@ -24,11 +24,10 @@ export const AVAILABILITY_WINDOW_DAYS = 365;
  *
  * `new Date().toISOString()` is what this used to do, and between midnight and 02:00 Amsterdam
  * time it names yesterday — so a row created "today" fell outside the window that was supposed to
- * start today. The same fault #316 records for the marketing dashboard's own day arithmetic. */
-export function availabilityToday(): string {
-  // en-CA formats as YYYY-MM-DD, which is the wire shape the API takes.
-  return new Intl.DateTimeFormat("en-CA", { timeZone: getTimeZone() }).format(new Date());
-}
+ * start today. The same fault #316 records for the marketing dashboard's own day arithmetic, and
+ * #396 found seven more; the shared `orgToday()` is where that answer lives now, and this alias
+ * stays only because the window helpers below read better with it. */
+export const availabilityToday = orgToday;
 
 export function availabilityWindow(from: string = availabilityToday()): {
   date_from: string;

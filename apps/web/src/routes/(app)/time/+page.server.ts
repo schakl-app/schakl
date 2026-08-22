@@ -6,6 +6,7 @@ import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { orgToday } from "$lib/core/today";
 import { holidayName } from "$lib/modules/leave/format";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -17,10 +18,6 @@ function weekStartOf(iso: string): string {
   const diff = (day + 6) % 7; // days since Monday
   d.setUTCDate(d.getUTCDate() - diff);
   return d.toISOString().slice(0, 10);
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
@@ -68,7 +65,7 @@ export const load: PageServerLoad = async (event) => {
   // A week-only deep link selects its Monday. Keeping day inside the requested week lets the
   // workspace endpoint reuse one bounded scan and is less surprising than showing today's
   // detail beside an unrelated historical grid.
-  const selectedDate = event.url.searchParams.get("date") || requestedWeek || todayIso();
+  const selectedDate = event.url.searchParams.get("date") || requestedWeek || orgToday();
   const requestedWeekEnd = requestedWeek ? isoAddDays(requestedWeek, 6) : null;
   const week_start =
     requestedWeek &&
@@ -118,7 +115,7 @@ export const load: PageServerLoad = async (event) => {
     day: workspace.data?.day ?? null,
     selectedDate,
     week_start,
-    today: todayIso(),
+    today: orgToday(),
     presetCompanyId,
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
