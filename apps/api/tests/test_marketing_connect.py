@@ -10,6 +10,7 @@ not remove the one fact one of them carried.
 from __future__ import annotations
 
 import uuid
+import zlib
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -39,7 +40,9 @@ async def _company_with_website(c, headers, name: str = "Klant BV") -> tuple[str
     return company["id"], website["id"], domain["name"]
 
 
-async def _link_container(org_id, company_id: str, *, staged: int = 0) -> uuid.UUID:
+async def _link_container(
+    org_id, company_id: str, *, staged: int = 0, public_id: str = "GTM-ABC1234"
+) -> uuid.UUID:
     """A Tag Manager container attached to a client, written straight in.
 
     The link path is `test_gtm_api`'s subject; what matters here is only that a linked container
@@ -50,9 +53,11 @@ async def _link_container(org_id, company_id: str, *, staged: int = 0) -> uuid.U
         row = GtmContainer(
             org_id=org_id,
             account_id="6000000000",
-            container_id="900000001",
-            public_id="GTM-ABC1234",
-            name="klant.nl — web",
+            # Derived, not hashed: `hash()` of a str is salted per process, so a fixture
+            # built on it is a different fixture on the next run.
+            container_id=f"9{zlib.crc32(public_id.encode()):08d}"[:12],
+            public_id=public_id,
+            name=f"klant.nl — {public_id}",
             company_id=uuid.UUID(company_id),
             live_version_id="12",
             tag_count=9,
@@ -230,3 +235,39 @@ async def test_a_keyed_source_is_not_disconnected_for_want_of_a_google_grant(cli
         # "pending" — nothing has synced yet, which is true and actionable. Never
         # "disconnected", which names a credential this source does not have.
         assert health == {"seranking": "pending"}
+
+
+async def test_the_connections_row_is_one_read_whatever_the_client_has(
+    client_for, count_queries
+) -> None:
+    """The guard that came with the deleted Tag Manager card, kept (#411).
+
+    That card was one grouped read for every container's counts, pinned by its own test,
+    precisely because a provider that is two queries for this client and thirty for the next
+    passes every functional test either way (docs/PERFORMANCE.md). Absorbing the card into the
+    marketing panel must not quietly drop the guarantee it was written under — and
+    ``_PANELS_BUDGET`` cannot catch it, because its fixture client has no container at all and
+    the seam short-circuits on an empty list.
+    """
+    t = await make_tenant("mktg-conn-perf")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id, _, _ = await _company_with_website(c, headers)
+        await _link_container(t.org.id, company_id, staged=1)
+        with count_queries() as one:
+            first = await c.get(f"/api/v1/companies/{company_id}/panels", headers=headers)
+        assert first.status_code == 200, first.text
+
+        for index in range(5):
+            await _link_container(
+                t.org.id, company_id, staged=index, public_id=f"GTM-MORE{index}"
+            )
+        with count_queries() as many:
+            second = await c.get(f"/api/v1/companies/{company_id}/panels", headers=headers)
+        assert second.status_code == 200, second.text
+
+    panel = next(p for p in second.json() if p["key"] == "marketing.overview")
+    assert len(panel["data"]["connections"]) == 6
+    assert len(many.statements) <= len(one.statements), (
+        f"hub cost grew from {len(one.statements)} to {len(many.statements)} for six containers"
+    )
