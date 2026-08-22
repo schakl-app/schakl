@@ -10,6 +10,7 @@ import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
+import { timeEntryActions } from "$lib/modules/time/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -341,4 +342,6 @@ export const actions: Actions = {
   ...marketingActions,
   // Tag Manager panel contract (lib/integrations/google_tag_manager): attach a container.
   ...gtmActions,
+  // Uren panel contract (lib/modules/time): correct or remove one registration from the ⋯ (#400).
+  ...timeEntryActions,
 };
