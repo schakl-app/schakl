@@ -1669,6 +1669,7 @@
   "settings.users.revoke_effect_irreversible": "Not undone in one click: inviting them again restores the name, but not the roles or client groups.",
   "settings.users.revoke_effect_prefer_deactivate": "Meant for an account that should never have been here. For a colleague who is leaving, Deactivate is what you want.",
   "settings.users.deactivate": "Deactivate",
+  "settings.users.deactivated_section": "Deactivated ({count})",
   "settings.users.activate": "Activate",
   "settings.users.deactivate_confirm": "This colleague no longer works here?",
   "settings.users.deactivate_effect_login": "They can no longer sign in, and a session still open stops working too.",
