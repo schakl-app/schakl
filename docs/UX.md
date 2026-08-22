@@ -1960,6 +1960,50 @@
   place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
   count nobody promised — one row at `lg` and up, whole rows below it.
 
+- **A layout whose widths depend on which neighbours are empty is a layout per client** (#403,
+  the client hub again). The two mechanisms above are each defensible and jointly produced an
+  arrangement nobody chose: empty panels were filtered out *before* the ordered list was cut into
+  runs, so a run boundary moved whenever a client happened to have nothing in a panel. Measured on
+  one instance at one viewport, Contactpersonen was **488 px wide on two clients and 992 px on a
+  third**, and Uren — which declares itself half-width, and sits between two full-width panels, so
+  it is always alone on its run — was drawn 992 px wide and 509 px tall on **every** client that
+  has hours. That is the *"de volgorde lijkt per klant te verschillen"* and the *"grote blokken met
+  geboekte uren bovenaan"* the team reported, and neither was an impression. Three rules replace
+  the block rule, and none of them costs the composition:
+
+  - **A panel is drawn at the width it declared.** A half is half wide whether or not it has a
+    neighbour; the slot beside a lone half is filled by the next panel, or by nothing at all. "A
+    card alone on its row takes the row" was the right instinct about a *bordered rectangle beside
+    nothing* and the wrong conclusion — it is the one thing that cannot be done while a panel's
+    width is allowed to depend on its neighbours, which is the property the whole complaint is
+    about.
+  - **The arrangement is computed over the full ordered list, folded panels included**, and the
+    folded ones are omitted afterwards. Every panel is dealt a seat, so a client with nothing in
+    Projecten finds Contactpersonen in the lane a client who has everything finds it in — and a
+    folded *full-width* panel still ends the run of halves around it, because a run boundary that
+    moves is the bug one level down.
+  - **Two lanes, assigned in declared order, free to end at different heights.** A CSS multi-column
+    stack is column-major — you read down the left lane and then down the right — which is the
+    second reason two clients with the same panels looked reordered. Alternating seats read
+    top-to-bottom in both lanes on every client, and the lanes ending unevenly is honest rather
+    than ragged: they are two columns of cards, not a table.
+
+  The lanes are a desktop shape only, and keeping the phone unaffected is a real constraint on
+  how they are expressed: the lane wrappers are `display: contents` below `lg` and each card
+  carries its seat as a flex `order`, so one column still reads in declared order. The rule and
+  its arithmetic live in `$lib/modules/companies/hub.ts` rather than in the page, because this is
+  invisible on any one client — every card renders, every panel holds the right data, only the
+  widths differ, and only against a client whose empty set is not the developer's. It is asserted
+  across four clients at once in `tests/unit/company-hub-layout.test.ts`.
+
+  Its sibling is about the *other* axis, and it is the one panel #364 sorted by what it is called
+  rather than by what it is used for: `companies.details` — name, klantnummer, telefoon, website,
+  factuur-e-mailadres, adres, btw- en KvK-nummer — was filed as a **register**, under *VASTGELEGD*,
+  below every working surface, roughly 1.100 px down a well-filled client's page. A register is
+  something you occasionally consult; a client's telephone number is the single thing somebody
+  opens a client's page for when the phone rings. The register/working-surface split is right and
+  this panel was on the wrong side of it.
+
 - **One edit surface for every size of edit.** Everything about a client — thirty fields, its
   contact people and its logo — was changed in one 512 px `Modal` that rendered **1445 px tall**
   on a 900 px laptop, so Opslaan started below the fold and changing a billing address put the
