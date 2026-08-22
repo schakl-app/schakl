@@ -1911,6 +1911,16 @@
   because routing is a web question), and where the module has no such screen — Drive's "koppel
   een map", Google Ads' connect flow live *in the panel* — the chip unfolds that card in place.
 
+  **The `emptyHref` has to lead somewhere that can act, or the fold is a deadlock** (#399). The
+  marketing chip pointed at `/companies/<id>/marketing`, which is a *dashboard*: on a client with
+  nothing linked the one screen that could attach the first source was folded away, and the chip
+  replacing it led to a screen whose only offer was "Koppel een Google-account" — for a client
+  whose SE Ranking key and Rank Math password did not need one. Ask the question the other way
+  round before writing an `emptyHref`: *if this client has nothing here, does that URL let them
+  make the first one?* If the answer is no, drop it and let the chip unfold the card, which is
+  what the mechanism was built for. Marketing has none now, and the tab grew a ＋ of its own —
+  because a screen the chip *could* legitimately point at is one that can act.
+
   **A panel declares its own weight, because only the module knows.** `prominence` is a working
   surface (something the reader acts on today) or a **register** (correct, occasionally consulted,
   never news); `size` is full or half. How the page then fits them together is the entry below.

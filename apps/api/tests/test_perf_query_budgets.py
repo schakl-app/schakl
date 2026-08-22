@@ -338,7 +338,11 @@ _MEMBER_REQUEST_BUDGET = 8
 #: own join rather than a fourth round trip), one `GROUP BY status` over the client's hour
 #: pairings, and one count of what is waiting for a decision. It calls Timeon **never**: a
 #: company page must not wait on somebody else's timesheet server to render.
-_PANELS_BUDGET = 50
+# 50 → 48 (#411): the Ads, Tag Manager and Timeon cards came off the hub, and the marketing
+# panel took one query back for the connections row it absorbed. The saving is small *here*
+# because this fixture's client has no Ads account, no container and no Timeon pairing, so
+# all three providers short-circuited — on a populated client it is four statements more.
+_PANELS_BUDGET = 48
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.

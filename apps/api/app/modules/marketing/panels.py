@@ -23,7 +23,12 @@ _PANEL_RANGE_DAYS = 30
 async def _marketing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     if not ctx.can("marketing.metrics.read"):
         return {"forbidden": True}
-    data = await MarketingService(ctx).company_marketing(company_id, _PANEL_RANGE_DAYS)
+    # ``with_connections`` only here (#411). This panel absorbed the Tag Manager card, so it is
+    # the one surface that draws what is *measuring* the client's site beside what the numbers
+    # say — and the extra statement behind it is one the tab and the portal widget must not pay.
+    data = await MarketingService(ctx).company_marketing(
+        company_id, _PANEL_RANGE_DAYS, with_connections=True
+    )
     return data.model_dump(mode="json")
 
 
@@ -39,5 +44,10 @@ marketing_company_panel = PanelSpec(
     # the panel deliberately draws a state worth telling apart from an empty one.
     explicit_public="draws its own refusal; the metrics self-check marketing.metrics.read",
     prominence=PROMINENCE_PRIMARY,
-    empty_when=lambda data: not data.get("sources") and not data.get("forbidden"),
+    # A client with a container and no metrics source still has something to say, so the
+    # connections row counts as content (#411) — folding it away would put back exactly the
+    # warning the deleted Tag Manager card existed to carry.
+    empty_when=lambda data: not data.get("sources")
+    and not data.get("connections")
+    and not data.get("forbidden"),
 )

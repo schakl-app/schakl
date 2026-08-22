@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { gtmConnectActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingConnectActions } from "$lib/modules/marketing/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -51,6 +52,10 @@ export const actions: Actions = {
   // Connecting a source from here rather than sending the user to `/companies` to find the
   // client and then the gesture (#338). Same write as the client page's panel.
   ...marketingConnectActions,
+  // The connections half of the same control (#411): Tag Manager is attached through its own
+  // module's route, so it needs its own action — and this host has no client in the route, so
+  // it is the variant that reads the client off the form.
+  ...gtmConnectActions,
   createCompany: createCompanyAction,
   // Save the client's curated layout (#192) — the same action the client tab's dashboard posts,
   // so editing works identically on both surfaces. The API enforces marketing.link.manage.
