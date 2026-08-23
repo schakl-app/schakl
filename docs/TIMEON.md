@@ -240,6 +240,19 @@ and only then widen the window. Everything the push path asserts about Timeon's 
 from measurement against the live API (§7), not from its documentation — but measurement of
 *reads*.
 
+### 9a. No card on the client hub, and it is a deliberate loss (#411)
+
+`timeon.company` drew this client's Timeon identity, their paired-hour count and their open
+conflicts on the company page. It is gone, and unlike the Ads and Tag Manager cards removed
+beside it, **nothing takes its place** — so it is written down here rather than found later.
+
+The reasoning is the one this whole page is about: a cutover ends. A card on every client's page
+for a migration with a stated end date is a card that outlives its reason, and the questions it
+answered are the ones somebody asks *while running a sync*, on `/timeon`, which is where the
+answer can be acted on. The hub only ever said a conflict was waiting; the queue is where it is
+settled. Everything the card read is still stored, still on `/timeon`, and still in the MCP
+surface.
+
 ### 10. On cutover
 
 Set both directions to `off` (or delete the connection — the pairings and runs go, the *hours*

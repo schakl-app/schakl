@@ -3,7 +3,7 @@ task linking, company panel, and tenant isolation."""
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def test_requires_authentication(client_for) -> None:
@@ -92,7 +92,7 @@ async def test_tasks_belong_to_project(client_for) -> None:
 
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Design homepage", "project_id": project_id},
+            json={"due_date": FAR_FUTURE_DUE, "title": "Design homepage", "project_id": project_id},
             headers=headers,
         )
         assert task.status_code == 201

@@ -5,9 +5,37 @@
  * brand-vs-red and clamped its width at 100 %, so a project 40 % over budget looked exactly
  * like one that had just landed on it. Both the percentage and the colour live here now, and
  * every surface that shows burn reads them from here.
+ *
+ * The **colours** moved out again in #404: a burn level is a semantic state, and the palette
+ * for those is `core/state.ts`. Two things changed in the move and both were bugs. The scale
+ * had documented "green" for years and drawn `bg-brand` — so on the tenant whose brand is
+ * gold, a project comfortably inside its budget was drawn in a colour indistinguishable from
+ * the amber one step above it; a state may never be the tenant's brand, and this was the
+ * oldest breach of that rule in the app. And "bad" was `text-red-600` here against
+ * `text-red-700` in `SummaryStrip`, two shades of the same claim inside `lib/core` alone.
+ * What stays here is what is genuinely this module's: where the thresholds sit.
  */
 
+import { stateFillClass, stateTextClass, type UiState } from "./state.ts";
+
 export type BurnLevel = "ok" | "warn" | "over";
+
+/**
+ * The burn level said as a state. `warn` is `soon` rather than `today`: three quarters spent
+ * is a thing to know before it becomes a problem, which is exactly what `soon` names.
+ */
+export function burnState(pct: number | null): UiState {
+  switch (burnLevel(pct)) {
+    case "over":
+      return "late";
+    case "warn":
+      return "soon";
+    case "ok":
+      return "ok";
+    default:
+      return "neutral";
+  }
+}
 
 /**
  * Percentage of the budget consumed. **Unclamped** — 130 means 30 % over, and callers that draw
@@ -26,23 +54,18 @@ export function burnLevel(pct: number | null): BurnLevel | null {
   return "ok";
 }
 
-/** Bar fill. Amber and red are the semantic colours; below 75 % the tenant's brand carries it. */
+/** Bar fill, from the state palette — never the brand, whatever the level (#404). */
 export function burnBarClass(pct: number | null): string {
-  switch (burnLevel(pct)) {
-    case "over":
-      return "bg-red-500 dark:bg-red-400";
-    case "warn":
-      return "bg-amber-500 dark:bg-amber-400";
-    case "ok":
-      return "bg-brand";
-    default:
-      return "bg-transparent";
-  }
+  return pct == null ? "bg-transparent" : stateFillClass(burnState(pct));
 }
 
-/** Text colour for the remaining figure. Only "over" shouts; the rest stay quiet. */
+/**
+ * Text colour for the remaining figure. Only "over" shouts; the rest stay quiet — a figure
+ * that is fine says so with the bar beside it, and colouring every remainder green would spend
+ * the reader's attention on the rows with nothing to report.
+ */
 export function burnTextClass(pct: number | null): string {
-  return burnLevel(pct) === "over" ? "text-red-600 dark:text-red-400" : "text-text";
+  return burnLevel(pct) === "over" ? stateTextClass("late") : "text-text";
 }
 
 /** Width of the drawn bar. Clamped, unlike the number beside it. */

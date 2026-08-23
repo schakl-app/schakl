@@ -57,7 +57,11 @@ TASK_BULK = BulkDescriptor(
         BulkField("priority"),
         BulkField("project"),
         BulkField("company"),
-        BulkField("due_date"),
+        # Settable across a selection — "push this week's deadlines", and the way an agency
+        # dates the rows it carried into #392 — and **not clearable**: an empty box on a dialog
+        # that opens blank over rows that disagree is "I did not fill this in", and clearing a
+        # deadline is the one thing that stopped being allowed.
+        BulkField("due_date", clearable=False),
     ),
     delete_permission="tasks.task.delete",
     delete_row=_delete,

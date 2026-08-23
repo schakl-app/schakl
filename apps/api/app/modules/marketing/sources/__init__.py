@@ -16,6 +16,24 @@ kind of credential — one per **website**. Two identical surprises is a pattern
 coincidence, so the per-kind branches at the service's call sites became one dispatch
 (``MarketingService`` → ``keyed_client``). The prediction above is now true of everything except
 authentication, and authentication has a seam of its own.
+
+**Tag Manager is not here, and that is a decision rather than an omission** (#411). The team
+asked for it in the same picker as the other five, which is right about the *control* and wrong
+about the *vocabulary*: a container has no marketeer-facing metric of its own — no
+``list_accounts`` worth caching, no ``fetch_daily``, no drill-down, and the conversions it fires
+already arrive through GA4. A sixth ``MarketingSource`` would therefore need a value that
+``METRICS_BY_SOURCE``, ``SCOPE_BY_SOURCE``, :func:`primary_metric`, ``aggregate``, the overview
+grid, the report sections and the nightly sync each have to be taught to say nothing about — and
+would still put a section on a client's dashboard that draws no numbers, which is precisely what
+reads as broken.
+
+So the connect control offers **two lists**: these five metric sources, and the *connections*
+(``MarketingConnection``, ``schemas.py``), which today is Tag Manager alone. A connection is
+attached through its own module's route and there is no marketing row behind it — the
+``gtm_containers`` row *is* the link. That is a stronger form of #338's "the two must not
+disagree" than mirroring: two rows cannot disagree when there is only one. The rule for the
+next one is the same question this file has answered twice: **if it has no daily number, it is a
+connection, not a source.**
 """
 
 from __future__ import annotations

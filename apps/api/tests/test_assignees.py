@@ -13,7 +13,7 @@ from pwdlib import PasswordHash
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 
 _ph = PasswordHash.recommended()
 
@@ -237,7 +237,11 @@ async def test_project_inherits_only_the_companys_primary(client_for) -> None:
         # And a task under the project inherits the project's primary as its assignee.
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Kickoff", "project_id": explicit.json()["id"]},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Kickoff",
+                "project_id": explicit.json()["id"],
+            },
             headers=headers,
         )
         assert task.json()["assignee_user_id"] == other

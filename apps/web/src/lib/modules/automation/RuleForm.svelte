@@ -375,6 +375,23 @@
                     onselect={(v) => setConfig(index, "assignee_user_id", v)}
                   />
                 </div>
+                <!-- Every task gets a deadline (#392), so a rule that makes one says which:
+                     counted from the day it fires, on the org's own calendar. Left blank the
+                     API writes that day — a stated default, never NULL. A template rule needs
+                     none: its items carry their own relative due days. -->
+                <div>
+                  <span class={labelClass}>{t("automation.config.due_days")}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputmode="numeric"
+                    placeholder="0"
+                    value={String(entry.config.due_days ?? "")}
+                    class={inputClass}
+                    oninput={(event) => setConfig(index, "due_days", event.currentTarget.value)}
+                  />
+                  <p class="mt-1 text-xs text-text-muted">{t("automation.config.due_days_hint")}</p>
+                </div>
               {/if}
               <p class="text-xs text-text-muted sm:col-span-2">
                 {t("automation.config.company_hint")}

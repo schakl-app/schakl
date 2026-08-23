@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def _tenant_with_contact(client_for, slug: str, *, companies: int = 1):
@@ -489,14 +489,19 @@ async def test_portal_sees_only_client_visible_tasks(client_for) -> None:
         visible = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Zichtbaar", "company_id": company, "visible_to_client": True},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Zichtbaar",
+                    "company_id": company,
+                    "visible_to_client": True,
+                },
                 headers=headers,
             )
         ).json()
         hidden = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Intern", "company_id": company},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Intern", "company_id": company},
                 headers=headers,
             )
         ).json()
@@ -570,6 +575,7 @@ async def test_portal_task_count_matches_its_list(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "due_date": FAR_FUTURE_DUE,
                     "title": f"Taak {i}",
                     "company_id": company,
                     # Exactly one is ticked; the other three are the agency's own business.
@@ -629,7 +635,7 @@ async def test_portal_task_horizon_is_the_client_s_own_companies(client_for) -> 
         ):
             await c.post(
                 "/api/v1/tasks",
-                json={**payload, "visible_to_client": True},
+                json={"due_date": FAR_FUTURE_DUE, **payload, "visible_to_client": True},
                 headers=headers,
             )
 

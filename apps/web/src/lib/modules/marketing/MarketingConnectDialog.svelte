@@ -10,11 +10,17 @@
    * this is the front door: **one control, posting to `POST /marketing/links`**, reachable from
    * the client's page, from `/marketing/google-ads` and from `/marketing`.
    *
-   * It composes rather than re-implements: `MarketingAccountPicker` already lists the accounts
-   * the caller's Google grant can reach and teaches every state it can be in (not connected →
-   * connect, missing scope → reconnect, no developer token → Instellingen). What this adds is the
-   * half that was missing away from a client's page — *which client* — as the house picker with
-   * inline-create (docs/UX.md), shown only when the host cannot answer it from the route.
+   * It composes rather than re-implements: `MarketingSourcePickers` is the whole connect
+   * surface — the website select, the per-source pickers and the contributed connections — and
+   * this dialog adds the one half the client's own page never has to ask: *which client*, as the
+   * house picker with inline-create (docs/UX.md), shown only when the host cannot answer it from
+   * the route.
+   *
+   * It used to mount the pickers itself with `hasWebsites={false}` written in (#399), which made
+   * the Rank Math row read *"deze klant heeft nog geen website"* for every client — including
+   * ones with two — with no site select on the dialog to correct it with. A dialog that asks
+   * which client has to be able to ask which website, so it fetches this client's sites on the
+   * same lazy terms it fetches the client list.
    */
   import { page } from "$app/state";
 
@@ -29,18 +35,21 @@
     type PickerCompany,
   } from "$lib/modules/companies/picker";
 
-  import MarketingAccountPicker from "./MarketingAccountPicker.svelte";
-  import { connectHref, type MarketingSource } from "./types";
+  import MarketingSourcePickers from "./MarketingSourcePickers.svelte";
+  import { connectHref, SITE_KEY_SOURCES, type MarketingSource } from "./types";
 
   let {
     open = $bindable(false),
     companyId = "",
     companies = null,
+    websites = null,
     companyDefinitions = null,
     locale = "",
     sources,
     linkedIds = {},
     action = "?/marketingLink",
+    gtmAction = "?/gtmLink",
+    connectors = true,
     title,
     error = null,
     qcError = null,
@@ -59,6 +68,14 @@
      * anyway (`/marketing/google-ads` prints them under each card) passes them and pays nothing.
      */
     companies?: PickerCompany[] | null;
+    /**
+     * This client's websites, when the host already knows them (the company panel does).
+     *
+     * `null` means "ask for them when a client is chosen", not "there are none" — the same
+     * distinction `companies` above makes, for the same reason: `/marketing` must not pay a
+     * websites read on every render to fill a select most visits never see.
+     */
+    websites?: { id: string; name: string }[] | null;
     /** The host's already-loaded company custom-field definitions, or null to let it fetch. */
     companyDefinitions?: CustomFieldDefinition[] | null;
     /** Only reached through the client picker's ＋, so a host that fixes the client needs none. */
@@ -68,6 +85,10 @@
     /** Per source, the external ids already linked to this client — filtered out of the options. */
     linkedIds?: Partial<Record<MarketingSource, string[]>>;
     action?: string;
+    /** The host page's action for a contributed connection (#411) — `gtmActions` mounts it. */
+    gtmAction?: string;
+    /** A host narrowed to one source (`/marketing/google-ads`) offers no connections. */
+    connectors?: boolean;
     title: string;
     /** The host page's `form?.error`, so a refused link is read where it was asked for. */
     error?: string | null;
@@ -110,6 +131,36 @@
       capped = Boolean(body?.capped);
     })();
   });
+
+  // The chosen client's websites, on the same lazy terms and for the same reason: a site-key
+  // source (Rank Math) cannot be asked about at all until a site is named, and away from a
+  // client's page nothing on the screen could answer it. Keyed by client, because the picker
+  // above can change it — and a cache, because reopening the dialog on the same client must not
+  // spend a round trip to learn what it already knows.
+  const needsWebsites = $derived(sources.some((s) => SITE_KEY_SOURCES.includes(s)));
+  let siteCache = $state<Record<string, { id: string; name: string }[]>>({});
+  // A plain array, not `$state` and not a `SvelteSet`: it guards the effect below, and a
+  // reactive one would make the effect's own write re-run it (the `requested` flag above,
+  // one question over).
+  const asked: string[] = [];
+  $effect(() => {
+    const id = company;
+    if (!open || !id || !needsWebsites || websites !== null || asked.includes(id)) return;
+    asked.push(id);
+    void (async () => {
+      const response = await fetch(`/marketing/websites?company=${encodeURIComponent(id)}`, {
+        headers: { accept: "application/json" },
+      });
+      const body = response.ok ? await response.json() : null;
+      // Written as a whole object rather than mutated: `siteCache[id] = …` on a `$state` proxy
+      // works, but reading `siteCache` back below is what makes this effect its own dependency.
+      siteCache = { ...siteCache, [id]: (body?.items ?? []) as { id: string; name: string }[] };
+    })();
+  });
+  // `[]` is the honest answer while the read is in flight *and* when the client really has no
+  // website: the picker's two "no site" sentences differ, and the wrong one for a second is a
+  // better screen than a spinner in a select nobody was looking at.
+  const siteOptions = $derived(websites ?? siteCache[company] ?? []);
 
   const options = $derived(companies ?? fetched ?? []);
   // An archived client is not somebody you are wiring up an ad account for, so it drops behind
@@ -160,15 +211,15 @@
 
     {#if company}
       <div class="space-y-4 border-t border-border pt-4">
-        {#each sources as source (source)}
-          <MarketingAccountPicker
-            {source}
-            {action}
-            companyId={company}
-            linkedIds={linkedIds[source] ?? []}
-            hasWebsites={false}
-          />
-        {/each}
+        <MarketingSourcePickers
+          companyId={company}
+          websites={siteOptions}
+          {sources}
+          {linkedIds}
+          {action}
+          {gtmAction}
+          {connectors}
+        />
         <p class="text-xs text-text-muted">{t("marketing.connect.hint")}</p>
       </div>
     {:else}

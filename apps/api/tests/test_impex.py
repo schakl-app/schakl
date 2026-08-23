@@ -973,7 +973,7 @@ async def test_task_import_is_create_only(client_for) -> None:
             "/api/v1/impex/task/import?dry_run=false",
             files=_file(_csv_bytes(header, [
                 ["Bellen", "high", t.user.email, "2026-08-01"],
-                ["Bellen", "low", "", ""],
+                ["Bellen", "low", "", "2026-08-02"],
             ])),
             headers=headers,
         )
@@ -988,10 +988,30 @@ async def test_task_import_is_create_only(client_for) -> None:
         # An unknown assignee is a row error, never a silent orphan.
         bad = await c.post(
             "/api/v1/impex/task/import",
-            files=_file(_csv_bytes(header, [["X", "normal", "ghost@niet.nl", ""]])),
+            files=_file(_csv_bytes(header, [["X", "normal", "ghost@niet.nl", "2026-08-01"]])),
             headers=headers,
         )
         assert bad.json()["errors"][0]["message_key"] == "impex.errors.unresolved_reference"
+
+        # A deadline is required (#392), and an import says so **per row** rather than as a
+        # request-level 422 the report cannot point at (CLAUDE.md §17, #289).
+        undated = await c.post(
+            "/api/v1/impex/task/import",
+            files=_file(_csv_bytes(header, [["Zonder datum", "normal", "", ""]])),
+            headers=headers,
+        )
+        assert undated.status_code == 200, undated.text
+        assert ("due_date", "errors.required") in [
+            (e["field"], e["message_key"]) for e in undated.json()["errors"]
+        ]
+
+        # …and a file that never mentions the column at all is refused before any row is read.
+        missing = await c.post(
+            "/api/v1/impex/task/import",
+            files=_file(_csv_bytes(["title", "priority"], [["Zonder kolom", "normal"]])),
+            headers=headers,
+        )
+        assert missing.json()["errors"], missing.text
 
 
 async def test_time_entry_round_trip_with_readonly_columns(client_for) -> None:

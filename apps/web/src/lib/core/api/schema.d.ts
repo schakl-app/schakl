@@ -7944,6 +7944,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/companies/{company_id}/websites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Websites
+         * @description This client's websites — which one a new link attaches to (#399).
+         *
+         *     The connect dialog asks for the client and then, for a source whose credential belongs to
+         *     one **website** (Rank Math), has to ask which site. Away from a client's page there is
+         *     nothing on the screen that could answer it, which is why that picker used to read "deze
+         *     klant heeft nog geen website" for a client with two.
+         */
+        get: operations["company_websites_api_v1_marketing_companies__company_id__websites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/links": {
         parameters: {
             query?: never;
@@ -15204,6 +15229,8 @@ export interface components {
             /** @default year */
             compare_default: components["schemas"]["ComparePeriod"];
             compare_setting?: components["schemas"]["ComparePeriod"] | null;
+            /** Connections */
+            connections?: components["schemas"]["MarketingConnection"][];
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -21764,6 +21791,69 @@ export interface components {
             start: string;
         };
         /**
+         * MarketingConnection
+         * @description A client attachment that is **not** a metrics source (#411).
+         *
+         *     Tag Manager is the reason this shape exists, and the reason it is a *second* list rather
+         *     than a sixth ``MarketingSource``. The enum's own docstring already settled the question and
+         *     was right: a container has no marketeer-facing numbers of its own — no adapter, no daily
+         *     rows, no KPI row, no drill-down — and the conversions it fires arrive through GA4 already.
+         *     Making it a source to reuse one picker would have bought a value that
+         *     ``METRICS_BY_SOURCE``, ``SCOPE_BY_SOURCE``, ``primary_metric``, ``aggregate``, the overview
+         *     grid, the report sections and the nightly sync all have to be taught to say nothing about —
+         *     and would have put a row on a client's dashboard that draws no numbers, which is exactly
+         *     what reads as broken.
+         *
+         *     So the connect control offers two labelled lists and this is the second one. There is no
+         *     marketing row behind it: the ``gtm_containers`` row *is* the link, which is a stronger form
+         *     of #338's rule than mirroring — two rows that cannot disagree because there is only one.
+         */
+        MarketingConnection: {
+            /**
+             * Deep Link
+             * @default
+             */
+            deep_link: string;
+            /** External Id */
+            external_id: string;
+            /**
+             * Href
+             * @default
+             */
+            href: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @default gtm
+             */
+            kind: string;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Live Count
+             * @default 0
+             */
+            live_count: number;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Pending Changes
+             * @default 0
+             */
+            pending_changes: number;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
+        /**
          * MarketingSettingsRead
          * @description The org's marketing settings. The Ads developer token is write-only — like the Google
          *     client secret, the API reports only whether one is configured, never the value.
@@ -27577,8 +27667,11 @@ export interface components {
             company_id?: string | null;
             /** Description */
             description?: string | null;
-            /** Due Date */
-            due_date?: string | null;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
             /** Label Ids */
             label_ids?: string[];
             /** Links */
@@ -47251,6 +47344,37 @@ export interface operations {
             };
         };
     };
+    company_websites_api_v1_marketing_companies__company_id__websites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_links_api_v1_marketing_links_get: {
         parameters: {
             query: {
@@ -52740,6 +52864,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
                 unnamed?: boolean | null;
+                /** @description Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. */
+                undated?: boolean | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */

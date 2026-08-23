@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 @pytest.fixture(autouse=True)
@@ -202,7 +202,11 @@ async def test_runs_list_and_rule_filter(client_for) -> None:
             )
         ).json()
 
-        created = await c.post("/api/v1/tasks", json={"title": "Trigger me"}, headers=headers)
+        created = await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Trigger me"},
+            headers=headers,
+        )
         assert created.status_code == 201
 
         page = (await c.get("/api/v1/automation/runs", headers=headers)).json()
@@ -234,7 +238,11 @@ async def test_api_is_tenant_scoped(client_for) -> None:
                 headers=headers_a,
             )
         ).json()
-        await ca.post("/api/v1/tasks", json={"title": "A's"}, headers=headers_a)
+        await ca.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "A's"},
+            headers=headers_a,
+        )
 
     async with client_for(b.host) as cb:
         # B sees none of A's rules or runs, and cannot address them by id.

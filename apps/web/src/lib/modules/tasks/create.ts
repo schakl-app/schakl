@@ -20,7 +20,8 @@ import { type Assignee, parseAssignees } from "../../core/assignees.ts";
 
 export interface TaskCreateBody {
   title: string;
-  due_date: string | null;
+  /** Required (#392) — see {@link taskCreateBody}. Never `null`, and never invented here. */
+  due_date: string;
   company_id: string | null;
   project_id: string | null;
   priority: "normal";
@@ -36,9 +37,18 @@ export interface PostedFields {
 }
 
 /**
- * `null` when the caller supplied no title — the action turns that into `errors.required`
- * rather than inventing one. The API refuses an empty title too (`TaskCreate.title` is
- * `min_length=1`); this is the half that can name the field before the round trip.
+ * `null` when the caller supplied no title **or no deadline** — the action turns that into
+ * `errors.required` rather than inventing one. The API refuses both too (`TaskCreate.title` is
+ * `min_length=1` and `due_date` is required since #392); this is the half that can name the
+ * field before the round trip.
+ *
+ * The deadline joined the title for the same reason the title was moved in front of the row
+ * (#391): a task with no `due_date` is absent from `?due=overdue`, from the Agenda's deadline
+ * feed and from both dashboards' overdue counts, so it is not merely unscheduled — it is
+ * invisible to every screen that is about time, which is what the team means by *niet kan
+ * worden overgeslagen*. Both dialogs mark the field `required`, so this is the backstop rather
+ * than the thing a person meets. A **deadline is still not a calendar booking**: planning the
+ * work into the agenda stays optional and setting one never implies the other.
  *
  * @param opts.projectId  pinned by the surface (a project's to-do list), overriding the form.
  * @param opts.fallbackAssigneeUserId who to assign when the dialog rendered no roster picker at
@@ -50,16 +60,16 @@ export function taskCreateBody(
   opts: { projectId?: string | null; fallbackAssigneeUserId?: string | null } = {},
 ): TaskCreateBody | null {
   const title = String(form.get("title") ?? "").trim();
-  if (!title) return null;
+  const dueDate = String(form.get("due_date") ?? "").trim();
+  if (!title || !dueDate) return null;
 
   const assignees = parseAssignees(form.get("assignees"));
-  const dueDate = String(form.get("due_date") ?? "").trim();
   const companyId = String(form.get("company_id") ?? "").trim();
   const projectId = (opts.projectId ?? String(form.get("project_id") ?? "")).trim();
 
   return {
     title,
-    due_date: dueDate || null,
+    due_date: dueDate,
     company_id: companyId || null,
     project_id: projectId || null,
     // Status is omitted so the API assigns the org's default status (issue #62).

@@ -227,12 +227,19 @@
 
 <div class="relative" bind:this={rootEl}>
   <input type="hidden" {name} {value} form={formId} />
+  <!-- `form={formId}` on the **visible** field, not only on the hidden one: a control is only a
+       candidate for constraint validation when it is associated with the form being submitted,
+       so `required` on a field sitting outside `<form id=…>` (the single-save detail layouts)
+       silently validated nothing. It carries no `name`, so associating it submits nothing —
+       the hidden input beside it is still what posts the ISO value. `required` on that hidden
+       input would not work either: a hidden control is barred from validation by definition. -->
   <input
     {id}
     type="text"
     inputmode="numeric"
     bind:value={text}
     {required}
+    form={formId}
     {placeholder}
     autocomplete="off"
     onchange={onTextChange}
@@ -303,16 +310,23 @@
       </div>
 
       <div class="mt-2 flex items-center justify-between border-t border-border pt-2">
-        <button
-          type="button"
-          class="text-xs text-text-muted hover:text-brand"
-          onclick={() => {
-            commit("");
-            closePopover();
-          }}
-        >
-          {t("common.clear")}
-        </button>
+        <!-- A required field has nothing to clear *to*: the button would empty the input and
+             the very next submit would refuse it. #253's rule — a control that can only refuse
+             is not drawn. The empty <span> keeps "Vandaag" on the right. -->
+        {#if required}
+          <span></span>
+        {:else}
+          <button
+            type="button"
+            class="text-xs text-text-muted hover:text-brand"
+            onclick={() => {
+              commit("");
+              closePopover();
+            }}
+          >
+            {t("common.clear")}
+          </button>
+        {/if}
         <button
           type="button"
           class="text-xs text-brand hover:underline"
