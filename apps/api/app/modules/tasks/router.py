@@ -32,7 +32,7 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
-    DashboardTaskGroup,
+    DashboardTaskGroups,
     DashboardTaskItem,
     LabelCreate,
     LabelRead,
@@ -56,7 +56,7 @@ from app.modules.tasks.schemas import (
     TemplateRead,
     TemplateUpdate,
 )
-from app.modules.tasks.service import TaskService
+from app.modules.tasks.service import DASHBOARD_GROUP_ROWS, TaskService
 from app.modules.tasks.templates import TemplateService
 from app.schemas import Page
 
@@ -140,14 +140,19 @@ async def list_tasks(
 
 @router.get(
     "/dashboard-groups",
-    response_model=list[DashboardTaskGroup],
+    response_model=DashboardTaskGroups,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_groups(
+    limit: int = Query(DASHBOARD_GROUP_ROWS, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskGroup]:
-    """Open-task counts grouped by project, then company, in one compact query."""
-    return await TaskService(ctx).dashboard_groups()
+) -> DashboardTaskGroups:
+    """Open-task counts grouped by project, then company, ranked by urgency (#398).
+
+    Capped, and the envelope says by how much: a dashboard tile listing every project an
+    agency runs is a scroll rather than a summary.
+    """
+    return await TaskService(ctx).dashboard_groups(limit=limit)
 
 
 @router.get(

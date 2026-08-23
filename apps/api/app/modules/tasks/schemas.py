@@ -377,7 +377,27 @@ class DashboardTaskGroup(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     count: int
+    # The urgency partition (#398). A count says how *much* work a client is carrying and
+    # nothing about whether any of it is late, so the tile that ranked on it put five
+    # comfortable tasks above one that was due last Tuesday. These three are disjoint and each
+    # is exactly what its ``?due=`` chip shows, so every figure opens the list it counted;
+    # ``count`` stays, because "how much is there" is still a question, just not the first one.
     overdue: int
+    due_today: int = 0
+    due_week: int = 0
+
+
+class DashboardTaskGroups(BaseModel):
+    """The tile's rows plus how many groups there are (#398).
+
+    An envelope rather than a bare list, for one reason: the tile is capped now, and a short
+    list that looks complete reads as "that is all of them" (CLAUDE.md §17). ``total`` counts
+    the groups, not the tasks - it is what "en nog 7" is drawn from - and it rides on the same
+    grouped query as the rows.
+    """
+
+    groups: list[DashboardTaskGroup]
+    total: int
 
 
 class DashboardTaskItem(BaseModel):

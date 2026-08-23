@@ -59,7 +59,8 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.tasks.by_group",
       category: "dashboard.category.tasks",
       size: "md",
-      load: (api) => api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? []),
+      load: (api) =>
+        api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? { groups: [], total: 0 }),
       component: TasksByGroupWidget,
     },
   ],

@@ -10848,7 +10848,10 @@ export interface paths {
         };
         /**
          * Dashboard Groups
-         * @description Open-task counts grouped by project, then company, in one compact query.
+         * @description Open-task counts grouped by project, then company, ranked by urgency (#398).
+         *
+         *     Capped, and the envelope says by how much: a dashboard tile listing every project an
+         *     agency runs is a scroll rather than a summary.
          */
         get: operations["dashboard_groups_api_v1_tasks_dashboard_groups_get"];
         put?: never;
@@ -15999,6 +16002,16 @@ export interface components {
             company_name?: string | null;
             /** Count */
             count: number;
+            /**
+             * Due Today
+             * @default 0
+             */
+            due_today: number;
+            /**
+             * Due Week
+             * @default 0
+             */
+            due_week: number;
             /** Entity Id */
             entity_id: string | null;
             /** Entity Type */
@@ -16007,6 +16020,21 @@ export interface components {
             label: string | null;
             /** Overdue */
             overdue: number;
+        };
+        /**
+         * DashboardTaskGroups
+         * @description The tile's rows plus how many groups there are (#398).
+         *
+         *     An envelope rather than a bare list, for one reason: the tile is capped now, and a short
+         *     list that looks complete reads as "that is all of them" (CLAUDE.md §17). ``total`` counts
+         *     the groups, not the tasks - it is what "en nog 7" is drawn from - and it rides on the same
+         *     grouped query as the rows.
+         */
+        DashboardTaskGroups: {
+            /** Groups */
+            groups: components["schemas"]["DashboardTaskGroup"][];
+            /** Total */
+            total: number;
         };
         /**
          * DashboardTaskItem
@@ -53053,7 +53081,9 @@ export interface operations {
     };
     dashboard_groups_api_v1_tasks_dashboard_groups_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -53066,7 +53096,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardTaskGroup"][];
+                    "application/json": components["schemas"]["DashboardTaskGroups"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
