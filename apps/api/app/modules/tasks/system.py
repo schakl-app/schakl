@@ -23,6 +23,7 @@ from sqlalchemy import delete, func, select
 
 from app.core.events import EmitContext, emit
 from app.core.richtext import MENTION_RE, sanitize_markdown
+from app.core.timezone import org_today
 from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.tasks.models import (
@@ -122,11 +123,22 @@ async def create_task_system(
     assignee_user_id: uuid.UUID | None = None,
     description: str | None = None,
     priority: str = TaskPriority.NORMAL.value,
+    due_date: date | None = None,
     actor_name: str | None = None,
     extra_payload: dict[str, Any] | None = None,
 ) -> Task:
+    """Create a task as the system — an automation rule firing, with nobody in front of it.
+
+    ``due_date`` is the rule's own answer (``due_days`` on the action config, resolved by the
+    caller). ``None`` falls back to **the org's today**, never to ``NULL``: a deadline is
+    required (#392), and a 422 raised inside a worker is a task nobody ever sees. Resolved on
+    the org's calendar rather than the container's clock (CLAUDE.md §8) — a rule that fires at
+    01:00 in Amsterdam must not date its task yesterday.
+    """
     if priority not in {p.value for p in TaskPriority}:
         raise AppError("validation", "errors.validation", status_code=422)
+    if due_date is None:
+        due_date = await org_today(ctx.session, ctx.org.id)
     max_position = float(
         await ctx.session.scalar(
             select(func.max(Task.position)).where(Task.org_id == ctx.org.id)
@@ -142,6 +154,7 @@ async def create_task_system(
         assignee_user_id=assignee_user_id,
         status=TaskStatus.OPEN.value,
         priority=priority,
+        due_date=due_date,
         position=max_position + 1024.0,
     )
     ctx.session.add(task)
@@ -407,7 +420,10 @@ async def apply_ai_enrichment_system(
 
     if plan.due_date is not None and task.due_date is None:
         # Only fills a blank: a deadline a person set is a commitment, and a sentence in an
-        # email is not the thing that gets to move it.
+        # email is not the thing that gets to move it. Since #392 the create surfaces all ask
+        # for one, so the blank this fills is a row written before that release — deliberately
+        # kept rather than widened, because "the model may move a date somebody chose" is a
+        # different and much worse rule, and the input here is written by an outsider.
         if (
             today - timedelta(days=DUE_DATE_PAST_DAYS)
             <= plan.due_date

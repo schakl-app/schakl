@@ -474,6 +474,7 @@ class TaskService:
         due_to: date | None = None,
         q: str | None = None,
         unnamed: bool | None = None,
+        undated: bool | None = None,
         sort: str | None = None,
         with_meta: bool = True,
         hours: bool = False,
@@ -487,6 +488,15 @@ class TaskService:
         # gather them — and gathering them is what makes clearing them possible at all.
         if unnamed is not None:
             stmt = stmt.where(Task.unnamed.is_(unnamed))
+        # "The ones with no deadline" (#392) — the way out for the rows an instance carries
+        # into the release that made the date required. The column stays nullable for a release
+        # (expand/contract), so the legacy set has to be *findable*: without this it is scattered
+        # through a list ordered by a date it does not have, and the bulk edit that can date a
+        # whole selection has nothing to select.
+        if undated is not None:
+            stmt = stmt.where(
+                Task.due_date.is_(None) if undated else Task.due_date.is_not(None)
+            )
         if company_id is not None:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
@@ -1262,6 +1272,20 @@ class TaskService:
         values.pop("unnamed", None)
         if values.get("title") and task.unnamed:
             values["unnamed"] = False
+
+        # A deadline may be moved and may not be removed (#392). Absent means leave alone —
+        # which is what keeps a status-only PATCH working on a row written before the rule —
+        # and an explicit ``null`` is the one thing that stops being allowed. Refused here
+        # rather than in the schema so the answer is the ordinary field envelope the form
+        # already renders, and so a task that *is* undated cannot be re-confirmed as undated
+        # by a caller that thinks it is preserving state.
+        if "due_date" in values and values["due_date"] is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"due_date": "errors.required"},
+            )
 
         # Accountability: pushing an existing deadline back requires a reason, which lands
         # in the activity feed.

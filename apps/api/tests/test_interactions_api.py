@@ -9,7 +9,7 @@ from app.core.auth.models import User
 from app.core.events import subscribe
 from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
 
@@ -747,7 +747,7 @@ async def test_remap_by_owner_moves_links(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Opvolgen", "company_id": company["id"]},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Opvolgen", "company_id": company["id"]},
                 headers=headers,
             )
         ).json()
@@ -777,7 +777,7 @@ async def test_approve_can_assign_links_in_one_step(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Opvolgen", "company_id": company["id"]},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Opvolgen", "company_id": company["id"]},
                 headers=headers,
             )
         ).json()
@@ -977,6 +977,7 @@ async def test_project_rollup_includes_task_interactions_with_labels(client_for)
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "due_date": FAR_FUTURE_DUE,
                     "title": "Review",
                     "project_id": project["id"],
                     "company_id": company["id"],
@@ -1170,7 +1171,7 @@ async def test_thread_followup_inherits_all_links_including_task(client_for) -> 
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Review", "project_id": project["id"]},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Review", "project_id": project["id"]},
                 headers=headers,
             )
         ).json()
@@ -1243,7 +1244,7 @@ async def test_interaction_reports_closes_task(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Review", "company_id": company["id"]},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Review", "company_id": company["id"]},
                 headers=headers,
             )
         ).json()
@@ -1287,7 +1288,11 @@ async def test_task_host_activity_readable(client_for) -> None:
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         task = (
-            await c.post("/api/v1/tasks", json={"title": "Bouwen"}, headers=headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Bouwen"},
+                headers=headers,
+            )
         ).json()
         moment = await c.post(
             "/api/v1/interactions",

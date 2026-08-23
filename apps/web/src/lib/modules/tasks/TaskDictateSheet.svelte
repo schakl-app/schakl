@@ -483,13 +483,21 @@
 
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
-              <span class="mb-1 flex items-center gap-1 text-sm font-medium text-text">
+              <label
+                for="dictate-due"
+                class="mb-1 flex items-center gap-1 text-sm font-medium text-text"
+              >
                 {t("tasks.field.due_date")}
                 {#if marked("due_date")}<Sparkles size={12} class="text-brand" />{/if}
-              </span>
+              </label>
+              <!-- Required (#392). The speaker often says one ("voor vrijdag af") and the parse
+                   fills it; when they did not, this is the one field the review adds rather
+                   than confirms — and it is a click, not a form to go and find. -->
               <DateInput
+                id="dictate-due"
                 name="dictate-due"
                 value={draft.due_date ?? ""}
+                required
                 onchange={(v) => draft && (draft.due_date = v || null)}
               />
             </div>
@@ -698,7 +706,7 @@
             >
               {t("common.cancel")}
             </button>
-            <Button loading={busy.active} disabled={!draft.title?.trim()}>
+            <Button loading={busy.active} disabled={!draft.title?.trim() || !draft.due_date}>
               {t("tasks.dictate.create")}
             </Button>
           </div>

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 from tests.test_invoicing_api import _setup_org as _invoicing_setup_org
 
 
@@ -54,6 +54,7 @@ async def _task(
     res = await client.post(
         "/api/v1/tasks",
         json={
+            "due_date": FAR_FUTURE_DUE,
             "title": title,
             "company_id": company_id,
             "allocated_minutes": allocated_minutes,
@@ -572,6 +573,7 @@ async def test_a_record_filtered_interaction_page_costs_what_the_unfiltered_one_
                 task = await c.post(
                     "/api/v1/tasks",
                     json={
+                        "due_date": FAR_FUTURE_DUE,
                         "title": f"T{offset + i}",
                         "company_id": company,
                         "project_id": project_id,
@@ -1292,6 +1294,7 @@ async def test_composite_create_does_not_scale_with_its_checklist(
                 res = await c.post(
                     "/api/v1/tasks",
                     json={
+                        "due_date": FAR_FUTURE_DUE,
                         "title": f"Taak met {steps} stappen",
                         "checklist": {
                             "title": "Aanpak",
@@ -1304,7 +1307,11 @@ async def test_composite_create_does_not_scale_with_its_checklist(
             return len(counter.statements)
 
         # Warm the org's status vocabulary, which the first create seeds.
-        warm = await c.post("/api/v1/tasks", json={"title": "warm"}, headers=headers)
+        warm = await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "warm"},
+            headers=headers,
+        )
         assert warm.status_code == 201, warm.text
 
         two, ten = await _create(2), await _create(10)

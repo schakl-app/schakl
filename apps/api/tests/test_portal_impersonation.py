@@ -23,7 +23,7 @@ from app.config import settings
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 
 IMPERSONATE = "portal.login.impersonate"
 
@@ -497,6 +497,7 @@ async def test_writes_made_while_impersonating_name_the_impersonator(client_for)
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "due_date": FAR_FUTURE_DUE,
                     "title": "Zichtbaar voor klant",
                     "company_id": company["id"],
                     "visible_to_client": True,

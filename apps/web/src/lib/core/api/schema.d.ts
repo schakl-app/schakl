@@ -27503,8 +27503,11 @@ export interface components {
             company_id?: string | null;
             /** Description */
             description?: string | null;
-            /** Due Date */
-            due_date?: string | null;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
             /** Label Ids */
             label_ids?: string[];
             /** Links */
@@ -52646,6 +52649,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
                 unnamed?: boolean | null;
+                /** @description Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. */
+                undated?: boolean | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */

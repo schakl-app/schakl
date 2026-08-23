@@ -193,8 +193,11 @@
     },
     { key: "project", label: t("impex.column.task.project"), type: "fk", options: projectItems },
     { key: "company", label: t("impex.column.task.company"), type: "fk", options: companyItems },
-    // The one clearable field here: a task that loses its deadline is a real state, not a gap.
-    { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: true },
+    // Settable across a selection — pushing a week's deadlines, and how a backlog carried
+    // into #392 gets dated — and **not** clearable: a task with no deadline stopped being a
+    // real state, and a dialog that opens blank over rows that disagree could never tell
+    // "I did not fill this in" from "empty it on all of them".
+    { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: false },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.
@@ -402,6 +405,16 @@
       : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
     onclick={() => setFilter("unnamed", data.filters.unnamed ? "" : "1")}
     >{t("tasks.filter.unnamed")}</button
+  >
+  <!-- The rows an instance carried into #392, where the deadline became required. Findable so
+       they can be dated — one at a time, or as a selection through the ✎ beside this list. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.filters.undated
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => setFilter("undated", data.filters.undated ? "" : "1")}
+    >{t("tasks.filter.undated")}</button
   >
   {#each data.labels as label (label.id)}
     <button

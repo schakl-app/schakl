@@ -33,7 +33,7 @@ from app.modules.automation.models import (
 )
 from app.modules.notifications.models import Notification, NotificationEvent
 from app.modules.tasks.models import Task, TaskActivity
-from tests.conftest import Tenant, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, Tenant, make_tenant
 
 #: A public address (example.com) so the SSRF guard passes for stubbed hosts.
 _PUBLIC_ADDR = "93.184.216.34"
@@ -128,6 +128,7 @@ async def _make_task(tenant: Tenant, title: str = "A task", **kwargs) -> uuid.UU
     from app.modules.tasks.schemas import TaskCreate
     from app.modules.tasks.service import TaskService
 
+    kwargs.setdefault("due_date", FAR_FUTURE_DUE)
     async with _ctx(tenant, tenant.user) as ctx:
         task = await TaskService(ctx).create(TaskCreate(title=title, **kwargs))
         return task.id

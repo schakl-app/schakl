@@ -25,7 +25,7 @@ from app.integrations.google.gmail.service import (
 from app.integrations.google.models import GoogleConnection, GoogleSettings
 from app.integrations.google.oauth import SCOPE_GMAIL
 from app.modules.interactions.models import Interaction
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 # --------------------------------------------------------------------------- #
 # Pure matching units
@@ -2083,7 +2083,11 @@ async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Offerte maken", "company_id": company["id"]},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Offerte maken",
+                    "company_id": company["id"],
+                },
                 headers=headers,
             )
         ).json()

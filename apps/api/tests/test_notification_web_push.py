@@ -25,7 +25,7 @@ from app.modules.notifications.defaults import ResolvedPref, default_event_pref
 from app.modules.notifications.events import DIGEST_IMMEDIATE, EVENT_TYPES
 from app.modules.notifications.models import NotificationDelivery, PushSubscription
 from app.modules.notifications.prefs import compute_visible_at
-from tests.conftest import auth_cookie, leave_workday, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, leave_workday, make_tenant
 from tests.test_notification_channels import _member
 
 # A throwaway browser keypair, generated once: `p256dh` is a real P-256 point so the encryption
@@ -425,7 +425,11 @@ async def test_a_digest_event_is_not_pushed_by_default(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Iets te doen", "assignee_user_id": str(t.user.id)},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Iets te doen",
+                    "assignee_user_id": str(t.user.id),
+                },
                 headers=owner,
             )
         ).json()

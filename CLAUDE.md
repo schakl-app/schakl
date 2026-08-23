@@ -865,6 +865,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   task links were not decided against, they were added years after `spawn_next` was written and
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
+- **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
+  `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
+  `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'
+  overdue counts — not merely unscheduled but **invisible to the entire urgency vocabulary**, which
+  is why the team's *"niet kan worden overgeslagen"* becomes a required field rather than a warning.
+  Four rules generalise past the column. **The rule lives in the write schemas, not in the table**:
+  `TaskCreate.due_date` is required and `TaskUpdate` refuses an explicit `null` while `TaskBase`
+  stays nullable, because `TaskRead` inherits it and every instance upgrades carrying rows the new
+  rule forbids — the entrypoint runs `alembic upgrade head` unattended on somebody else's data
+  (docs/WORKFLOW.md), so the constraint is a later release's decision and the *first* one must leave
+  the backlog editable. **Absent still means leave alone; only clearing stops being allowed** —
+  §18's pair with its second half withdrawn — so a `PATCH` naming nothing but `status` works on a
+  legacy row, which is the acceptance criterion that matters most. **A creator with nobody in front
+  of it states a default rather than raising**, because a 422 in an ARQ worker is a task nobody ever
+  sees: the recurrence generator computes it from the rule, a template item from its
+  `relative_due_days` (else the day it is applied), and an automation rule from its own `due_days`
+  (else the day it fires) — while the **import**, which has a human reading a preview, refuses and
+  names the row (§17/#289: a check the row report cannot name is a check the preview does not have).
+  The **create dialog** #391 put in front of the row is where every hand-made task now answers, one
+  `taskCreateBody` for all five surfaces: the deadline joined the title there for the same reason
+  the title moved, and a rule enforced at four of five doors is a rule with a hole in it. And **a
+  rule shipped over live data owes that data a way out**: `?undated=1` gathers what the release
+  forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
+  and the edit form says in one line what it is about to ask for.
 
 - **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
   SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
