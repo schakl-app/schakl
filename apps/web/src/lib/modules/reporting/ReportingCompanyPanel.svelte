@@ -13,8 +13,11 @@
    */
   import { CalendarClock, FileText, Plus, Settings2 } from "@lucide/svelte";
 
+  import { page } from "$app/state";
+
   import { getLocale } from "$lib/paraglide/runtime";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import ReportStatusPill from "./ReportStatusPill.svelte";
@@ -109,7 +112,7 @@
             {#each shown as report (report.id)}
               <li class="flex items-center gap-3 py-2">
                 <FileText size={16} class="shrink-0 text-text-muted" />
-                <a href={`/reports/${report.id}`} class="min-w-0 flex-1 hover:underline">
+                <a href={fromHref(`/reports/${report.id}`, page.url)} class="min-w-0 flex-1 hover:underline">
                   <span class="block truncate text-sm text-text">{periodLabel(report, locale)}</span
                   >
                   <span class="block text-xs text-text-muted">

@@ -3,6 +3,7 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
@@ -11,6 +12,7 @@
   import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
@@ -59,6 +61,15 @@
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or
   // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
+
+  // A detour that started on a client's page (#408): every exit — Opslaan, Annuleren, ✕ and
+  // Verwijderen — returns to where it started. With no `?from=` there is nowhere to return to and
+  // each one behaves exactly as it did.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
 
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "projects.project.write"));
@@ -223,7 +234,7 @@
         canEdit={canWrite}
         exit="cancel"
         onedit={() => (editing = true)}
-        onexit={() => (editing = false)}
+        onexit={leaveEdit}
         items={canDelete
           ? [
               {
@@ -321,7 +332,10 @@
         method="POST"
         action="?/update"
         use:enhance={() =>
-          ({ update }) => {
+          async ({ result, update }) => {
+            // Opened as a detour, saving ends it (#408); a refusal stays put with its message.
+            if (result.type === "success" && origin)
+              return void goto(origin, { invalidateAll: true });
             editing = false;
             void update({ reset: false });
           }}
@@ -490,7 +504,7 @@
           <button
             type="button"
             class="rounded-lg border border-border px-4 py-2 text-sm"
-            onclick={() => (editing = false)}
+            onclick={leaveEdit}
           >
             {t("common.cancel")}
           </button>
@@ -688,5 +702,5 @@
   bind:open={confirmDelete}
   title={t("common.delete")}
   message={t("projects.delete_confirm", { name: project.name })}
-  action="?/deleteProject"
+  action={withOrigin("?/deleteProject", page.url)}
 />

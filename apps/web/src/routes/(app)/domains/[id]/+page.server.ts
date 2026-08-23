@@ -1,6 +1,7 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { originOf } from "$lib/core/origin";
 import { parseParty } from "$lib/core/party";
 import {
   createCompanyAction,
@@ -172,7 +173,10 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/domains/{domain_id}", {
       params: { path: { domain_id: event.params.id } },
     });
-    throw redirect(303, "/domains");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/domains");
   },
 
   createCompany: createCompanyAction,

@@ -1569,6 +1569,35 @@ contrast bug in dark mode rather than only an inconsistency.
   row call `returnHref(path)` for the same answer.
   It lives in `sessionStorage` — the same lifetime as SvelteKit's own scroll restoration, this tab
   and this visit — capped, evicting least-recently-left first.
+- **A record opened from a panel is a detour, and every act that ends it returns where it started**
+  (`core/origin.ts`, #408). Opening a contact from a client's Contactpersonen panel is not going to
+  the address book: the visitor was reading Bakkerij Van Loon, noticed a wrong phone number, went to
+  fix it, and is finished the moment it is saved. The app answered by leaving them standing on the
+  contact — and, if they pressed Verwijderen instead, by throwing them onto the org-wide register,
+  which is not where they came from either. Every panel link was a bare path, so the client id was
+  discarded at the moment of the click and nothing downstream could get it back.
+  So a link that starts a detour **says where the detour started** (`fromHref(path, page.url)`, on
+  every panel that names another module's record), and the three ways a detour ends all read it:
+  **Opslaan** navigates to the origin instead of closing the toggle in place, **Verwijderen** is
+  `redirect(303, originOf(event.url) ?? "/<register>")`, and **Annuleren / ✕** land on the same
+  destination — or the detour has two exits that disagree. Five things hold it up.
+  **It travels in the URL, because the server has to be able to read it**: a delete is a
+  `redirect(303, …)` from `+page.server.ts`, where the breadcrumb trail's `sessionStorage` does not
+  exist — and the URL is also the only carrier that survives a reload and a new tab.
+  **The param name lives in one module**, produced and read there, `edit-intent.ts`'s rule for the
+  same reason. **The untrusted-string question is not re-answered**: a `?from=` is read through
+  `safeInternalPath` (`core/redirect.ts`), and anything it refuses is `null` and the caller falls
+  back — a stale link is not the user's mistake, so never a 400. **A form action must be told
+  explicitly** (`withOrigin("?/delete", page.url)`): a browser resolves `?/delete` against the
+  current URL, which replaces the whole query string, so the origin would be dropped at exactly the
+  moment the server needs it. And **absence keeps today's behaviour** — a record opened from its own
+  register, from a notification or by a pasted URL stays put on save, which is what makes the rule
+  landable without re-deciding every screen. It is deliberately *not* `history.back()`, which goes
+  back one navigation rather than one task and is silently a no-op on a fresh tab.
+  The crumb row agrees with it: a `?from=` is a **stated** ancestor and outranks the one visit order
+  suggests (`statedAncestor`), still confirmed by the record itself — a client the record does not
+  name never becomes a crumb, or a hand-written URL would be a hierarchy. #401 makes an inferred
+  parent confirmable; this makes a stated one authoritative, and the two are complementary.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 

@@ -1,6 +1,7 @@
 import { error as httpError, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { originOf } from "$lib/core/origin";
 import { can } from "$lib/core/permissions";
 import { createContactAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
@@ -141,6 +142,9 @@ export const actions: Actions = {
       params: { path: { quote_id: event.params.id } },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    throw redirect(303, "/quotes");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/quotes");
   },
 };

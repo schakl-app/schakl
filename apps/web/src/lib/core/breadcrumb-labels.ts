@@ -8,6 +8,7 @@
  * rule enforceable instead of audited once and drifted from afterwards — the same reason
  * `settings-nav.ts` holds the Instellingen registry rather than each screen.
  */
+import { originOf } from "./origin.ts";
 import { settingsTitleKeys } from "./settings-nav.ts";
 
 /**
@@ -235,8 +236,14 @@ export interface CrumbLink {
  * rows each carrying that column. Either way it is the record's own data that decides, which is
  * the whole of the "is the way in true?" check — an ancestor the record does not name is never
  * drawn.
+ *
+ * `name` is where the record *calls* it, and it exists for the stated ancestor below: a trail
+ * inferred from navigation order carries the previous page's own label, while a `?from=` carries
+ * only a path — and the label is display text, so it may never be taken from the URL. A record
+ * that confirms an ancestor it cannot name simply draws no crumb for it.
  */
-export type ParentRule = { fk: string } | { collection: string; fk: string };
+export type ParentRule =
+  { fk: string; name?: string } | { collection: string; fk: string; name: string };
 
 /**
  * The rules per ancestor type, tried in order.
@@ -251,11 +258,14 @@ export type ParentRule = { fk: string } | { collection: string; fk: string };
  * and the models that hit it declare `__company_horizon_clause__` for the same reason.
  */
 const PARENT_RULES: Record<string, ParentRule[]> = {
-  company: [{ fk: "company_id" }, { collection: "companies", fk: "company_id" }],
-  project: [{ fk: "project_id" }],
-  domain: [{ fk: "domain_id" }],
-  contact: [{ fk: "contact_id" }],
-  task: [{ fk: "task_id" }],
+  company: [
+    { fk: "company_id", name: "company_name" },
+    { collection: "companies", fk: "company_id", name: "name" },
+  ],
+  project: [{ fk: "project_id", name: "project_name" }],
+  domain: [{ fk: "domain_id", name: "domain_name" }],
+  contact: [{ fk: "contact_id", name: "contact_name" }],
+  task: [{ fk: "task_id", name: "task_title" }],
 };
 
 /** The rules that could confirm an ancestor of this type — read by the schema sweep. */
@@ -279,4 +289,71 @@ export function isParentOf(link: CrumbLink, record: PageRecord): boolean {
   // company, and without this the row would name it twice in a row.
   if (link.type === record.type && link.id === record.record.id) return false;
   return parentRules(link.type).some((rule) => names(rule, record.record, link.id));
+}
+
+/**
+ * First path segment → the record type that section addresses, for reading an ancestor **stated**
+ * in a `?from=` (#408) rather than inferred from navigation order.
+ *
+ * Only the sections a detour can start from are listed. A path naming anything else is not a
+ * hierarchy claim we know how to check, so it returns no crumb and keeps working perfectly well
+ * as a return destination — the two questions are separate, and only this one needs confirming.
+ */
+export const ANCESTOR_ROUTES: Record<string, string> = {
+  companies: "company",
+  projects: "project",
+  domains: "domain",
+  contacts: "contact",
+  tasks: "task",
+};
+
+/** What a page already loaded calls a record of some type: the crumb label of last resort. */
+export type AncestorLookup = (type: string, id: string) => string | null;
+
+/** How this record names the ancestor `link`, through whichever rule confirmed it. */
+function labelFrom(link: CrumbLink, record: PageRecord): string | null {
+  for (const rule of parentRules(link.type)) {
+    if (!names(rule, record.record, link.id)) continue;
+    if (!("collection" in rule)) {
+      return rule.name ? str(record.record[rule.name]) : null;
+    }
+    const rows = record.record[rule.collection] as Fields[];
+    const row = rows.find((entry) => entry[rule.fk] === link.id);
+    if (row) return str(row[rule.name]);
+  }
+  return null;
+}
+
+/**
+ * The ancestor a `?from=` *states*, or `null`.
+ *
+ * **#401 makes an inferred parent confirmable; this makes a stated one authoritative** — and the
+ * safety property is unchanged either way: the record has to name the ancestor before it is drawn,
+ * or a hand-written URL would become a hierarchy. What the URL adds is the three cases the
+ * navigation-order trail can never serve, because it lives in `sessionStorage`: a reload, a new
+ * tab, and the first render after a server-side redirect.
+ *
+ * `lookup` is the fallback for a record that confirms its ancestor and carries no name for it — a
+ * task names its client with `company_id` and nothing else — answered from the lists the page's
+ * own load already holds rather than from an extra fetch.
+ */
+export function statedAncestor(
+  url: URL,
+  record: PageRecord,
+  lookup?: AncestorLookup,
+): CrumbLink | null {
+  const from = originOf(url);
+  if (!from) return null;
+  const segments = from.split(/[?#]/)[0].split("/").filter(Boolean);
+  const type = ANCESTOR_ROUTES[segments[0]];
+  if (!type || segments.length < 2) return null;
+  const link: CrumbLink = {
+    type,
+    id: segments[1],
+    label: "",
+    href: `/${segments[0]}/${segments[1]}`,
+  };
+  if (!isParentOf(link, record)) return null;
+  const label = labelFrom(link, record) ?? lookup?.(type, link.id) ?? null;
+  return label ? { ...link, label } : null;
 }

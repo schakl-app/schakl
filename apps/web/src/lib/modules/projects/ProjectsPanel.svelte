@@ -3,6 +3,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
@@ -34,7 +35,7 @@
       <ul class="divide-y divide-border">
         {#each shown as project (project.id)}
           <li class="flex items-center justify-between py-2">
-            <a href="/projects/{project.id}" class="text-sm font-medium text-text hover:text-brand">
+            <a href={fromHref(`/projects/${project.id}`, page.url)} class="text-sm font-medium text-text hover:text-brand">
               {project.name}
             </a>
             <span class="text-xs text-text-muted">

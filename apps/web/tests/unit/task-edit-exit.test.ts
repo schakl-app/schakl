@@ -54,14 +54,28 @@ describe("the task detail page's edit-mode exit", () => {
 
   test("discarding is still offered, and is still called Annuleren", () => {
     // The fix must not remove the honest exit: a user who wants their edits gone needs a control
-    // that says so. It is the footer button, and it is the only place `editMode = false` lives.
-    // Anchored on the assignment, not on the handler's exact spelling: #402 gave this button a
-    // block body (it consumes the edit-intent marker too), and a test that pins the arrow form
-    // fails on a change that leaves the rule it exists to protect entirely intact.
-    const cancel = source.indexOf("editMode = false");
-    assert.notEqual(cancel, -1, "the footer keeps a control that discards");
-    assert.match(source.slice(cancel, cancel + 300), /t\("common\.cancel"\)/);
-    assert.equal(source.split("editMode = false").length - 1, 1);
+    // that says so, and there must be exactly one of it.
+    //
+    // Asserted through the *handler* rather than by proximity, because the discard has moved
+    // twice since this was written and both moves left the rule intact: #402 gave the button a
+    // block body (it consumes the edit-intent marker too), and #408 lifted the whole thing into
+    // `leaveEdit()` near the top of the file, ~1700 lines from the button that calls it. A
+    // `slice(cancel, cancel + 300)` was pinning where the code happened to sit.
+    assert.equal(
+      source.split("editMode = false").length - 1,
+      1,
+      "exactly one control discards",
+    );
+    const discard = source.indexOf("editMode = false");
+    assert.ok(
+      source.slice(0, discard).includes("function leaveEdit"),
+      "the discard lives in leaveEdit()",
+    );
+    assert.match(
+      source,
+      /onclick=\{leaveEdit\}[\s\S]{0,300}t\("common\.cancel"\)/,
+      "and leaveEdit() is what the Annuleren button calls",
+    );
   });
 
   test("a successful save closes edit mode; a failed one keeps the work on the screen", () => {

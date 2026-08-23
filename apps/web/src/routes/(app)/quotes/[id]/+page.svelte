@@ -2,10 +2,12 @@
   import { Download, Check, FileText, Printer, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -23,8 +25,18 @@
   const isDraft = $derived(quote.status === "draft");
   let editing = $state(editIntent());
   $effect(() => {
-    if (form?.saved || form?.issued) editing = false;
+    // Saving ends the detour; issuing does not — that is a step in the document's own workflow,
+    // and whoever pressed it is still working on this document.
+    if (form?.saved) leaveEdit();
+    else if (form?.issued) editing = false;
   });
+  // A detour that started on a client's Facturatie panel (#408): saving, cancelling or deleting
+  // returns to where it started. With no `?from=` each one behaves exactly as it did.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
 
   const busy = new InFlight();
   let confirmIssue = $state(false);
@@ -121,7 +133,7 @@
       canEdit={data.canWrite && (isDraft || quote.status === "open")}
       exit="cancel"
       onedit={() => (editing = true)}
-      onexit={() => (editing = false)}
+      onexit={leaveEdit}
       items={[
         ...(!isDraft
           ? [
@@ -190,7 +202,7 @@
         settings={data.settings}
         locale={data.locale}
         {form}
-        oncancel={() => (editing = false)}
+        oncancel={leaveEdit}
         oncreatecontact={(name, company) => {
           qcContactName = name;
           qcContactCompany = company;
@@ -233,7 +245,7 @@
   bind:open={confirmDelete}
   title={t("common.delete")}
   message={t("invoicing.quote_delete_confirm")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />
 <ConfirmDialog
   bind:open={confirmConvert}

@@ -4,6 +4,7 @@
    * data; every number links to the document behind it (Principle 7). */
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
@@ -80,7 +81,7 @@
           {#each shown as invoice (invoice.id)}
             <li class="flex items-center justify-between gap-3 py-2 text-sm">
               <div class="min-w-0">
-                <a href="/invoices/{invoice.id}" class="font-medium text-text hover:text-brand">
+                <a href={fromHref(`/invoices/${invoice.id}`, page.url)} class="font-medium text-text hover:text-brand">
                   {invoice.number ?? t(`invoicing.status.${invoice.status}`)}
                 </a>
                 <span class="ml-2 text-xs text-text-muted">{dmy(invoice.issue_date)}</span>
@@ -127,7 +128,7 @@
           {#each shown as quote (quote.id)}
             <li class="flex items-center justify-between gap-3 py-2 text-sm">
               <div class="min-w-0">
-                <a href="/quotes/{quote.id}" class="font-medium text-text hover:text-brand">
+                <a href={fromHref(`/quotes/${quote.id}`, page.url)} class="font-medium text-text hover:text-brand">
                   {quote.number ?? t(`invoicing.quote_status.${quote.status}`)}
                 </a>
                 <span class="ml-2 rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted"

@@ -23,7 +23,9 @@
 
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { withOrigin } from "$lib/core/origin";
   import { returnHref } from "$lib/core/screen-position.svelte";
   import { pollWhile } from "$lib/core/poll.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -110,7 +112,8 @@
       {/if}
     </div>
     <p class="mt-1 text-sm text-text-muted">
-      {periodLabel(report, locale)}{#if !reader} · {audienceLabel(report.audience)}{/if}
+      {periodLabel(report, locale)}{#if !reader}
+        · {audienceLabel(report.audience)}{/if}
       {#if report.sent_at}
         · {t("reporting.review.sent_on", { date: fmtDate(report.sent_at, locale) })}
       {:else if report.published_at}
@@ -316,5 +319,5 @@
   bind:open={confirmDelete}
   title={t("reporting.review.delete_title")}
   message={t("reporting.review.delete_message")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />

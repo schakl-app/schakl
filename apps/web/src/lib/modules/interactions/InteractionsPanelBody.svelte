@@ -32,6 +32,7 @@
   import { page } from "$app/state";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -134,9 +135,12 @@
     const host = new Set(Object.keys(prefill));
     const chips: { href: string; label: string }[] = [];
     if (item.project_id && item.project_name && !host.has("project_id"))
-      chips.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+      chips.push({
+        href: fromHref(`/projects/${item.project_id}`, page.url),
+        label: item.project_name,
+      });
     if (item.task_id && item.task_title && !host.has("task_id"))
-      chips.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
+      chips.push({ href: fromHref(`/tasks/${item.task_id}`, page.url), label: item.task_title });
     // Every person the moment names (#300), not only the lead. On a contact's own page only
     // *that* person's chip is dropped — a link back to the page you are on says nothing, but
     // the people they were in the meeting *with* are the whole point of a roster, and

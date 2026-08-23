@@ -15,6 +15,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -152,7 +153,7 @@
   primaryAction="?/setPrimaryContact"
   id="company-contact-picker"
   placeholder={t("contacts.add_person")}
-  chipHref={(cid) => `/contacts/${cid}`}
+  chipHref={(cid) => fromHref(`/contacts/${cid}`, page.url)}
   labels={{
     primary: t("contacts.primary"),
     makePrimary: t("contacts.make_primary"),

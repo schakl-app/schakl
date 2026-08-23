@@ -11,11 +11,13 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -34,6 +36,15 @@
   let { data, form } = $props();
 
   let editing = $state(false);
+
+  // A detour that started on a client's page (#408): every exit — Opslaan, Annuleren, ✕ and
+  // Verwijderen — returns to where it started. With no `?from=` there is nowhere to return to and
+  // each one behaves exactly as it did.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
   let confirmDelete = $state(false);
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let host = $state<"root" | "www">("root");
@@ -108,7 +119,7 @@
         canEdit={canWrite}
         exit="cancel"
         onedit={startEdit}
-        onexit={() => (editing = false)}
+        onexit={leaveEdit}
         items={canDelete
           ? [
               {
@@ -181,7 +192,9 @@
     <form
       method="POST"
       action="?/update"
-      use:enhance={busy.wrap("save", () => ({ result, update }) => {
+      use:enhance={busy.wrap("save", () => async ({ result, update }) => {
+        // Opened as a detour, saving ends it (#408); a refusal stays put with its message.
+        if (result.type === "success" && origin) return void goto(origin, { invalidateAll: true });
         if (result.type === "success") editing = false;
         // Stay on the record after saving, so the fields keep what was just stored.
         void update({ reset: false });
@@ -264,7 +277,7 @@
         <button
           type="button"
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-          onclick={() => (editing = false)}>{t("common.cancel")}</button
+          onclick={leaveEdit}>{t("common.cancel")}</button
         >
         <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
@@ -331,5 +344,5 @@
   bind:open={confirmDelete}
   title={t("websites.delete")}
   message={t("websites.delete_confirm")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />
