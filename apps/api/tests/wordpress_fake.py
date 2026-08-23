@@ -21,6 +21,8 @@ from typing import Any
 
 import httpx
 
+from app.integrations.wordpress.client import supports_ai_visibility
+
 #: The plugin file wordpress.org fixes for Rank Math, and the version that first shipped AI
 #: Visibility. A fake on 1.0.272 is how a test says "installed, but too old".
 RANKMATH_PLUGIN = "seo-by-rank-math/rank-math.php"
@@ -208,7 +210,12 @@ class FakeWordPress:
         return plugins
 
     def _ai_visibility(self, request: httpx.Request, path: str) -> httpx.Response:
-        if not self.rankmath_version:
+        if not supports_ai_visibility(self.rankmath_version):
+            # Absent *and* too old answer the same way, because on both the controller was never
+            # registered — AI Visibility begins at 1.0.273. The fake used to serve these routes
+            # for any version at all, which made it kinder than the real server on exactly the
+            # state a test wants to describe: `test_an_old_rank_math…` had to switch the
+            # subscription off as well, with a comment saying the routes do not exist either.
             return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
         if not self.is_admin:
             # What every AI Visibility route answers an editor: the routes exist, this user

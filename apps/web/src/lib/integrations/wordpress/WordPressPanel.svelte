@@ -107,7 +107,19 @@
           void update({ reset: false });
         })}
       >
+        <!-- The walkthrough, not a sentence (#435). Whoever is filling this in is a marketeer
+             who has been asked for "the WordPress details" and has quite possibly never opened
+             a `wp-admin`; "use an application password" is a hint for somebody who already
+             knows what one is. Numbered, in the order the screens appear, and it says the one
+             thing WordPress does not: the password is shown once. -->
         <p class="text-xs text-muted">{t("wordpress.connect_help")}</p>
+        <p class="text-xs font-medium text-text">{t("wordpress.connect_steps.title")}</p>
+        <ol class="ml-4 list-decimal space-y-1 text-xs text-muted">
+          <li>{t("wordpress.connect_steps.s1")}</li>
+          <li>{t("wordpress.connect_steps.s2")}</li>
+          <li>{t("wordpress.connect_steps.s3")}</li>
+          <li>{t("wordpress.connect_steps.s4")}</li>
+        </ol>
         <div>
           <label for="wp-url" class="mb-1 block text-sm text-text">
             {t("wordpress.field.base_url")}
@@ -132,6 +144,7 @@
             autocomplete="off"
             class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
           />
+          <p class="mt-1 text-xs text-muted">{t("wordpress.field.username_help")}</p>
         </div>
         <div>
           <label for="wp-pw" class="mb-1 block text-sm text-text">

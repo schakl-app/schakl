@@ -113,6 +113,23 @@ class AccountsResponse(BaseModel):
     #: their colleague linked minutes ago, so they connect again — this is what turns that empty
     #: state into "already connected via X; connect your own to pick accounts yourself".
     connected_via: list[ConnectionOwner] = Field(default_factory=list)
+    #: For a **site-key** source only: which prerequisite is the first unmet one
+    #: (``app.core.wordpress``'s ``STAGE_*``), including ``ready``. ``None`` for every other
+    #: source, which has no per-website setup to be partway through.
+    #:
+    #: It exists because ``configured`` is one boolean over six different jobs for three
+    #: different people (#435): "no credential yet" and "the credential was refused" answered
+    #: identically, so the picker drew the first sentence over both, and "Rank Math is not
+    #: installed" and "this client has no brand yet" were an empty list. A stage is what makes
+    #: a *next step* drawable — §9's rule that `details` carries what a translated `message`
+    #: structurally cannot.
+    setup_stage: str | None = None
+    #: WordPress's own words about the refusal above, carried as a quote and never translated
+    #: (§9: the provider's own prose never becomes the envelope's `message`).
+    setup_detail: str | None = None
+    #: Deep links into the client's own ``wp-admin`` for the stage above — ``app_passwords``,
+    #: ``plugins``, ``ai_visibility``. Empty where we hold no address to build one from.
+    setup_links: dict[str, str] = Field(default_factory=dict)
 
 
 # --- metrics (#133): panel + tab ------------------------------------------------------------- #

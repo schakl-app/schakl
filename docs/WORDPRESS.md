@@ -319,6 +319,62 @@ should land in one file rather than at whichever call sites had imported the cla
 With the module disabled nothing is registered and the resolver answers `None`, which every
 caller already handles — it is the same answer as "this website has no credential yet".
 
+The third registration is `describe_setup`, and the reason it exists is a bug rather than a
+symmetry (#435). `marketing` cannot import `WordPressError`, so its only way to tell
+`rest_no_route` (the plugin is not there) from `aiv_unauthorized` (the plan does not reach AI
+Visibility) was to read the exception's attributes across the boundary — and the one place that
+already did, `_org_key_error`, read `exc.response.status_code`, which is an httpx shape a
+WordPress failure does not have. Every refusal fell through to a generic "er ging iets mis", and
+`marketing.rankmath_key_rejected` sat in both message catalogs, unreachable from anywhere in the
+codebase. **Classifying a refusal is this module's vocabulary, so it is this module's job.**
+
+### The guided setup, and why `configured` could not carry it
+
+Four things have to be true in the client's own WordPress before a brand can be linked: an
+application password from an **administrator** (every AI Visibility route is `manage_options`),
+Rank Math ≥ 1.0.273, a Content AI plan that reaches AI Visibility, and a brand that exists.
+None of them is something schakl can do, all of them are done in another product, and they are
+fixed by three different people.
+
+`AccountsResponse.configured` is one boolean, so it answered "there is no credential" and "the
+credential was refused" identically — the picker drew *"deze website heeft nog geen
+WordPress-koppeling"* over a website that had one, with the cure (re-mint the password) on no
+screen anywhere. And an empty `accounts` list answered "Rank Math is not installed" and "this
+client has no brand yet" identically, as *"Geen accounts beschikbaar"*, which is a dead end
+however true it is.
+
+So the response carries `setup_stage` — the **first unmet** prerequisite, `ready` when there is
+none — plus `setup_detail` (the site's own words, a quote, never translated) and `setup_links`
+(deep links into that client's own `wp-admin`, built from the stored `base_url` and never
+guessed: with no credential row there is no address, so there are no links, because a link built
+out of a guess is a control that can only refuse). The web draws them as an ordered checklist
+where what is proven is ticked, the current step is expanded with what to do and the button that
+goes there, and the rest are dimmed.
+
+Four rules generalise past Rank Math.
+
+- **A stage is decided by the call that just happened.** `exc` or `brand_count` is evidence; the
+  stored probe is a memory, consulted only to break a tie the site's answer cannot — `admin:
+  false` separates an editor's password from a wrong one (both are a 403 on the same route), and
+  the stored `rankmath_version` separates "not installed" from "too old" (both are the same
+  `rest_no_route` 404, because the controller was never registered either way).
+- **A prerequisite nobody has completed is not an error.** `error` is suppressed for every stage
+  but `credential_refused`, `unreachable` and `site_error`: a red *"er ging iets mis"* over a
+  checklist naming the exact next step is the noise this issue was filed about.
+- **`no_brands` is `configured: true`.** The plumbing is finished and the client has no brand —
+  a different sentence, on a different screen, fixed by a different person, and the one stage
+  that links into Rank Math rather than back to the website page.
+- **The cache needs an override, and it needs one where the list is full.** Options are cached
+  for ten minutes, so somebody who has just created the brand they came here to link is shown a
+  list that is confidently missing it with nothing on screen disagreeing — the "not all of them"
+  half of the same complaint, and the state that looks healthiest. `?refresh=1` skips the read
+  and still writes, and the control sits beside the populated combobox as well as the empty one.
+
+Its sibling is in the tests: `tests/wordpress_fake.py` served the AI Visibility routes for any
+Rank Math version at all, so `rankmath_too_old` was unreachable and the existing test for it had
+to switch the *subscription* off as well, with a comment saying the routes do not exist either. A
+fake kinder than the real server is a fake the bug hides in, which is the file's own stated rule.
+
 ### Link rules
 
 A `rankmath` link **requires** `website_id` and a connected website, refused at create time with

@@ -46,6 +46,14 @@ from app.core.timezone import org_zoneinfo
 # The credential seam, not the module (§6). ``wordpress`` may be disabled, in which case the
 # resolver answers ``None`` — the same answer as "this website has no credential yet", which
 # every caller here already handles.
+from app.core.wordpress import (
+    CONFIGURED_STAGES,
+    STAGE_CREDENTIAL_REFUSED,
+    STAGE_READY,
+    STAGE_SITE_ERROR,
+    STAGE_UNREACHABLE,
+)
+from app.core.wordpress import describe_setup as describe_wordpress_setup
 from app.core.wordpress import open_client as open_wordpress_client
 from app.core.wordpress import resolve_credential as resolve_wordpress_credential
 from app.errors import AppError
@@ -147,7 +155,14 @@ def _org_key_error(exc: Exception, source: str) -> str:
     iets mis" sends an admin to the wrong screen. Only the two that are actually diagnosable
     get their own key; everything else keeps the generic one rather than guessing.
     """
+    # Two shapes, because two different clients raise here. An org-key source speaks httpx and
+    # carries `.response.status_code`; a site-key source's failure is the owning module's own
+    # exception and carries `.status`. Reading only the first is why
+    # `marketing.rankmath_key_rejected` was in both catalogs and unreachable from anywhere in
+    # the codebase (#435) — every WordPress refusal fell through to the generic key.
     status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is None:
+        status = getattr(exc, "status", None)
     if status in (401, 403):
         return f"marketing.{source}_key_rejected"
     return "marketing.accounts_error"
@@ -426,6 +441,7 @@ class MarketingService:
         adapter: Any,
         *,
         website_id: uuid.UUID | None = None,
+        refresh: bool = False,
     ) -> AccountsResponse:
         """The picker for a source with no OAuth: a credential, configured or not.
 
@@ -438,6 +454,21 @@ class MarketingService:
         ``website_id`` is what a **site-key** source needs and every other source ignores: a
         Rank Math picker lists the brands tracked on *one client's WordPress*, so there is no
         agency-wide list to fetch and the question is meaningless without naming a site.
+
+        For a site-key source every exit also carries a **stage** (#435). ``configured`` alone
+        was one boolean over six prerequisites that three different people fix in three
+        different products, so "no credential yet" and "the credential was refused" answered
+        identically and "Rank Math is not installed on this site" and "this client has no brand
+        yet" were both an empty list. The classification is asked of the module that owns the
+        credential (``app/core/wordpress.describe_setup``) rather than done here, because
+        telling ``rest_no_route`` from ``aiv_unauthorized`` means speaking a vocabulary §6
+        forbids this module from importing — and the one time it tried, by duck-typing
+        ``exc.response.status_code``, it read an attribute that does not exist.
+
+        ``refresh`` skips the cache **read** and still writes: a brand created in WordPress a
+        minute ago must be reachable without waiting out a ten-minute entry, and a list that is
+        confidently out of date with no control that disagrees with it is the "not all of them"
+        half of the same complaint.
         """
         # Keyed on the website for a site-key source: two clients' brand lists are different
         # answers to the same question and must never share a cache entry.
@@ -445,9 +476,40 @@ class MarketingService:
         cache_key = (
             f"schakl:marketing:accounts:{self.ctx.org.id}:{source.value}{scope_key}"
         )
-        unconfigured = AccountsResponse(
-            source=source, connected=True, has_scope=True, configured=False
-        )
+        site_key = source_auth(source.value) == AUTH_SITE_KEY
+
+        async def described(
+            *,
+            configured: bool,
+            exc: Exception | None = None,
+            brand_count: int | None = None,
+        ) -> dict[str, Any]:
+            """The stage fields for a site-key source, plus who decides ``configured``.
+
+            For any other kind of source the branch's own answer stands and no stage exists —
+            an org key is configured or it is not, and there is no per-website setup to be
+            partway through. For a site-key source the stage is the better answer, because it
+            is the one that can tell "the credential is fine and this client has no brand yet"
+            from "there is no credential".
+            """
+            if not site_key or website_id is None:
+                return {"configured": configured}
+            if brand_count:
+                # A non-empty list *is* the evidence that every prerequisite is met, so the
+                # stage is knowable without a query. This is the common case — every page load
+                # of a client that is already set up — and PERFORMANCE.md's rule is that a
+                # screen does not pay for a diagnosis it has nothing to diagnose.
+                return {"setup_stage": STAGE_READY, "setup_links": {}, "configured": True}
+            state = await describe_wordpress_setup(
+                self.ctx.session, self.ctx.org.id, website_id, exc=exc, brand_count=brand_count
+            )
+            return {
+                "setup_stage": state.stage,
+                "setup_detail": state.detail,
+                "setup_links": state.links,
+                "configured": state.stage in CONFIGURED_STAGES,
+            }
+
         try:
             # The credential is resolved **before** the cache is consulted, which is what the
             # org-key path always did (it read the key, then Redis) and is worth keeping: an
@@ -457,13 +519,15 @@ class MarketingService:
             async with keyed_client(
                 self.ctx.session, self.ctx.org.id, source.value, website_id
             ) as client:
-                cached = await get_redis().get(cache_key)
+                cached = None if refresh else await get_redis().get(cache_key)
                 if cached is not None:
+                    options = [AvailableAccount(**item) for item in json.loads(cached)]
                     return AccountsResponse(
                         source=source,
                         connected=True,
                         has_scope=True,
-                        accounts=[AvailableAccount(**item) for item in json.loads(cached)],
+                        accounts=options,
+                        **await described(configured=True, brand_count=len(options)),
                     )
                 # The pool connection is handed back for the live listing, the same rule the
                 # Google path follows (docs/PERFORMANCE.md).
@@ -472,15 +536,35 @@ class MarketingService:
         except SourceNotConfigured:
             # No credential yet. Not an error and not an empty list: `configured=False` is the
             # state the picker teaches from, and it is what an install that has not set this
-            # source up looks like on every page load.
-            return unconfigured
-        except Exception as exc:  # noqa: BLE001 — a live fetch failure teaches, never 500s
-            logger.warning("marketing %s account listing failed: %s", source.value, exc)
+            # source up looks like on every page load. For a site-key source the stage says
+            # *which* kind of nothing this is — no row at all, or a deactivated one.
             return AccountsResponse(
                 source=source,
                 connected=True,
                 has_scope=True,
-                error=_org_key_error(exc, source.value),
+                **await described(configured=False),
+            )
+        except Exception as exc:  # noqa: BLE001 — a live fetch failure teaches, never 500s
+            logger.warning("marketing %s account listing failed: %s", source.value, exc)
+            described_fields = await described(configured=True, exc=exc)
+            error = _org_key_error(exc, source.value)
+            stage = described_fields.get("setup_stage")
+            if stage is not None and stage not in (
+                STAGE_CREDENTIAL_REFUSED,
+                STAGE_UNREACHABLE,
+                STAGE_SITE_ERROR,
+            ):
+                # A prerequisite nobody has completed yet is a *setup state*, not a failure.
+                # Drawing "er ging iets mis" in red over a checklist that names the exact next
+                # step is the noise this issue is about: "Rank Math is not installed on this
+                # site" is not something that went wrong, it is something still to do.
+                error = None
+            return AccountsResponse(
+                source=source,
+                connected=True,
+                has_scope=True,
+                error=error,
+                **described_fields,
             )
         options = [
             AvailableAccount(
@@ -497,7 +581,11 @@ class MarketingService:
             ex=_ACCOUNTS_CACHE_SECONDS,
         )
         return AccountsResponse(
-            source=source, connected=True, has_scope=True, accounts=options
+            source=source,
+            connected=True,
+            has_scope=True,
+            accounts=options,
+            **await described(configured=True, brand_count=len(options)),
         )
 
     # --- shared helpers ------------------------------------------------------------------- #
@@ -1129,12 +1217,18 @@ class MarketingService:
         ]
 
     async def available_accounts(
-        self, source: MarketingSource, website_id: uuid.UUID | None = None
+        self,
+        source: MarketingSource,
+        website_id: uuid.UUID | None = None,
+        *,
+        refresh: bool = False,
     ) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
         adapter = source_for(source.value)
         if source_auth(source.value) != AUTH_GOOGLE:
-            return await self._keyed_accounts(source, adapter, website_id=website_id)
+            return await self._keyed_accounts(
+                source, adapter, website_id=website_id, refresh=refresh
+            )
         flag = _CONNECT_FLAG[source.value]
         connection = await google_client.connection_for(
             self.ctx.session, self.ctx.org.id, self.ctx.user.id
@@ -1169,7 +1263,7 @@ class MarketingService:
 
         cache_key = f"schakl:marketing:accounts:{connection.id}:{source.value}"
         redis = get_redis()
-        cached = await redis.get(cache_key)
+        cached = None if refresh else await redis.get(cache_key)
         if cached is not None:
             options = [AvailableAccount(**item) for item in json.loads(cached)]
         else:
