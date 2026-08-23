@@ -116,7 +116,12 @@ describe("a heading is a link and a colour", () => {
     }
   });
 
-  test("later is the only bucket with no state, so the tint is hierarchy and not a wash", () => {
-    assert.deepEqual(DUE_BUCKETS.map(dueState), ["late", "today", "soon", "neutral"]);
+  test("only the two buckets that are claims are tinted, so the tint is hierarchy", () => {
+    // *Deze week* was `soon` until the board (#395) drew all four headings adjacent and at
+    // 10px uppercase: red, orange and amber do not separate, and three warm headings read as
+    // one long warning — the *"rustiger gebruik van kleuren"* half of the same complaint. Only
+    // the moment that has passed and the moment that is now shout; `neutral` is still *drawn*
+    // (the theme's own text), which is what keeps it above the muted grey *Later* keeps.
+    assert.deepEqual(DUE_BUCKETS.map(dueState), ["late", "today", "neutral", "neutral"]);
   });
 });

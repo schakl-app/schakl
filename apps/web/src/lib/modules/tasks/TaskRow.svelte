@@ -1,18 +1,27 @@
 <script lang="ts">
   /**
-   * Shared task row: complete-toggle, title linking to the card, label chips, due date
-   * (red when overdue), checklist progress, comment count, the faces of everyone on it.
-   * Used by the tasks list, the project to-do list and the company panel.
+   * Shared task row: complete-toggle, title linking to the card, label chips, due date,
+   * checklist progress, comment count, the faces of everyone on it.
+   * Used by the tasks list (below `sm`), the project to-do list and the company panel.
+   *
+   * Since #395 it carries the urgency vocabulary the board is grouped by, and it carries it here
+   * *because* it is shared: the team asked for the same treatment on the client and project
+   * lists, and one component is how those get it without four copies of the rule.
+   *  - the deadline prints its distance beside it (`DueDate`), so `18 aug` no longer asks the
+   *    reader to know today's date and subtract;
+   *  - a `high` priority draws a rail down the row's left edge (`priorityRailClass`), so the one
+   *    task that cannot slip is found before the text is read.
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { burnPct, burnTextClass } from "$lib/core/burn";
   import Avatar from "$lib/core/ui/Avatar.svelte";
-  import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { orgToday } from "$lib/core/today";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
+  import DueDate from "$lib/modules/tasks/DueDate.svelte";
+  import { priorityRailClass } from "$lib/modules/tasks/priority";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
@@ -94,7 +103,6 @@
   const pill = $derived(
     statusDef && !statusDef.is_terminal && !statusDef.is_default ? statusDef : null,
   );
-  const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   // Every face on the task (#375), primary first — the row is narrow, so it draws up to three and
   // counts the rest. Falls back to the mirrored column for the compact shapes that carry no
   // roster, which is exactly the row this looked like before.
@@ -129,7 +137,10 @@
      on a phone used to squeeze the `flex-1 min-w-0` title to literally zero width — a task you
      could no longer read or open. Wrapping moves the badge cluster to its own line instead;
      on a desktop everything still fits on one. -->
-<div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-surface">
+<div
+  class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 pl-3.5 pr-4 hover:bg-surface
+    {priorityRailClass(task.priority, done)}"
+>
   {#if canToggle}
     <form method="POST" action={toggleAction} use:enhance>
       <input type="hidden" name="id" value={task.id} />
@@ -220,15 +231,10 @@
         ⏱ {formatMinutes(task.allocated_minutes)}
       </span>
     {/if}
-    {#if task.due_date}
-      <span
-        class="text-xs tabular-nums {overdue
-          ? 'font-semibold text-red-600 dark:text-red-400'
-          : 'text-text-muted'}"
-      >
-        {fmtDayMonth(task.due_date)}
-      </span>
-    {/if}
+    <!-- Absolute *and* relative (#395). A finished task's deadline is history, so it stays
+         grey however late it was: red on a struck-through title is the loudest way to say
+         something that no longer matters. -->
+    <DueDate due={task.due_date} {today} muted={done} />
     {#each faces.slice(0, 3) as { link, member } (link.user_id)}
       <Avatar
         name={member?.full_name}

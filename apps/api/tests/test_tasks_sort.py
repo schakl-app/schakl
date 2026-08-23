@@ -191,3 +191,90 @@ async def test_task_sort_never_crosses_tenants(client_for) -> None:
         page = (await c.get("/api/v1/tasks?sort=assignee", headers=h)).json()
         assert page["items"] == []
         assert page["total"] == 0
+
+
+# --- the urgency reading (#395) ----------------------------------------------------------- #
+async def test_due_orders_by_deadline_then_by_priority(client_for) -> None:
+    """*"Eerst naar de datum en daarna naar de prioriteit"* — the team's sentence, literally.
+
+    ``sort=due_date`` alone answers only the first half: everything sharing a deadline falls back
+    to ``position``, the board's hand-dragged order, so the one task on Friday that cannot slip
+    sat wherever it was last put. Hence a composite key rather than a second ``?sort=`` the user
+    would have to know to combine.
+    """
+    t = await make_tenant("tk-due-composite")
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
+        today = org_today()
+        friday = (today + timedelta(days=3)).isoformat()
+        monday = (today + timedelta(days=6)).isoformat()
+        # Written in the wrong order on purpose, and dragged further out of it below.
+        low = await _task(c, h, "friday low", due_date=friday, priority="low")
+        await _task(c, h, "monday high", due_date=monday, priority="high")
+        await _task(c, h, "friday high", due_date=friday, priority="high")
+        await _task(c, h, "friday normal", due_date=friday, priority="normal")
+        res = await c.patch(f"/api/v1/tasks/{low}", json={"position": -1.0}, headers=h)
+        assert res.status_code == 200, res.text
+
+        assert await _titles(c, h, "sort=due") == [
+            "friday high",
+            "friday normal",
+            "friday low",
+            "monday high",
+        ]
+
+
+async def test_due_reverses_both_halves_at_once(client_for) -> None:
+    """A composite is a *reading*, so reversing it reverses the whole of it.
+
+    Flipping only the first column would answer "furthest deadline first, and within it the
+    fires still on top", which is not the reverse of anything anybody asked for.
+    """
+    t = await make_tenant("tk-due-desc")
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
+        today = org_today()
+        soon = today.isoformat()
+        late = (today + timedelta(days=4)).isoformat()
+        await _task(c, h, "soon high", due_date=soon, priority="high")
+        await _task(c, h, "soon low", due_date=soon, priority="low")
+        await _task(c, h, "late high", due_date=late, priority="high")
+
+        assert await _titles(c, h, "sort=-due") == ["late high", "soon low", "soon high"]
+
+
+async def test_due_leaves_an_undated_task_last(client_for) -> None:
+    """The bucket the board files them under is *Later*, and the sort has to agree.
+
+    Same expand/contract rows ``sort=due_date`` answers for (#392): no create can make one, and
+    every instance upgrades carrying them.
+    """
+    t = await make_tenant("tk-due-null")
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
+        today = org_today()
+        undated = await _task(c, h, "someday", due_date=today.isoformat())
+        await _task(c, h, "dated", due_date=(today + timedelta(days=9)).isoformat())
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text("UPDATE tasks SET due_date = NULL WHERE id = :id"), {"id": undated}
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
+        assert await _titles(c, h, "sort=due") == ["dated", "someday"]
+        assert await _titles(c, h, "sort=-due") == ["dated", "someday"]
+
+
+async def test_due_never_multiplies_a_row(client_for) -> None:
+    """Two order-by expressions, still one row per task — and a ``total`` that agrees."""
+    t = await make_tenant("tk-due-dup")
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
+        await _task(c, h, "only")
+        page = (await c.get("/api/v1/tasks?sort=due", headers=h)).json()
+        assert len(page["items"]) == 1
+        assert page["total"] == 1

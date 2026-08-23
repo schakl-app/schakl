@@ -1,15 +1,22 @@
 <script lang="ts">
-  /** Company-detail panel: the client's task overview (CLAUDE.md §6). */
+  /**
+   * Company-detail panel: the client's task overview (CLAUDE.md §6).
+   *
+   * The deadline is drawn by the shared `DueDate` (#395) rather than by a fourth private copy of
+   * `due_date < today` — the team asked for the board's urgency treatment on the client list by
+   * name, and one component is how it arrives here without a rule to keep in step.
+   */
   import { page } from "$app/state";
-  import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { orgToday } from "$lib/core/today";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
+  import DueDate from "$lib/modules/tasks/DueDate.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
+  import { priorityRailClass } from "$lib/modules/tasks/priority";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -69,8 +76,9 @@
     {:else}
       <ul class="divide-y divide-border">
         {#each shown as task (task.id)}
-          {@const overdue = task.due_date != null && task.due_date < today}
-          <li class="flex items-center gap-2 py-2">
+          <!-- The rail is the row's own priority marker (#395): drawn for the exceptional values
+               only, and transparent otherwise so nothing shifts. -->
+          <li class="flex items-center gap-2 py-2 pl-2 {priorityRailClass(task.priority)}">
             <!-- Title and marker share the flexible cell: left to the row's own `flex-1`, the icon
              drifted to the far right edge and read as one more badge beside the deadline. Every
              row here hangs off this panel's client, so it reads against a real audience: this
@@ -106,15 +114,7 @@
                 >{t("tasks.status.in_progress")}</span
               >
             {/if}
-            {#if task.due_date}
-              <span
-                class="text-xs tabular-nums {overdue
-                  ? 'font-semibold text-red-600 dark:text-red-400'
-                  : 'text-text-muted'}"
-              >
-                {fmtDayMonth(task.due_date)}
-              </span>
-            {/if}
+            <DueDate due={task.due_date} {today} />
           </li>
         {/each}
       </ul>

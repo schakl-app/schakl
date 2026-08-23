@@ -14,7 +14,7 @@
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
-  import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
   import { splitMemberOptions } from "$lib/core/members";
@@ -32,9 +32,18 @@
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
-  import { DUE_BUCKETS } from "$lib/modules/tasks/due";
+  import {
+    DUE_BUCKETS,
+    DUE_SECTIONS,
+    DUE_STATE,
+    dueSection,
+    weekEnd,
+  } from "$lib/modules/tasks/due";
+  import DueDate from "$lib/modules/tasks/DueDate.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
+  import { TASK_GROUPINGS } from "$lib/modules/tasks/grouping";
   import { labelChipClass } from "$lib/modules/tasks/labels";
+  import { priorityRailClass } from "$lib/modules/tasks/priority";
   import {
     defaultStatusKey,
     statusGroups,
@@ -96,19 +105,65 @@
   const toggleTarget = (task: Task) =>
     isDone(task) ? defaultStatusKey(data.statuses) : terminalStatusKey(data.statuses);
 
-  const overdueCount = $derived(
-    data.tasks.filter((task) => !isDone(task) && task.due_date && task.due_date < today).length,
+  // --- what the board is grouped by (#395) ---------------------------------------------- #
+  // Deadline by default: four urgency sections, in the order somebody actually works through
+  // them. Status is the other view, one click away, and it is the board this page has always
+  // been. The token lives in the URL, so the view is linkable and the back button undoes a
+  // switch (`lib/modules/tasks/grouping.ts`).
+  const byDue = $derived(data.grouping === "due");
+  // Computed once for the page rather than per row: a list of 200 rows would run the same day
+  // arithmetic 200 times for one answer that cannot change between them.
+  const dueEnd = $derived(weekEnd(today));
+  const sectionOf = (task: Task) => dueSection(task.due_date, today, isDone(task), dueEnd);
+
+  // Sections are declared in reading order and the table never reorders them — a sort orders
+  // rows *within* a section (#38). An empty section is dropped rather than drawn as "Later (0)":
+  // an empty bucket is not news, and four headings over one task would be all heading.
+  const dueGroups = $derived(
+    DUE_SECTIONS.filter((key) => data.tasks.some((task) => sectionOf(task) === key)).map((key) => ({
+      key,
+      label: t(`tasks.due.${key}`),
+      collapsible: true,
+      // The heading carries the colour and the rows stay quiet: the hierarchy the team asked
+      // for is *between* the groups, and twenty tinted rows would be worse than twenty grey
+      // ones. It is the state palette's, glyph and all — never the tenant's brand (#404).
+      // `undefined` where the section has no state at all, which is how *Later* and *Afgerond*
+      // keep the muted heading every grouped list has always had.
+      state: DUE_STATE[key] ?? undefined,
+    })),
   );
+  const statusGroupsPresent = $derived(
+    statusGroups(data.statuses).filter((group) =>
+      data.tasks.some((task) => task.status === group.key),
+    ),
+  );
+  const groups = $derived(byDue ? dueGroups : statusGroupsPresent);
+
+  // The warning under the heading is the *Over tijd* section counted, and it says so by asking
+  // the same helper: a page that computes "late" twice is a page that can print two numbers.
+  const overdueCount = $derived(data.tasks.filter((task) => sectionOf(task) === "overdue").length);
+
+  function groupHref(grouping: string): string {
+    const url = new URL(page.url);
+    // The default is the absent token, so switching back to it leaves a clean URL rather than
+    // one that pins today's default into every link somebody pastes.
+    if (grouping === "due") url.searchParams.delete("group");
+    else url.searchParams.set("group", grouping);
+    return url.pathname + url.search;
+  }
 
   const table = createTableLayout<Task>({
     all: () => TASK_COLUMNS,
-    // A first visit folds "Klaar" away, exactly as the old board did. Once the user has saved a
-    // layout their own collapsed set wins — including an empty one, which is why this checks for
-    // the key's absence rather than for a falsy value.
+    // A first visit folds the finished work away, exactly as the old board did. Once the user has
+    // saved a layout their own collapsed set wins — including an empty one, which is why this
+    // checks for the key's absence rather than for a falsy value.
+    //
+    // Which key that *is* depends on what the board is grouped by: the tenant's terminal statuses
+    // under Status, the one `done` section under Deadline. One saved list serves both, and a key
+    // belonging to the other grouping simply matches nothing.
     pref: () => ({
       ...data.table.pref,
-      // A first visit folds the finished sections away; a saved layout (even an empty one) wins.
-      collapsed: data.table.pref.collapsed ?? terminalKeys(data.statuses),
+      collapsed: data.table.pref.collapsed ?? (byDue ? ["done"] : terminalKeys(data.statuses)),
     }),
     sort: () => data.table.sort,
     cells: () => ({
@@ -126,17 +181,8 @@
     }),
   });
 
-  // Sections are declared in workflow order and the table never reorders them — a sort orders
-  // rows *within* a section (#38). An empty section is dropped rather than drawn as "Klaar (0)".
-  const groups = $derived(
-    statusGroups(data.statuses).filter((group) =>
-      data.tasks.some((task) => task.status === group.key),
-    ),
-  );
-
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
-  const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
 
   // The two lookup filters and the ✎ dialog read one split each: an archived client and a
   // finished project stay reachable by typing rather than being suggested, and whichever is
@@ -410,6 +456,29 @@
 
 <FilterBar filters={filterDefs} idPrefix="task-filter">
   {#snippet actions()}
+    <!-- What the board is grouped by (#395). Real links, because the grouping is in the URL and
+         the URL is the view: a colleague pasting `?group=status` gets the board being looked at,
+         and the back button undoes a switch. It sits among the list's own controls rather than
+         among the filter chips, because it changes how the same rows *read* and not which rows
+         there are — the same reason Kolommen lives here. -->
+    <div
+      class="flex items-center gap-1 text-xs"
+      role="group"
+      aria-label={t("tasks.group_by.label")}
+    >
+      <span class="hidden text-text-muted sm:inline">{t("tasks.group_by.label")}</span>
+      {#each TASK_GROUPINGS as grouping (grouping)}
+        <a
+          href={groupHref(grouping)}
+          data-sveltekit-noscroll
+          aria-current={data.grouping === grouping ? "true" : undefined}
+          class="rounded-full px-3 py-1 font-medium {data.grouping === grouping
+            ? 'bg-brand text-white'
+            : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+          >{t(`tasks.group_by.${grouping}`)}</a
+        >
+      {/each}
+    </div>
     <ImpexBar
       entity="task"
       readPermission="tasks.task.read"
@@ -529,10 +598,10 @@
 
 {#snippet dueDateCell(task: Task)}
   {#if task.due_date}
-    <!-- Overdue work is loudly red everywhere (docs/UX.md, principle 4). -->
-    <span class={isOverdue(task) ? "font-semibold text-red-600 dark:text-red-400" : "text-text"}>
-      {fmtDayMonth(task.due_date)}
-    </span>
+    <!-- Absolute *and* relative (#395): "18 aug" alone asks the reader to know today's date and
+         subtract, and "3 dagen te laat" alone cannot be matched against a calendar. Overdue work
+         stays loudly red (docs/UX.md, principle 4); a finished task's date is history. -->
+    <DueDate due={task.due_date} {today} muted={isDone(task)} />
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -651,7 +720,8 @@
   sort={table.sort}
   widths={table.widths}
   {groups}
-  groupBy={(task) => task.status}
+  groupBy={(task) => (byDue ? sectionOf(task) : task.status)}
+  rowClass={(task) => priorityRailClass(task.priority, isDone(task))}
   collapsed={table.collapsed}
   actions={canDelete ? rowActions : undefined}
   {mobileRow}

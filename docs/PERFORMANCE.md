@@ -242,6 +242,27 @@ leaves the repository's path — a window fold, a report, a summary tile, a pane
 predicate from `horizon_condition()` explicitly (CLAUDE.md §15, and `scoped_count_select()` for
 plain counts).
 
+## A section is a partition of one page, never a query of its own
+
+The task board opens grouped into four urgency buckets (#395), and the obvious wrong way to build
+that is one read per section: four counts and four pages, growing with every section anybody adds
+later, and each one racing the others to disagree about a task somebody just ticked.
+
+The buckets are a **partition of one ordered page**, so the server's whole part is the ordering.
+`?sort=due` is a composite key — deadline first, then priority, highest first — which costs two
+`ORDER BY` expressions and no extra statement, and the browser then walks the rows it already has
+(`DataTable`'s `groupBy`). The counts beside each heading are counts of the page and say so, which
+is the same honesty a sectioned list has always owed.
+
+Two things follow for any grouped list. **A grouping that needs a number the page cannot see is a
+`groupSummary` fed by the API's own aggregate** — never a second fetch per section, and never a
+sum over `rows`. And **the bucket rule is computed once per page, not once per row**: resolving
+"where does this week stop" is day arithmetic, and doing it 200 times for one answer that cannot
+change between the rows is the cheap version of the same mistake.
+
+Pinned by `test_the_boards_urgency_sort_costs_no_statement_at_all` — three rows and thirty, the
+same statement count as the unsorted default.
+
 ## Read the windows, not their hull
 
 A screen that compares two spans reads *two ranges*, never `[earliest, latest]`. While the

@@ -1,60 +1,102 @@
 /**
- * What "vandaag", "deze week" and "later" mean — one definition, for every task surface (#397).
+ * The urgency vocabulary — four buckets, defined once, read by everything that draws a task
+ * (#395, #397).
  *
- * The dashboard tile partitioned into **three** buckets (overdue / today / everything else) and
- * called the third one *Binnenkort*, so this afternoon's week, next month and every task with no
- * deadline at all were one undifferentiated list of identical grey rows. The team asked for today
- * to be the tile's subject with the week and the rest visually separated from it, which the
- * three-bucket partition cannot express.
+ * Two screens arrived at this module from opposite ends in the same week. The **dashboard tile**
+ * partitioned into three buckets (overdue / today / everything else) and called the third one
+ * *Binnenkort*, so this afternoon's week, next month and every task with no deadline at all were
+ * one undifferentiated list. The **board** was twenty identical grey rows: it grouped by *status*
+ * and ordered by whatever was last dragged, so the two overdue tasks sat at positions 5 and 7 and
+ * this week's work was below a fortnight of later work because it happened to carry a different
+ * status. The four buckets existed only as `?due=`, which is a *filter*: they could be asked for
+ * one at a time and never seen at once.
  *
- * The reason this is a module rather than four `filter()` calls in the widget is the sibling
- * issue (#395, the task board): two surfaces that each decide for themselves where "deze week"
- * ends will disagree, and a reader moving from the tile to the board would find a task under a
- * different heading with nothing on either screen explaining why. So the buckets are declared
- * once here, and the API's `?due=` vocabulary uses **the same four names with the same
- * boundaries** — which is what lets a bucket heading link to the list it totals (docs/UX.md,
- * "nothing on a dashboard tile is a dead end") and have the two counts agree.
+ * | bucket    | rule |
+ * |-----------|------|
+ * | `overdue` | `due_date < today` |
+ * | `today`   | `due_date === today` |
+ * | `week`    | after today, up to and including `today + 7` |
+ * | `later`   | after that — and a task with no deadline at all |
  *
- * Two boundary decisions are worth stating because neither is the only possible answer.
+ * **"Deze week" is the next seven days.** This is the boundary the API's `?due=week` filter has
+ * always meant (`tasks/service.py`), which is what lets a bucket heading link to the list it
+ * totals and have the two counts agree — the tile links to `/tasks?due=week`, and the board draws
+ * that same heading beside that same filter chip. A calendar week ending on Sunday reads better
+ * on a Monday and collapses to nothing on a Friday afternoon, which is the day people plan; it
+ * would also have needed the API, the filter chips and the tile to move with it, and a heading
+ * that disagrees with the chip beside it is worse than either rule on its own.
  *
- * **"Deze week" is the next seven days, not the calendar week.** A calendar week collapses to
- * nothing on a Friday afternoon — the bucket the tile most needs on the day people plan is the
- * day it is emptiest — and it makes the same task move between headings overnight for a reason
- * that has nothing to do with the task. Seven rolling days is also what the API's `?due=week`
- * filter has always meant, so this is the existing answer written down rather than a new one.
+ * **The zone is the caller's to resolve, once.** Every function here takes `today` as a plain
+ * `YYYY-MM-DD` argument, which is what `orgToday()` hands back: the tenant's calendar date, not
+ * UTC's (#396) and not the Node process's. A helper that read the clock itself would be the
+ * fifteenth call site of that bug, and it would be untestable besides.
  *
- * **A task with no due date is "later".** It has to be somewhere or the four buckets are not a
- * partition and the tile silently drops rows (which is what the old `upcoming` did, by folding
- * them in beside next Tuesday's work). Least urgent is the honest place for work nobody has
- * committed to a day; `?undated=1` (#392) is how you go looking for them on purpose.
- *
- * Deliberately dependency-free — no `$lib`, no i18n runtime — so node's test runner can load it
- * (`tests/unit/task-due.test.ts`; `today.ts` keeps its relative import for the same reason). The
- * day arithmetic below is `core/calendar.isoDiffDays`' arithmetic; it is restated rather than
- * imported because that module pulls in the Paraglide message runtime, and a bucket boundary
- * that cannot be pinned by a test is exactly the kind that drifts.
+ * **One helper, seven surfaces.** The board, `TaskRow` (and through it the mobile board, the
+ * project to-do and the client's Taken panel), the task card, the @mention picker and the My Day
+ * tile each carried their own `due_date < today` comparison — the tile's was subtly different
+ * from the list's — which is how a screen and the tile above it come to disagree about what is
+ * urgent.
  */
+// Relative, extension and all: node's test runner loads this file directly and knows neither the
+// `$lib` alias nor extensionless ESM resolution. `isodate.ts` imports nothing, which is the whole
+// reason it was split out of `calendar.ts` (whose i18n import drags the paraglide bundle in).
+import { isoAddDays, isoDiffDays } from "../../core/isodate.ts";
+import type { UiState } from "../../core/state.ts";
 
 /** The four urgencies a task's deadline can have, most urgent first. */
 export const DUE_BUCKETS = ["overdue", "today", "week", "later"] as const;
-
 export type DueBucket = (typeof DUE_BUCKETS)[number];
 
 /** Where "deze week" stops. The API's `?due=week` window, in days from today. */
 export const WEEK_HORIZON = 7;
 
+/**
+ * The board's sections: the four buckets plus finished work.
+ *
+ * `done` is deliberately **not** a bucket — a finished task has no urgency, and filing one under
+ * *Over tijd* in red because it was completed late is the loudest possible way to say nothing.
+ * It is a section of the board, last and folded, exactly as the terminal statuses always were.
+ */
+export const DUE_SECTIONS = [...DUE_BUCKETS, "done"] as const;
+export type DueSection = (typeof DUE_SECTIONS)[number];
+
 /** Whole days from `from` to `to`, both date-only ISO strings. Negative when `to` is earlier. */
-export function dayDistance(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+export const dayDistance = isoDiffDays;
+
+/** The last day still counted as "deze week": seven days out, the API's own window. */
+export function weekEnd(today: string): string {
+  return isoAddDays(today, WEEK_HORIZON);
 }
 
-/** Which bucket a deadline falls in, relative to the tenant's today (`$lib/core/today`). */
-export function dueBucket(dueDate: string | null | undefined, today: string): DueBucket {
-  if (!dueDate) return "later";
-  const days = dayDistance(today, dueDate);
-  if (days < 0) return "overdue";
-  if (days === 0) return "today";
-  return days <= WEEK_HORIZON ? "week" : "later";
+/**
+ * Which bucket a deadline falls in, read against the tenant's `today`.
+ *
+ * `end` is a parameter so a caller partitioning a whole list computes it once rather than per
+ * row — and so a test can name it.
+ */
+export function dueBucket(
+  due: string | null | undefined,
+  today: string,
+  end: string = weekEnd(today),
+): DueBucket {
+  // No deadline is *later*, not *overdue*: it is work nobody has scheduled, and the release that
+  // made the column required (#392) left every instance carrying rows written before the rule.
+  // It has to be somewhere, or the four buckets are not a partition and a list silently drops
+  // rows; `?undated=1` is how you go looking for them on purpose.
+  if (!due) return "later";
+  if (due < today) return "overdue";
+  if (due === today) return "today";
+  return due <= end ? "week" : "later";
+}
+
+/** The board's section for a row: its bucket, unless it is finished. */
+export function dueSection(
+  due: string | null | undefined,
+  today: string,
+  done: boolean,
+  end: string = weekEnd(today),
+): DueSection {
+  return done ? "done" : dueBucket(due, today, end);
 }
 
 /**
@@ -67,7 +109,8 @@ export function groupByDue<T extends { due_date?: string | null }>(
   today: string,
 ): Record<DueBucket, T[]> {
   const groups: Record<DueBucket, T[]> = { overdue: [], today: [], week: [], later: [] };
-  for (const row of rows) groups[dueBucket(row.due_date, today)].push(row);
+  const end = weekEnd(today);
+  for (const row of rows) groups[dueBucket(row.due_date, today, end)].push(row);
   return groups;
 }
 
@@ -85,12 +128,61 @@ export function dueLabelKey(bucket: DueBucket): string {
 }
 
 /**
- * How loudly a bucket is drawn (`$lib/core/state`). `later` is `neutral` on purpose: the palette
- * bars a fourth hue for "nothing is wrong here", and three tinted headings above a quiet one is
- * the hierarchy this issue asks for — colouring the rows instead would be noise.
+ * How each section heading is drawn — the state palette's vocabulary (#404), never a hue
+ * invented here, and `null` where the honest answer is *no state at all*.
+ *
+ * Two of these were decided by looking at the screen rather than by reasoning about it.
+ *
+ * The issue asked for "vandaag" in the **brand** colour. The palette bars that outright, and
+ * this exact board is why: on the tenant whose brand is gold it would render beside the red
+ * *Over tijd* as a second warning, and on a blue-branded one as a link.
+ *
+ * And *Deze week* was `soon` — defensible from the palette's own definition ("approaching, and
+ * worth knowing about") and wrong on the page. At 10px uppercase, red, orange and amber do not
+ * separate: three warm headings down one board read as one long warning, which is the *"rustiger
+ * gebruik van kleuren"* half of the complaint arriving as its own answer. So only the two states
+ * that are genuinely claims are tinted — the moment has passed, and the moment is now — and the
+ * rest of the week is `neutral`, which is the theme's own text: stronger than the muted grey
+ * *Later* keeps, and not a fourth hue competing for the same attention. The tile reads the same
+ * record for the same reason it reads the same boundaries.
+ *
+ * Only the **heading** is tinted at all. Twenty tinted rows would be worse than twenty grey
+ * ones: the hierarchy the team asked for is *between* the groups, so the rows stay quiet.
  */
-export function dueState(bucket: DueBucket): "late" | "today" | "soon" | "neutral" {
-  if (bucket === "overdue") return "late";
-  if (bucket === "today") return "today";
-  return bucket === "week" ? "soon" : "neutral";
+export const DUE_STATE: Record<DueSection, UiState | null> = {
+  overdue: "late",
+  today: "today",
+  // Neutral, but *drawn*: a section carrying a state renders in the theme's own text, and one
+  // carrying none renders in the muted grey every grouped list has always used.
+  week: "neutral",
+  later: null,
+  done: null,
+};
+
+/** How loudly a bucket is drawn. One record, so a tile and the board cannot disagree. */
+export function dueState(bucket: DueBucket): UiState {
+  return DUE_STATE[bucket] ?? "neutral";
+}
+
+/**
+ * How far a deadline is from today, as an i18n key and its count.
+ *
+ * `18 aug` alone asks the reader to know today's date and do the arithmetic; `18 aug · 3 dagen
+ * te laat` does not. Relative *only* would be worse — it cannot be matched against a calendar —
+ * so both are printed, with the relative half muted (`DueDate.svelte`).
+ *
+ * Returned as `{ key, count }` rather than a string because this module may not import i18n:
+ * `t()` reaches the generated paraglide bundle, which is exactly what would make the rule below
+ * untestable. The keys are `_one` / `_other` pairs and never ICU plurals — Paraglide does not
+ * parse those here, and a broken plural compiles to garbage rather than failing.
+ */
+export function dueDistance(due: string, today: string): { key: string; count: number } | null {
+  const days = isoDiffDays(today, due);
+  if (days === 0) return { key: "tasks.due.rel.today", count: 0 };
+  if (days === 1) return { key: "tasks.due.rel.tomorrow", count: 1 };
+  if (days < 0) {
+    const late = -days;
+    return { key: late === 1 ? "tasks.due.rel.late_one" : "tasks.due.rel.late_other", count: late };
+  }
+  return { key: "tasks.due.rel.in_days", count: days };
 }

@@ -191,7 +191,7 @@ Query parameters:
 | `due_to` | string | Deadline window end (inclusive) |
 | `q` | string |  |
 | `unnamed` | boolean | Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. |
-| `sort` | string | title \| due_date \| priority \| status \| assignee \| …, '-' desc |
+| `sort` | string | due \| title \| due_date \| priority \| status \| assignee \| …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. |
 | `meta` | boolean | Include label/checklist/comment aggregates (default `true`) |
 | `hours` | boolean | Include the hour budget's burn (logged/remaining minutes); costs one grouped query. Omitted for a caller without time.entry.read rather than refused. (default `false`) |
 | `count` | boolean | Compute total; set false for name-only lookups (default `true`) |

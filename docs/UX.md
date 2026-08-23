@@ -441,6 +441,37 @@ contrast bug in dark mode rather than only an inconsistency.
 - **One shared row/tile per concept** (`TaskRow`, panel rows): title link, chips (labels,
   checklist n/m, ⏱ allocated), red overdue date, assignee initials — identical wherever the
   concept appears.
+- **A list of dated work opens on *when*, and says so in four words** (#395,
+  `lib/modules/tasks/due.ts`). The task board grouped by status and ordered by whatever was last
+  dragged, so the two overdue rows sat at positions 5 and 7, this week's work was below a
+  fortnight of later work because it carried a different status, and the Prioriteit column
+  printed **Normaal** twenty times in the same grey. Five rules generalise past tasks.
+  **The urgency vocabulary is four buckets and it lives in one module** — *over tijd · vandaag ·
+  deze week · later* — because the board, the shared row and both dashboard tiles each held their
+  own `due_date < today`, the tile's subtly not the list's, which is how a screen and the tile
+  linking to it come to disagree about what is urgent. **A filter is not a vocabulary**: `?due=`
+  could already *ask for* each bucket one at a time, which is precisely why the four could never
+  be *seen at once*. **"Deze week" is `today + 7`, and it is the API's window** — the
+  heading and the `?due=week` chip beside it must count the same rows, and the tile that links to
+  that list must total the same ones (#397); a calendar week ending on Sunday reads better on a
+  Monday and is emptiest on the Friday afternoon people plan on, and adopting it would have meant
+  moving the API, the chips and the tile with it. **The heading carries the colour and the rows stay quiet**: the hierarchy
+  being asked for is *between* the groups, so a wash of twenty tinted rows would be the same
+  complaint in a different key. And **a ramp of adjacent hues is not a hierarchy either**: over
+  tijd red beside vandaag orange beside deze week amber read, at 10px uppercase, as one long
+  warning — so only the two headings that are genuinely claims are tinted (the palette's `late`
+  and `today`, glyph and all, never the tenant's brand), *deze week* is neutral drawn in the
+  theme's own text, and *later* keeps the muted grey a grouped list has always had.
+  **A marker every row carries is not a marker**: the priority rail is drawn for `high`
+  and `low` only, `normal` gets a transparent one so nothing shifts, and it is always a second
+  reading of a word already on the row (#404's "never colour alone"). What the board *opens* on
+  is a default, not a lock: `?group=status` is the old board, `?sort=` still wins, and both are
+  in the URL because a view you cannot link to is not a view.
+- **A deadline prints as a date *and* a distance.** `18 aug` alone asks the reader to know
+  today's date and subtract; `3 dagen te laat` alone cannot be matched against a calendar, a
+  client's mail or anything else. Both, with the relative half muted and one size down
+  (`DueDate.svelte`) — and dropped only where the row is genuinely too narrow for it, which is a
+  decision the caller states rather than a rule the component guesses.
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical. The arrows are not a fallback nobody uses — they are the only reorder a

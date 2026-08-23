@@ -11,6 +11,10 @@
  */
 import type { Candidate } from "$lib/core/richtext/editor";
 import { orgToday } from "$lib/core/today";
+// The one answer to "is this late" (#395). Core reaching into a module is the exception this
+// file already is — it composes every module's mention candidates — and the alternative here is
+// the sixth private copy of a comparison the board draws a red heading from.
+import { dueSection } from "$lib/modules/tasks/due";
 
 export interface CandidateScope {
   companyId?: string | null;
@@ -141,7 +145,7 @@ export function loadTaskCandidates(scope: CandidateScope = {}): Promise<Candidat
         subtitle: def?.name ?? row.status,
         assignee: row.assignee_user_id ? memberName(row.assignee_user_id) : undefined,
         due: row.due_date ?? undefined,
-        overdue: !!row.due_date && row.due_date < today && !(def?.is_terminal ?? false),
+        overdue: dueSection(row.due_date, today, def?.is_terminal ?? false) === "overdue",
       };
     });
   });

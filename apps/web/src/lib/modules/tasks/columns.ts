@@ -52,13 +52,17 @@ export const TASK_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 110,
   },
+  // 180, not the 120 it was: since #395 this cell prints the date *and* its distance ("26 aug
+  // over 2 dagen"), and under `table-fixed` a declared width is the width — a column that no
+  // longer fits does not grow, it clips, and what it clips here is the half that says how
+  // urgent the row is. `docs/REPORTING.md`'s rule for a printed table, one screen over.
   {
     key: "due_date",
     labelKey: "tasks.field.due_date",
     sortKey: "due_date",
     align: "right",
     defaultVisible: true,
-    width: 120,
+    width: 180,
   },
   { key: "checklist", labelKey: "tasks.field.checklist", align: "right", width: 100 },
   { key: "comments", labelKey: "tasks.field.comments", align: "right", width: 100 },

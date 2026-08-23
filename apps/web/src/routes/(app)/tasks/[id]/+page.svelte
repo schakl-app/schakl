@@ -36,8 +36,10 @@
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
+  import { dueBucket, dueDistance } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
@@ -724,7 +726,13 @@
   }
 
   const today = orgToday();
-  const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
+  // The board's vocabulary, not a fifth private copy of it (#395). The card only ever shouts
+  // about the two states that are claims — the moment has passed, and the moment is now — so it
+  // reads the bucket rather than re-deriving "is this late".
+  const bucket = $derived(isDone ? "later" : dueBucket(task.due_date, today));
+  const overdue = $derived(bucket === "overdue");
+  const dueToday = $derived(bucket === "today");
+  const distance = $derived(task.due_date ? dueDistance(task.due_date, today) : null);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   const when = (iso: string) => fmtDateTime(iso);
@@ -981,11 +989,15 @@
           >{label.name}</span
         >
       {/each}
-      {#if overdue}
-        <span
-          class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:bg-red-950 dark:text-red-400"
-          >{t("tasks.due.overdue")}</span
-        >
+      {#if overdue || dueToday}
+        <!-- "Vandaag" is a state too, and it was the one the card could not say: a task due in
+             four hours looked exactly like one due in September (#395). It is the palette's
+             chip, so it reads the same here as the section heading the board files it under. -->
+        <StateMark
+          state={overdue ? "late" : "today"}
+          variant="chip"
+          label={t(overdue ? "tasks.due.overdue" : "tasks.due.today")}
+        />
       {/if}
       <!-- The rule, readable. "↻ Maandelijks" was every word the page had ever said about a
              stored recurrence: no interval, no anchor, no mode, and no next date at all — the
@@ -1426,6 +1438,12 @@
                 : 'text-text'}"
             >
               {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
+              {#if distance}
+                <!-- The distance, muted: a date on its own asks the reader to subtract (#395). -->
+                <span class="text-xs font-normal text-text-muted"
+                  >{t(distance.key, { count: distance.count })}</span
+                >
+              {/if}
             </p>
           {/if}
         </div>
