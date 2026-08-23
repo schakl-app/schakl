@@ -116,6 +116,12 @@ def test_paid_module_set_is_pinned() -> None:
         # `reporting` sits on: a tenant can license the dashboards without buying the surface
         # that reads and writes a client's live advertising account.
         "google_ads": "google_ads",
+        # A live GA4 read surface: seventeen operations against somebody else's Analytics
+        # account, and its own MCP section. Licensed like `google_ads` and *not* folded into
+        # `marketing` — the dashboard module reads a nightly aggregate, this answers the
+        # property's own questions, and an agency may want either without the other. Nothing
+        # here mutates, so the gate governs enabling it and never the reading of it.
+        "google_analytics": "google_analytics",
         # Tag Manager writes to what runs on a client's website, which is the highest-consequence
         # thing this platform does to somebody else's property — licensed for the same reason
         # `google_ads` is, one rung further along the same ladder.

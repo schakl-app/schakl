@@ -29,6 +29,7 @@ from app.modules.marketing.jobs import (
     marketing_sync_all,
     marketing_sync_link,
 )
+from app.modules.marketing.mcp import MARKETING_MCP_TOOLS
 from app.modules.marketing.panels import marketing_company_panel
 from app.modules.marketing.permissions import MARKETING_PERMISSIONS
 from app.modules.marketing.report_sections import MARKETING_REPORT_SECTIONS
@@ -48,6 +49,10 @@ module = ModuleDescriptor(
     sku="marketing",
     panels=[marketing_company_panel],
     permissions=MARKETING_PERMISSIONS,
+    # Read-only tools for the in-app assistant (#127, §12). Every one is filtered against
+    # the caller's own permissions before the model is told it exists, and answers through
+    # this module's service, so a tool can never widen a role or cross a company horizon.
+    mcp_tools=MARKETING_MCP_TOOLS,
     # What a monthly client report is mostly made of (#300). Contributed here rather than
     # named by the reporting module, so disabling marketing removes its sections from every
     # future report and reporting still knows the name of no module (CLAUDE.md §6).
