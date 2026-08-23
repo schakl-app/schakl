@@ -50,6 +50,7 @@
 
   import { entityPanelSpec } from "$lib/core/registry";
   import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import { PANEL_HEADING } from "$lib/core/ui/headings";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
@@ -76,9 +77,9 @@
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
-  // expand the rest in place. Rows are newest-first, so the head is the newest.
+  // expand the rest in place. Rows are newest-first, so the head is the newest. The third
+  // verbatim copy of this collapse until #407; `PanelRows` owns it now.
   const ACTIVITY_COLLAPSED = 3;
-  let activityExpanded = $state(false);
   // The task's own legacy trail plus the contact-moment milestones mirrored onto its core
   // activity log (#152) — merged newest-first, so "contactmoment gelogd" shows on the task page
   // like it already does on company/project/contact. Both rows share the same shape
@@ -88,11 +89,6 @@
       // Core rows type `payload` as optional; the renderers want it present. Normalise once.
       .map((a) => ({ ...a, payload: (a.payload ?? {}) as Record<string, unknown> }))
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
-  );
-  const visibleActivities = $derived(
-    activityExpanded || activities.length <= ACTIVITY_COLLAPSED
-      ? activities
-      : activities.slice(0, ACTIVITY_COLLAPSED),
   );
   const userId = $derived(page.data.user?.id ?? "");
   // A portal login (#193) works the task, not the office around it: uploads, the activity
@@ -2039,8 +2035,10 @@
         {#if activities.length === 0}
           <p class="text-sm text-text-muted">—</p>
         {:else}
-          <ul class="space-y-2">
-            {#each visibleActivities as activity (activity.id)}
+          <PanelRows rows={activities} collapsed={ACTIVITY_COLLAPSED}>
+            {#snippet children(shown)}
+              <ul class="space-y-2">
+                {#each shown as activity (activity.id)}
               {@const href = activityHref(activity)}
               <li class="flex items-baseline gap-2 text-sm">
                 <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
@@ -2066,20 +2064,11 @@
                     {activityText(activity)}
                   {/if}
                 </span>
-              </li>
-            {/each}
-          </ul>
-          {#if activities.length > ACTIVITY_COLLAPSED}
-            <button
-              type="button"
-              class="mt-3 text-xs font-medium text-brand hover:underline"
-              onclick={() => (activityExpanded = !activityExpanded)}
-            >
-              {activityExpanded
-                ? t("common.show_less")
-                : t("common.show_all", { count: activities.length })}
-            </button>
-          {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/snippet}
+          </PanelRows>
         {/if}
       </Card>
     {/if}

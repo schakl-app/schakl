@@ -12,9 +12,12 @@ from app.core.tenancy import RequestContext
 from app.modules.tasks.models import Task
 from app.modules.tasks.service import TaskService
 from app.modules.tasks.statuses import load_statuses, non_terminal_keys
-from app.registry import PROMINENCE_PRIMARY, PanelSpec
+from app.registry import PANEL_ROWS, PROMINENCE_PRIMARY, PanelSpec
 
-_SHOWN = 50
+#: The register default (#407). Fifty was never a considered number — it predates this panel
+#: having a footer link at all, so a client with fifty open tasks drew fifty rows above the
+#: client's own phone number. The whole count still rides beside them as ``open_count``.
+_SHOWN = PANEL_ROWS
 
 
 async def _tasks_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:

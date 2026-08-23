@@ -134,9 +134,21 @@ async def list_links(
     entity_type: str = Query(..., max_length=32),
     entity_id: uuid.UUID = Query(...),
     rollup: bool = Query(False),
+    limit: int | None = Query(
+        None,
+        ge=1,
+        le=200,
+        description=(
+            "Cap the page a panel draws (#407); ask for one more than you keep to learn "
+            "there are more. Absent means every link, which is what the roll-up view needs — "
+            "a roll-up folds a project's tasks in after the query and cannot be cut before it."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[DriveLinkRead]:
-    links = await DriveService(ctx).links_for(entity_type, entity_id, rollup=rollup)
+    links = await DriveService(ctx).links_for(
+        entity_type, entity_id, rollup=rollup, limit=limit
+    )
     return [DriveLinkRead.model_validate(link) for link in links]
 
 

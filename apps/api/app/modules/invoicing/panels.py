@@ -19,14 +19,19 @@ async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dic
     # for a caller who lacks it and the old in-provider check is gone: two gates that must agree
     # is how they drift. The base key, so an ``:own`` holder — a client on their own company
     # page (#266) — still gets the panel; ``for_company`` then leaves the agency's drafts out.
-    invoices = await InvoiceService(ctx).for_company(company_id)
-    quotes = (
+    invoices, invoice_total = await InvoiceService(ctx).for_company(company_id)
+    quotes, quote_total = (
         await QuoteService(ctx).for_company(company_id)
         if ctx.can("invoicing.quote.read")
-        else []
+        else ([], 0)
     )
     today = await org_today(ctx)
     return {
+        # The whole ledger's size, never the page's (#407). This panel used to cut at eight
+        # invoices and five quotes in silence *and* offer no way through to the rest, so a
+        # client with sixty documents and a client with six drew the same card.
+        "invoice_total": invoice_total,
+        "quote_total": quote_total,
         "invoices": [
             {
                 "id": str(i.id),

@@ -15,6 +15,7 @@
 
   import { getLocale } from "$lib/paraglide/runtime";
   import { t } from "$lib/core/i18n";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import ReportStatusPill from "./ReportStatusPill.svelte";
   import { audienceLabel, cadenceLabel, deliveryLabel, fmtDate, periodLabel } from "./format";
@@ -25,6 +26,7 @@
   interface PanelData {
     forbidden?: boolean;
     reports?: ReportRow[];
+    total?: number;
     can_manage?: boolean;
     can_send?: boolean;
     schedule?: EffectiveSchedule;
@@ -34,6 +36,9 @@
   }
   const panel = $derived(data as PanelData);
   const reports = $derived(panel.reports ?? []);
+  // The provider asked for `count=False`, so no total existed at all and the cut was silent
+  // (#407). It counts now — one indexed query on a table already keyed by client.
+  const total = $derived(panel.total ?? reports.length);
   const canManage = $derived(Boolean(panel.can_manage));
   const schedule = $derived(panel.schedule);
   const recipients = $derived(panel.recipients ?? []);
@@ -87,27 +92,40 @@
       {/if}
     {/if}
 
-    {#if reports.length === 0}
-      <p class="text-sm text-text-muted">{t("reporting.panel.empty")}</p>
-    {:else}
-      <ul class="divide-y divide-border">
-        {#each reports as report (report.id)}
-          <li class="flex items-center gap-3 py-2">
-            <FileText size={16} class="shrink-0 text-text-muted" />
-            <a href={`/reports/${report.id}`} class="min-w-0 flex-1 hover:underline">
-              <span class="block truncate text-sm text-text">{periodLabel(report, locale)}</span>
-              <span class="block text-xs text-text-muted">
-                {audienceLabel(report.audience)}
-                {#if report.sent_at}· {t("reporting.panel.sent_on", {
-                    date: fmtDate(report.sent_at, locale),
-                  })}{/if}
-              </span>
-            </a>
-            <ReportStatusPill status={report.status} size="xs" />
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <!-- The hand-over is offered only to somebody who can open `/reports`; a portal login gets
+         the honest count and no link, rather than a control that always refuses (#253). -->
+    <PanelRows
+      rows={reports}
+      {total}
+      href={canManage ? `/reports?company=${companyId}` : undefined}
+      linkLabel={t("reporting.panel.view_all", { count: total })}
+      alwaysLink={canManage}
+    >
+      {#snippet children(shown)}
+        {#if shown.length === 0}
+          <p class="text-sm text-text-muted">{t("reporting.panel.empty")}</p>
+        {:else}
+          <ul class="divide-y divide-border">
+            {#each shown as report (report.id)}
+              <li class="flex items-center gap-3 py-2">
+                <FileText size={16} class="shrink-0 text-text-muted" />
+                <a href={`/reports/${report.id}`} class="min-w-0 flex-1 hover:underline">
+                  <span class="block truncate text-sm text-text">{periodLabel(report, locale)}</span
+                  >
+                  <span class="block text-xs text-text-muted">
+                    {audienceLabel(report.audience)}
+                    {#if report.sent_at}· {t("reporting.panel.sent_on", {
+                        date: fmtDate(report.sent_at, locale),
+                      })}{/if}
+                  </span>
+                </a>
+                <ReportStatusPill status={report.status} size="xs" />
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {/snippet}
+    </PanelRows>
 
     {#if canManage}
       <!-- Generating posts a form, and a form belongs to the page that owns its action. Rather
@@ -121,9 +139,6 @@
         >
           <Plus size={14} />
           {t("reporting.panel.generate")}
-        </a>
-        <a href={`/reports?company=${companyId}`} class="text-sm text-brand hover:underline">
-          {t("reporting.panel.all")}
         </a>
       </div>
     {/if}

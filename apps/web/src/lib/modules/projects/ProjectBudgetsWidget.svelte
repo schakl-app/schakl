@@ -6,6 +6,7 @@
   import { hoursBurn, type HoursFields } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -17,8 +18,13 @@
   }
   // `/projects/dashboard-budgets` returns the budgeted projects already sorted by burn and cut
   // to the tile's length (#290), so there is nothing left to filter, sort or slice here.
+  const payload = $derived(
+    (data ?? { items: [], total: 0 }) as { items: ProjectRow[]; total: number },
+  );
+  // Four rows with nothing to contradict them read as "these are the budgets" (#407).
+  const total = $derived(payload.total ?? (payload.items ?? []).length);
   const rows = $derived(
-    ((data ?? []) as ProjectRow[]).map((p) => ({
+    (payload.items ?? []).map((p) => ({
       id: p.id,
       name: p.name,
       companyName: p.company_name,
@@ -36,46 +42,56 @@
   {#if rows.length === 0}
     <p class="text-sm text-text-muted">{t("projects.widget.no_budgets")}</p>
   {:else}
-    <ul class="space-y-3">
-      {#each rows as project (project.id)}
-        <li>
-          <div class="flex items-center justify-between gap-2 text-sm">
-            <a href={`/projects/${project.id}`} class="group min-w-0 flex-1">
-              <span class="block truncate font-medium text-text group-hover:text-brand">
-                {project.name}
-              </span>
-              <!-- Whose budget this is. "Onderhoud" is four indistinguishable rows on a tile
+    <PanelRows
+      {rows}
+      {total}
+      href="/projects?status=active"
+      linkLabel={t("projects.widget.view_all_budgets", { count: total })}
+    >
+      {#snippet children(shown)}
+        <ul class="space-y-3">
+          {#each shown as project (project.id)}
+            <li>
+              <div class="flex items-center justify-between gap-2 text-sm">
+                <a href={`/projects/${project.id}`} class="group min-w-0 flex-1">
+                  <span class="block truncate font-medium text-text group-hover:text-brand">
+                    {project.name}
+                  </span>
+                  <!-- Whose budget this is. "Onderhoud" is four indistinguishable rows on a tile
                    spanning four clients, and only opening one told them apart (MyTasksWidget's
                    fix, same reason). -->
-              {#if project.companyName}
-                <span class="block truncate text-xs text-text-muted">{project.companyName}</span>
-              {/if}
-            </a>
-            <!-- The burn is a total of time entries, so it opens the report those entries are
+                  {#if project.companyName}
+                    <span class="block truncate text-xs text-text-muted">{project.companyName}</span
+                    >
+                  {/if}
+                </a>
+                <!-- The burn is a total of time entries, so it opens the report those entries are
                  in — filtered to this project (issue #15). Spent of budget, with what is left on
                  hover in words: the tile and the lists answer the same question with the same
                  sentence (#340). -->
-            <a
-              href="/overview?project_id={project.id}"
-              title={project.burn?.title}
-              class="shrink-0 tabular-nums hover:underline {project.pct != null &&
-              project.pct >= 100
-                ? `font-medium ${burnTextClass(project.pct)}`
-                : 'text-text-muted'}"
-            >
-              {project.burn?.spentText}
-            </a>
-          </div>
-          {#if project.pct != null}
-            <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
-              <div
-                class="h-full rounded-full {burnBarClass(project.pct)}"
-                style="width: {burnBarWidth(project.pct)}%"
-              ></div>
-            </div>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+                <a
+                  href="/overview?project_id={project.id}"
+                  title={project.burn?.title}
+                  class="shrink-0 tabular-nums hover:underline {project.pct != null &&
+                  project.pct >= 100
+                    ? `font-medium ${burnTextClass(project.pct)}`
+                    : 'text-text-muted'}"
+                >
+                  {project.burn?.spentText}
+                </a>
+              </div>
+              {#if project.pct != null}
+                <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
+                  <div
+                    class="h-full rounded-full {burnBarClass(project.pct)}"
+                    style="width: {burnBarWidth(project.pct)}%"
+                  ></div>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/snippet}
+    </PanelRows>
   {/if}
 </DashboardWidgetCard>

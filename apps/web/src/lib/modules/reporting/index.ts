@@ -52,18 +52,21 @@ registerWebModule({
       category: "dashboard.category.marketing",
       size: "lg",
       load: async (api) => {
+        // `count: true` (#407): the tile listed four earlier reports and had no way to say a
+        // fifth existed, because no total was ever computed.
         const { data } = await api.GET("/api/v1/reporting/reports", {
-          params: { query: { limit: 4, count: false } },
+          params: { query: { limit: 4, count: true } },
         });
         const items = data?.items ?? [];
-        if (items.length === 0) return { latest: null, previous: [] };
+        const total = data?.total ?? items.length;
+        if (items.length === 0) return { latest: null, previous: [], total };
         // The newest one is fetched in full for its narrative; the rest are links. A list row
         // deliberately carries no snapshot (docs/PERFORMANCE.md — a row carries what its screen
         // draws), so the summary needs the detail read.
         const { data: latest } = await api.GET("/api/v1/reporting/reports/{report_id}", {
           params: { path: { report_id: items[0].id } },
         });
-        return { latest: latest ?? null, previous: items.slice(1) };
+        return { latest: latest ?? null, previous: items.slice(1), total };
       },
       component: ReportingPortalWidget,
     },

@@ -908,6 +908,47 @@ contrast bug in dark mode rather than only an inconsistency.
   **default that answers the unfiltered page may not survive the scoped one**: `/interactions`
   lands you on your own moments (#263), which over a team-visible panel's link would have
   answered 12 under a notice that said 137.
+- **A rule applied by three panels out of twenty is a rule that lives in prose** (#407). The
+  entry above was right and had been written down twice, and the client hub still carried
+  **seven** hand-picked caps — 5, 5, 5, 6, 8, 10 and **50** — with five panels that read
+  unbounded, and one sentence about what was hidden written four different ways. The 50 was the
+  one the team felt: it predates that panel having a footer link at all, so a client's card was
+  fifty rows long above the client's own phone number. And the unbounded ones are worse than a
+  wrong number, because their length is the *client's* — an agency's largest client is exactly
+  the page that becomes unusable.
+  **Two affordances, and which one a panel gets is decided by where the rest of the rows are.**
+  They are not interchangeable, and picking the wrong one is most of why the hub was
+  inconsistent. The rest is **already on the page** (the API sent 8, we draw 3) → *expand in
+  place*: no navigation, no request, no losing the client's page. The rest is **not on the page**
+  (the API capped at 5 of 23) → *hand over*, under the four conditions above. A panel may need
+  both, and the honest sentence when both apply is **one row, not two**: "Nog 5 tonen   Alle 23
+  projecten bekijken →" — spaced rather than bulleted, because a `·` between flex items either
+  ends a wrapped line or begins one, and on a phone that row always wraps.
+  `core/ui/PanelRows.svelte` owns the whole decision — draw `collapsed`, offer the expander when
+  more rows are on hand, offer the hand-over when `total` exceeds them, draw **neither** when
+  neither holds, and take the panel's own `＋ nieuw` onto the same line rather than under it. The
+  two verbatim copies of `COLLAPSED = 3` (`ActivityFeed`, `InteractionsPanelBody`) are gone, and
+  so are the four sentences: one generic pair (`common.panel.show_more` / `common.show_less`) and
+  one generic hand-over (`common.panel.view_all`), with a module keeping its own label only where
+  it names a noun the generic cannot ("Alle 23 domeinen bekijken →").
+  **The numbers are stated once** (`app/registry.py`): `PANEL_ROWS = 5` for a register — things
+  that exist and are looked up — and `PANEL_FEED = 8` for a chronological feed, which the browser
+  collapses further until the reader asks. A panel wanting a different one says why in a comment
+  beside it. And **a total is part of the contract**: a cap without one is worse than no cap,
+  because the reader cannot tell five-of-five from five-of-twenty-three. Where an endpoint cannot
+  cheaply produce a count, ask it for **one row more than you keep** (the `comments_truncated`
+  probe) — "there are more" is a weaker claim than "23" and both beat silence. The extra count is
+  pinned as a shape, not as prose: `test_company_hub_totals_do_not_scale_with_the_client` asserts
+  the hub costs the same at twelve rows per module as at two, because "a total per panel" turning
+  into "a query per row" is invisible in the JSON.
+  **A dashboard widget is the same object.** `DashboardWidgetCard` offered a header link and no
+  slot for a notice, so the two widgets that were honest smuggled their total into the link's own
+  text — *"Alle 23 beoordelen"* — while five others said nothing. A widget that draws rows wraps
+  them in `PanelRows` too, and the header link goes back to meaning "this tile's module". The
+  sharpest case was `tasks.my_open`, which partitioned a page of twenty into *achterstallig /
+  vandaag / later* and printed a count per bucket: three numbers that were **wrong** rather than
+  partial for anyone with more open work, and a wrong number reads as measured. They are counted
+  in SQL over the whole assigned set now, in one statement beside the page.
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel

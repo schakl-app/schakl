@@ -56,12 +56,22 @@ registerWebModule({
       position: 20,
       requiresPermission: "subscriptions.subscription.read",
       load: async (api, { entityId }) => {
+        // Five, not twenty (#407): the endpoint is paged and has always sent a total, and the
+        // panel rendered all twenty and said nothing about a twenty-first.
         const { data } = await api.GET("/api/v1/subscriptions", {
           params: {
-            query: { entity_type: "project", entity_id: entityId, usage: true, limit: 20 },
+            query: { entity_type: "project", entity_id: entityId, usage: true, limit: 5 },
           },
         });
-        return { subscriptions: data?.items ?? [] };
+        const items = data?.items ?? [];
+        // The hand-over must carry the filter (docs/UX.md), and this panel's host context does
+        // not name the client — every row here belongs to the project's client, so the first
+        // row does. No extra call.
+        return {
+          subscriptions: items,
+          total: data?.total ?? items.length,
+          companyId: items[0]?.company_id ?? "",
+        };
       },
       component: ProjectSubscriptionsPanel,
     },

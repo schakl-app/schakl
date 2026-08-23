@@ -32,8 +32,8 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
-    DashboardTaskGroup,
-    DashboardTaskItem,
+    DashboardMineSummary,
+    DashboardTaskGroups,
     LabelCreate,
     LabelRead,
     LabelUpdate,
@@ -140,26 +140,27 @@ async def list_tasks(
 
 @router.get(
     "/dashboard-groups",
-    response_model=list[DashboardTaskGroup],
+    response_model=DashboardTaskGroups,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_groups(
+    limit: int = Query(8, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskGroup]:
-    """Open-task counts grouped by project, then company, in one compact query."""
-    return await TaskService(ctx).dashboard_groups()
+) -> DashboardTaskGroups:
+    """Open-task counts grouped by project, then company — the busiest few, and how many (#407)."""
+    return await TaskService(ctx).dashboard_groups(limit=limit)
 
 
 @router.get(
     "/dashboard-mine",
-    response_model=list[DashboardTaskItem],
+    response_model=DashboardMineSummary,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_mine(
     limit: int = Query(20, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskItem]:
-    """Compact personal task list for the dashboard tile."""
+) -> DashboardMineSummary:
+    """The personal task tile: a page of rows, plus the bucket counts of the whole set (#407)."""
     return await TaskService(ctx).dashboard_mine(limit=limit)
 
 
