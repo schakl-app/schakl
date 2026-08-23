@@ -13,9 +13,9 @@ import uuid
 from datetime import date, timedelta
 
 from app.core.auth.models import User
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 
-_YEAR = date.today().year
+_YEAR = org_today().year
 
 
 async def _member(client, headers, email: str) -> User:
@@ -84,7 +84,7 @@ async def test_pattern_places_days_to_the_horizon(client_for) -> None:
         )
         assert res.status_code == 201, res.text
 
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)  # a future Friday
+        anchor = _next_weekday(org_today() + timedelta(days=7), 4)  # a future Friday
         created = await c.post(
             "/api/v1/leave/recurring",
             json={
@@ -101,7 +101,7 @@ async def test_pattern_places_days_to_the_horizon(client_for) -> None:
         rows = await _generated(c, headers, member.id)
         assert len(rows) == created.json()["generated"]
         # Open-ended contract → the rolling look-ahead (default 12 months), not a fixed window.
-        horizon = _add_months(date.today(), 12)
+        horizon = _add_months(org_today(), 12)
         holidays = set()
         for year in (_YEAR, _YEAR + 1):
             holidays |= {
@@ -141,7 +141,7 @@ async def test_generation_is_idempotent_and_respects_moves(client_for) -> None:
             headers=headers,
         )
 
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 4)
         pattern = (
             await c.post(
                 "/api/v1/leave/recurring",
@@ -208,7 +208,7 @@ async def test_generation_stops_at_the_balance(client_for) -> None:
             assert res.status_code == 200, res.text
 
         # Weekly cadence, months of horizon — but only 16 h per year in the pot.
-        anchor = _next_weekday(date.today() + timedelta(days=7), 2)  # a future Wednesday
+        anchor = _next_weekday(org_today() + timedelta(days=7), 2)  # a future Wednesday
         created = await c.post(
             "/api/v1/leave/recurring",
             json={
@@ -237,7 +237,7 @@ async def test_fixed_term_contract_is_filled_to_its_end_date(client_for) -> None
     async with client_for(t.host) as c:
         member = await _member(c, headers, "e@example.com")
         types = await _types(c, headers)
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 4)
         end = anchor + timedelta(weeks=5)  # room for the anchor + two biweekly repeats
         res = await c.post(
             "/api/v1/leave/contracts",
@@ -279,7 +279,7 @@ async def test_ended_contract_generates_nothing(client_for) -> None:
             json={
                 "user_id": str(member.id),
                 "start_date": f"{_YEAR - 1}-01-01",
-                "end_date": (date.today() - timedelta(days=30)).isoformat(),
+                "end_date": (org_today() - timedelta(days=30)).isoformat(),
                 "contract_hours_per_week": "36",
             },
             headers=headers,
@@ -323,7 +323,7 @@ async def test_horizon_setting_bounds_open_ended_generation(client_for) -> None:
         assert res.status_code == 200, res.text
         assert res.json()["recurring_horizon_months"] == 1
 
-        anchor = _next_weekday(date.today() + timedelta(days=7), 2)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 2)
         created = await c.post(
             "/api/v1/leave/recurring",
             json={
@@ -338,7 +338,7 @@ async def test_horizon_setting_bounds_open_ended_generation(client_for) -> None:
         rows = await _generated(c, headers, member.id)
         assert len(rows) > 0
         assert all(
-            date.fromisoformat(r["start_date"]) <= _add_months(date.today(), 1) for r in rows
+            date.fromisoformat(r["start_date"]) <= _add_months(org_today(), 1) for r in rows
         )
 
 
@@ -364,7 +364,7 @@ async def test_member_plans_their_own_self_service_pattern(client_for) -> None:
         )
         assert res.status_code == 201, res.text
 
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 4)
         created = await c.post(
             "/api/v1/leave/recurring",
             json={
@@ -459,7 +459,7 @@ async def test_part_day_pattern_prices_the_window(client_for) -> None:
         )
 
         # An inverted same-day window is a typo, not a wish.
-        anchor = _next_weekday(date.today() + timedelta(days=7), 2)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 2)
         res = await c.post(
             "/api/v1/leave/recurring",
             json={
@@ -504,7 +504,7 @@ async def test_recurring_is_tenant_isolated(client_for) -> None:
     async with client_for(a.host) as ca:
         member = await _member(ca, ah, "e@example.com")
         types = await _types(ca, ah)
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        anchor = _next_weekday(org_today() + timedelta(days=7), 4)
 
         created = await ca.post(
             "/api/v1/leave/recurring",
