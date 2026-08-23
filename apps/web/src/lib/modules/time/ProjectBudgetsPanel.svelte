@@ -20,9 +20,12 @@
    * first, the one scale from `core/burn.ts`, and it scrolls rather than truncating, so it
    * never reads as "those are all the budgets" when it isn't.
    */
+  import { page } from "$app/state";
+
   import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
   import { hoursBurn, type HoursFields } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
 
   interface ProjectRow {
     id: string;
@@ -96,7 +99,7 @@
         <li>
           <div class="flex items-baseline justify-between gap-2">
             <a
-              href={`/projects/${project.id}`}
+              href={fromHref(`/projects/${project.id}`, page.url)}
               class="min-w-0 truncate text-sm font-medium text-text hover:text-brand"
             >
               {project.name}

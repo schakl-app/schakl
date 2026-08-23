@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { orgYear } from "$lib/core/today";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -16,7 +17,7 @@ import { requestBody } from "$lib/modules/leave/request";
 import type { Actions, PageServerLoad } from "./$types";
 
 function currentYear(): number {
-  return new Date().getUTCFullYear();
+  return orgYear();
 }
 
 function parseYear(raw: string | null): number {

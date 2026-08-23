@@ -66,6 +66,7 @@ jobs:
             web:
               - 'apps/web/**'
               - 'scripts/forms-check.mjs'
+              - 'scripts/today-check.mjs'
               - 'messages/**'
               - 'project.inlang/**'
               - 'pnpm-lock.yaml'
@@ -246,6 +247,15 @@ jobs:
       # see — a form that blanks what the user just saved (docs/UX.md).
       - name: Form reset check
         run: node scripts/forms-check.mjs
+      # Same reason, same place: a date built from `new Date().toISOString()` is UTC's day, not
+      # the tenant's, and nothing else in the build can see it (CLAUDE.md §8).
+      - name: Tenant clock check
+        run: node scripts/today-check.mjs
+      # And again: `DataTable` is `table-fixed` with `overflow-hidden` on every cell, so a name
+      # wider than its column is cut mid-glyph — and `truncate` on a bare inline element sets
+      # `nowrap` and nothing else. Both spellings read as correct in a diff (#370).
+      - name: Table cell clipping check
+        run: node scripts/cells-check.mjs
       - run: pnpm install --frozen-lockfile
       - name: Type check
         run: pnpm --filter @schakl/web check

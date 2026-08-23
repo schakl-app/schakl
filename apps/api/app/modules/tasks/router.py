@@ -32,8 +32,8 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
-    DashboardTaskGroup,
-    DashboardTaskItem,
+    DashboardMineSummary,
+    DashboardTaskGroups,
     LabelCreate,
     LabelRead,
     LabelUpdate,
@@ -56,7 +56,7 @@ from app.modules.tasks.schemas import (
     TemplateRead,
     TemplateUpdate,
 )
-from app.modules.tasks.service import TaskService
+from app.modules.tasks.service import DASHBOARD_GROUP_ROWS, TaskService
 from app.modules.tasks.templates import TemplateService
 from app.schemas import Page
 
@@ -82,7 +82,7 @@ async def list_tasks(
     assignee_contact_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None, max_length=50, description="A configured status key"),
     label_id: uuid.UUID | None = Query(None),
-    due: Literal["overdue", "today", "week"] | None = Query(None),
+    due: Literal["overdue", "today", "week", "later"] | None = Query(None),
     due_from: date | None = Query(None, description="Deadline window start (the Agenda feed)"),
     due_to: date | None = Query(None, description="Deadline window end (inclusive)"),
     q: str | None = Query(None, max_length=200),
@@ -93,8 +93,20 @@ async def list_tasks(
             "ones. Omitted returns both."
         ),
     ),
+    undated: bool | None = Query(
+        None,
+        description=(
+            "Only tasks with no deadline (rows written before the date became required, "
+            "#392), or only dated ones. Omitted returns both."
+        ),
+    ),
     sort: str | None = Query(
-        None, description="title | due_date | priority | status | assignee | …, '-' desc"
+        None,
+        description=(
+            "due | title | due_date | priority | status | assignee | …, '-' desc. "
+            "`due` is the urgency reading the board opens on: deadline first, then priority, "
+            "highest first."
+        ),
     ),
     meta: bool = Query(True, description="Include label/checklist/comment aggregates"),
     hours: bool = Query(
@@ -122,6 +134,7 @@ async def list_tasks(
         due_to=due_to,
         q=q,
         unnamed=unnamed,
+        undated=undated,
         sort=sort,
         with_meta=meta,
         hours=hours,
@@ -132,26 +145,31 @@ async def list_tasks(
 
 @router.get(
     "/dashboard-groups",
-    response_model=list[DashboardTaskGroup],
+    response_model=DashboardTaskGroups,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_groups(
+    limit: int = Query(DASHBOARD_GROUP_ROWS, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskGroup]:
-    """Open-task counts grouped by project, then company, in one compact query."""
-    return await TaskService(ctx).dashboard_groups()
+) -> DashboardTaskGroups:
+    """Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
+
+    Capped, and the envelope says by how much: a dashboard tile listing every project an
+    agency runs is a scroll rather than a summary.
+    """
+    return await TaskService(ctx).dashboard_groups(limit=limit)
 
 
 @router.get(
     "/dashboard-mine",
-    response_model=list[DashboardTaskItem],
+    response_model=DashboardMineSummary,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_mine(
     limit: int = Query(20, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskItem]:
-    """Compact personal task list for the dashboard tile."""
+) -> DashboardMineSummary:
+    """The personal task tile: a page of rows, plus the bucket counts of the whole set (#407)."""
     return await TaskService(ctx).dashboard_mine(limit=limit)
 
 

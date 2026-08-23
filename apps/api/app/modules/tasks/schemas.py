@@ -115,6 +115,13 @@ class TaskBase(BaseModel):
     # status. Validated against the org's ``task_statuses`` in the service.
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority = TaskPriority.NORMAL
+    # Nullable *here* because ``TaskRead`` inherits this shape and every instance that upgrades
+    # into #392 carries rows written before the deadline was required — a read model that could
+    # not express them would 500 on the tenant's own backlog. The **write** shapes are where the
+    # rule lives: ``TaskCreate`` overrides this as required, and ``TaskUpdate`` refuses an
+    # explicit ``null`` in the service. Expand/contract (docs/WORKFLOW.md): the column stays
+    # nullable for at least a release, so an unattended ``alembic upgrade head`` on somebody
+    # else's data cannot fail on data this release is the first to forbid.
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     # Per-task close policy (#157 extended): when set, this task can only reach a finished
@@ -125,6 +132,20 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
+    #: **Required** (#392), narrowing ``TaskBase``'s nullable column type. A task with no
+    #: deadline is absent from ``?due=overdue``, from the Agenda's deadline feed and from both
+    #: dashboards' overdue counts — it is not merely unscheduled, it is invisible to the entire
+    #: urgency vocabulary, which is what the team means by *niet kan worden overgeslagen*. So
+    #: every creator states one, and the ones with nobody in front of them state a **default**
+    #: rather than inheriting ``NULL``: the recurrence generator computes it from the rule, a
+    #: template item from its ``relative_due_days`` (else the day it is applied), an automation
+    #: rule from its ``due_days`` (else the day it fires), the import refuses the row by naming
+    #: the column, and create-then-edit writes the org's own today over a placeholder row it is
+    #: about to drop the user into.
+    #:
+    #: A **deadline is not a calendar booking**: ``Geplande blokken`` (#188/#335) stays optional,
+    #: and setting one never implies the other.
+    due_date: date
     #: The employees on this task, one starred as primary (#375). ``None`` means *the caller
     #: didn't say* — and ``assignee_user_id`` alone decides, which is the pre-roster shape every
     #: existing client (and the MCP surface generated from this spec) still posts. ``[]`` is a
@@ -199,6 +220,11 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority | None = None
+    #: Absent leaves the deadline alone; an explicit ``null`` is **refused** (#392). CLAUDE.md
+    #: §18's rule with its second half withdrawn: clearing is what stops being allowed, so a
+    #: ``PATCH`` that mentions nothing but ``status`` still works on a task written before this
+    #: — which is the acceptance criterion that matters most, since an agency's first act after
+    #: upgrading must not be being unable to tick off its own backlog.
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     position: float | None = None
@@ -351,7 +377,14 @@ class DashboardTaskGroup(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     count: int
+    # The urgency partition (#398). A count says how *much* work a client is carrying and
+    # nothing about whether any of it is late, so the tile that ranked on it put five
+    # comfortable tasks above one that was due last Tuesday. These three are disjoint and each
+    # is exactly what its ``?due=`` chip shows, so every figure opens the list it counted;
+    # ``count`` stays, because "how much is there" is still a question, just not the first one.
     overdue: int
+    due_today: int = 0
+    due_week: int = 0
 
 
 class DashboardTaskItem(BaseModel):
@@ -369,6 +402,46 @@ class DashboardTaskItem(BaseModel):
     # items, which belong to no client and must not be labelled as if they did.
     company_id: uuid.UUID | None = None
     company_name: str | None = None
+
+
+class DashboardTaskGroups(BaseModel):
+    """The tile's page **and** how many groups exist behind it (#407, #398).
+
+    The tile used to render every group a GROUP BY produced — an agency running eighty live
+    projects got eighty rows on their My Day. A page needs a size, and a size needs a number
+    beside it or the reader cannot tell the whole answer from the first screen of one.
+
+    ``total`` counts the **groups**, not the tasks — it is what "en nog 7" is drawn from — and
+    it rides on the same grouped query as the rows, so saying what is not shown costs no second
+    read. ``items`` rather than ``groups`` because every capped dashboard read answers the same
+    shape (:class:`DashboardMineSummary`, the project budgets tile); one envelope the widgets
+    share is what keeps a reader from having to remember which key this particular tile used.
+    """
+
+    items: list[DashboardTaskGroup]
+    total: int
+
+
+class DashboardMineSummary(BaseModel):
+    """My open tasks: the page, and the bucket counts of the **whole** set (#407, #397).
+
+    The widget partitions its rows into over tijd / vandaag / deze week / later and prints a
+    count per bucket. Counted off a truncated page those numbers are wrong rather than partial —
+    worse than silence, because they read as measured. So the buckets are counted in SQL over
+    every open task assigned to the caller, and the rows below them are the page.
+
+    Four counts rather than three since #397: ``upcoming`` was "everything that is not overdue
+    and not today", which is the tile's whole complaint — the week and the rest were one number
+    as well as one heading. The boundaries are the ``?due=`` filter's, so a heading and the list
+    it opens count the same rows.
+    """
+
+    items: list[DashboardTaskItem]
+    total: int
+    overdue: int
+    due_today: int
+    due_week: int
+    later: int
 
 
 # --------------------------------------------------------------------------- #

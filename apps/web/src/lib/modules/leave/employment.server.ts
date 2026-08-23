@@ -3,6 +3,7 @@ import type { Actions } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { orgYear } from "$lib/core/today";
 
 import type { WorkSchedule } from "./schedule";
 
@@ -152,7 +153,7 @@ export const employmentActions = {
     // (#264 moves the entitlement and leaves the calendar alone). Reported, never auto-cancelled.
     // Fetched on the failure path too, so the receipt's figures show that nothing was placed.
     const { data: freeTime } = await api.GET("/api/v1/leave/free-time", {
-      params: { query: { year: new Date().getFullYear(), user_id: userId } },
+      params: { query: { year: orgYear(), user_id: userId } },
     });
     if (patternError !== null) {
       return fail(400, {
@@ -187,7 +188,7 @@ export const employmentActions = {
     // unreachable), and the refreshed overview shows the overhang actually emptied.
     const { data: freeTime } = userId
       ? await api.GET("/api/v1/leave/free-time", {
-          params: { query: { year: new Date().getFullYear(), user_id: userId } },
+          params: { query: { year: orgYear(), user_id: userId } },
         })
       : { data: null };
     return {

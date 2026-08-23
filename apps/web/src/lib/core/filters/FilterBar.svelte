@@ -41,10 +41,26 @@
     return def.value ?? page.url.searchParams.get(def.key)?.trim() ?? "";
   }
 
+  /**
+   * Is this filter narrowing the list?
+   *
+   * Not the same question as "is it set to something", for two kinds. A `custom` control may own
+   * more than its own key, or none at all, so it says. And a `pills` filter whose *default* is a
+   * real value — the client register opens on the working set, not on everything (#329) — is the
+   * view the reader would get anyway, so counting it would put a "1" on the phone's filter badge
+   * on arrival and offer "wissen" for a filter nobody turned on.
+   */
+  function narrowing(def: FilterDef): boolean {
+    if (def.kind === "custom") {
+      return def.active ?? page.url.searchParams.get(def.key) !== null;
+    }
+    return page.url.searchParams.get(def.key)?.trim() ? true : false;
+  }
+
   // A number, not the array it comes from: the effect below must re-run when the count changes
   // and *not* on every navigation, or sorting a filtered list would re-open the bar the user
   // just collapsed (a fresh array is never equal to the last one; a number often is).
-  const activeCount = $derived(shown.filter((def) => current(def) !== "").length);
+  const activeCount = $derived(shown.filter(narrowing).length);
 
   function apply(key: string, value: string) {
     // `keepFocus` so typing in a picker survives the navigation, `noScroll` so applying a
@@ -116,14 +132,22 @@
             id="{idPrefix}-{def.key}"
           />
         </div>
+      {:else if def.kind === "custom"}
+        <!-- A control the bar cannot express — a member picker, a date pair. The page renders
+             it; the bar decides where it sits and whether it is on screen at all. -->
+        {@render def.render()}
       {:else}
         {#each def.options as option (option.value)}
           {@const on = current(def) === option.value}
+          <!-- One selected treatment on every list, whatever the chip's own colour: the ring is
+               what says "this is on", so a reader never has to learn a second vocabulary per
+               screen. `option.class` is only the *unselected* look, and only where the colour
+               carries meaning (a status, a label). -->
           <button
             type="button"
             class="rounded-full px-3 py-1 text-xs font-medium {on
-              ? 'bg-brand/10 text-brand ring-2 ring-brand'
-              : 'bg-surface text-text-muted hover:text-text'}"
+              ? `ring-2 ring-brand ${option.class ?? 'bg-brand/10 text-brand'}`
+              : (option.class ?? 'bg-surface text-text-muted hover:text-text')}"
             aria-pressed={on}
             onclick={() => apply(def.key, on ? "" : option.value)}
           >

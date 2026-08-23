@@ -26,6 +26,7 @@
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { orgToday } from "$lib/core/today";
   import { formatMinutes } from "$lib/modules/time/format";
 
   import { durationMinutes as blockDuration, localDayTime } from "./schedule";
@@ -91,9 +92,7 @@
     ondone?: () => void;
   } = $props();
 
-  function todayIso(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
+  const todayIso = (): string => orgToday();
 
   let loading = $state(false);
   let loaded = $state(false);

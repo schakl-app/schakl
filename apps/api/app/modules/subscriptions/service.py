@@ -277,6 +277,7 @@ class SubscriptionService:
         company_id: uuid.UUID | None = None,
         status: str | None = None,
         subscription_type_id: uuid.UUID | None = None,
+        q: str | None = None,
         sort: str | None = None,
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
@@ -289,6 +290,10 @@ class SubscriptionService:
             conditions.append(Subscription.status == status)
         if subscription_type_id is not None:
             conditions.append(Subscription.subscription_type_id == subscription_type_id)
+        if q and q.strip():
+            # The name is the only free text on the row a reader would search by; the client is
+            # already its own filter, and the type is a closed vocabulary with its own control.
+            conditions.append(Subscription.name.ilike(f"%{q.strip()}%"))
         if entity_type and entity_id:
             # "Which agreements cover this project/task?" — the project panel's question.
             conditions.append(
@@ -577,15 +582,36 @@ class SubscriptionService:
             )
         return grouped
 
-    async def for_company(self, company_id: uuid.UUID) -> Sequence[Subscription]:
+    async def for_company(
+        self, company_id: uuid.UUID, *, limit: int | None = None
+    ) -> tuple[Sequence[Subscription], int]:
+        """The client's agreements, capped, with the whole count beside them (#407).
+
+        The count is asked for separately rather than measured off the page, because a panel
+        that shows five of twenty and says "five" is a wrong number rather than a rounded one.
+        """
         stmt = (
             self.repo.scoped_select()
             .where(Subscription.company_id == company_id)
             .order_by(func.lower(Subscription.name))
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
+        total = (
+            int(
+                await self.ctx.session.scalar(
+                    self.repo.scoped_count_select().where(
+                        Subscription.company_id == company_id
+                    )
+                )
+                or 0
+            )
+            if limit is not None
+            else len(items)
+        )
         await self._attach(items)
-        return items
+        return items, total
 
     # --- writes -------------------------------------------------------------- #
     async def create(self, data: SubscriptionCreate) -> Subscription:

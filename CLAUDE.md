@@ -74,6 +74,7 @@ apps/
     integrations/  # same descriptor, same registry — a credential for someone else's service (§6a)
       google/      # Workspace: Gmail, Calendar, Drive, Contacts
       google_ads/
+      google_analytics/  # GA4, live and read-only
       cloudflare/
       oxxa/        # registrar
       uptime/      # Uptime Kuma
@@ -168,7 +169,10 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   before its provider is *called* (`requires_permission`, or an `explicit_public` reason — a
   panel with neither is a build break, exactly as an undeclared route is); its `prominence`
   (a working surface, or a register: correct, occasionally consulted, never news); its `size`
-  (full or half, for the host's two-column grid); and `empty_when(data)`, which lets the host
+  (full or half, for the host's two-column grid — and since #403 that is what it is *drawn* at: a
+  half with no neighbour stays a half, and the arrangement is computed over the whole ordered list
+  so a panel's width and lane never depend on which of its neighbours this client happens to have
+  nothing in); and `empty_when(data)`, which lets the host
   fold "this client has nothing here yet" into one strip of ＋ chips instead of ten cards that
   are each a heading over a negative sentence. Optionally `summaries` too — the same seam one
   level up: one number, a label, a tone and a link, laid out as the record's vital signs under
@@ -234,8 +238,9 @@ and it is worth having with every third-party account in the world cancelled: `c
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
-over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
-`wordpress`, `mollie`, `timeon` (an outgoing time registration a cutover is still running on).
+over there: `google` (Workspace), `google_ads`, `google_analytics`, `cloudflare`, `oxxa`,
+`uptime` (Uptime Kuma), `wordpress`, `mollie`, `timeon` (an outgoing time registration a
+cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -258,7 +263,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`, `timeon` → `time`. Deliberately *not* "modules this
+  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `timeon` → `time`.
+  Deliberately *not* "modules this
   is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
   (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
@@ -350,6 +356,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a test computing it from `date.today()` or UTC agrees with the app only on a developer's
   machine and fails on CI, which runs in UTC. A test may still *name* a zone when the zone is its
   subject (a DST boundary); that is an input, not an assumption.
+- **The browser is a module too, and it kept its own clock for a year** (#396). The rule above was
+  written after the API was fixed, and the web app was never brought along: twenty call sites read
+  `new Date().toISOString().slice(0, 10)`, which is not the org's calendar date and not even the
+  viewer's — it is **UTC's**. In `Europe/Amsterdam` the UTC date rolls over at 02:00 local, so for
+  two hours a night a task due today compared as `> today` and was filed under *Binnenkort*, while
+  one due yesterday compared as `== today` and was drawn in black rather than overdue red — in the
+  exact colour the urgency work is about, in `TaskRow`, which every board, panel and widget draws.
+  The two `+page.server.ts` cases were worse in kind: they read the **Node process's** clock, whose
+  `TZ` is UTC in the shipped image, so they were a day out *all day* for every tenant east of it.
+  `$lib/core/today.ts` is the one answer now (`orgToday` / `orgYear` / the pure `todayIn`), reading
+  the same `getTimeZone()` every date on screen is formatted with, so a date the app computes and a
+  date it prints can never disagree. Three things generalise. **A helper that already exists is not
+  a fix** — `getTimeZone()` was wired both sides and used by `format.ts` throughout; these call
+  sites were not missing a mechanism, they were bypassing one, which is why two private copies of
+  the same three lines had also grown (`availabilityToday`, `anchorMonth`) and now delegate. **The
+  sibling unit fails the same way and was missed the same way**: nine places asked
+  `new Date().getUTCFullYear()`, so a leave balance and the revenue report opened on the year that
+  had just ended. And **a bug class invisible in review needs a lint, not a memory** —
+  `YYYY-MM-DD` is well-formed whichever clock made it, the types agree, `svelte-check` is happy,
+  and a developer looking at the screen in the afternoon sees the right answer, so
+  `scripts/today-check.mjs` (`pnpm today:check`, CI + pre-commit, beside `forms:check` for exactly
+  the same reason) refuses a **clock read** by shape and never by filename: converting a value you
+  were handed stays legal, because there is no clock in it to get wrong.
 
 ## 9. Conventions
 
@@ -842,6 +871,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   task links were not decided against, they were added years after `spawn_next` was written and
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
+- **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
+  `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
+  `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'
+  overdue counts — not merely unscheduled but **invisible to the entire urgency vocabulary**, which
+  is why the team's *"niet kan worden overgeslagen"* becomes a required field rather than a warning.
+  Four rules generalise past the column. **The rule lives in the write schemas, not in the table**:
+  `TaskCreate.due_date` is required and `TaskUpdate` refuses an explicit `null` while `TaskBase`
+  stays nullable, because `TaskRead` inherits it and every instance upgrades carrying rows the new
+  rule forbids — the entrypoint runs `alembic upgrade head` unattended on somebody else's data
+  (docs/WORKFLOW.md), so the constraint is a later release's decision and the *first* one must leave
+  the backlog editable. **Absent still means leave alone; only clearing stops being allowed** —
+  §18's pair with its second half withdrawn — so a `PATCH` naming nothing but `status` works on a
+  legacy row, which is the acceptance criterion that matters most. **A creator with nobody in front
+  of it states a default rather than raising**, because a 422 in an ARQ worker is a task nobody ever
+  sees: the recurrence generator computes it from the rule, a template item from its
+  `relative_due_days` (else the day it is applied), and an automation rule from its own `due_days`
+  (else the day it fires) — while the **import**, which has a human reading a preview, refuses and
+  names the row (§17/#289: a check the row report cannot name is a check the preview does not have).
+  The **create dialog** #391 put in front of the row is where every hand-made task now answers, one
+  `taskCreateBody` for all five surfaces: the deadline joined the title there for the same reason
+  the title moved, and a rule enforced at four of five doors is a rule with a hole in it. And **a
+  rule shipped over live data owes that data a way out**: `?undated=1` gathers what the release
+  forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
+  and the edit form says in one line what it is about to ask for.
 
 - **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
   SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
@@ -1189,6 +1242,38 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   #318's "a queue nobody reads", one level below the queue. Nothing is lost by staying quiet: the
   moment the pairing appears the sentinel becomes a real id, the fingerprint moves, and that side
   reads as changed on the very next run.
+- **A schedule is the tenant's, a gate must ask the authority that exists, and a job that decides
+  not to run has to say so** (#387/#388/#389, `docs/TIMEON.md` §6a/§9b). Three faults on one
+  integration, and each generalises past it. **A cron guard with no org is an org-blind guard**:
+  `timeon`'s nightly called `sku_writable("timeon")` with neither `plan` nor `host`, which on the
+  cloud posture reads the *instance* licence — the one authority a cloud tenant does not have,
+  since the operator runs the installation and the tenant buys a plan. An org on `unlimited` was
+  refused by a gate that never got to ask about it, and this was the only cron in the codebase with
+  that shape: every other one calls `sku_cron_enabled`, which answers from the licence self-hosted
+  and defers to `run_per_org`'s per-org plan filter on cloud. The lesson is not "pass the plan" but
+  **prefer the helper that already encodes the posture split** — a call site holding no org cannot
+  be made correct by argument, only by deferring to the layer that has one. **A constant in our
+  source is not a schedule**: `cron(hour=4, minute=20)` was 04:20 *UTC* for every account on every
+  instance, so the "nightly" drifted an hour twice a year on the org's own clock (§8) and could not
+  say "hourly for this connection, nightly for that one" — which is the actual question during a
+  cutover, where both systems are written to all day. The ARQ cron becomes the **tick** and the
+  account becomes the schedule, resolved by one function the worker and the screen both call, since
+  two copies of a schedule rule is how a page comes to promise a run the worker does not make; a
+  sub-daily cadence **shortens its window** rather than re-reading the same six weeks twenty-four
+  times a day. And **silence is the reason a broken schedule survives**: five nights of a nightly
+  that never fired looked exactly like five nights of nothing having changed in Timeon, so
+  `last_auto_run_at` and the computed next run are stored and printed, and a refusal at the gate
+  names the sku in the log. Its sibling on the *screen* is #389: `timeon` was the only integration
+  in the main navigation, on the argument that a two-way sync produces a queue somebody must
+  settle. True, and an argument for the queue being **reachable** rather than for a permanent slot
+  — **a cutover ends**, the queue is empty most days before it does, and a queue that shows nothing
+  every day is the one people stop reading (§14's own "a surface that has to be found" rule, whose
+  honest form is *it finds you*: an unsettled-conflict count beside the hours it is about, drawn
+  only when non-zero). A vendor's name in a white-label product's main menu is the smell that
+  should have been caught first. Its last sibling is the ordinary one, found while fixing the
+  gate: the per-account loop's `rollback` — which existed so one connection's failure would not
+  stop the next — also **discarded the hours the previous connection had just synced**, so the
+  loop commits per account and re-binds the transaction-local RLS GUC after each one.
 - **A notification that names something inside a record has to open *that*, and the record has to
   be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
   three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`
@@ -1210,6 +1295,89 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
   post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
   after it is taken.
+- **A dedicated tool group is a router prefix, or it is a list that rots** (`google_analytics`,
+  `docs/GOOGLE_ANALYTICS.md`). The ask was "give agents dedicated Google Analytics tools", and the
+  tempting answer — a curated `/mcp/analytics` section naming GA tools out of `marketing` — is the
+  one §12 already forbids: a hand-written list of tools is a second copy of a router, and the copy
+  is only ever wrong later, silently, in the direction of a tool the module ships and the section
+  does not offer. A section is *derived* from a module's own prefix, so the only way to have a
+  Google Analytics group is to have Google Analytics routes. Four rules generalise. **A source
+  adapter is not a surface**: `marketing` reads GA4 for one purpose — a small nightly aggregate
+  folded in beside four other sources — and every other question anybody asks Analytics needs the
+  property's *own* vocabulary (its custom dimensions, its key events, its metadata document),
+  which no cross-source dashboard can carry without becoming a GA4 client with four sources bolted
+  to it. **The requirement is the credential and nothing else**: it requires `google`, because a
+  `google_connections` row on `analytics.readonly` is the only way to get one, and deliberately
+  *not* `marketing` — over-declaring makes a tenant switch on a licensed dashboard they did not
+  want (§6a's rule, restated because the temptation here was strong). **All-GET is a design, not a
+  phase**: nothing in a client's property is ours to write, and the licence gate reads the
+  *method*, so an expiry leaves Analytics readable — data is never hostage. And **the split inside
+  a read surface is "questions somebody designed" versus "any question at all"**, which is
+  `google_ads.query.run` one integration over: `property.read` covers the seventeen shapes,
+  `report.run` covers any dimension crossed with any metric, so an agency can hand an agent the
+  curated half and nothing else. Its siblings are the ordinary GA4 ones, each of which fails
+  silently: `conversions` was renamed `keyEvents` and asking for the old name 400s the whole
+  report rather than answering zero; every metric value is a **string**; `totals` is Google's own
+  row and must never be a sum of the column, because the ratio metrics are weighted; a report's
+  columns are read back from its **response headers**, since a metric Google declined to return
+  would otherwise shift every column one to the left with every number still plausible; and a
+  sampled or thresholded answer is reported as one, because a sampled number reads as a count on
+  every screen it lands on.
+- **A tool the caller may never use must not be in the model's view, and the service must refuse it
+  anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
+  "how did this client do last month" was a question the platform could answer everywhere except
+  in the box built for asking it. Six read-only tools now ride the `mcp_tools` seam, and the part
+  worth stating is the gating: each spec names the permission its handler's service is about to
+  demand, so the cross-client grid rides `marketing.overview.read` — a manager permission here —
+  while the rest ride `marketing.metrics.read`, which the portal `client` role holds. Folding the
+  two would have put every client's numbers behind a tool one client's login can reach. `ctx.can`
+  filtering the offer and `ctx.require` refusing the call are **both** needed and neither is
+  sufficient: the filter alone makes the guard cosmetic, the service check alone leaves a control
+  drawn that can only refuse (#253). And the writes stay off the catalog on purpose — linking a
+  client to somebody else's advertising account is configuration a person makes once, not
+  something a model should reach for because a sentence sounded like a request.
+- **A credential's absence is evidence about that credential, never a verdict on the screen**
+  (#399/#411, `docs/GOOGLE_TAG_MANAGER.md` §3c). Rank Math could not be attached to a client from
+  any of the three screens that offered it, and each of the three failed differently, which is
+  what made it look like three bugs. The connect dialog (#338) mounted the picker with
+  `hasWebsites` written in as a literal false and carried no site select, so the row read *"deze
+  klant heeft nog geen website"* for a client with two and there was nothing on the dialog to
+  correct it with. The client's Marketing tab short-circuited on `needs_connection` — a question
+  about **Google** — and drew one *"Koppel een Google-account"* over a client whose SE Ranking key
+  (an agency API key) and Rank Math password (a per-website WordPress credential) were already
+  set up: the Cloudflare rule one module over, *a health probe is evidence, never the gate*. And
+  the one screen that worked was `empty_when`-folded into the hub's ＋ strip on precisely the
+  clients with nothing attached, behind a chip pointing at the tab that offered the Google button
+  — a bootstrap deadlock. The same rule fixes all three: **the missing credential decides a
+  sentence, never whether the control is drawn**, since each picker already teaches its own. Its
+  sibling is the same mistake one layer deeper and predates the issue: `_health` asked *every*
+  link whether its Google connection was live, so an SE Ranking project on an install with no
+  Google account at all rendered a red "verbinding verbroken" over a link that was working. Two
+  smaller rules ride along. **Two copies of a question is how one of them stops being asked** —
+  the panel and the dialog each mounted the picker, one answered "which website" properly and one
+  did not, so there is one `MarketingSourcePickers` now and `hasWebsites` is derived in it and
+  nowhere else. And **a chip that replaces a panel must not lead somewhere that cannot act**: with
+  no `emptyHref` it unfolds the card in place, which is what the mechanism was built for (Drive
+  and Ads already worked that way, because their connect flows live *in* the panel).
+  Its other half is about what a client's page is *for*. Three integration cards — Ads, Tag
+  Manager, Timeon — sat under the marketing panel, two of them printing largely what it printed
+  one card up, and the team asked for one control and fewer cards. Four rules generalise. **No
+  daily number means a connection, not a source**: Tag Manager joins the picker as a second,
+  labelled list (`MarketingConnection`) rather than a sixth `MarketingSource`, because a value
+  that `METRICS_BY_SOURCE`, `SCOPE_BY_SOURCE`, `aggregate`, the overview grid, the report sections
+  and the nightly sync must each be taught to say nothing about would still draw a dashboard
+  section with no numbers in it — which is what reads as broken. **Two rows cannot disagree when
+  there is only one**: a container is attached through its own module's route and nothing is
+  written in `marketing_links`, which is a stronger form of #338's mirroring rule than mirroring.
+  **Deleting a card deletes the one fact it carried that nothing else did unless that moves
+  first** — `workspace_changes`, the number its nightly cron exists for, now rides the marketing
+  panel through `app/core/tagmanager.py` (the `core/wordpress.py` seam, with the permission
+  checked *inside the registered provider*, since the borrowing panel is `explicit_public` and
+  §365's "each provider remembers" is a hope). And **a loss with nothing taking its place is
+  stated, not discovered**: Timeon's per-client pairing count and open conflicts are simply gone
+  from the hub, because a cutover ends and its queue is where a decision is actually made. On the
+  web the composition runs the only direction §6 allows — an integration registers a
+  `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
 
 ## 11. Working agreement (for Claude Code)
 

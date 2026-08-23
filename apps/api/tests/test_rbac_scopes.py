@@ -6,7 +6,7 @@ The three rules the plan says must not regress, each named in its own test, plus
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, leave_workday, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, leave_workday, make_tenant
 from tests.test_task_subresources import add_member
 
 
@@ -139,14 +139,22 @@ async def test_a_member_may_edit_the_task_assigned_to_them_and_no_other(client_f
         mine = (
             await client.post(
                 "/api/v1/tasks",
-                json={"title": "Mine", "assignee_user_id": str(member.id)},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Mine",
+                    "assignee_user_id": str(member.id),
+                },
                 headers=owner_headers,
             )
         ).json()
         theirs = (
             await client.post(
                 "/api/v1/tasks",
-                json={"title": "Theirs", "assignee_user_id": str(tenant.user.id)},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Theirs",
+                    "assignee_user_id": str(tenant.user.id),
+                },
                 headers=owner_headers,
             )
         ).json()
@@ -169,7 +177,11 @@ async def test_a_member_may_edit_the_task_assigned_to_them_and_no_other(client_f
 
         # Creating is its own permission, held by member.
         assert (
-            await client.post("/api/v1/tasks", json={"title": "New"}, headers=member_headers)
+            await client.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "New"},
+                headers=member_headers,
+            )
         ).status_code == 201
         # Deleting is not.
         assert (
@@ -185,7 +197,11 @@ async def test_a_member_may_delete_their_own_comment_but_not_anothers(client_for
 
     async with client_for(tenant.host) as client:
         task = (
-            await client.post("/api/v1/tasks", json={"title": "T"}, headers=owner_headers)
+            await client.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+                headers=owner_headers,
+            )
         ).json()
         theirs = (
             await client.post(

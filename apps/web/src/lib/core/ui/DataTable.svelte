@@ -22,6 +22,8 @@
 
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { stateTextClass, type UiState } from "$lib/core/state";
+  import { stateIcon } from "$lib/core/ui/state-icons";
   import type { ColumnSpec } from "$lib/core/table/columns";
   import { CUSTOM_PREFIX, customCellText, nextSort, sortDirection } from "$lib/core/table/columns";
   import { rangeSelection } from "$lib/core/table/selection";
@@ -39,6 +41,7 @@
     onRowClick,
     actions,
     actionsWidth = 52,
+    rowClass,
     mobileRow,
     empty,
     selectable = false,
@@ -74,6 +77,20 @@
      * its neighbour.
      */
     actionsWidth?: number;
+    /**
+     * Extra classes on the row itself — a left rail carrying a property of the record (#395's
+     * task priority), never a wash. Deliberately not a snippet: a `<tr>` has no inside to put
+     * one in, and a marker on the row is the one thing a cell cannot draw.
+     *
+     * Whatever it returns must be **unconditional in geometry** — a transparent border on the
+     * unmarked rows, not no border — or marking one row shifts its first column and the column
+     * visibly wobbles down the page.
+     *
+     * The grid only. Below `sm` the row is the page's own snippet, so its marker is the
+     * snippet's to draw; applying this to the `<li>` as well would put two rails on every
+     * phone row, sixteen pixels apart.
+     */
+    rowClass?: (row: T) => string;
     /** Rendered instead of the grid below `sm`. */
     mobileRow?: Snippet<[T]>;
     empty?: Snippet;
@@ -97,7 +114,7 @@
      * Row groups, **in display order** (#38). `open, in_progress, done` is a workflow, not an
      * alphabet, so the caller's order wins and no sort may disturb it.
      */
-    groups?: { key: string; label: string; collapsible?: boolean }[];
+    groups?: { key: string; label: string; collapsible?: boolean; state?: UiState }[];
     /**
      * The section(s) a row belongs to. Returning **several** keys lists the same record under
      * each — a contact linked to two clients belongs under both, and picking one would be a lie
@@ -390,7 +407,13 @@
         {#each grouped as group (group.key)}
           <li class="bg-surface px-4 py-2">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-              {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+              {@render groupToggle(
+                group.key,
+                group.label,
+                group.rows.length,
+                group.collapsible,
+                group.state,
+              )}
               {#if groupSummary}{@render groupSummary(group.key)}{/if}
             </div>
           </li>
@@ -515,6 +538,7 @@
                     group.label,
                     group.rows.length,
                     group.collapsible,
+                    group.state,
                   )}
                   {#if groupSummary}{@render groupSummary(group.key)}{/if}
                 </div>
@@ -568,9 +592,9 @@
        Shift extends the selection instead of opening the record: on a selectable list that is
        what the gesture means everywhere else, and answering it with a modal is the surprise. -->
   <tr
-    class="hover:bg-surface {onRowClick ? 'cursor-pointer' : ''} {selectedSet.has(row.id)
-      ? 'bg-brand/5'
-      : ''}"
+    class="hover:bg-surface {rowClass?.(row) ?? ''} {onRowClick
+      ? 'cursor-pointer'
+      : ''} {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
     onclick={onRowClick
       ? (e) => {
           if ((e.target as HTMLElement).closest("a,button,input,label,select")) return;
@@ -690,22 +714,40 @@
   </li>
 {/snippet}
 
-{#snippet groupToggle(key: string, label: string, count: number, collapsible?: boolean)}
+<!-- A section heading may carry a **state** (#395): the four urgency buckets the task board opens
+     on are a hierarchy, and a hierarchy of four identical grey headings is not one. It is the
+     palette's (#404) — glyph and colour, never colour alone — and it stays on the *heading*: the
+     rows below it are left quiet, because twenty tinted rows are worse than twenty grey ones. A
+     group with no state reads exactly as every grouped list did before. -->
+{#snippet groupToggle(
+  key: string,
+  label: string,
+  count: number,
+  collapsible?: boolean,
+  state?: UiState,
+)}
+  {@const Mark = state ? stateIcon(state) : null}
+  <!-- A stated `neutral` is not the same as no state: it resolves to the theme's own text, which
+       is a heading deliberately *stronger* than the muted grey a group with nothing to say keeps.
+       That is what separates "deze week" from "later" without spending a fourth hue on it. -->
+  {@const tint = state ? stateTextClass(state) : "text-text-muted"}
   {#if collapsible}
     <button
       type="button"
-      class="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text"
+      class="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wide hover:text-text {tint}"
       aria-expanded={!collapsedSet.has(key)}
       onclick={() => toggleGroup(key)}
     >
       {#if collapsedSet.has(key)}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
+      {#if Mark}<Mark size={13} aria-hidden="true" class="shrink-0" />{/if}
       {label}
       <span class="font-normal tabular-nums">({count})</span>
     </button>
   {:else}
     <span
-      class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted"
+      class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide {tint}"
     >
+      {#if Mark}<Mark size={13} aria-hidden="true" class="shrink-0" />{/if}
       {label}
       <span class="font-normal tabular-nums">({count})</span>
     </span>

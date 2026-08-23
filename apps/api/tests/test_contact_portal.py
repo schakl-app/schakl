@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 async def _tenant_with_contact(client_for, slug: str, *, companies: int = 1):
@@ -489,14 +489,19 @@ async def test_portal_sees_only_client_visible_tasks(client_for) -> None:
         visible = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Zichtbaar", "company_id": company, "visible_to_client": True},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Zichtbaar",
+                    "company_id": company,
+                    "visible_to_client": True,
+                },
                 headers=headers,
             )
         ).json()
         hidden = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Intern", "company_id": company},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Intern", "company_id": company},
                 headers=headers,
             )
         ).json()
@@ -570,6 +575,7 @@ async def test_portal_task_count_matches_its_list(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "due_date": FAR_FUTURE_DUE,
                     "title": f"Taak {i}",
                     "company_id": company,
                     # Exactly one is ticked; the other three are the agency's own business.
@@ -629,7 +635,7 @@ async def test_portal_task_horizon_is_the_client_s_own_companies(client_for) -> 
         ):
             await c.post(
                 "/api/v1/tasks",
-                json={**payload, "visible_to_client": True},
+                json={"due_date": FAR_FUTURE_DUE, **payload, "visible_to_client": True},
                 headers=headers,
             )
 
@@ -665,3 +671,151 @@ async def test_portal_lookup_withholds_staff_email(client_for) -> None:
         # Same people, same names — the addresses are gone.
         assert {row["user_id"] for row in client_view} == {row["user_id"] for row in staff}
         assert all(row["email"] is None for row in client_view)
+
+
+# --- the register: /portal/logins (#406) --------------------------------------------------- #
+async def test_portal_login_register_lists_only_subjects_that_carry_a_login(client_for) -> None:
+    """A client login was reachable from exactly one place — the contact it belongs to — so
+    "who at our clients can sign in?" had no answer anywhere (#406).
+
+    The register answers it, and answers with **logins**: a contact with no account is not a
+    row saying ``none``, it is the absence of a row.
+    """
+    t, headers, contact, company_ids = await _tenant_with_contact(client_for, "portal-reg")
+
+    async with client_for(t.host) as c:
+        # A second contact at the same client, never invited.
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Nooit",
+                "last_name": "Uitgenodigd",
+                "email": "nooit-reg@example.com",
+                "company_ids": company_ids[:1],
+            },
+            headers=headers,
+        )
+        assert (await c.get("/api/v1/portal/logins", headers=headers)).json() == []
+
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        rows = (await c.get("/api/v1/portal/logins", headers=headers)).json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["entity_type"] == "contact"
+        assert row["subject_id"] == contact["id"]
+        assert row["email"] == contact["email"]
+        assert row["name"] == "Piet Klant"
+        # The invite is out and the mailbox has never been used.
+        assert row["status"] == "invited"
+        # The client is on the row: the register's whole question is about who at a *client*
+        # can sign in, and a list of names answers half of it.
+        assert [client["id"] for client in row["clients"]] == [company_ids[0]]
+        assert row["clients"][0]["name"] == "Client 0"
+
+        # Disabling changes the row rather than removing it — an access register that forgets
+        # the accounts it switched off cannot answer "is their access still live?".
+        await c.delete(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        rows = (await c.get("/api/v1/portal/logins", headers=headers)).json()
+        assert [r["status"] for r in rows] == ["disabled"]
+
+
+async def test_portal_login_register_is_narrowed_by_the_company_horizon(client_for) -> None:
+    """A staff member restricted to a company group sees only the logins of clients inside it
+    (#285) — and, because the list *is* the count, cannot be shown a total the rows contradict.
+    """
+    from tests.conftest import add_membership
+
+    t = await make_tenant("portal-reg-horizon")
+    manager = await make_tenant("portal-reg-horizon-m", email="mgr-reg@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        membership = await add_membership(session, t.org.id, manager.user.id, role="admin")
+        membership_id = membership.id
+        await session.commit()
+    owner_h = await auth_cookie(t.user)
+    manager_h = await auth_cookie(manager.user, org_id=t.org.id)
+
+    async with client_for(t.host) as c:
+        inside = (
+            await c.post("/api/v1/companies", json={"name": "Binnen BV"}, headers=owner_h)
+        ).json()
+        outside = (
+            await c.post("/api/v1/companies", json={"name": "Buiten BV"}, headers=owner_h)
+        ).json()
+        for name, company, email in (
+            ("Binnen", inside, "binnen-reg@example.com"),
+            ("Buiten", outside, "buiten-reg@example.com"),
+        ):
+            person = (
+                await c.post(
+                    "/api/v1/contacts",
+                    json={
+                        "first_name": name,
+                        "email": email,
+                        "company_ids": [company["id"]],
+                    },
+                    headers=owner_h,
+                )
+            ).json()
+            assert (
+                await c.post(f"/api/v1/portal/logins/contact/{person['id']}", headers=owner_h)
+            ).status_code == 200
+
+        group = (
+            await c.post(
+                "/api/v1/companies/groups", json={"name": "Portefeuille"}, headers=owner_h
+            )
+        ).json()
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/companies",
+                json={"company_ids": [inside["id"]]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership_id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # The control: unrestricted, both logins are there.
+        assert len((await c.get("/api/v1/portal/logins", headers=owner_h)).json()) == 2
+
+        rows = (await c.get("/api/v1/portal/logins", headers=manager_h)).json()
+        assert [r["email"] for r in rows] == ["binnen-reg@example.com"]
+        # …and the client outside the horizon is not named on the row that survived either.
+        assert "Buiten BV" not in str(rows)
+
+
+async def test_portal_login_register_refuses_a_client_login(client_for) -> None:
+    """Externality is its own axis (#274): a register of who may sign in is staff's, whatever
+    permissions a tenant has granted the role a client holds."""
+    t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-reg-ext")
+
+    async with client_for(t.host) as c:
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+        # Deny-by-default already refuses (a client holds no member management). Grant it
+        # outright, so what is being tested is the externality rule and not the permission.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            from app.core.permissions.models import Role, RolePermission
+
+            role = await session.scalar(
+                select(Role).where(Role.org_id == t.org.id, Role.key == "client")
+            )
+            session.add(
+                RolePermission(
+                    org_id=t.org.id, role_id=role.id, permission="members.member.write"
+                )
+            )
+            await session.commit()
+        res = await c.get("/api/v1/portal/logins", headers=portal_headers)
+        assert res.status_code == 403, res.text

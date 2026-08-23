@@ -242,6 +242,27 @@ leaves the repository's path — a window fold, a report, a summary tile, a pane
 predicate from `horizon_condition()` explicitly (CLAUDE.md §15, and `scoped_count_select()` for
 plain counts).
 
+## A section is a partition of one page, never a query of its own
+
+The task board opens grouped into four urgency buckets (#395), and the obvious wrong way to build
+that is one read per section: four counts and four pages, growing with every section anybody adds
+later, and each one racing the others to disagree about a task somebody just ticked.
+
+The buckets are a **partition of one ordered page**, so the server's whole part is the ordering.
+`?sort=due` is a composite key — deadline first, then priority, highest first — which costs two
+`ORDER BY` expressions and no extra statement, and the browser then walks the rows it already has
+(`DataTable`'s `groupBy`). The counts beside each heading are counts of the page and say so, which
+is the same honesty a sectioned list has always owed.
+
+Two things follow for any grouped list. **A grouping that needs a number the page cannot see is a
+`groupSummary` fed by the API's own aggregate** — never a second fetch per section, and never a
+sum over `rows`. And **the bucket rule is computed once per page, not once per row**: resolving
+"where does this week stop" is day arithmetic, and doing it 200 times for one answer that cannot
+change between the rows is the cheap version of the same mistake.
+
+Pinned by `test_the_boards_urgency_sort_costs_no_statement_at_all` — three rows and thirty, the
+same statement count as the unsorted default.
+
 ## Read the windows, not their hull
 
 A screen that compares two spans reads *two ranges*, never `[earliest, latest]`. While the
@@ -284,6 +305,23 @@ with the picker searching the API as you type).
 **A capped list's count is counted, not measured.** `len(items)` behind a `LIMIT 50` reported
 "50 open" for a client with 300 — a wrong number, not a rounded one. Use
 `scoped_count_select()`.
+
+**And the cap itself is one of two numbers, not seven** (#407). Before this, the client hub
+carried caps of 5, 5, 5, 6, 8, 10 and 50, plus five panels with no cap at all — so a card's
+length was decided by whichever module was written that week, and the panel with the biggest
+number was the one whose footer link was added last. `app/registry.py` states two:
+`PANEL_ROWS = 5` for a register (things that exist and are looked up) and `PANEL_FEED = 8` for a
+chronological feed (things that happened). A provider wanting a different one says why in a
+comment beside it.
+
+**A total is part of a row-returning provider's contract**, because a cap without one is worse
+than no cap: the reader cannot tell five-of-five from five-of-twenty-three. Ask for it with
+`scoped_count_select()` (the repository's own, so the horizon and the portal rule narrow it
+exactly as they narrow the page), skip it when the page came back short — the count would equal
+`len(items)` — and, where an endpoint answers a bare list and cannot cheaply produce one, have
+the *browser* ask for one row more than it keeps. The extra statement per panel is a real cost
+and it is knowingly paid; what must never happen is a count that tracks the client's size, which
+`test_company_hub_totals_do_not_scale_with_the_client` pins as a shape.
 
 ## A list screen pages; a panel caps and says so
 

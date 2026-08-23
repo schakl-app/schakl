@@ -16,7 +16,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 
 from app.core.activity.models import ActivityLog
@@ -184,3 +184,23 @@ class ActivityService:
                 }
             )
         return items
+
+    async def count(self, entity_type: str, entity_id: uuid.UUID) -> int:
+        """How many lines the trail has in total (#407).
+
+        The panel could say *"de 10 meest recente worden getoond"* and never *of how many*, so
+        a record with eleven changes and one with eleven hundred read identically. One indexed
+        count over ``(org_id, entity_type, entity_id)`` — the index the feed already uses.
+        """
+        return int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(ActivityLog)
+                .where(
+                    ActivityLog.org_id == self.ctx.org.id,
+                    ActivityLog.entity_type == entity_type,
+                    ActivityLog.entity_id == entity_id,
+                )
+            )
+            or 0
+        )

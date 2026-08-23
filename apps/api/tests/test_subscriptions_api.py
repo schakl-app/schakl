@@ -441,3 +441,62 @@ async def test_list_sorts_on_every_column(client_for) -> None:
         assert (
             await c.get("/api/v1/subscriptions", params={"sort": "evil"}, headers=headers)
         ).status_code == 400
+
+
+async def test_list_searches_by_name(client_for) -> None:
+    """The agreements list gets the `?q=` box every comparable register has (#354).
+
+    A filter the API cannot express is a missing query parameter, never a licence to narrow the
+    slice in the browser (docs/PERFORMANCE.md): this list is paginated, so a browser-side search
+    would filter the page that happened to load and leave the total counting everything. The name
+    is the only free text on the row — the client is already its own filter and the type is a
+    closed vocabulary with its own control.
+    """
+    t = await make_tenant("subs-search")
+    headers = await auth_cookie(t.user)
+    today = datetime.now(UTC).date()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Zoek BV"}, headers=headers)
+        ).json()
+        for name in ("Hosting pakket", "Onderhoud website", "hosting uitgebreid"):
+            created = await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": name,
+                    "status": "active",
+                    "interval": "monthly",
+                    "start_date": _iso(today),
+                    "amount": "10.00",
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+
+        async def search(term: str) -> tuple[list[str], int]:
+            page = (
+                await c.get("/api/v1/subscriptions", params={"q": term}, headers=headers)
+            ).json()
+            return sorted(row["name"] for row in page["items"]), page["total"]
+
+        # Case-insensitive, anywhere in the name — a partial word is what somebody types. The
+        # total has to agree with what came back, which is what a hand-built count misses (#285).
+        assert await search("hosting") == (["Hosting pakket", "hosting uitgebreid"], 2)
+        assert await search("website") == (["Onderhoud website"], 1)
+        assert await search("  hosting  ") == (["Hosting pakket", "hosting uitgebreid"], 2)
+        # No match is an empty page, not every row.
+        assert await search("niets") == ([], 0)
+        # Absent still means everything: the pickers and the generated MCP surface read this same
+        # route (CLAUDE.md §9).
+        everything = (await c.get("/api/v1/subscriptions", headers=headers)).json()
+        assert everything["total"] == 3
+        # It composes with the other filters rather than replacing them.
+        narrowed = (
+            await c.get(
+                "/api/v1/subscriptions",
+                params={"q": "hosting", "status": "cancelled"},
+                headers=headers,
+            )
+        ).json()
+        assert narrowed["total"] == 0

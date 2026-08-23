@@ -34,15 +34,58 @@ function loadKeys(file) {
 // placeholder name, so `{count, plural, one {…} other {…}}` compiles to a parameter literally
 // called `count, plural, one {{count` and renders as `undefined … } other …}}` in front of the
 // user. It compiles without complaint, which is exactly why it is checked here.
-// The house form is a count plus a bracketed suffix — `{count} abonnement(en)` — or two keys
-// picked in code when a sentence has to read properly in both numbers.
+//
+// The house form is a **pair of keys** — `<key>` and `<key>_one` — read by `tn()` on the web and
+// picked by the caller on the API. Not a bracketed suffix: `{count} abonnement(en)` reads as
+// machine output, and this file used to recommend it (#343).
 const PLURAL_SYNTAX = /\{[^{}]*,\s*(plural|select)\s*,/;
+
+// A counted message that dodges the pair with a parenthesis — "{count} bericht(en)",
+// "{count} day(s)". Only ever flagged on a message that *counts* something, so `HTTP(s)` (a
+// protocol, not a plural) is not a false positive.
+const PARENTHETICAL_PLURAL = /[a-z]\((?:s|n|en|es|'s|’s)\)/i;
 
 /** @param {string} file */
 function pluralMessages(file) {
   return load(file)
     .filter(([, value]) => typeof value === "string" && PLURAL_SYNTAX.test(value))
     .map(([key]) => key)
+    .sort();
+}
+
+/** Counted messages that spell the plural with a parenthesis instead of a `_one` sibling. */
+function parentheticalPlurals(file) {
+  return load(file)
+    .filter(
+      ([, value]) =>
+        typeof value === "string" &&
+        value.includes("{count}") &&
+        PARENTHETICAL_PLURAL.test(value),
+    )
+    .map(([key]) => key)
+    .sort();
+}
+
+/**
+ * `<key>_one` with neither `<key>` nor `<key>_other` beside it.
+ *
+ * `tn()` reads the plural key and swaps in `_one` at exactly one, so a singular whose plural was
+ * renamed or removed is a key nothing can ever reach — and the symptom is the *plural* rendering
+ * as its own raw key on screen, which points at the wrong half of the pair.
+ *
+ * Two spellings of the plural are accepted because both are in the tree: the bare key (`tn()`'s
+ * form, and what a counted noun that reads fine unsuffixed uses) and an explicit `_other`, which
+ * the recurrence vocabulary uses so neither half of "elke dag" / "elke {count} dagen" is the
+ * odd one out. Which one a pair uses is a copy decision; *having* both halves is not.
+ */
+function orphanSingulars(file) {
+  const keys = new Set(load(file).map(([key]) => key));
+  return [...keys]
+    .filter((key) => {
+      if (!key.endsWith("_one")) return false;
+      const base = key.slice(0, -"_one".length);
+      return !keys.has(base) && !keys.has(`${base}_other`);
+    })
     .sort();
 }
 
@@ -88,7 +131,23 @@ for (const locale of locales) {
       `\n✖ ${locale}.json uses ICU plural/select, which Paraglide does not compile here — ` +
         `it renders "undefined … } other …}}": ${offenders.join(", ")}`,
     );
-    console.error(`  Write "{count} abonnement(en)", or two keys chosen in code.`);
+    console.error(`  Write a "<key>" / "<key>_one" pair and read it with tn().`);
+  }
+
+  const bracketed = parentheticalPlurals(`${locale}.json`);
+  if (bracketed.length) {
+    failed = true;
+    console.error(
+      `\n✖ ${locale}.json spells a plural with a parenthesis: ${bracketed.join(", ")}`,
+    );
+    console.error(`  "{count} abonnement(en)" is machine output. Add a "_one" sibling instead.`);
+  }
+
+  const orphans = orphanSingulars(`${locale}.json`);
+  if (orphans.length) {
+    failed = true;
+    console.error(`\n✖ ${locale}.json has a "_one" with no plural beside it: ${orphans.join(", ")}`);
+    console.error(`  A singular is one half of a pair; tn() reads the plural key.`);
   }
 }
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 from tests.test_invoicing_api import _setup_org as _invoicing_setup_org
 
 
@@ -54,6 +54,7 @@ async def _task(
     res = await client.post(
         "/api/v1/tasks",
         json={
+            "due_date": FAR_FUTURE_DUE,
             "title": title,
             "company_id": company_id,
             "allocated_minutes": allocated_minutes,
@@ -105,13 +106,24 @@ async def test_time_panel_is_bounded_however_long_the_history(client_for, count_
             res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
         assert res.status_code == 200, res.text
         panel = next(p for p in res.json() if p["key"] == "time.company")
-        # The total counts all twelve entries; the list carries ten.
+        # The total counts all twelve entries; the list carries the feed default (#407).
         assert panel["data"]["total_minutes"] == 360
-        assert len(panel["data"]["recent"]) == 10
+        assert len(panel["data"]["recent"]) == 8
+        # …and the panel knows how many it is *not* showing, so it can say so (#400).
+        assert panel["data"]["total_entries"] == 12
         # Two statements: the aggregate and the bounded page. Neither grows with the history.
         entry_reads = counter.matching("from time_entries")
         assert len(entry_reads) == 2, entry_reads
         assert any("limit" in s.lower() for s in entry_reads)
+
+        # The context a row needs to be told apart from the two beside it (#400) is on the row
+        # already: `user_id` is a column, not a join, and the count rode the aggregate. So the
+        # budget above is the *whole* assertion — nothing here costs a third statement.
+        row = panel["data"]["recent"][0]
+        for field in ("user_id", "started_at", "ended_at", "break_minutes", "billable"):
+            assert field in row, row
+        # And the ⋯ can hide itself where the API would refuse: an approved entry is locked.
+        assert "approved_at" in row, row
 
 
 # --- task statuses: one statement on the hot path ----------------------------------------- #
@@ -153,9 +165,7 @@ async def test_task_hour_budget_is_one_grouped_query_however_many_tasks(
                 task = await _task(
                     c, headers, company_id=company, title=f"T{i}", allocated_minutes=120
                 )
-                await _entry(
-                    c, headers, company_id=company, task_id=task, minutes=30, day=i % 20
-                )
+                await _entry(c, headers, company_id=company, task_id=task, minutes=30, day=i % 20)
 
         async def statements(query: str) -> tuple[int, list[str]]:
             with count_queries() as counter:
@@ -179,6 +189,39 @@ async def test_task_hour_budget_is_one_grouped_query_however_many_tasks(
         assert (plain_at_30, enriched_at_30) == (plain_at_3, enriched_at_3)
 
 
+async def test_the_boards_urgency_sort_costs_no_statement_at_all(client_for, count_queries) -> None:
+    """``sort=due`` is two ``ORDER BY`` expressions, not two reads (#395).
+
+    The board opens grouped into *Over tijd · Vandaag · Deze week · Later*, and the obvious wrong
+    way to build that is one query per bucket — four counts and four pages, growing with every
+    section somebody adds. The buckets are a partition of one ordered page, so the ordering is
+    the whole of the server's part: the same statement count as the hand-dragged default, at
+    three rows and at thirty.
+    """
+    t = await make_tenant("perf-task-due-sort")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Seed the status vocabulary, or the first read below pays for it (see above).
+        assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
+
+        async def statements(query: str) -> int:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            return len(counter)
+
+        for i in range(3):
+            await _task(c, headers, company_id=company, title=f"D{i}")
+        await statements("")  # warm whatever a first read of a new row set pays for
+        assert await statements("sort=due") == await statements("")
+
+        for i in range(3, 30):
+            await _task(c, headers, company_id=company, title=f"D{i}")
+        at_30 = await statements("sort=due")
+        assert at_30 == await statements(""), "the urgency sort started paying per row"
+
+
 async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
     """The saving is on the hot path only — an org that has none must still get them."""
     t = await make_tenant("perf-statuses-fresh")
@@ -193,20 +236,64 @@ async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
 async def test_tasks_panel_open_count_is_counted_not_measured(client_for) -> None:
     """``len(items)`` capped at the page size, so a busy client's header read "50" at 300.
 
-    Fifty-one tasks is the smallest number that tells the truth apart from the lie.
+    The page is five since #407 — fifty was never a considered number, it predates the panel
+    having a footer link at all — and the count is still counted rather than measured, which is
+    the property this test exists for.
     """
     t = await make_tenant("perf-tasks-panel")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         company = await _company(c, headers)
-        for i in range(51):
+        for i in range(12):
             await _task(c, headers, company_id=company, title=f"T{i}")
 
         res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
         assert res.status_code == 200, res.text
         panel = next(p for p in res.json() if p["key"] == "tasks.company")
-        assert panel["data"]["open_count"] == 51
-        assert len(panel["data"]["tasks"]) == 50
+        assert panel["data"]["open_count"] == 12
+        assert len(panel["data"]["tasks"]) == 5
+
+
+# --- the whole hub: a total per panel is not a query per row ------------------------------- #
+async def test_company_hub_totals_do_not_scale_with_the_client(client_for, count_queries) -> None:
+    """Every panel that caps its rows now returns the whole count beside them (#407).
+
+    That is a *second* statement per panel where there used to be one, and the temptation it
+    creates is the one this file exists for: counting in Python off an uncapped read, or asking
+    per row. Both are invisible in the JSON — the panels answer identically either way — so the
+    property is pinned as a shape: **the hub costs the same at twelve rows per module as at
+    two**, and the count each panel reports is the whole client's, not the page's.
+    """
+    t = await make_tenant("perf-hub-totals")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        small = await _company(c, headers, name="Klein")
+        for i in range(2):
+            await _task(c, headers, company_id=small, title=f"S{i}")
+            await _entry(c, headers, company_id=small, minutes=30, day=i)
+        with count_queries() as small_counter:
+            res = await c.get(f"/api/v1/companies/{small}/panels", headers=headers)
+        assert res.status_code == 200, res.text
+
+        big = await _company(c, headers, name="Groot")
+        for i in range(12):
+            await _task(c, headers, company_id=big, title=f"B{i}")
+            await _entry(c, headers, company_id=big, minutes=30, day=i)
+        with count_queries() as big_counter:
+            res = await c.get(f"/api/v1/companies/{big}/panels", headers=headers)
+        assert res.status_code == 200, res.text
+
+        assert len(big_counter) == len(small_counter), (
+            f"the hub grew from {len(small_counter)} to {len(big_counter)} statements "
+            "between a 2-row client and a 12-row one"
+        )
+
+        panels = {p["key"]: p["data"] for p in res.json()}
+        # The count is the client's, the list is a page — the pair the notice is built on.
+        assert panels["tasks.company"]["open_count"] == 12
+        assert len(panels["tasks.company"]["tasks"]) == 5
+        assert panels["time.company"]["total_entries"] == 12
+        assert len(panels["time.company"]["recent"]) == 8
 
 
 # --- the websites list: a filter that crosses a module boundary, not a prefetch ------------- #
@@ -237,9 +324,7 @@ async def test_website_company_filter_never_reads_the_clients_domains(
                     headers=headers,
                 )
             ).json()["id"]
-            created = await c.post(
-                "/api/v1/websites", json={"domain_id": domain}, headers=headers
-            )
+            created = await c.post("/api/v1/websites", json={"domain_id": domain}, headers=headers)
             assert created.status_code == 201, created.text
 
         async def measure(expected_total: int) -> int:
@@ -331,7 +416,17 @@ _MEMBER_REQUEST_BUDGET = 8
 #: own join rather than a fourth round trip), one `GROUP BY status` over the client's hour
 #: pairings, and one count of what is waiting for a decision. It calls Timeon **never**: a
 #: company page must not wait on somebody else's timesheet server to render.
-_PANELS_BUDGET = 50
+# 50 → 48 (#411): the Ads, Tag Manager and Timeon cards came off the hub, and the marketing
+# panel took one query back for the connections row it absorbed. The saving is small *here*
+# because this fixture's client has no Ads account, no container and no Timeon pairing, so
+# all three providers short-circuited — on a populated client it is four statements more.
+# 48 → 54 (#407): every panel that caps its rows now returns the whole count beside them, which
+# is a second statement for contacts, subscriptions, invoices, quotes, reports and the activity
+# trail. Deliberately paid: a cap without a total is worse than no cap, because the reader
+# cannot tell five-of-five from five-of-twenty-three. What must *not* happen is a count that
+# tracks the client's size — pinned separately by
+# ``test_company_hub_totals_do_not_scale_with_the_client``.
+_PANELS_BUDGET = 54
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.
@@ -378,9 +473,7 @@ async def test_a_client_request_resolves_its_horizon_without_re_deriving_the_rol
             res = await c.get("/api/v1/meta/me", headers=headers)
         assert res.status_code == 200
         # Still exactly one membership_roles read: the floor is synthesized, not queried.
-        assert len(counter.matching("membership_roles")) == 1, counter.matching(
-            "membership_roles"
-        )
+        assert len(counter.matching("membership_roles")) == 1, counter.matching("membership_roles")
 
         # …and the floor really applied. The owner sees the client; the client sees nothing —
         # the empty horizon, not the unrestricted ``None`` a missing resolver would have given.
@@ -567,6 +660,7 @@ async def test_a_record_filtered_interaction_page_costs_what_the_unfiltered_one_
                 task = await c.post(
                     "/api/v1/tasks",
                     json={
+                        "due_date": FAR_FUTURE_DUE,
                         "title": f"T{offset + i}",
                         "company_id": company,
                         "project_id": project_id,
@@ -630,9 +724,9 @@ async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries
         invoice_id = res.json()["id"]
 
         with count_queries() as counter:
-            slim = (
-                await c.get("/api/v1/invoicing/invoices?lines=false", headers=headers)
-            ).json()["items"][0]
+            slim = (await c.get("/api/v1/invoicing/invoices?lines=false", headers=headers)).json()[
+                "items"
+            ][0]
         assert counter.matching("from invoice_lines") == []
         assert slim["lines"] == [] and slim["tax_groups"] == []
         # The figures the index actually draws are columns, so they still answer.
@@ -644,9 +738,7 @@ async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries
         assert len(full["lines"]) == 1
         assert full["total"] == slim["total"], "the total is a column; slimming must not change it"
         # The detail view is never slimmed.
-        detail = (
-            await c.get(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)
-        ).json()
+        detail = (await c.get(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)).json()
         assert len(detail["lines"]) == 1
 
 
@@ -657,16 +749,12 @@ async def test_contacts_count_can_be_skipped(client_for, count_queries) -> None:
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         for i in range(3):
-            res = await c.post(
-                "/api/v1/contacts", json={"first_name": f"P{i}"}, headers=headers
-            )
+            res = await c.post("/api/v1/contacts", json={"first_name": f"P{i}"}, headers=headers)
             assert res.status_code == 201, res.text
 
         assert (await c.get("/api/v1/contacts", headers=headers)).json()["total"] == 3
         with count_queries() as counter:
-            page = (
-                await c.get("/api/v1/contacts?limit=2&count=false", headers=headers)
-            ).json()
+            page = (await c.get("/api/v1/contacts?limit=2&count=false", headers=headers)).json()
         assert page["total"] == len(page["items"]) == 2
         assert counter.matching("count(*)") == [], counter.matching("count(*)")
 
@@ -748,9 +836,11 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         with count_queries() as counter:
             res = await c.get("/api/v1/projects/dashboard-budgets?limit=2", headers=headers)
         assert res.status_code == 200, res.text
-        rows = res.json()
+        rows = res.json()["items"]
         # Hottest first, cut to the asked-for length, and a project with no budget is absent.
         assert [r["name"] for r in rows] == ["Heet", "Warm"]
+        # …and how many budgeted projects are burning behind the two shown (#407).
+        assert res.json()["total"] == 3
         assert rows[0]["hours"]["spent_hours"] == 6.0
         assert rows[0]["hours"]["budget_hours"] == 8.0
         # Whose budget it is — four rows called "Onderhoud" are one row without it.
@@ -783,7 +873,8 @@ async def test_company_panels_have_a_query_budget(client_for, count_queries) -> 
         await _task(c, headers, company_id=company, title="Werk")
         await _interaction(c, headers, company_id=company, subject="Hoi", body="tekst")
         contact = await c.post(
-            "/api/v1/contacts", json={"first_name": "Jan", "company_ids": [company]},
+            "/api/v1/contacts",
+            json={"first_name": "Jan", "company_ids": [company]},
             headers=headers,
         )
         assert contact.status_code == 201, contact.text
@@ -793,8 +884,7 @@ async def test_company_panels_have_a_query_budget(client_for, count_queries) -> 
         assert res.status_code == 200, res.text
         assert len(res.json()) >= 4
         assert len(counter) <= _PANELS_BUDGET, (
-            f"{len(counter)} statements, budget {_PANELS_BUDGET}:\n"
-            + "\n".join(counter.statements)
+            f"{len(counter)} statements, budget {_PANELS_BUDGET}:\n" + "\n".join(counter.statements)
         )
 
 
@@ -855,9 +945,7 @@ async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
                     "/api/v1/invoicing/invoices",
                     json={
                         "company_id": company,
-                        "lines": [
-                            {"description": "W", "quantity": "1", "unit_price": price}
-                        ],
+                        "lines": [{"description": "W", "quantity": "1", "unit_price": price}],
                     },
                     headers=headers,
                 )
@@ -875,29 +963,19 @@ async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
         invoice = await issued("500")
         for _ in range(2):
             note = (
-                await c.post(
-                    f"/api/v1/invoicing/invoices/{invoice['id']}/credit", headers=headers
-                )
+                await c.post(f"/api/v1/invoicing/invoices/{invoice['id']}/credit", headers=headers)
             ).json()
             await c.patch(
                 f"/api/v1/invoicing/invoices/{note['id']}",
-                json={
-                    "lines": [
-                        {"description": "W", "quantity": "1", "unit_price": "-100"}
-                    ]
-                },
+                json={"lines": [{"description": "W", "quantity": "1", "unit_price": "-100"}]},
                 headers=headers,
             )
-            await c.post(
-                f"/api/v1/invoicing/invoices/{note['id']}/issue", json={}, headers=headers
-            )
+            await c.post(f"/api/v1/invoicing/invoices/{note['id']}/issue", json={}, headers=headers)
         await issued("300")
         await issued("200")
 
         with count_queries() as counter:
-            rows = (await c.get("/api/v1/invoicing/invoices", headers=headers)).json()[
-                "items"
-            ]
+            rows = (await c.get("/api/v1/invoicing/invoices", headers=headers)).json()["items"]
         assert counter.matching("credit_for_id in") == [], "the list draws a column, not a join"
         credited_row = next(r for r in rows if r["id"] == invoice["id"])
         assert credited_row["credited"] is True
@@ -907,9 +985,7 @@ async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
 
         with count_queries() as counter:
             detail = (
-                await c.get(
-                    f"/api/v1/invoicing/invoices/{invoice['id']}", headers=headers
-                )
+                await c.get(f"/api/v1/invoicing/invoices/{invoice['id']}", headers=headers)
             ).json()
         assert len(detail["credit_notes"]) == 2
         assert len(counter.matching("credit_for_id in")) == 1, "one grouped read, never per note"
@@ -1009,7 +1085,8 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
         for i in range(5):
             assert (
                 await c.post(
-                    f"/api/v1/tasks/{task}/comments", json={"body": f"Opmerking {i}"},
+                    f"/api/v1/tasks/{task}/comments",
+                    json={"body": f"Opmerking {i}"},
                     headers=headers,
                 )
             ).status_code == 201
@@ -1306,6 +1383,7 @@ async def test_composite_create_does_not_scale_with_its_checklist(
                 res = await c.post(
                     "/api/v1/tasks",
                     json={
+                        "due_date": FAR_FUTURE_DUE,
                         "title": f"Taak met {steps} stappen",
                         "checklist": {
                             "title": "Aanpak",
@@ -1318,7 +1396,11 @@ async def test_composite_create_does_not_scale_with_its_checklist(
             return len(counter.statements)
 
         # Warm the org's status vocabulary, which the first create seeds.
-        warm = await c.post("/api/v1/tasks", json={"title": "warm"}, headers=headers)
+        warm = await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "warm"},
+            headers=headers,
+        )
         assert warm.status_code == 201, warm.text
 
         two, ten = await _create(2), await _create(10)
@@ -1328,3 +1410,48 @@ async def test_composite_create_does_not_scale_with_its_checklist(
         # checklist every time — which is the fan-out this create exists to remove rather than
         # relocate. A small allowance, because a flush boundary is not a promise; a slope is.
         assert ten - two <= 2, (two, ten)
+
+
+# --- /portal/logins: a register, not a state call per row ------------------------------------ #
+async def test_the_portal_login_register_costs_the_same_however_many_logins(
+    client_for, count_queries
+) -> None:
+    """The register (#406) is one batched read whatever it holds.
+
+    The shape it replaces is the one the web would otherwise have had: the login's state is an
+    endpoint addressed *by subject*, so a section listing them all is a call per contact — which
+    at three clients is indistinguishable from this one and at three hundred is the page.
+    """
+    t = await make_tenant("perf-portal-reg")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers, "Portalklant")
+
+        async def _invite(i: int) -> None:
+            person = (
+                await c.post(
+                    "/api/v1/contacts",
+                    json={
+                        "first_name": f"Klant{i}",
+                        "email": f"klant{i}-perf@example.com",
+                        "company_ids": [company],
+                    },
+                    headers=headers,
+                )
+            ).json()
+            res = await c.post(f"/api/v1/portal/logins/contact/{person['id']}", headers=headers)
+            assert res.status_code == 200, res.text
+
+        await _invite(0)
+        with count_queries() as one:
+            assert len((await c.get("/api/v1/portal/logins", headers=headers)).json()) == 1
+        for i in range(1, 4):
+            await _invite(i)
+        with count_queries() as four:
+            assert len((await c.get("/api/v1/portal/logins", headers=headers)).json()) == 4
+
+        assert len(four) == len(one), f"{len(one)} → {len(four)}: {four.statements}"
+        # The three reads that make the rows, once each: the subjects, their links, the names.
+        assert len(four.matching("FROM contacts")) == 1
+        assert len(four.matching("FROM company_contacts")) == 1
+        assert len(four.matching("FROM companies")) == 1

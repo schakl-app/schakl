@@ -5,8 +5,11 @@ Two rules from docs/GOOGLE.md §5 and issue #21 govern everything here:
 - **Permissions are Drive's, not ours.** Listing and metadata reads always act as the
   *viewing* user's connection — never a privileged identity that would leak files across the
   agency. A viewer who cannot see a file in Drive does not see it here.
-- **Unlink never deletes.** Deleting a ``drive_link`` removes the reference; no code path in
-  this module issues a Drive delete.
+- **Unlink never deletes.** Deleting a ``drive_link`` removes the reference, and no code path
+  reached from ``delete_link`` touches Drive. Removing the *file* is a second, separate act
+  with its own route and its own dialog (:meth:`trash_file`, #394) — never a rename of this
+  one: collapsing them would silently bin a client's document for whoever was only tidying a
+  record's attachments.
 
 A third rule arrived with the folder picker: **a record's folder is a stored decision**
 (``DriveLink.is_root``), not whichever folder link a query returned first. Giving a record its
@@ -40,7 +43,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
@@ -134,18 +137,27 @@ class DriveService:
         return connection
 
     @asynccontextmanager
-    async def _call(self) -> AsyncIterator[None]:
+    async def _call(
+        self, *, forbidden_code: str = "google_drive_forbidden"
+    ) -> AsyncIterator[None]:
         """Wrap Drive round-trips so a refusal arrives as its reason, not as a 500.
 
         Enters *outside* ``acting_as`` / ``release_db()``, so by the time this handles the
         error the session holds a pool connection again and may be read.
+
+        ``forbidden_code`` names the key Drive's own 401/403 answers with. The default reads
+        as "you cannot see this folder", which is the right sentence for a read and the wrong
+        one for a trash: *may not open* and *may not delete* have different cures and, in
+        Drive, different people who grant them (#394).
         """
         try:
             yield
         except httpx.HTTPStatusError as exc:
-            raise await self._translate(exc) from exc
+            raise await self._translate(exc, forbidden_code) from exc
 
-    async def _translate(self, exc: httpx.HTTPStatusError) -> AppError:
+    async def _translate(
+        self, exc: httpx.HTTPStatusError, forbidden_code: str = "google_drive_forbidden"
+    ) -> AppError:
         detail = describe_api_error(exc)
         hint = await oauth_client_hint(self.ctx.session, self._org_id)
         # Verbatim, because Google's message names the Cloud project — which is the whole
@@ -168,8 +180,8 @@ class DriveService:
                 # Drive's own permission answer: this account cannot see that folder or drive.
                 # Not our 403 — nothing an org admin grants in schakl changes it.
                 return AppError(
-                    "google_drive_forbidden",
-                    "errors.google_drive_forbidden",
+                    forbidden_code,
+                    f"errors.{forbidden_code}",
                     status_code=409,
                 )
             if detail.status_code == 404:
@@ -267,8 +279,28 @@ class DriveService:
         return listing
 
     # --- links ------------------------------------------------------------------- #
+    async def count_links(self, entity_type: str, entity_id: uuid.UUID) -> int:
+        """How many files are attached here in total — what a capped panel is hiding (#407)."""
+        return int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(DriveLink)
+                .where(
+                    DriveLink.org_id == self._org_id,
+                    DriveLink.entity_type == entity_type,
+                    DriveLink.entity_id == entity_id,
+                )
+            )
+            or 0
+        )
+
     async def links_for(
-        self, entity_type: str, entity_id: uuid.UUID, *, rollup: bool = False
+        self,
+        entity_type: str,
+        entity_id: uuid.UUID,
+        *,
+        rollup: bool = False,
+        limit: int | None = None,
     ) -> list[DriveLink]:
         await self._require_visible(entity_type, entity_id)
         conditions = [
@@ -281,6 +313,10 @@ class DriveService:
         stmt = select(DriveLink).where(*conditions).order_by(
             DriveLink.is_root.desc(), DriveLink.created_at, DriveLink.id
         )
+        # A panel asks for a page and gets one (#407). The ordering already leads with the
+        # record's own folder, so a cap never costs the caller the row it reads off the head.
+        if limit is not None and not rollup:
+            stmt = stmt.limit(limit)
         rows = list((await self.ctx.session.execute(stmt)).scalars().all())
         if rollup and entity_type == "project":
             # Issue #21: a file linked to a task surfaces on its project too — query-time
@@ -393,6 +429,134 @@ class DriveService:
             )
         await self.ctx.session.delete(link)
         await self.ctx.session.flush()
+
+    # --- trash a file in Drive (the other half of unlink, #394) --------------------- #
+    async def trash_file(self, drive_file_id: str) -> int:
+        """Move a Drive file to Drive's bin and drop every link that named it. Org-wide.
+
+        Four decisions, and each is the reason this is not simply ``files.delete``:
+
+        - **Trash, never purge.** ``files.update {trashed: true}`` is recoverable by the
+          document's owner for thirty days, which is the right default for a destructive act
+          performed on somebody else's document from a CRM. Permanent delete is not offered.
+        - **It runs as the viewing user**, exactly like :meth:`browse`. Drive's permissions are
+          authoritative: a colleague who cannot delete that file in Drive is refused *by
+          Google*, and schakl neither grants around it nor explains it away.
+        - **Every ``drive_links`` row for that file goes with it**, for the record it was
+          deleted from and for every other record that linked it, in this transaction. A link
+          to a trashed file is a row that renders a name and 404s when clicked.
+        - **A folder is refused unless empty.** The panel lists a client's project folder
+          beside an accidental upload; a delete that silently took the folder and everything
+          in it would be the worst control on the screen.
+
+        Returns how many links were removed.
+        """
+        self.ctx.require("google.drive.write")
+        await self._settings()
+
+        # Read the links *before* the round-trip: whether this is somebody's record folder
+        # decides who may press the button, and checking after the file is already in the bin
+        # is not a check. Detaching a record's folder is ``google.drive.manage`` (docs/GOOGLE.md
+        # §5) and binning it is strictly the larger act, so it cannot ask for less.
+        links = await self._links_naming(drive_file_id)
+        if any(link.is_root for link in links):
+            self.ctx.require("google.drive.manage")
+
+        connection = await self._connection()
+        # Drive round-trips run with the pool connection released (docs/PERFORMANCE.md).
+        async with self._call(forbidden_code="google_drive_delete_forbidden"):
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                response = await client.get(
+                    f"{DRIVE_API}/files/{drive_file_id}",
+                    params={
+                        "fields": "id,name,mimeType,parents,trashed",
+                        "supportsAllDrives": "true",
+                    },
+                )
+                if response.status_code == 404:
+                    raise AppError("not_found", "errors.not_found", status_code=404)
+                response.raise_for_status()
+                meta = response.json()
+
+                if meta.get("mimeType") == FOLDER_MIME:
+                    # One row is enough to refuse: this asks "is it empty", not "how full".
+                    children = await client.get(
+                        f"{DRIVE_API}/files",
+                        params={
+                            "q": (
+                                f"'{_drive_query_escape(drive_file_id)}' in parents "
+                                "and trashed=false"
+                            ),
+                            "fields": "files(id)",
+                            "pageSize": "1",
+                            "supportsAllDrives": "true",
+                            "includeItemsFromAllDrives": "true",
+                        },
+                    )
+                    children.raise_for_status()
+                    if children.json().get("files"):
+                        raise AppError(
+                            "google_drive_folder_not_empty",
+                            "errors.google_drive_folder_not_empty",
+                            status_code=409,
+                        )
+
+                if not meta.get("trashed"):
+                    # Already-in-the-bin is not a failure: the links still have to go.
+                    trashed = await client.patch(
+                        f"{DRIVE_API}/files/{drive_file_id}",
+                        params={"supportsAllDrives": "true", "fields": "id"},
+                        json={"trashed": True},
+                    )
+                    trashed.raise_for_status()
+
+        name = (meta.get("name") or "")[:500]
+        # Re-read: ``release_db`` committed, so the rows loaded above belong to a finished
+        # transaction. Org-wide by design — a link on a record this caller cannot open still
+        # points at a file that no longer exists.
+        links = await self._links_naming(drive_file_id)
+        for link in links:
+            if link.is_root:
+                await self._record_folder(
+                    link.entity_type, link.entity_id, "drive.folder_cleared", link.name
+                )
+            await ActivityService(self.ctx).record(
+                link.entity_type,
+                link.entity_id,
+                "drive.file_trashed",
+                {"name": link.name or name},
+            )
+            await self.ctx.session.delete(link)
+        await self.ctx.session.flush()
+
+        # The viewer's cached listing of the folder it sat in still shows it. Same busting the
+        # browser's "new folder" does, and for the same reason.
+        for parent in meta.get("parents") or []:
+            try:
+                await get_redis().delete(
+                    _browse_cache_key(self._org_id, self.ctx.user.id, str(parent))
+                )
+            except Exception:  # noqa: BLE001 — Redis down just means the ~45 s TTL applies
+                pass
+        return len(links)
+
+    async def _links_naming(self, drive_file_id: str) -> list[DriveLink]:
+        """Every link in this org pointing at one Drive file (CLAUDE.md §5: org-scoped)."""
+        return list(
+            (
+                await self.ctx.session.execute(
+                    select(DriveLink).where(
+                        DriveLink.org_id == self._org_id,
+                        DriveLink.drive_file_id == drive_file_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     # --- the record's own folder ---------------------------------------------------- #
     async def root_link(self, entity_type: str, entity_id: uuid.UUID) -> DriveLink | None:

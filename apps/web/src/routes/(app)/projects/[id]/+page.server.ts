@@ -7,11 +7,13 @@ import { dedupeGets } from "$lib/core/api/dedupe";
 import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
+import { originOf } from "$lib/core/origin";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -135,22 +137,17 @@ export const actions: Actions = {
     return { updated: true };
   },
 
+  /**
+   * The project's to-do list creates through the same dialog and the same body builder as
+   * every other "＋ nieuwe taak" (#391) — one answer to how a task gets made, and the only
+   * shape that can carry a deadline and a roster. It stays on this page rather than
+   * redirecting into edit mode: the list is written down the page, several items at a time.
+   */
   addTask: async (event) => {
     const form = await event.request.formData();
-    const title = String(form.get("title") ?? "").trim();
-    if (!title) return fail(400, { error: "errors.required" });
-    const company_id = String(form.get("company_id") ?? "").trim();
-    const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", {
-      body: {
-        title,
-        // Status omitted → the API assigns the org's default status (issue #62).
-        priority: "normal",
-        project_id: event.params.id,
-        company_id: company_id || null,
-        requires_interaction: false,
-        visible_to_client: false,
-      },
-    });
+    const body = taskCreateBody(form, { projectId: event.params.id });
+    if (!body) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { taskAdded: true };
   },
@@ -197,7 +194,10 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/projects/{project_id}", {
       params: { path: { project_id: event.params.id } },
     });
-    throw redirect(303, "/projects");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/projects");
   },
 
   /** Document attachment (#123): multipart through a plain fetch — the typed client has no

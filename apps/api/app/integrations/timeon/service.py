@@ -23,12 +23,14 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 
 from app.core.activity import ActivityService
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_timezone_name, resolve_zoneinfo
 from app.errors import AppError
 from app.integrations.timeon.client import (
     TimeonAuthError,
@@ -44,6 +46,7 @@ from app.integrations.timeon.models import (
     TimeonLink,
     TimeonSyncRun,
 )
+from app.integrations.timeon.schedule import next_auto_run
 from app.integrations.timeon.schemas import (
     TimeonAccountCreate,
     TimeonAccountUpdate,
@@ -97,6 +100,19 @@ class TimeonAccountService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
         self.repo = ctx.repo(TimeonAccount)
+        self._zone: tuple[str, ZoneInfo] | None = None
+
+    async def zone(self) -> tuple[str, ZoneInfo]:
+        """The org's timezone name and its :class:`ZoneInfo`, read once per service.
+
+        The schedule is a local wall clock (§8), so *every* account row on this screen resolves
+        its next run in the same zone — reading ``org_settings`` once per row would be one query
+        per connection for a value that cannot differ between them.
+        """
+        if self._zone is None:
+            name = await org_timezone_name(self.ctx.session, self.ctx.org.id)
+            self._zone = (name, resolve_zoneinfo(name))
+        return self._zone
 
     # --- reads --------------------------------------------------------------- #
     async def get_or_404(self, account_id: uuid.UUID) -> TimeonAccount:
@@ -139,14 +155,24 @@ class TimeonAccountService:
             account_id: int(total)
             for account_id, total in (await self.ctx.session.execute(conflict_stmt)).all()
         }
+        zone = await self.zone()
         return [
             self.serialize(
                 row,
                 counts=link_counts.get(row.id, {}),
                 open_conflicts=open_conflicts.get(row.id, 0),
+                zone=zone,
             )
             for row in rows
         ]
+
+    async def read(self, account: TimeonAccount) -> dict[str, Any]:
+        """One account for a single-row response, with its schedule resolved.
+
+        The async twin of :meth:`serialize`: the zone is a query, and a create/update route holds
+        no reason to have paid for it already.
+        """
+        return self.serialize(account, zone=await self.zone())
 
     def serialize(
         self,
@@ -154,8 +180,24 @@ class TimeonAccountService:
         *,
         counts: dict[str, int] | None = None,
         open_conflicts: int = 0,
+        zone: tuple[str, ZoneInfo] | None = None,
     ) -> dict[str, Any]:
         info = account.organisation_info or {}
+        zone_name, tz = zone or (None, None)
+        # Computed by the same function the worker decides with, never restated here: two copies
+        # of a schedule rule is how a screen comes to promise a run the worker does not make.
+        next_run = (
+            next_auto_run(
+                frequency=account.auto_frequency,
+                interval_hours=account.auto_interval_hours,
+                at=account.auto_time,
+                last_run=account.last_auto_run_at,
+                zone=tz,
+                now=datetime.now(UTC),
+            )
+            if tz is not None and account.auto_sync and account.active
+            else None
+        )
         return {
             "id": account.id,
             "name": account.name,
@@ -177,6 +219,12 @@ class TimeonAccountService:
             "create_missing_projects": account.create_missing_projects,
             "create_missing_users": account.create_missing_users,
             "auto_sync": account.auto_sync,
+            "auto_frequency": account.auto_frequency,
+            "auto_interval_hours": account.auto_interval_hours,
+            "auto_time": account.auto_time,
+            "timezone": zone_name,
+            "last_auto_run_at": account.last_auto_run_at,
+            "next_auto_run_at": next_run,
             "active": account.active,
             "status": account.status,
             "last_verified_at": account.last_verified_at,
@@ -220,6 +268,12 @@ class TimeonAccountService:
         if "name" in values and values["name"]:
             await self._ensure_name_free(values["name"], exclude=account.id)
             values["name"] = values["name"].strip()
+        # `null` on a NOT NULL schedule column is "I did not choose", never "empty it" — the
+        # schema says so and this is where it is enforced, because absent and explicit-null reach
+        # `model_dump(exclude_unset=True)` differently and only one of them is a decision.
+        for key in ("auto_frequency", "auto_interval_hours", "auto_time"):
+            if key in values and values[key] is None:
+                values.pop(key)
         api_key = values.pop("api_key", None)
         if api_key is not None:
             # Rotating clears the observation with it: what the previous key opened says nothing

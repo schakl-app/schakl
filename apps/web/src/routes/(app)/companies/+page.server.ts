@@ -3,12 +3,14 @@ import { fail } from "@sveltejs/kit";
 import { parseAssignees } from "$lib/core/assignees";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { COMPANIES_TABLE_ID, COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
+import { COMPANY_FILTERS } from "$lib/modules/companies/filters";
 import { COMPANY_STATUS_ALL, COMPANY_WORKING_SET } from "$lib/modules/companies/status";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -41,9 +43,12 @@ function parseContacts(raw: FormDataEntryValue | null): ContactSelection[] {
 }
 
 export const load: PageServerLoad = async (event) => {
-  const q = event.url.searchParams.get("q") || undefined;
+  // The bar and this load read the same keys from the same place, so what the controls show and
+  // what the API was asked for cannot disagree (core/filters/types.ts).
+  const filters = readFilters(event.url, [...COMPANY_FILTERS]);
+  const q = filters.q;
   // "My clients" is filtered by the API (any assignee, not just the primary), never in the page.
-  const mine = event.url.searchParams.get("mine") === "1";
+  const mine = filters.mine === "1";
   // So is the status pill. It used to narrow `data.companies` in the browser, which was survivable
   // only while the page *was* the list; against a paged list it would filter the fifty rows you
   // happen to hold and report a total counted over all of them. The export already sent `status`
@@ -54,7 +59,7 @@ export const load: PageServerLoad = async (event) => {
   // `all` is how "everything, archive included" says so in a URL you can link to; anything else
   // is that one status. Only the resolution lives here: the *set* is in `status.ts`, beside the
   // pills, so the screen and the export cannot end up with two ideas of what is archived.
-  const statusFilter = event.url.searchParams.get("status") || "";
+  const statusFilter = filters.status ?? "";
   const status =
     statusFilter === COMPANY_STATUS_ALL ? undefined : statusFilter || COMPANY_WORKING_SET;
   const api = apiFor(event);

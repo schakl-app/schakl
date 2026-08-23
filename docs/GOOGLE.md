@@ -199,6 +199,69 @@ usually the client's own name.
 (the narrow `drive.file` only sees files the app itself created). That's a restricted scope —
 fine under the "Internal" OAuth app above, but note it.
 
+### Unlink and delete are two acts, and a browser you can only put things into
+
+The panel could create in three ways — upload bytes, make a subfolder, link an existing file —
+and remove in none (#394). `DELETE /links/{id}` was the only ⋯ item, and its dialog says in as
+many words that the Drive file stays. That was the right decision *for a link*, and what it left
+was a file uploaded by mistake from a task panel sitting in a client's Drive, attached to the
+record, removable only by leaving schakl for drive.google.com — after which the panel still
+listed a link to a file that no longer existed.
+
+So there are two items now, and collapsing them would be wrong in **both** directions: a
+colleague tidying a task's attachments would silently bin a client's document, and a colleague
+binning a bad upload would be told it is still there. Each dialog therefore states where the
+file ends up, which is the only fact separating them.
+
+- **Ontkoppelen** — `DELETE /drive/links/{link_id}`. Unchanged, wording included.
+- **Verwijderen uit Drive** — `DELETE /drive/files/{drive_file_id}`. Five rules hold it up:
+  - **Trash, never purge.** Drive distinguishes `files.update {trashed: true}` from
+    `files.delete`; the bin is recoverable by the document's owner for thirty days, which is the
+    right default for a destructive act performed on somebody else's document from a CRM.
+    Permanent delete is not offered at all.
+  - **It runs as the viewing user**, exactly like `browse`. Drive's permissions are the whole
+    safety property and it costs nothing — the transport already worked this way. A colleague
+    who cannot delete that file in Drive gets Google's own refusal, and schakl neither grants
+    around it nor explains it away. That refusal has its own key
+    (`errors.google_drive_delete_forbidden`): *may not open this folder* and *may not delete
+    this file* have different cures and different people who grant them, so `_call` takes the
+    forbidden key rather than answering every 403 with the read-flavoured sentence.
+  - **Every `drive_links` row naming the file goes with it, org-wide, in one transaction** — the
+    record it was deleted from and every other record that linked it. A link to a trashed file
+    renders a name and 404s when clicked. Each affected record gets a `drive.file_trashed` line
+    on its trail (§16); a link that was the record's *folder* gets `drive.folder_cleared` too.
+  - **A folder is refused unless empty**, checked before anything is written. The panel lists a
+    client's project folder beside an accidental upload, and a delete that silently took the
+    folder and everything in it would be the worst control on the screen.
+  - **Binning a record's own folder asks for `google.drive.manage`**, not merely
+    `google.drive.write`. Detaching one already does (see above) and binning it is strictly the
+    larger act, so it cannot ask for less. The check reads the links *before* the round-trip:
+    asking after the file is in the bin is not a check.
+
+The panel and the `DriveBrowser` carry the same ⋯ item, because the browser is where uploads
+happen and therefore where upload mistakes are noticed. The browser's refusal renders as a strip
+**above** the list rather than instead of it — the list is what names the file that stayed. And
+the two lists sit on one screen, so **binning a file from one has to redraw the other**: the
+browser's listing is live and belongs to no `load`, so the `invalidateAll` a form action performs
+cannot reach it, and the panel would have gone on showing a file that had left Drive — the exact
+fault this issue is about, one list over. `DriveBrowser` therefore takes a `reloadToken` the host
+bumps (`ConfirmDialog`'s new `onsuccess`), rather than reloading on every page invalidation,
+which would cost a Google round trip per unrelated save.
+
+**Not exercised against a live Google credential.** The API paths are covered by the suite, and
+both screens were driven in a browser against an in-memory fake transport (menu, both dialogs,
+the trail line, the two refusals, and the cross-list redraw). Whoever first runs this with a real
+account should check, in order:
+
+1. A file uploaded from a task panel, then binned from the same panel, disappears from Drive's
+   folder listing and appears in **drive.google.com → Prullenbak**, restorable.
+2. A colleague with view-only access to a shared drive gets
+   `errors.google_drive_delete_forbidden` and not a 500 or a generic "Drive is niet beschikbaar".
+3. A file linked to two records disappears from both panels in one press.
+4. A non-empty folder is refused and stays where it is; an empty one goes.
+5. A shared-drive file behaves as a My Drive one does — `supportsAllDrives=true` rides every
+   call, but only a real shared drive proves it.
+
 ### A Drive 403 is three different problems, and the body says which
 
 `scopes_for` only asks for `drive` when `drive_enabled` was **already on at consent time**, so

@@ -122,6 +122,15 @@
   }
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
+  //
+  // **A group of one is not a group** (#351). Membership is declared per item and the members a
+  // given tenant can see depend on their modules and permissions, so a group of three collapses to
+  // a group of one on any install that enabled only one of them — a chevron, a heading, and a
+  // single indented row repeating the heading's own subject. Marketing was the case that surfaced
+  // it: an agency with no Google Ads and no Tag Manager got a collapsible "Marketing" whose only
+  // child was the marketing dashboard. So a lone member renders as the plain top-level item it
+  // would have been had it never declared a group, and the group reappears the moment a second
+  // one is visible.
   type NavEntry =
     { kind: "item"; item: NavItem } | { kind: "group"; key: string; items: NavItem[] };
   const navEntries = $derived.by<NavEntry[]>(() => {
@@ -132,11 +141,12 @@
         entries.push({ kind: "item", item });
       } else if (!seen.has(item.group)) {
         seen.add(item.group);
-        entries.push({
-          kind: "group",
-          key: item.group,
-          items: nav.filter((i) => i.group === item.group),
-        });
+        const items = nav.filter((i) => i.group === item.group);
+        entries.push(
+          items.length === 1
+            ? { kind: "item", item: items[0] }
+            : { kind: "group", key: item.group, items },
+        );
       }
     }
     return entries;

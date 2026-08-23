@@ -157,7 +157,61 @@ These are `sync.py`'s own numbering; each is here because getting it wrong is ex
 | `push_approvals` | off | approving is a different act from logging |
 | `create_missing_projects` | off | a project is a thing an agency names deliberately; a sync inventing 157 is a mess to undo |
 | `create_missing_users` | off | an account is a person, a membership may cost a seat, and the alternative failure ("3 people's hours were skipped") is loud and harmless |
-| `auto_sync` | off | a nightly job that started the moment a key was pasted would make connecting an irreversible act |
+| `auto_sync` | off | a scheduled job that started the moment a key was pasted would make connecting an irreversible act |
+| `auto_frequency` · `auto_interval_hours` · `auto_time` | `daily` at `04:20` | §6a |
+
+### 6a. The schedule is the tenant's, and it is visible (#387, #388)
+
+Auto-sync used to be one boolean and one constant: `cron(timeon_nightly, hour=4, minute=20)` —
+**04:20 UTC**, identical for every account on every instance, stated to a user only as the words
+"Rond 04:20" in a help text. Two things were wrong with that and they compounded.
+
+**A cadence is an operational choice.** During a cutover both systems are written to all day, so
+how often the two are reconciled decides how large the two-writer window gets — hourly while
+people log hours in both places, nightly once the traffic is one way again, and possibly one of
+each for an agency running two Timeon organisations. So the ARQ cron became the **tick** (every
+quarter of an hour) and the account became the **schedule**: `off` is still `auto_sync`, and
+*when* is `auto_frequency` (`hourly` / `every_n_hours` / `daily` / `weekdays`), `auto_time` and
+`auto_interval_hours`. `auto_time` is a **local wall clock in the org's zone** (§8), which is the
+one deliberate behaviour change: 04:20 UTC is 06:20 in Amsterdam in summer and 05:20 in winter, so
+the "nightly" moved by an hour twice a year on the only clock the tenant has.
+
+Two consequences worth stating. **A sub-daily cadence shortens its window rather than re-reading
+the same span twenty-four times a day** — the account's `window_days` is the right horizon for a
+run that happens once a day and a rate limit spent on nothing for one that happens hourly, so an
+interval connection reads `CATCH_UP_WINDOW_DAYS` on most ticks and its full window on the first
+run of the org's local day. And **a time of day is honoured to within one tick, never to the
+minute**: the tick is the clock's resolution, and saying so is cheaper than pretending otherwise.
+
+**A schedule you cannot see is one you cannot trust**, and this one was not running at all. On
+production, breik.'s connection had `auto_sync = true`, both directions `two_way`, and had
+produced **no** cron run since it was connected — five nights, no failed run, no empty run,
+nothing on any screen. The job returned in twenty milliseconds because of one call:
+
+```python
+if not await sku_writable("timeon"):   # no plan, no host
+    return
+```
+
+With neither argument that reads the **instance licence**, which is the one authority a *cloud*
+tenant does not have: the operator runs the installation and the tenant buys a plan
+(`core/entitlements`). An org on `unlimited` — entitled to everything — was refused by a gate that
+never got to ask about it. `timeon` was the only cron in the codebase with that shape; every other
+one calls `sku_cron_enabled`, which answers from the licence self-hosted and defers to
+`run_per_org` on cloud, where the per-org plan filter already lives. That is now what this one
+calls, and the self-hosted refusal is unchanged.
+
+The second half of that bug is the reason it survived: **a job that decides not to run leaves no
+trace.** So `last_auto_run_at` is stored, the next run is computed by the same function the worker
+decides with (`schedule.py` — two copies of a schedule rule is how a screen comes to promise a run
+the worker does not make), and both are printed on Instellingen → Timeon *and* on the workspace,
+beside a sentence naming the cadence and the zone. A refusal at the licence gate now says so in
+the log naming the sku.
+
+One more thing the fix carried: the per-account loop **commits per account**. The old rollback that
+contained one connection's failure also discarded the hours the previous connection had just
+synced, which is the opposite of the property the file's own docstring claimed. The RLS GUC is
+transaction-local, so it is re-bound after every commit.
 
 ### 7. What the Timeon API actually does
 
@@ -239,6 +293,37 @@ window containing **one** hour nobody minds, compare the row in Timeon's own UI 
 and only then widen the window. Everything the push path asserts about Timeon's behaviour comes
 from measurement against the live API (§7), not from its documentation — but measurement of
 *reads*.
+
+### 9a. No card on the client hub, and it is a deliberate loss (#411)
+
+`timeon.company` drew this client's Timeon identity, their paired-hour count and their open
+conflicts on the company page. It is gone, and unlike the Ads and Tag Manager cards removed
+beside it, **nothing takes its place** — so it is written down here rather than found later.
+
+The reasoning is the one this whole page is about: a cutover ends. A card on every client's page
+for a migration with a stated end date is a card that outlives its reason, and the questions it
+answered are the ones somebody asks *while running a sync*, on `/timeon`, which is where the
+answer can be acted on. The hub only ever said a conflict was waiting; the queue is where it is
+settled. Everything the card read is still stored, still on `/timeon`, and still in the MCP
+surface.
+
+### 9b. Not in the main menu, and reachable from where the hours are (#389)
+
+`timeon` was the only integration with a top-level nav entry — position 71, directly under Uren.
+The argument for it is in this page: a two-way sync produces a queue, conflicts are settled by a
+person, and a surface that has to be found is one that is not kept up to date. That is a good
+argument for the queue being **reachable** and a poor one for a permanent menu slot, because of
+what §10 says: a cutover ends. The day Timeon is switched off the entry points at an empty screen,
+and until that day it is empty most days anyway — and a queue that shows nothing every day is
+exactly the queue people stop reading. It is also wrong for a white-label platform, where every
+other tenant of this codebase saw a vendor's name in their main menu for a product they have never
+heard of.
+
+So the workspace is reached the way every other integration's working surface is — from
+**Instellingen → Integraties → Timeon**, which links straight through — and it *finds* the person
+on the days it has something to say: `/time` draws an unsettled-conflict count beside the hours the
+conflicts are about, non-zero only, gated on `timeon.sync.run` and read in the section layout so a
+month of week clicks does not re-ask for it. `nav.timeon` survives as the page's breadcrumb label.
 
 ### 10. On cutover
 

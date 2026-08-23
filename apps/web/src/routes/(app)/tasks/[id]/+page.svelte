@@ -11,11 +11,14 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { editIntent } from "$lib/core/edit-intent";
+  import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -33,8 +36,10 @@
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
+  import { dueBucket, dueDistance } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
@@ -47,7 +52,10 @@
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
-  import { entityPanelComponent } from "$lib/core/registry";
+  import { entityPanelSpec } from "$lib/core/registry";
+  import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
+  import { PANEL_HEADING } from "$lib/core/ui/headings";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
@@ -58,7 +66,7 @@
   // Panels contributed by enabled modules (CLAUDE.md §6) — contactmomenten, Drive, and
   // whatever ships later, composed exactly like the project page does.
   const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
-  const panelComponent = (key: string) => entityPanelComponent(enabledModules, "task", key);
+  const panelSpec = (key: string) => entityPanelSpec(enabledModules, "task", key);
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
@@ -73,9 +81,9 @@
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
-  // expand the rest in place. Rows are newest-first, so the head is the newest.
+  // expand the rest in place. Rows are newest-first, so the head is the newest. The third
+  // verbatim copy of this collapse until #407; `PanelRows` owns it now.
   const ACTIVITY_COLLAPSED = 3;
-  let activityExpanded = $state(false);
   // The task's own legacy trail plus the contact-moment milestones mirrored onto its core
   // activity log (#152) — merged newest-first, so "contactmoment gelogd" shows on the task page
   // like it already does on company/project/contact. Both rows share the same shape
@@ -86,17 +94,52 @@
       .map((a) => ({ ...a, payload: (a.payload ?? {}) as Record<string, unknown> }))
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
   );
-  const visibleActivities = $derived(
-    activityExpanded || activities.length <= ACTIVITY_COLLAPSED
-      ? activities
-      : activities.slice(0, ACTIVITY_COLLAPSED),
-  );
   const userId = $derived(page.data.user?.id ?? "");
   // A portal login (#193) works the task, not the office around it: uploads, the activity
   // trail, time budgets and module panels (interactions, Drive) stay staff-only. The API
   // enforces the same (portal activity feed is empty; time/interactions are permission-gated);
   // this keeps the page honest about it.
   const isPortal = $derived(page.data.user?.isPortal ?? false);
+
+  /**
+   * The page's sections and the panels enabled modules contribute are **one** ordered list
+   * (#393). Until now there were two orderings that could not be interleaved: the source
+   * order of the hand-written sections, and the `position` each panel declares. Drive (55)
+   * was therefore stuck below Reacties however it was asked for, because every panel
+   * rendered after every section. Both live on one scale now, so moving a section is one
+   * number here and no module is edited (CLAUDE.md §6, a panel still decides its own place).
+   *
+   * The order the team asked for: what has to happen (Omschrijving, Checklists) before when
+   * it has to happen (Planning), then the two file surfaces beside each other (Links &
+   * bijlagen 50, Drive 55), the discussion, contactmomenten (60), and the trail last.
+   */
+  const SECTION_POSITIONS = {
+    properties: 10,
+    description: 20,
+    checklists: 30,
+    planning: 40,
+    links: 50,
+    comments: 58,
+    activity: 90,
+  } as const;
+  type SectionKey = keyof typeof SECTION_POSITIONS;
+
+  const orderedSections = $derived(
+    [
+      ...(Object.entries(SECTION_POSITIONS) as [SectionKey, number][]).map(([key, position]) => ({
+        kind: "page" as const,
+        key,
+        position,
+      })),
+      // A portal login gets no module panels at all (see `isPortal` above).
+      ...(isPortal ? [] : data.panels).map((panel) => ({
+        kind: "panel" as const,
+        key: panel.key,
+        position: panel.position,
+        panel,
+      })),
+    ].sort((a, b) => a.position - b.position),
+  );
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
   // Ticking and quick-adding checklist items are "use mode" affordances that live outside edit
@@ -454,6 +497,20 @@
   let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
 
+  // A detour that started on a client's or a project's page (#408): leaving edit mode — by
+  // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
+  // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    // …and the marker that opened the form is consumed with it (#402) — but only on the arm that
+    // stays on this page. A detour's exit replaces this URL, and its `?edit=1` goes with it.
+    if (origin) void goto(origin, { invalidateAll: true });
+    else {
+      editMode = false;
+      clearEditIntent();
+    }
+  }
+
   // --- acting on the *stored* record from inside edit mode (#335 F7) ----------------------- //
   // Create-then-edit (#230) is right: the record exists, so Inplannen is reachable without a
   // save. But the modal prefills from what is **stored**, so typing a title and a budget and then
@@ -668,8 +725,14 @@
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
+  const today = orgToday();
+  // The board's vocabulary, not a fifth private copy of it (#395). The card only ever shouts
+  // about the two states that are claims — the moment has passed, and the moment is now — so it
+  // reads the bucket rather than re-deriving "is this late".
+  const bucket = $derived(isDone ? "later" : dueBucket(task.due_date, today));
+  const overdue = $derived(bucket === "overdue");
+  const dueToday = $derived(bucket === "today");
+  const distance = $derived(task.due_date ? dueDistance(task.due_date, today) : null);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   const when = (iso: string) => fmtDateTime(iso);
@@ -829,7 +892,8 @@
     <TaskAIStatus taskId={task.id} status={task.ai_status} />
   {/if}
 
-  <!-- 1. Header — what this task is, and what is true of it at a glance -->
+  <!-- Header — what this task is, and what is true of it at a glance. Always first, and not
+       in the ordered list below: it is the page's title, not a section of it. -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <div class="flex items-start gap-3">
       {#if editMode}
@@ -838,11 +902,14 @@
           value={task.title}
           required
           form="task-edit"
-          class="w-full flex-1 rounded-lg border border-border p-2 text-lg font-semibold text-text outline-none focus:border-brand"
+          class="w-full flex-1 rounded-lg border border-border p-2 text-xl font-semibold text-text outline-none focus:border-brand"
         />
       {:else}
+        <!-- 20 px, the one page-title size (#404's scale). It was 18 px here and 20 px on the
+             other 97 H1s in the app — a page title that shrinks when you open a record is a
+             hierarchy the reader has to re-learn per screen. -->
         <h1
-          class="flex-1 text-lg font-semibold {isDone
+          class="flex-1 text-xl font-semibold {isDone
             ? 'text-text-muted line-through'
             : 'text-text'}"
         >
@@ -872,11 +939,31 @@
                     label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
                     icon: Pencil,
                     onclick: () => {
+                      // "Klaar" is an assertion that the work is done, so it commits it (#409).
+                      // Flipping the flag was a second Annuleren under the opposite word: the
+                      // page left edit mode, the header showed the stored title again, and
+                      // nothing said the save had not happened — the kebab sits at the top of a
+                      // whole-page edit surface whose one save is at the bottom, so reaching for
+                      // the control nearest the field you just changed is what lost the change.
+                      // `requestSubmit` rather than `submit` so the title's `required` is checked
+                      // and `use:enhance` runs; that handler closes edit mode on success and
+                      // keeps it open on a validation failure, with the error shown.
+                      if (editMode) {
+                        if (!busy.is("update")) editForm?.requestSubmit();
+                        return;
+                      }
                       // Re-arm the relation picks so a stale pick never overrides the stored
                       // relation on a later edit session.
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
-                      editMode = !editMode;
+                      // Opening only — the leaving half returned above. So this is no longer a
+                      // toggle, and neither of the two things that used to ride on its false arm
+                      // is dropped: the submit runs `use:enhance`, whose handler consumes the
+                      // `?edit=1` marker (#402) and returns to the detour's origin (#408) on the
+                      // save that closes the mode. "Klaar met bewerken" therefore now saves *and*
+                      // lands back on the client you opened the task from, which is both issues'
+                      // answer to the same gesture.
+                      editMode = true;
                     },
                   },
                 ]
@@ -902,11 +989,15 @@
           >{label.name}</span
         >
       {/each}
-      {#if overdue}
-        <span
-          class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:bg-red-950 dark:text-red-400"
-          >{t("tasks.due.overdue")}</span
-        >
+      {#if overdue || dueToday}
+        <!-- "Vandaag" is a state too, and it was the one the card could not say: a task due in
+             four hours looked exactly like one due in September (#395). It is the palette's
+             chip, so it reads the same here as the section heading the board files it under. -->
+        <StateMark
+          state={overdue ? "late" : "today"}
+          variant="chip"
+          label={t(overdue ? "tasks.due.overdue" : "tasks.due.today")}
+        />
       {/if}
       <!-- The rule, readable. "↻ Maandelijks" was every word the page had ever said about a
              stored recurrence: no interval, no anchor, no mode, and no next date at all — the
@@ -930,1079 +1021,1144 @@
     </div>
   </section>
 
-  <!-- 2. Properties — the rail's six rows, in one band under the title, where the phone flow
-       already put them. A responsive grid rather than a stack: nine one-line facts read as a
-       band and as nine stacked rows they read as a wall. -->
-  <section class="rounded-xl border border-border bg-surface-raised p-5">
-    <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-      {t("tasks.detail.properties")}
-    </h3>
-    <div class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-      <!-- Status. In **use** mode it stays the instant one-click control it has always been; in
-           edit mode it joins `task-edit` like every field around it, so the card stops running
-           one-and-a-half save models at once (#335 F8, docs/UX.md's one-save rule). -->
-      <div>
-        <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.status")}</label
-        >
-        {#if !canEditTask}
-          <p id="status" class="text-sm text-text">
-            {statuses.find((s) => s.key === task.status)?.name ?? task.status}
-          </p>
-        {:else if editMode}
-          <select id="status" name="status" form="task-edit" class={inputClass}>
-            {#each statuses as s (s.key)}
-              <option value={s.key} selected={task.status === s.key}>{s.name}</option>
-            {/each}
-          </select>
-        {:else}
-          <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
-            <select
-              id="status"
-              name="status"
-              class={inputClass}
-              bind:value={statusValue}
-              onchange={onStatusPicked}
-            >
+  <!--
+    Every section below is a snippet, and `SECTION_POSITIONS` decides where each one lands
+    among the panels enabled modules contribute (#393). The declaration order here is
+    irrelevant; the array in the script is the page.
+  -->
+
+  {#snippet properties()}
+    <!-- Properties — the rail's six rows, in one band under the title, where the phone flow
+         already put them. A responsive grid rather than a stack: nine one-line facts read as a
+         band and as nine stacked rows they read as a wall. -->
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 {PANEL_HEADING}">
+        {t("tasks.detail.properties")}
+      </h3>
+      <div class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Status. In **use** mode it stays the instant one-click control it has always been; in
+             edit mode it joins `task-edit` like every field around it, so the card stops running
+             one-and-a-half save models at once (#335 F8, docs/UX.md's one-save rule). -->
+        <div>
+          <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("tasks.field.status")}</label
+          >
+          {#if !canEditTask}
+            <p id="status" class="text-sm text-text">
+              {statuses.find((s) => s.key === task.status)?.name ?? task.status}
+            </p>
+          {:else if editMode}
+            <select id="status" name="status" form="task-edit" class={inputClass}>
               {#each statuses as s (s.key)}
-                <option value={s.key}>{s.name}</option>
+                <option value={s.key} selected={task.status === s.key}>{s.name}</option>
               {/each}
             </select>
-          </form>
-        {/if}
-      </div>
-
-      <!-- The client comes before the two fields it narrows: the contact half of the assignee
-           picker, and the project list. -->
-      <div>
-        <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.company")}</label
-        >
-        {#if editMode}
-          <Combobox
-            items={companyItems}
-            archived={companyPicker.retired}
-            archivedLabel={companyArchivedLabel()}
-            name="company_id"
-            value={fCompany}
-            id="company"
-            formId="task-edit"
-            onselect={onCompanyPicked}
-            oncreate={(name) => {
-              qcCompanyName = name;
-              qcCompanyOpen = true;
-            }}
-          />
-        {:else}
-          <p id="company" class="truncate text-sm text-text">
-            {#if task.company_id}
-              <a href={`/companies/${task.company_id}`} class="hover:text-brand"
-                >{companyName(task.company_id) ?? "—"}</a
+          {:else}
+            <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
+              <select
+                id="status"
+                name="status"
+                class={inputClass}
+                bind:value={statusValue}
+                onchange={onStatusPicked}
               >
-            {:else}—{/if}
-          </p>
-        {/if}
-      </div>
+                {#each statuses as s (s.key)}
+                  <option value={s.key}>{s.name}</option>
+                {/each}
+              </select>
+            </form>
+          {/if}
+        </div>
 
-      <div>
-        <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.assignees")}</label
-        >
-        {#if editMode}
-          <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
-               contacts. -->
-          <TaskAssigneePicker
-            formId="task-edit"
-            employees={data.members}
-            contacts={assigneeContacts}
-            contactsEnabled={!!fCompany}
-            assignees={task.assignees ?? []}
-            contactValue={task.assignee_contact_id ?? ""}
-          />
-        {:else if task.assignee_contact_id}
-          <p class="text-sm text-text">
-            {contactName(task.assignee_contact_id) ?? t("party.contact")}
-            <span class="text-xs text-text-muted">({t("party.contact")})</span>
-          </p>
-        {:else if (task.assignees ?? []).length > 0}
-          <!-- The whole roster, not the star alone: `max` is high because this is the record's own
-               page, where "who is on this" is the question, not a column with 180px to spend. -->
-          <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
-        {:else}
-          <p class="text-sm text-text">—</p>
-        {/if}
-      </div>
+        <!-- The client comes before the two fields it narrows: the contact half of the assignee
+             picker, and the project list. -->
+        <div>
+          <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("tasks.field.company")}</label
+          >
+          {#if editMode}
+            <Combobox
+              items={companyItems}
+              archived={companyPicker.retired}
+              archivedLabel={companyArchivedLabel()}
+              name="company_id"
+              value={fCompany}
+              id="company"
+              formId="task-edit"
+              onselect={onCompanyPicked}
+              oncreate={(name) => {
+                qcCompanyName = name;
+                qcCompanyOpen = true;
+              }}
+            />
+          {:else}
+            <p id="company" class="truncate text-sm text-text">
+              {#if task.company_id}
+                <a href={`/companies/${task.company_id}`} class="hover:text-brand"
+                  >{companyName(task.company_id) ?? "—"}</a
+                >
+              {:else}—{/if}
+            </p>
+          {/if}
+        </div>
 
-      <div>
-        <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.project")}</label
-        >
-        {#if editMode}
-          <Combobox
-            items={projectItems}
-            archived={projectPicker.retired}
-            archivedLabel={projectArchivedLabel()}
-            name="project_id"
-            value={fProject}
-            id="project"
-            formId="task-edit"
-            onselect={onProjectPicked}
-            oncreate={(name) => {
-              qcProjectName = name;
-              qcProjectOpen = true;
-            }}
-          />
-        {:else}
-          <p id="project" class="truncate text-sm text-text">
-            {#if task.project_id}
-              <a href={`/projects/${task.project_id}`} class="hover:text-brand"
-                >{projectName(task.project_id) ?? "—"}</a
+        <div>
+          <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("tasks.field.assignees")}</label
+          >
+          {#if editMode}
+            <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
+                 contacts. -->
+            <TaskAssigneePicker
+              formId="task-edit"
+              employees={data.members}
+              contacts={assigneeContacts}
+              contactsEnabled={!!fCompany}
+              assignees={task.assignees ?? []}
+              contactValue={task.assignee_contact_id ?? ""}
+            />
+          {:else if task.assignee_contact_id}
+            <p class="text-sm text-text">
+              {contactName(task.assignee_contact_id) ?? t("party.contact")}
+              <span class="text-xs text-text-muted">({t("party.contact")})</span>
+            </p>
+          {:else if (task.assignees ?? []).length > 0}
+            <!-- The whole roster, not the star alone: `max` is high because this is the record's own
+                 page, where "who is on this" is the question, not a column with 180px to spend. -->
+            <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
+          {:else}
+            <p class="text-sm text-text">—</p>
+          {/if}
+        </div>
+
+        <div>
+          <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("tasks.field.project")}</label
+          >
+          {#if editMode}
+            <Combobox
+              items={projectItems}
+              archived={projectPicker.retired}
+              archivedLabel={projectArchivedLabel()}
+              name="project_id"
+              value={fProject}
+              id="project"
+              formId="task-edit"
+              onselect={onProjectPicked}
+              oncreate={(name) => {
+                qcProjectName = name;
+                qcProjectOpen = true;
+              }}
+            />
+          {:else}
+            <p id="project" class="truncate text-sm text-text">
+              {#if task.project_id}
+                <a href={`/projects/${task.project_id}`} class="hover:text-brand"
+                  >{projectName(task.project_id) ?? "—"}</a
+                >
+              {:else}—{/if}
+            </p>
+          {/if}
+        </div>
+
+        <div>
+          <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("tasks.field.priority")}</label
+          >
+          {#if editMode}
+            <select id="priority" name="priority" form="task-edit" class={inputClass}>
+              {#each priorities as p (p)}
+                <option value={p} selected={task.priority === p}>{t(`tasks.priority.${p}`)}</option>
+              {/each}
+            </select>
+          {:else}
+            <p id="priority" class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
+          {/if}
+        </div>
+
+        <div>
+          {#if editMode}
+            <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.allocated_input")}</label
+            >
+            <DurationInput
+              id="allocated"
+              name="allocated_minutes"
+              formId="task-edit"
+              minutes={task.allocated_minutes ?? null}
+              onchange={(minutes) => (liveAllocated = minutes)}
+              class={inputClass}
+            />
+          {:else if burn}
+            <BudgetBar
+              spent={burn.spent}
+              budget={burn.budget}
+              label={t("tasks.field.allocated")}
+              remainingText={burn.remainingText}
+              spentText={burn.spentText}
+            />
+          {:else}
+            <span class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.allocated")}</span
+            >
+            <p class="text-sm tabular-nums text-text">
+              {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
+            </p>
+          {/if}
+        </div>
+
+        {#if !isPortal}
+          <!-- Staff-only: a client reading their own task learns nothing from "yes, you can see
+               this", and the icon's meaning lives in a `title=` a phone cannot show. Full width
+               only while editing, where it is a checkbox carrying a line of explanation; as a
+               two-word read state it is an ordinary cell and a full row of it is a hole. -->
+          <div class={editMode ? "sm:col-span-2 lg:col-span-3" : ""}>
+            {#if editMode}
+              <!-- Hidden "false" precedes the checkbox so an unchecked box still submits a value;
+                   the use-mode status quick-form carries neither and leaves both untouched. -->
+              <input type="hidden" name="visible_to_client" value="false" form="task-edit" />
+              <label class="flex items-start gap-2 text-sm text-text">
+                <FormCheckbox
+                  name="visible_to_client"
+                  value="true"
+                  checked={task.visible_to_client}
+                  form="task-edit"
+                  class="mt-0.5 shrink-0"
+                />
+                <span>
+                  <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
+                  <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                    >{t("tasks.field.visible_to_client_hint")}</span
+                  >
+                </span>
+              </label>
+            {:else}
+              <span class="mb-1 block text-xs font-medium text-text-muted"
+                >{t("tasks.field.visible_to_client")}</span
               >
-            {:else}—{/if}
-          </p>
+              <p class="flex items-center gap-1.5 text-sm text-text">
+                <ClientVisibilityIcon
+                  visible={task.visible_to_client}
+                  companyId={task.company_id}
+                  projectId={task.project_id}
+                  size={13}
+                />
+                {task.visible_to_client ? t("common.yes") : t("common.no")}
+              </p>
+            {/if}
+          </div>
         {/if}
-      </div>
 
-      <div>
-        <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
-          >{t("tasks.field.priority")}</label
-        >
-        {#if editMode}
-          <select id="priority" name="priority" form="task-edit" class={inputClass}>
-            {#each priorities as p (p)}
-              <option value={p} selected={task.priority === p}>{t(`tasks.priority.${p}`)}</option>
-            {/each}
-          </select>
-        {:else}
-          <p id="priority" class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
-        {/if}
-      </div>
-
-      <div>
-        {#if editMode}
-          <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.allocated_input")}</label
-          >
-          <DurationInput
-            id="allocated"
-            name="allocated_minutes"
-            formId="task-edit"
-            minutes={task.allocated_minutes ?? null}
-            onchange={(minutes) => (liveAllocated = minutes)}
-            class={inputClass}
-          />
-        {:else if burn}
-          <BudgetBar
-            spent={burn.spent}
-            budget={burn.budget}
-            label={t("tasks.field.allocated")}
-            remainingText={burn.remainingText}
-            spentText={burn.spentText}
-          />
-        {:else}
-          <span class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.allocated")}</span
-          >
-          <p class="text-sm tabular-nums text-text">
-            {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
-          </p>
-        {/if}
-      </div>
-
-      {#if !isPortal}
-        <!-- Staff-only: a client reading their own task learns nothing from "yes, you can see
-             this", and the icon's meaning lives in a `title=` a phone cannot show. Full width
-             only while editing, where it is a checkbox carrying a line of explanation; as a
-             two-word read state it is an ordinary cell and a full row of it is a hole. -->
         <div class={editMode ? "sm:col-span-2 lg:col-span-3" : ""}>
           {#if editMode}
-            <!-- Hidden "false" precedes the checkbox so an unchecked box still submits a value;
-                 the use-mode status quick-form carries neither and leaves both untouched. -->
-            <input type="hidden" name="visible_to_client" value="false" form="task-edit" />
+            <input type="hidden" name="requires_interaction" value="false" form="task-edit" />
             <label class="flex items-start gap-2 text-sm text-text">
               <FormCheckbox
-                name="visible_to_client"
+                name="requires_interaction"
                 value="true"
-                checked={task.visible_to_client}
+                checked={task.requires_interaction}
                 form="task-edit"
                 class="mt-0.5 shrink-0"
               />
               <span>
-                <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
+                <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
                 <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
-                  >{t("tasks.field.visible_to_client_hint")}</span
+                  >{t("tasks.field.requires_interaction_hint")}</span
                 >
               </span>
             </label>
+          {:else if task.requires_interaction}
+            <span class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.requires_interaction")}</span
+            >
+            <span
+              class="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+            >
+              {t("tasks.field.requires_interaction_badge")}
+            </span>
+          {/if}
+        </div>
+
+        <!-- Labels: the chips already sit under the title in use mode, so only the picker lives
+             here — and it lives *in* the properties band now instead of a card of its own above
+             the repeat rule, which is how the least important thing on the page came to sit above
+             the most easily misread one (#335 F9). -->
+        {#if editMode}
+          <div class="sm:col-span-2 lg:col-span-3">
+            <div class="mb-1 flex items-center justify-between">
+              <span class="text-xs font-medium text-text-muted">{t("tasks.field.labels")}</span>
+              <button
+                type="button"
+                class="text-xs text-text-muted hover:text-brand"
+                onclick={() => (showLabelPicker = !showLabelPicker)}
+              >
+                {showLabelPicker ? t("common.cancel") : t("common.edit")}
+              </button>
+            </div>
+
+            {#if showLabelPicker}
+              <form
+                method="POST"
+                action="?/setLabels"
+                use:enhance={busy.wrap("setLabels", () => ({ update }) => {
+                  showLabelPicker = false;
+                  void update({ reset: false });
+                })}
+                class="space-y-1 rounded-lg border border-border p-3"
+              >
+                {#each data.labels as label (label.id)}
+                  <label
+                    class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface"
+                  >
+                    <FormCheckbox
+                      name="label_ids"
+                      value={label.id}
+                      checked={currentLabelIds.includes(label.id)}
+                      class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+                    />
+                    <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
+                    <span class="text-text">{label.name}</span>
+                  </label>
+                {/each}
+                <Button size="sm" loading={busy.is("setLabels")} class="mt-2"
+                  >{t("common.apply")}</Button
+                >
+              </form>
+
+              <!-- Ticking labels onto this task is `tasks.task.write`; *minting* one adds a row to
+                   the org's vocabulary and is `tasks.label.write`, which only an admin holds. -->
+              {#if canWriteLabels}
+                <form
+                  method="POST"
+                  action="?/createLabel"
+                  use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+                    showLabelPicker = false;
+                    void update();
+                  })}
+                  class="mt-2 rounded-lg border border-dashed border-border p-3"
+                >
+                  {#each currentLabelIds as id (id)}
+                    <input type="hidden" name="current_label_ids" value={id} />
+                  {/each}
+                  <input
+                    name="name"
+                    placeholder={t("tasks.labels.new_placeholder")}
+                    required
+                    class="w-full rounded-lg border border-border px-2 py-1 text-sm"
+                  />
+                  <input type="hidden" name="color" value={newLabelColor} />
+                  <div class="mt-2 flex flex-wrap gap-1">
+                    {#each LABEL_COLORS as color (color)}
+                      <button
+                        type="button"
+                        aria-label={color}
+                        class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
+                          ? 'ring-2 ring-text ring-offset-1'
+                          : ''}"
+                        onclick={() => (newLabelColor = color)}
+                      ></button>
+                    {/each}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={busy.is("createLabel")}
+                    class="mt-2"
+                  >
+                    {t("tasks.labels.create")}
+                  </Button>
+                </form>
+              {/if}
+            {:else if (task.labels ?? []).length === 0}
+              <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
+            {:else}
+              <div class="flex flex-wrap gap-1">
+                {#each task.labels ?? [] as label (label.id)}
+                  <span
+                    class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
+                      label.color,
+                    )}">{label.name}</span
+                  >
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </section>
+  {/snippet}
+
+  {#snippet planning()}
+    <!-- Planning — the one place that answers "when", and it sits *after* the description and
+         the checklists (#393): a colleague reads what has to happen before reading when it is
+         due. The deadline, the blocks and the repeat rule were three unrelated widgets in
+         three parts of the page (#335): Vervaldatum in the
+         details card, Planning in the main column, Herhaling at the very bottom of the rail below
+         Labels. They are one subject. The mode split still holds (docs/UX.md §3): blocks are use
+         mode, the deadline and the rule are definition and get their inputs behind the pencil —
+         but their read state is always here, instead of a chip in one place and nothing anywhere
+         for the rule. -->
+    <section id="planning" class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 {PANEL_HEADING}">
+        {t("tasks.detail.planning")}
+      </h3>
+
+      <div class="space-y-4">
+        <!-- Deadline -->
+        <div>
+          {#if editMode}
+            <label for="due_date" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.due_date")}</label
+            >
+            <div class="max-w-xs">
+              <DateInput
+                id="due_date"
+                name="due_date"
+                value={task.due_date ?? ""}
+                formId="task-edit"
+                required
+                onchange={onDueChanged}
+              />
+            </div>
+            <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            <!-- Rows written before #392 open, render and edit exactly as before — but saving
+                 one asks for the date it never had, which is the way out rather than a refusal. -->
+            {#if !task.due_date}
+              <p class="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                {t("tasks.detail.due_required_hint")}
+              </p>
+            {/if}
           {:else}
             <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.visible_to_client")}</span
+              >{t("tasks.field.due_date")}</span
             >
-            <p class="flex items-center gap-1.5 text-sm text-text">
-              <ClientVisibilityIcon
-                visible={task.visible_to_client}
-                companyId={task.company_id}
-                projectId={task.project_id}
-                size={13}
-              />
-              {task.visible_to_client ? t("common.yes") : t("common.no")}
+            <p
+              class="text-sm tabular-nums {overdue
+                ? 'font-semibold text-red-600 dark:text-red-400'
+                : 'text-text'}"
+            >
+              {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
+              {#if distance}
+                <!-- The distance, muted: a date on its own asks the reader to subtract (#395). -->
+                <span class="text-xs font-normal text-text-muted"
+                  >{t(distance.key, { count: distance.count })}</span
+                >
+              {/if}
             </p>
           {/if}
         </div>
-      {/if}
 
-      <div class={editMode ? "sm:col-span-2 lg:col-span-3" : ""}>
-        {#if editMode}
-          <input type="hidden" name="requires_interaction" value="false" form="task-edit" />
-          <label class="flex items-start gap-2 text-sm text-text">
-            <FormCheckbox
-              name="requires_interaction"
-              value="true"
-              checked={task.requires_interaction}
-              form="task-edit"
-              class="mt-0.5 shrink-0"
-            />
-            <span>
-              <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
-              <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
-                >{t("tasks.field.requires_interaction_hint")}</span
+        <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one.
+             Rendered bare: it is a part of this card now, not a card beside it. -->
+        <div class="border-t border-border pt-4">
+          <TaskSchedulePanel
+            bare
+            schedules={data.schedules}
+            task={{
+              id: task.id,
+              title: task.title,
+              project_id: task.project_id,
+              company_id: task.company_id,
+              assignee_user_id: task.assignee_user_id,
+              allocated_minutes: task.allocated_minutes,
+              due_date: task.due_date,
+            }}
+            members={data.members}
+            currentUserId={page.data.user?.id ?? ""}
+            canWrite={canSchedule}
+            {canScheduleAny}
+            preparing={busy.is("update")}
+            beforeOpen={saveIfEditing}
+          />
+        </div>
+
+        <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
+             niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
+             editor behind the pencil is where a rule gets made. -->
+        {#if editMode || recurrence}
+          <div class="border-t border-border pt-4">
+            {#if editMode}
+              <RecurrenceEditor
+                formId="task-edit"
+                previewUrl={`/tasks/${task.id}/recurrence-preview`}
+                {recurrence}
+                dueDate={liveDue}
+                allocatedMinutes={liveAllocated}
+                assigneeUserId={task.assignee_user_id}
+                {lastBlockStart}
+                members={data.members}
+                currentUserId={page.data.user?.id ?? ""}
+                {canSchedule}
+                {canScheduleAny}
+              />
+            {:else}
+              <span class="mb-1 block text-xs font-medium text-text-muted"
+                >{t("tasks.recurrence.title")}</span
               >
-            </span>
-          </label>
-        {:else if task.requires_interaction}
-          <span class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.requires_interaction")}</span
-          >
-          <span
-            class="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-          >
-            {t("tasks.field.requires_interaction_badge")}
-          </span>
+              {#if recurrence}
+                <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
+                <p class="mt-0.5 text-[11px] text-text-muted">
+                  {#if task.recurrence_next_run}
+                    {t("tasks.recurrence.next")}: {fmtDayMonthYear(
+                      task.recurrence_next_run,
+                    )}{recurrence.plan ? `, ${clockOf(recurrence.plan.start_time)}` : ""}
+                  {:else}
+                    {t("tasks.recurrence.next_on_completion")}
+                  {/if}
+                </p>
+              {/if}
+            {/if}
+          </div>
         {/if}
       </div>
+    </section>
+  {/snippet}
 
-      <!-- Labels: the chips already sit under the title in use mode, so only the picker lives
-           here — and it lives *in* the properties band now instead of a card of its own above
-           the repeat rule, which is how the least important thing on the page came to sit above
-           the most easily misread one (#335 F9). -->
+  {#snippet description()}
+    <!-- Description — the first thing said about the work itself. -->
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-2 {PANEL_HEADING}">
+        {t("tasks.field.description")}
+      </h3>
       {#if editMode}
-        <div class="sm:col-span-2 lg:col-span-3">
-          <div class="mb-1 flex items-center justify-between">
-            <span class="text-xs font-medium text-text-muted">{t("tasks.field.labels")}</span>
-            <button
-              type="button"
-              class="text-xs text-text-muted hover:text-brand"
-              onclick={() => (showLabelPicker = !showLabelPicker)}
-            >
-              {showLabelPicker ? t("common.cancel") : t("common.edit")}
-            </button>
-          </div>
+        <RichTextEditor
+          name="description"
+          form="task-edit"
+          rows={4}
+          value={task.description ?? ""}
+          scope={candidateScope}
+        />
+      {:else if task.description}
+        <Markdown value={task.description} />
+      {:else}
+        <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
+      {/if}
+    </section>
+  {/snippet}
 
-          {#if showLabelPicker}
-            <form
-              method="POST"
-              action="?/setLabels"
-              use:enhance={busy.wrap("setLabels", () => ({ update }) => {
-                showLabelPicker = false;
-                void update({ reset: false });
-              })}
-              class="space-y-1 rounded-lg border border-border p-3"
-            >
-              {#each data.labels as label (label.id)}
-                <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface">
-                  <FormCheckbox
-                    name="label_ids"
-                    value={label.id}
-                    checked={currentLabelIds.includes(label.id)}
-                    class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-                  />
-                  <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
-                  <span class="text-text">{label.name}</span>
-                </label>
-              {/each}
-              <Button size="sm" loading={busy.is("setLabels")} class="mt-2"
-                >{t("common.apply")}</Button
-              >
-            </form>
+  {#snippet checklists()}
+    <!-- Checklists. Ticking and quick-adding items is "using" (docs/UX.md §3, §5); creating,
+           renaming or deleting a checklist is structure and lives in edit mode. A task without
+           checklists shows no section at all until you edit — an empty card with a create form
+           is exactly the clutter use mode exists to avoid. -->
+    {#if (task.checklists ?? []).length > 0 || editMode}
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <h3 class="mb-3 {PANEL_HEADING}">
+          {t("tasks.checklist.title")}
+        </h3>
 
-            <!-- Ticking labels onto this task is `tasks.task.write`; *minting* one adds a row to
-                 the org's vocabulary and is `tasks.label.write`, which only an admin holds. -->
-            {#if canWriteLabels}
-              <form
-                method="POST"
-                action="?/createLabel"
-                use:enhance={busy.wrap("createLabel", () => ({ update }) => {
-                  showLabelPicker = false;
-                  void update();
-                })}
-                class="mt-2 rounded-lg border border-dashed border-border p-3"
-              >
-                {#each currentLabelIds as id (id)}
-                  <input type="hidden" name="current_label_ids" value={id} />
-                {/each}
-                <input
-                  name="name"
-                  placeholder={t("tasks.labels.new_placeholder")}
-                  required
-                  class="w-full rounded-lg border border-border px-2 py-1 text-sm"
-                />
-                <input type="hidden" name="color" value={newLabelColor} />
-                <div class="mt-2 flex flex-wrap gap-1">
-                  {#each LABEL_COLORS as color (color)}
+        <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
+               items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
+        {#if editMode}
+          <form
+            method="POST"
+            action="?/reorderChecklists"
+            use:enhance
+            bind:this={checklistOrderForm}
+            class="hidden"
+          >
+            <input type="hidden" name="ids" value={orderIds} />
+          </form>
+          <form
+            method="POST"
+            action="?/reorderItems"
+            use:enhance
+            bind:this={itemOrderForm}
+            class="hidden"
+          >
+            <input type="hidden" name="checklist_id" value={orderChecklistId} />
+            <input type="hidden" name="ids" value={orderIds} />
+          </form>
+        {/if}
+
+        <div
+          use:dndzone={{
+            items: dndChecklists,
+            flipDurationMs: 150,
+            dropTargetStyle: {},
+            type: "task-checklists",
+            dragDisabled: !editMode || !dragChecklists,
+          }}
+          onconsider={considerChecklists}
+          onfinalize={finalizeChecklists}
+        >
+          {#each dndChecklists as checklist, checklistIndex (checklist.id)}
+            {@const items = dndItems[checklist.id] ?? []}
+            {@const total = items.length}
+            {@const doneCount = items.filter((i) => i.done).length}
+            <div class="mb-4 bg-surface-raised">
+              <div class="mb-1 flex items-center justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-1">
+                  {#if editMode}
                     <button
                       type="button"
-                      aria-label={color}
-                      class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                        ? 'ring-2 ring-text ring-offset-1'
-                        : ''}"
-                      onclick={() => (newLabelColor = color)}
-                    ></button>
-                  {/each}
-                </div>
-                <Button variant="secondary" size="sm" loading={busy.is("createLabel")} class="mt-2">
-                  {t("tasks.labels.create")}
-                </Button>
-              </form>
-            {/if}
-          {:else if (task.labels ?? []).length === 0}
-            <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
-          {:else}
-            <div class="flex flex-wrap gap-1">
-              {#each task.labels ?? [] as label (label.id)}
-                <span
-                  class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
-                    label.color,
-                  )}">{label.name}</span
-                >
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/if}
-    </div>
-  </section>
-
-  <!-- 3. Planning — the one place that answers "when". The deadline, the blocks and the repeat
-       rule were three unrelated widgets in three parts of the page (#335): Vervaldatum in the
-       details card, Planning in the main column, Herhaling at the very bottom of the rail below
-       Labels. They are one subject. The mode split still holds (docs/UX.md §3): blocks are use
-       mode, the deadline and the rule are definition and get their inputs behind the pencil —
-       but their read state is always here, instead of a chip in one place and nothing anywhere
-       for the rule. -->
-  <section id="planning" class="rounded-xl border border-border bg-surface-raised p-5">
-    <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-      {t("tasks.detail.planning")}
-    </h3>
-
-    <div class="space-y-4">
-      <!-- Deadline -->
-      <div>
-        {#if editMode}
-          <label for="due_date" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.due_date")}</label
-          >
-          <div class="max-w-xs">
-            <DateInput
-              id="due_date"
-              name="due_date"
-              value={task.due_date ?? ""}
-              formId="task-edit"
-              onchange={onDueChanged}
-            />
-          </div>
-          <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
-        {:else}
-          <span class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.due_date")}</span
-          >
-          <p
-            class="text-sm tabular-nums {overdue
-              ? 'font-semibold text-red-600 dark:text-red-400'
-              : 'text-text'}"
-          >
-            {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
-          </p>
-        {/if}
-      </div>
-
-      <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one.
-           Rendered bare: it is a part of this card now, not a card beside it. -->
-      <div class="border-t border-border pt-4">
-        <TaskSchedulePanel
-          bare
-          schedules={data.schedules}
-          task={{
-            id: task.id,
-            title: task.title,
-            project_id: task.project_id,
-            company_id: task.company_id,
-            assignee_user_id: task.assignee_user_id,
-            allocated_minutes: task.allocated_minutes,
-            due_date: task.due_date,
-          }}
-          members={data.members}
-          currentUserId={page.data.user?.id ?? ""}
-          canWrite={canSchedule}
-          {canScheduleAny}
-          preparing={busy.is("update")}
-          beforeOpen={saveIfEditing}
-        />
-      </div>
-
-      <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
-           niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
-           editor behind the pencil is where a rule gets made. -->
-      {#if editMode || recurrence}
-        <div class="border-t border-border pt-4">
-          {#if editMode}
-            <RecurrenceEditor
-              formId="task-edit"
-              previewUrl={`/tasks/${task.id}/recurrence-preview`}
-              {recurrence}
-              dueDate={liveDue}
-              allocatedMinutes={liveAllocated}
-              assigneeUserId={task.assignee_user_id}
-              {lastBlockStart}
-              members={data.members}
-              currentUserId={page.data.user?.id ?? ""}
-              {canSchedule}
-              {canScheduleAny}
-            />
-          {:else}
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.recurrence.title")}</span
-            >
-            {#if recurrence}
-              <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
-              <p class="mt-0.5 text-[11px] text-text-muted">
-                {#if task.recurrence_next_run}
-                  {t("tasks.recurrence.next")}: {fmtDayMonthYear(
-                    task.recurrence_next_run,
-                  )}{recurrence.plan ? `, ${clockOf(recurrence.plan.start_time)}` : ""}
-                {:else}
-                  {t("tasks.recurrence.next_on_completion")}
-                {/if}
-              </p>
-            {/if}
-          {/if}
-        </div>
-      {/if}
-    </div>
-  </section>
-
-  <!-- 4. Description -->
-  <section class="rounded-xl border border-border bg-surface-raised p-5">
-    <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
-      {t("tasks.field.description")}
-    </h3>
-    {#if editMode}
-      <RichTextEditor
-        name="description"
-        form="task-edit"
-        rows={4}
-        value={task.description ?? ""}
-        scope={candidateScope}
-      />
-    {:else if task.description}
-      <Markdown value={task.description} />
-    {:else}
-      <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
-    {/if}
-  </section>
-
-  <!-- Checklists. Ticking and quick-adding items is "using" (docs/UX.md §3, §5); creating,
-         renaming or deleting a checklist is structure and lives in edit mode. A task without
-         checklists shows no section at all until you edit — an empty card with a create form
-         is exactly the clutter use mode exists to avoid. -->
-  {#if (task.checklists ?? []).length > 0 || editMode}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.checklist.title")}
-      </h3>
-
-      <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
-             items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
-      {#if editMode}
-        <form
-          method="POST"
-          action="?/reorderChecklists"
-          use:enhance
-          bind:this={checklistOrderForm}
-          class="hidden"
-        >
-          <input type="hidden" name="ids" value={orderIds} />
-        </form>
-        <form
-          method="POST"
-          action="?/reorderItems"
-          use:enhance
-          bind:this={itemOrderForm}
-          class="hidden"
-        >
-          <input type="hidden" name="checklist_id" value={orderChecklistId} />
-          <input type="hidden" name="ids" value={orderIds} />
-        </form>
-      {/if}
-
-      <div
-        use:dndzone={{
-          items: dndChecklists,
-          flipDurationMs: 150,
-          dropTargetStyle: {},
-          type: "task-checklists",
-          dragDisabled: !editMode || !dragChecklists,
-        }}
-        onconsider={considerChecklists}
-        onfinalize={finalizeChecklists}
-      >
-        {#each dndChecklists as checklist, checklistIndex (checklist.id)}
-          {@const items = dndItems[checklist.id] ?? []}
-          {@const total = items.length}
-          {@const doneCount = items.filter((i) => i.done).length}
-          <div class="mb-4 bg-surface-raised">
-            <div class="mb-1 flex items-center justify-between gap-2">
-              <div class="flex min-w-0 items-center gap-1">
-                {#if editMode}
-                  <button
-                    type="button"
-                    class="-ml-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
-                    aria-label={t("tasks.checklist.drag", { title: checklist.title })}
-                    onpointerdown={() => (dragChecklists = true)}
-                  >
-                    <GripVertical size={14} />
-                  </button>
-                {/if}
-                <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs tabular-nums text-text-muted"
-                  >{t("tasks.checklist.progress", { done: doneCount, total })}</span
-                >
-                {#if editMode && items.length > 0 && canSaveChecklistTemplate}
-                  <form method="POST" action="?/saveChecklistTemplate" use:enhance>
-                    <input type="hidden" name="title" value={checklist.title} />
-                    <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
-                    <input
-                      type="hidden"
-                      name="items"
-                      value={JSON.stringify(
-                        items.map((i) => ({
-                          title: i.title,
-                          description: i.description ?? null,
-                        })),
-                      )}
-                    />
-                    <button
-                      class="text-xs text-text-muted hover:text-brand"
-                      title={t("tasks.checklist.save_template_hint")}
+                      class="-ml-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                      aria-label={t("tasks.checklist.drag", { title: checklist.title })}
+                      onpointerdown={() => (dragChecklists = true)}
                     >
-                      {t("tasks.checklist.save_template")}
+                      <GripVertical size={14} />
                     </button>
-                  </form>
-                {/if}
+                  {/if}
+                  <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs tabular-nums text-text-muted"
+                    >{t("tasks.checklist.progress", { done: doneCount, total })}</span
+                  >
+                  {#if editMode && items.length > 0 && canSaveChecklistTemplate}
+                    <form method="POST" action="?/saveChecklistTemplate" use:enhance>
+                      <input type="hidden" name="title" value={checklist.title} />
+                      <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
+                      <input
+                        type="hidden"
+                        name="items"
+                        value={JSON.stringify(
+                          items.map((i) => ({
+                            title: i.title,
+                            description: i.description ?? null,
+                          })),
+                        )}
+                      />
+                      <button
+                        class="text-xs text-text-muted hover:text-brand"
+                        title={t("tasks.checklist.save_template_hint")}
+                      >
+                        {t("tasks.checklist.save_template")}
+                      </button>
+                    </form>
+                  {/if}
+                  {#if editMode}
+                    <ActionsMenu
+                      compact
+                      items={[
+                        {
+                          label: t("tasks.checklist.move_up"),
+                          icon: ArrowUp,
+                          disabled: checklistIndex === 0,
+                          onclick: () => moveChecklist(checklist.id, -1),
+                        },
+                        {
+                          label: t("tasks.checklist.move_down"),
+                          icon: ArrowDown,
+                          disabled: checklistIndex === dndChecklists.length - 1,
+                          onclick: () => moveChecklist(checklist.id, 1),
+                        },
+                        {
+                          label: t("common.edit"),
+                          icon: Pencil,
+                          onclick: () =>
+                            (editingChecklistId =
+                              editingChecklistId === checklist.id ? null : checklist.id),
+                        },
+                        {
+                          label: t("tasks.checklist.duplicate"),
+                          icon: Copy,
+                          onclick: () => askDuplicate(checklist.id, checklist.title),
+                        },
+                        {
+                          label: t("common.delete"),
+                          icon: Trash2,
+                          danger: true,
+                          onclick: () =>
+                            askDelete(
+                              "?/deleteChecklist",
+                              { checklist_id: checklist.id },
+                              t("tasks.checklist.delete_confirm"),
+                            ),
+                        },
+                      ]}
+                    />
+                  {/if}
+                </div>
+              </div>
+              {#if editingChecklistId === checklist.id}
+                <form
+                  method="POST"
+                  action="?/editChecklist"
+                  use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
+                    editingChecklistId = null;
+                    void update({ reset: false });
+                  })}
+                  class="mb-2 space-y-2"
+                >
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input name="title" value={checklist.title} required class={inputClass} />
+                  <RichTextEditor
+                    name="description"
+                    rows={2}
+                    value={checklist.description ?? ""}
+                    placeholder={t("tasks.checklist.description_placeholder")}
+                    scope={candidateScope}
+                  />
+                  <div class="flex gap-2">
+                    <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-border px-2 py-1 text-xs"
+                      onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                    >
+                  </div>
+                </form>
+              {:else if checklist.description}
+                <div class="mb-2"><Markdown value={checklist.description} /></div>
+              {/if}
+              {#if total > 0}
+                <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                  <div
+                    class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
+                    style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
+                  ></div>
+                </div>
+              {/if}
+              <!-- Items reorder within their own list: a distinct `type` per checklist, so a drag
+                   cannot drop a to-do into the list next door (that is a move, not a reorder, and
+                   no endpoint here promises it). -->
+              <ul
+                class="space-y-1"
+                use:dndzone={{
+                  items,
+                  flipDurationMs: 150,
+                  dropTargetStyle: {},
+                  type: `checklist-items-${checklist.id}`,
+                  dragDisabled: !editMode || dragItemsIn !== checklist.id,
+                }}
+                onconsider={(e) => considerItems(checklist.id, e)}
+                onfinalize={(e) => finalizeItems(checklist.id, e)}
+              >
+                {#each items as item, itemIndex (item.id)}
+                  <li class="group bg-surface-raised">
+                    <div class="flex items-center gap-2">
+                      {#if editMode}
+                        <button
+                          type="button"
+                          class="-mr-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                          aria-label={t("tasks.checklist.drag_item", { title: item.title })}
+                          onpointerdown={() => (dragItemsIn = checklist.id)}
+                        >
+                          <GripVertical size={13} />
+                        </button>
+                      {/if}
+                      {#if canEditTask}
+                        <form
+                          method="POST"
+                          action="?/toggleItem"
+                          use:enhance={({ formData }) => {
+                            // Ticking is the most-repeated gesture on this page, and it used to
+                            // cost a whole page reload: `update()` invalidates every load above
+                            // it, so one checkbox re-ran the two layouts and this page —
+                            // sixteen API calls, one of them the eight-round-trip task detail —
+                            // and the box did not change colour until all of it came back.
+                            //
+                            // So flip it here and let the PATCH catch up. `item` is the object
+                            // the drag arrays hold, so the checkbox, the progress bar, the
+                            // "3/7" and `openItemCount` all move with this one write. Nothing
+                            // is invalidated: the only thing the server changed that this page
+                            // also draws is the activity line, which the next load picks up
+                            // (the NotificationBell's fire-and-forget precedent).
+                            //
+                            // `next` comes from the serialised body, not from `item.done`, so
+                            // what we show can never disagree with what we sent.
+                            const next = formData.get("done") === "true";
+                            item.done = next;
+                            // Read *after* the flip — this is the tick that emptied the list.
+                            const completesLast =
+                              next &&
+                              openItemCount === 0 &&
+                              !isDone &&
+                              !isPortal &&
+                              finishStatus !== null;
+                            return async ({ result }) => {
+                              // Refused (a lost race, a permission withdrawn mid-session): put
+                              // the box back rather than leave the screen claiming a change the
+                              // server never made. `applyAction` surfaces the message and — the
+                              // reason it is used instead of `update()` — invalidates nothing.
+                              if (result.type !== "success") item.done = !next;
+                              await applyAction(result);
+                              if (result.type === "success" && completesLast) {
+                                openFinishPrompt("checklist");
+                              }
+                            };
+                          }}
+                        >
+                          <input type="hidden" name="checklist_id" value={checklist.id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="done" value={String(!item.done)} />
+                          <button
+                            class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                            {item.done
+                              ? 'border-brand bg-brand text-white'
+                              : 'border-border text-transparent hover:border-brand'}"
+                            aria-label={t("tasks.toggle_done")}>✓</button
+                          >
+                        </form>
+                      {:else}
+                        <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
+                        <span
+                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                          {item.done
+                            ? 'border-brand bg-brand text-white'
+                            : 'border-border text-transparent'}"
+                          aria-label={t("tasks.toggle_done")}>✓</span
+                        >
+                      {/if}
+                      <span
+                        class="flex-1 text-sm {item.done
+                          ? 'text-text-muted line-through'
+                          : 'text-text'}">{item.title}</span
+                      >
+                      {#if editMode}
+                        <ActionsMenu
+                          compact
+                          items={[
+                            {
+                              label: t("tasks.checklist.move_up"),
+                              icon: ArrowUp,
+                              disabled: itemIndex === 0,
+                              onclick: () => moveItem(checklist.id, item.id, -1),
+                            },
+                            {
+                              label: t("tasks.checklist.move_down"),
+                              icon: ArrowDown,
+                              disabled: itemIndex === items.length - 1,
+                              onclick: () => moveItem(checklist.id, item.id, 1),
+                            },
+                            {
+                              label: t("common.edit"),
+                              icon: Pencil,
+                              onclick: () =>
+                                (editingItemId = editingItemId === item.id ? null : item.id),
+                            },
+                            {
+                              label: t("common.delete"),
+                              icon: Trash2,
+                              danger: true,
+                              onclick: () =>
+                                askDelete(
+                                  "?/deleteItem",
+                                  { checklist_id: checklist.id, item_id: item.id },
+                                  t("tasks.checklist.item_delete_confirm"),
+                                ),
+                            },
+                          ]}
+                        />
+                      {/if}
+                    </div>
+                    {#if editingItemId === item.id}
+                      <form
+                        method="POST"
+                        action="?/editItem"
+                        use:enhance={busy.wrap("editItem", () => ({ update }) => {
+                          editingItemId = null;
+                          void update({ reset: false });
+                        })}
+                        class="mt-1 space-y-2 pl-6"
+                      >
+                        <input type="hidden" name="checklist_id" value={checklist.id} />
+                        <input type="hidden" name="item_id" value={item.id} />
+                        <input name="title" value={item.title} required class={inputClass} />
+                        <RichTextEditor
+                          name="description"
+                          rows={2}
+                          value={item.description ?? ""}
+                          placeholder={t("tasks.checklist.description_placeholder")}
+                          scope={candidateScope}
+                        />
+                        <div class="flex gap-2">
+                          <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button
+                          >
+                          <button
+                            type="button"
+                            class="rounded-lg border border-border px-2 py-1 text-xs"
+                            onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
+                          >
+                        </div>
+                      </form>
+                    {:else if item.description}
+                      <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+              {#if canEditTask}
+                <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244).
+                     `clearAndFocus`, not `clear`: this row is typed into in runs, and a successful
+                     action ends with SvelteKit focusing the body, so Enter used to add the item and
+                     then drop the cursor (#367). -->
+                <form
+                  method="POST"
+                  action="?/addItem"
+                  use:enhance={busy.clearAndFocus(`addItem:${checklist.id}`, "title")}
+                  class="mt-2 flex gap-2"
+                >
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input
+                    name="title"
+                    placeholder={t("tasks.checklist.item_placeholder")}
+                    required
+                    class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+                  />
+                  <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
+                    >＋</Button
+                  >
+                </form>
+              {/if}
+            </div>
+          {/each}
+        </div>
+
+        {#if editMode}
+          <form
+            method="POST"
+            action="?/addChecklist"
+            use:enhance={busy.wrap("addChecklist")}
+            class="flex gap-2"
+          >
+            <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
+                 min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
+                 card past a phone's width (issue #36). -->
+            <input
+              name="title"
+              placeholder={t("tasks.checklist.add")}
+              required
+              class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <Button variant="secondary" size="sm" loading={busy.is("addChecklist")}>
+              {t("common.create")}
+            </Button>
+          </form>
+          {#if data.checklistTemplates.length > 0}
+            <form
+              method="POST"
+              action="?/addChecklist"
+              use:enhance={busy.clear("addChecklistTpl")}
+              class="mt-2 flex gap-2"
+            >
+              <select
+                name="template_id"
+                required
+                class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
+              >
+                {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+                  <option value={checklistTemplate.id}>
+                    {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
+                  </option>
+                {/each}
+              </select>
+              <Button variant="secondary" size="sm" loading={busy.is("addChecklistTpl")}>
+                {t("tasks.checklist.from_template")}
+              </Button>
+            </form>
+          {/if}
+        {/if}
+      </section>
+    {/if}
+  {/snippet}
+
+  {#snippet links()}
+    <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
+           uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
+           no files → no section, until you edit. -->
+    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
+      <!-- A register (#404): where the files are is looked up when somebody needs a file, and
+           it is never the news on a task. Under a rule rather than in the eighth bordered box —
+           and the Drive card directly under it declares the same, so the two now read as one
+           reference band without either page or module having to arrange that. -->
+      <Card kind="register">
+        <!-- Drive now sits directly under this card (#393), and to a reader the two are one
+             idea: "waar staan de bestanden van deze taak". They are not the same thing — these
+             bytes live here and a Drive row is a reference into somebody else's system, which
+             is why deleting means something different in each — so the heading gets one line
+             saying which is which. Merging them would make that difference unsayable. -->
+        <div class="mb-3">
+          <h3 class={PANEL_HEADING}>
+            {t("tasks.links.title")}
+          </h3>
+          <p class="text-[11px] text-text-muted">{t("tasks.links.stored_here")}</p>
+        </div>
+        {#if (task.links ?? []).length === 0}
+          {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
+        {:else}
+          <ul class="mb-3 space-y-1">
+            {#each task.links ?? [] as link (link.id)}
+              <li class="group flex items-center gap-2">
+                <LinkIcon size={14} class="shrink-0 text-text-muted" />
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
+                >
+                  {link.title || link.url}
+                </a>
                 {#if editMode}
                   <ActionsMenu
                     compact
                     items={[
-                      {
-                        label: t("tasks.checklist.move_up"),
-                        icon: ArrowUp,
-                        disabled: checklistIndex === 0,
-                        onclick: () => moveChecklist(checklist.id, -1),
-                      },
-                      {
-                        label: t("tasks.checklist.move_down"),
-                        icon: ArrowDown,
-                        disabled: checklistIndex === dndChecklists.length - 1,
-                        onclick: () => moveChecklist(checklist.id, 1),
-                      },
-                      {
-                        label: t("common.edit"),
-                        icon: Pencil,
-                        onclick: () =>
-                          (editingChecklistId =
-                            editingChecklistId === checklist.id ? null : checklist.id),
-                      },
-                      {
-                        label: t("tasks.checklist.duplicate"),
-                        icon: Copy,
-                        onclick: () => askDuplicate(checklist.id, checklist.title),
-                      },
                       {
                         label: t("common.delete"),
                         icon: Trash2,
                         danger: true,
                         onclick: () =>
                           askDelete(
-                            "?/deleteChecklist",
-                            { checklist_id: checklist.id },
-                            t("tasks.checklist.delete_confirm"),
+                            "?/deleteLink",
+                            { link_id: link.id },
+                            t("tasks.links.delete_confirm"),
                           ),
                       },
                     ]}
                   />
                 {/if}
-              </div>
-            </div>
-            {#if editingChecklistId === checklist.id}
-              <form
-                method="POST"
-                action="?/editChecklist"
-                use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
-                  editingChecklistId = null;
-                  void update({ reset: false });
-                })}
-                class="mb-2 space-y-2"
-              >
-                <input type="hidden" name="checklist_id" value={checklist.id} />
-                <input name="title" value={checklist.title} required class={inputClass} />
-                <RichTextEditor
-                  name="description"
-                  rows={2}
-                  value={checklist.description ?? ""}
-                  placeholder={t("tasks.checklist.description_placeholder")}
-                  scope={candidateScope}
-                />
-                <div class="flex gap-2">
-                  <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
-                  <button
-                    type="button"
-                    class="rounded-lg border border-border px-2 py-1 text-xs"
-                    onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
-                  >
-                </div>
-              </form>
-            {:else if checklist.description}
-              <div class="mb-2"><Markdown value={checklist.description} /></div>
-            {/if}
-            {#if total > 0}
-              <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
-                <div
-                  class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
-                  style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
-                ></div>
-              </div>
-            {/if}
-            <!-- Items reorder within their own list: a distinct `type` per checklist, so a drag
-                 cannot drop a to-do into the list next door (that is a move, not a reorder, and
-                 no endpoint here promises it). -->
-            <ul
-              class="space-y-1"
-              use:dndzone={{
-                items,
-                flipDurationMs: 150,
-                dropTargetStyle: {},
-                type: `checklist-items-${checklist.id}`,
-                dragDisabled: !editMode || dragItemsIn !== checklist.id,
-              }}
-              onconsider={(e) => considerItems(checklist.id, e)}
-              onfinalize={(e) => finalizeItems(checklist.id, e)}
-            >
-              {#each items as item, itemIndex (item.id)}
-                <li class="group bg-surface-raised">
-                  <div class="flex items-center gap-2">
-                    {#if editMode}
-                      <button
-                        type="button"
-                        class="-mr-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
-                        aria-label={t("tasks.checklist.drag_item", { title: item.title })}
-                        onpointerdown={() => (dragItemsIn = checklist.id)}
-                      >
-                        <GripVertical size={13} />
-                      </button>
-                    {/if}
-                    {#if canEditTask}
-                      <form
-                        method="POST"
-                        action="?/toggleItem"
-                        use:enhance={({ formData }) => {
-                          // Ticking is the most-repeated gesture on this page, and it used to
-                          // cost a whole page reload: `update()` invalidates every load above
-                          // it, so one checkbox re-ran the two layouts and this page —
-                          // sixteen API calls, one of them the eight-round-trip task detail —
-                          // and the box did not change colour until all of it came back.
-                          //
-                          // So flip it here and let the PATCH catch up. `item` is the object
-                          // the drag arrays hold, so the checkbox, the progress bar, the
-                          // "3/7" and `openItemCount` all move with this one write. Nothing
-                          // is invalidated: the only thing the server changed that this page
-                          // also draws is the activity line, which the next load picks up
-                          // (the NotificationBell's fire-and-forget precedent).
-                          //
-                          // `next` comes from the serialised body, not from `item.done`, so
-                          // what we show can never disagree with what we sent.
-                          const next = formData.get("done") === "true";
-                          item.done = next;
-                          // Read *after* the flip — this is the tick that emptied the list.
-                          const completesLast =
-                            next &&
-                            openItemCount === 0 &&
-                            !isDone &&
-                            !isPortal &&
-                            finishStatus !== null;
-                          return async ({ result }) => {
-                            // Refused (a lost race, a permission withdrawn mid-session): put
-                            // the box back rather than leave the screen claiming a change the
-                            // server never made. `applyAction` surfaces the message and — the
-                            // reason it is used instead of `update()` — invalidates nothing.
-                            if (result.type !== "success") item.done = !next;
-                            await applyAction(result);
-                            if (result.type === "success" && completesLast) {
-                              openFinishPrompt("checklist");
-                            }
-                          };
-                        }}
-                      >
-                        <input type="hidden" name="checklist_id" value={checklist.id} />
-                        <input type="hidden" name="item_id" value={item.id} />
-                        <input type="hidden" name="done" value={String(!item.done)} />
-                        <button
-                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                          {item.done
-                            ? 'border-brand bg-brand text-white'
-                            : 'border-border text-transparent hover:border-brand'}"
-                          aria-label={t("tasks.toggle_done")}>✓</button
-                        >
-                      </form>
-                    {:else}
-                      <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
-                      <span
-                        class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                        {item.done
-                          ? 'border-brand bg-brand text-white'
-                          : 'border-border text-transparent'}"
-                        aria-label={t("tasks.toggle_done")}>✓</span
-                      >
-                    {/if}
-                    <span
-                      class="flex-1 text-sm {item.done
-                        ? 'text-text-muted line-through'
-                        : 'text-text'}">{item.title}</span
-                    >
-                    {#if editMode}
-                      <ActionsMenu
-                        compact
-                        items={[
-                          {
-                            label: t("tasks.checklist.move_up"),
-                            icon: ArrowUp,
-                            disabled: itemIndex === 0,
-                            onclick: () => moveItem(checklist.id, item.id, -1),
-                          },
-                          {
-                            label: t("tasks.checklist.move_down"),
-                            icon: ArrowDown,
-                            disabled: itemIndex === items.length - 1,
-                            onclick: () => moveItem(checklist.id, item.id, 1),
-                          },
-                          {
-                            label: t("common.edit"),
-                            icon: Pencil,
-                            onclick: () =>
-                              (editingItemId = editingItemId === item.id ? null : item.id),
-                          },
-                          {
-                            label: t("common.delete"),
-                            icon: Trash2,
-                            danger: true,
-                            onclick: () =>
-                              askDelete(
-                                "?/deleteItem",
-                                { checklist_id: checklist.id, item_id: item.id },
-                                t("tasks.checklist.item_delete_confirm"),
-                              ),
-                          },
-                        ]}
-                      />
-                    {/if}
-                  </div>
-                  {#if editingItemId === item.id}
-                    <form
-                      method="POST"
-                      action="?/editItem"
-                      use:enhance={busy.wrap("editItem", () => ({ update }) => {
-                        editingItemId = null;
-                        void update({ reset: false });
-                      })}
-                      class="mt-1 space-y-2 pl-6"
-                    >
-                      <input type="hidden" name="checklist_id" value={checklist.id} />
-                      <input type="hidden" name="item_id" value={item.id} />
-                      <input name="title" value={item.title} required class={inputClass} />
-                      <RichTextEditor
-                        name="description"
-                        rows={2}
-                        value={item.description ?? ""}
-                        placeholder={t("tasks.checklist.description_placeholder")}
-                        scope={candidateScope}
-                      />
-                      <div class="flex gap-2">
-                        <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button>
-                        <button
-                          type="button"
-                          class="rounded-lg border border-border px-2 py-1 text-xs"
-                          onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
-                        >
-                      </div>
-                    </form>
-                  {:else if item.description}
-                    <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-            {#if canEditTask}
-              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244).
-                   `clearAndFocus`, not `clear`: this row is typed into in runs, and a successful
-                   action ends with SvelteKit focusing the body, so Enter used to add the item and
-                   then drop the cursor (#367). -->
-              <form
-                method="POST"
-                action="?/addItem"
-                use:enhance={busy.clearAndFocus(`addItem:${checklist.id}`, "title")}
-                class="mt-2 flex gap-2"
-              >
-                <input type="hidden" name="checklist_id" value={checklist.id} />
-                <input
-                  name="title"
-                  placeholder={t("tasks.checklist.item_placeholder")}
-                  required
-                  class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
-                />
-                <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
-                  >＋</Button
-                >
-              </form>
-            {/if}
-          </div>
-        {/each}
-      </div>
-
-      {#if editMode}
-        <form
-          method="POST"
-          action="?/addChecklist"
-          use:enhance={busy.wrap("addChecklist")}
-          class="flex gap-2"
-        >
-          <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
-               min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
-               card past a phone's width (issue #36). -->
-          <input
-            name="title"
-            placeholder={t("tasks.checklist.add")}
-            required
-            class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <Button variant="secondary" size="sm" loading={busy.is("addChecklist")}>
-            {t("common.create")}
-          </Button>
-        </form>
-        {#if data.checklistTemplates.length > 0}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if editMode}
           <form
             method="POST"
-            action="?/addChecklist"
-            use:enhance={busy.clear("addChecklistTpl")}
-            class="mt-2 flex gap-2"
+            action="?/addLink"
+            use:enhance={busy.wrap(
+              "addLink",
+              () =>
+                ({ update }) =>
+                  void update({ reset: true }),
+            )}
+            class="flex flex-wrap gap-2"
           >
-            <select
-              name="template_id"
+            <input
+              name="url"
               required
-              class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
-            >
-              {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
-                <option value={checklistTemplate.id}>
-                  {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
-                </option>
-              {/each}
-            </select>
-            <Button variant="secondary" size="sm" loading={busy.is("addChecklistTpl")}>
-              {t("tasks.checklist.from_template")}
+              placeholder={t("tasks.links.url_placeholder")}
+              class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <input
+              name="title"
+              placeholder={t("tasks.links.title_placeholder")}
+              class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <Button variant="secondary" size="sm" loading={busy.is("addLink")}>
+              {t("common.create")}
             </Button>
           </form>
         {/if}
-      {/if}
-    </section>
-  {/if}
 
-  <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
-         uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
-         no files → no section, until you edit. -->
-  {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.links.title")}
-      </h3>
-      {#if (task.links ?? []).length === 0}
-        {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
-      {:else}
-        <ul class="mb-3 space-y-1">
-          {#each task.links ?? [] as link (link.id)}
-            <li class="group flex items-center gap-2">
-              <LinkIcon size={14} class="shrink-0 text-text-muted" />
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
-              >
-                {link.title || link.url}
-              </a>
-              {#if editMode}
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () =>
-                        askDelete(
-                          "?/deleteLink",
-                          { link_id: link.id },
-                          t("tasks.links.delete_confirm"),
-                        ),
-                    },
-                  ]}
-                />
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      {#if editMode}
-        <form
-          method="POST"
-          action="?/addLink"
-          use:enhance={busy.wrap(
-            "addLink",
-            () =>
-              ({ update }) =>
-                void update({ reset: true }),
-          )}
-          class="flex flex-wrap gap-2"
-        >
-          <input
-            name="url"
-            required
-            placeholder={t("tasks.links.url_placeholder")}
-            class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <input
-            name="title"
-            placeholder={t("tasks.links.title_placeholder")}
-            class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <Button variant="secondary" size="sm" loading={busy.is("addLink")}>
-            {t("common.create")}
-          </Button>
-        </form>
-      {/if}
-
-      {#if !isPortal && (data.files.length > 0 || editMode)}
-        <!-- Document uploads through the storage core (#123) — staff-only surface. -->
-        <div class={editMode ? "mt-4 border-t border-border pt-4" : ""}>
-          <FileAttachments
-            files={data.files}
-            uploadAction="?/uploadFile"
-            deleteAction="?/deleteFile"
-            error={form?.fileError ?? null}
-            readonly={!editMode || !canWriteFile}
-          />
-        </div>
-        {#if editMode}
-          <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+        {#if !isPortal && (data.files.length > 0 || editMode)}
+          <!-- Document uploads through the storage core (#123) — staff-only surface. -->
+          <div class={editMode ? "mt-4 border-t border-border pt-4" : ""}>
+            <FileAttachments
+              files={data.files}
+              uploadAction="?/uploadFile"
+              deleteAction="?/deleteFile"
+              error={form?.fileError ?? null}
+              readonly={!editMode || !canWriteFile}
+            />
+          </div>
         {/if}
-      {/if}
+      </Card>
+    {/if}
+  {/snippet}
+
+  {#snippet comments()}
+    <!-- The discussion. Its own component (#312 follow-up): threading, the reading order, the
+         folds and the `?comment=` deep link are one set of rules, and they were competing with
+         the task's own edit form for room in one file. -->
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <TaskComments
+        comments={task.comments ?? []}
+        truncated={task.comments_truncated ?? false}
+        members={data.members}
+        {userId}
+        {canComment}
+        canDeleteAny={canDeleteAnyComment}
+        scope={candidateScope}
+        {busy}
+        {askDelete}
+        sort={commentSort}
+        focusId={focusComment}
+        onsort={saveCommentSort}
+      />
     </section>
-  {/if}
+  {/snippet}
 
-  <!-- The discussion. Its own component (#312 follow-up): threading, the reading order, the
-       folds and the `?comment=` deep link are one set of rules, and they were competing with
-       the task's own edit form for room in one file. -->
-  <section class="rounded-xl border border-border bg-surface-raised p-5">
-    <TaskComments
-      comments={task.comments ?? []}
-      truncated={task.comments_truncated ?? false}
-      members={data.members}
-      {userId}
-      {canComment}
-      canDeleteAny={canDeleteAnyComment}
-      scope={candidateScope}
-      {busy}
-      {askDelete}
-      sort={commentSort}
-      focusId={focusComment}
-      onsort={saveCommentSort}
-    />
-  </section>
+  {#snippet activity()}
+    <!-- Activity — the staff paper trail, never a portal surface. -->
+    {#if !isPortal}
+      <!-- The trail is the quietest thing on the page and hangs last (docs/UX.md Principle 4).
+           A register, therefore — it was the same white box as the checklist above it. -->
+      <Card kind="register" level={3} title={t("tasks.activity.title")}>
+        {#if activities.length === 0}
+          <p class="text-sm text-text-muted">—</p>
+        {:else}
+          <PanelRows rows={activities} collapsed={ACTIVITY_COLLAPSED}>
+            {#snippet children(shown)}
+              <ul class="space-y-2">
+                {#each shown as activity (activity.id)}
+              {@const href = activityHref(activity)}
+              <li class="flex items-baseline gap-2 text-sm">
+                <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
+                  >{when(activity.created_at)}</span
+                >
+                <span class="text-text">
+                  <span class="font-medium">{actorLabel(activity)}</span>
+                  <!-- Someone was signed in as them (#296) — a client's comment written by the
+                         agency reads as the client's until this says otherwise. -->
+                  {#if activity.impersonator_name}
+                    <span
+                      class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                      title={t("activity.impersonated_title", {
+                        actor: activity.impersonator_name,
+                      })}
+                    >
+                      {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                    </span>
+                  {/if}
+                  {#if href}
+                    <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
+                  {:else}
+                    {activityText(activity)}
+                  {/if}
+                </span>
+                  </li>
+                {/each}
+              </ul>
+            {/snippet}
+          </PanelRows>
+        {/if}
+      </Card>
+    {/if}
+  {/snippet}
 
-  <!-- Panels contributed by enabled modules; history stays last (docs/UX.md). -->
-  {#each isPortal ? [] : data.panels as panel (panel.key)}
-    {@const PanelComponent = panelComponent(panel.key)}
-    {#if PanelComponent}
-      <section class="rounded-xl border border-border bg-surface-raised p-5">
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-          {t(panel.titleKey)}
-        </h3>
-        <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
-      </section>
+  <!-- The page, in one ordered list: its own sections interleaved with the panels the
+       enabled modules contribute, each at the `position` it declares. -->
+  {#each orderedSections as item (item.key)}
+    {#if item.kind === "panel"}
+      {@const spec = panelSpec(item.panel.key)}
+      {#if spec}
+        {@const PanelComponent = spec.component}
+        <!-- A contributed panel says what it *is* on this host (#404). Drive and contactmomenten
+             declare `register` for a task, so they are drawn under a hairline rule instead of as
+             two more bordered boxes among eight — which is most of the reason an empty task page
+             ran 1500 px tall with nothing on it. -->
+        <Card
+          kind={spec.prominence === "register" ? "register" : "panel"}
+          level={3}
+          title={t(item.panel.titleKey)}
+        >
+          <PanelComponent data={item.panel.data} context={data.context} lookups={panelLookups} />
+        </Card>
+      {/if}
+    {:else}
+      {@const render = {
+        properties,
+        description,
+        checklists,
+        planning,
+        links,
+        comments,
+        activity,
+      }[item.key]}
+      {@render render()}
     {/if}
   {/each}
-
-  <!-- Activity — the staff paper trail, never a portal surface. -->
-  {#if !isPortal}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.activity.title")}
-      </h3>
-      {#if activities.length === 0}
-        <p class="text-sm text-text-muted">—</p>
-      {:else}
-        <ul class="space-y-2">
-          {#each visibleActivities as activity (activity.id)}
-            {@const href = activityHref(activity)}
-            <li class="flex items-baseline gap-2 text-sm">
-              <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
-                >{when(activity.created_at)}</span
-              >
-              <span class="text-text">
-                <span class="font-medium">{actorLabel(activity)}</span>
-                <!-- Someone was signed in as them (#296) — a client's comment written by the
-                       agency reads as the client's until this says otherwise. -->
-                {#if activity.impersonator_name}
-                  <span
-                    class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                    title={t("activity.impersonated_title", {
-                      actor: activity.impersonator_name,
-                    })}
-                  >
-                    {t("activity.via_impersonator", { actor: activity.impersonator_name })}
-                  </span>
-                {/if}
-                {#if href}
-                  <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
-                {:else}
-                  {activityText(activity)}
-                {/if}
-              </span>
-            </li>
-          {/each}
-        </ul>
-        {#if activities.length > ACTIVITY_COLLAPSED}
-          <button
-            type="button"
-            class="mt-3 text-xs font-medium text-brand hover:underline"
-            onclick={() => (activityExpanded = !activityExpanded)}
-          >
-            {activityExpanded
-              ? t("common.show_less")
-              : t("common.show_all", { count: activities.length })}
-          </button>
-        {/if}
-      {/if}
-    </section>
-  {/if}
 
   <!--
     The one save for the whole edit mode — sticky, so it is reachable from anywhere on the page.
@@ -2020,10 +2176,24 @@
       action="?/update"
       use:enhance={busy.wrap("update", () => async ({ update, result }) => {
         // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
-        // keeps edit mode open: the user asked to plan, not to stop editing.
+        // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
+        // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
+        // in service of.
         const waiting = pendingSave;
         pendingSave = null;
-        if (result.type === "success") editMode = waiting !== null;
+        if (result.type === "success" && !waiting && origin) {
+          dueReason = "";
+          return void goto(origin, { invalidateAll: true });
+        }
+        if (result.type === "success") {
+          editMode = waiting !== null;
+          // …and the marker that opened it goes with it (#402). A task created from a client
+          // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
+          // means the next visit — a reload, the back button off the client's page — reopens
+          // the form over a save that had already happened. An intent is consumed once. The
+          // detour's exit above needs none of this: it leaves this URL behind entirely.
+          if (!editMode) clearEditIntent();
+        }
         dueReason = "";
         await update();
         waiting?.(result.type === "success");
@@ -2035,7 +2205,7 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (editMode = false)}
+        onclick={leaveEdit}
       >
         {t("common.cancel")}
       </button>
@@ -2086,7 +2256,7 @@
   bind:open={confirmDelete}
   title={t("tasks.detail.delete")}
   message={t("tasks.detail.delete_confirm")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />
 
 <!-- Shared confirm for inline sub-item deletes (comment / checklist / item / link) -->

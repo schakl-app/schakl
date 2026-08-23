@@ -8,6 +8,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { hasPermission } from "$lib/core/permissions";
 import { registerWebModule, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
+import { orgToday } from "$lib/core/today";
 import { SquareCheckBig } from "@lucide/svelte";
 
 import { localDayTime } from "./schedule";
@@ -47,7 +48,16 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.tasks.my_open",
       category: "dashboard.category.tasks",
       size: "md",
-      load: (api) => api.GET("/api/v1/tasks/dashboard-mine").then((r) => r.data ?? []),
+      load: (api) =>
+        api
+          .GET("/api/v1/tasks/dashboard-mine")
+          // The bucket counts come from the API now (#407): derived in the browser off a
+          // page of twenty they were wrong numbers for anyone with more open work. Four of
+          // them since #397 — "upcoming" was the week and the rest as one number.
+          .then(
+            (r) =>
+              r.data ?? { items: [], total: 0, overdue: 0, due_today: 0, due_week: 0, later: 0 },
+          ),
       component: MyTasksWidget,
     },
     {
@@ -58,7 +68,8 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.tasks.by_group",
       category: "dashboard.category.tasks",
       size: "md",
-      load: (api) => api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? []),
+      load: (api) =>
+        api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? { items: [], total: 0 }),
       component: TasksByGroupWidget,
     },
   ],
@@ -151,7 +162,7 @@ registerWebModule({
             },
           },
         });
-        const today = new Date().toISOString().slice(0, 10);
+        const today = orgToday();
         return (data?.items ?? [])
           .filter((task) => task.due_date && !task.completed_at)
           .map((task) => ({

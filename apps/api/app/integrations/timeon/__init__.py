@@ -33,8 +33,7 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.integrations.timeon.jobs import timeon_nightly, timeon_prune_runs
-from app.integrations.timeon.panels import TIMEON_PANELS
+from app.integrations.timeon.jobs import timeon_prune_runs, timeon_tick
 from app.integrations.timeon.permissions import TIMEON_PERMISSIONS
 from app.integrations.timeon.router import router
 from app.registry import KIND_INTEGRATION, ModuleDescriptor, registry
@@ -52,11 +51,20 @@ module = ModuleDescriptor(
     # pairings before they disconnect.
     sku="timeon",
     permissions=TIMEON_PERMISSIONS,
-    panels=TIMEON_PANELS,
+    # **No company panel** (#411), and the loss is deliberate rather than overlooked: the
+    # hub's card carried this client's pairing count and their open conflicts, and nothing
+    # takes its place. Timeon is a cutover integration whose home is `/timeon` — the screen
+    # somebody opens *because* a sync is running — and a card on every client's page for a
+    # migration that ends is a card that outlives its reason. The conflicts queue is where
+    # a decision is actually made; the hub only ever said one was waiting.
     cron_jobs=[
-        # 04:20 — clear of the platform's 04:00/04:40/05:00 jobs, and after midnight in every
-        # European zone so "yesterday's hours" means yesterday.
-        cron(timeon_nightly, hour=4, minute=20),
+        # **The tick, not the schedule** (#388). Every quarter of an hour, clear of the
+        # platform's other quarter-hourly jobs; each account then decides whether its own moment
+        # has come, on the org's clock. One cron cannot express "hourly for this connection and
+        # nightly for that one", and during a cutover — both systems written to all day — how
+        # often the two are reconciled is an operational choice an agency makes, not a constant
+        # we pick for them. The cost of a tick that decides nothing is two queries per org.
+        cron(timeon_tick, minute={4, 19, 34, 49}),
         cron(timeon_prune_runs, hour=3, minute=50, weekday=0),
     ],
 )

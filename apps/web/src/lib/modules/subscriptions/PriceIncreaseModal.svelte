@@ -9,7 +9,7 @@
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";
   import { fmtMoney } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -87,12 +87,10 @@
 {#if form?.priceApplied != null}
   <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
     {#if form.priceApplied > 0 || !form.priceAppliedTemplates}
-      {t("subscriptions.price_increase.applied", { count: form.priceApplied })}
+      {tn("subscriptions.price_increase.applied", form.priceApplied)}
     {/if}
     {#if form.priceAppliedTemplates}
-      {t("subscriptions.price_increase.applied_templates", {
-        count: form.priceAppliedTemplates,
-      })}
+      {tn("subscriptions.price_increase.applied_templates", form.priceAppliedTemplates)}
     {/if}
   </p>
 {/if}

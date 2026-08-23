@@ -44,8 +44,10 @@ _AUDITED_FIELDS = ("first_name", "last_name", "email", "phone", "job_title")
 
 # ``companies`` belongs to another module. Reference it as a bare table by name rather than
 # importing its model — the same FK-name convention ``time.revenue()`` uses to reach `projects`
-# (CLAUDE.md §6: modules never import each other's internals).
-_companies = table("companies", column("id"), column("name"), column("org_id"))
+# (CLAUDE.md §6: modules never import each other's internals). Public within this module because
+# ``portal.py`` names clients too (#406), and a second copy of the same four strings is how the
+# two come to disagree about which columns exist.
+companies_table = table("companies", column("id"), column("name"), column("org_id"))
 
 
 def _company_sort_name() -> Any:
@@ -61,12 +63,12 @@ def _company_sort_name() -> Any:
     changing which contacts land on the page. A contact linked to nobody yields NULL, filed last.
     """
     return (
-        select(func.min(func.lower(_companies.c.name)))
+        select(func.min(func.lower(companies_table.c.name)))
         .select_from(CompanyContact)
         .join(
-            _companies,
-            (_companies.c.id == CompanyContact.company_id)
-            & (_companies.c.org_id == CompanyContact.org_id),
+            companies_table,
+            (companies_table.c.id == CompanyContact.company_id)
+            & (companies_table.c.org_id == CompanyContact.org_id),
         )
         .where(
             CompanyContact.contact_id == Contact.id,
@@ -225,9 +227,16 @@ class ContactService:
         return contact
 
     async def contacts_for_company(
-        self, company_id: uuid.UUID
-    ) -> list[tuple[Contact, bool]]:
-        """Contacts linked to a company, primary-first then by creation time (panel order)."""
+        self, company_id: uuid.UUID, *, limit: int | None = None
+    ) -> tuple[list[tuple[Contact, bool]], int]:
+        """Contacts linked to a company, primary-first then by creation time (panel order).
+
+        Bounded and counted (#407). The panel that draws these is a chip field rather than a
+        list, so the cap is generous — nobody wants the sixth of six contacts folded away —
+        but "generous" and "absent" are different things, and it was absent: the read's size
+        was the client's, which is the one thing docs/PERFORMANCE.md calls a build break
+        everywhere else.
+        """
         # The company hub reached this having already loaded the company through the horizon,
         # but the `contacts.for_company` AI/MCP tool hands the id straight in — so the check
         # belongs here, on the query, not on the one caller that happens to be safe. Free: the
@@ -244,9 +253,23 @@ class ContactService:
                     CompanyContact.company_id == company_id,
                 )
                 .order_by(CompanyContact.is_primary.desc(), Contact.created_at)
+                .limit(limit)
             )
         ).all()
-        return [(row[0], row[1]) for row in rows]
+        if limit is None:
+            return [(row[0], row[1]) for row in rows], len(rows)
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(CompanyContact)
+                .where(
+                    CompanyContact.org_id == self._org_id,
+                    CompanyContact.company_id == company_id,
+                )
+            )
+            or 0
+        )
+        return [(row[0], row[1]) for row in rows], total
 
     async def candidates_for_company(
         self, company_id: uuid.UUID, *, limit: int = 20

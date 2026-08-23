@@ -3,6 +3,7 @@
  * like `core/format.ts`) shared by the page load (fetch range) and the view components.
  */
 import { t } from "./i18n";
+import { isoAddDays, mondayOnOrBefore } from "./isodate";
 import type { CalendarEvent } from "./registry";
 import { labelChipParts, type ColorParts } from "./ui/colors";
 
@@ -13,18 +14,11 @@ export function isCalendarView(value: string | null | undefined): value is Calen
   return !!value && (CALENDAR_VIEWS as readonly string[]).includes(value);
 }
 
-export function isoAddDays(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Whole days from `from` to `to` (both date-only ISO); negative when `to` lies earlier. */
-export function isoDiffDays(from: string, to: string): number {
-  return Math.round(
-    (new Date(to + "T00:00:00Z").getTime() - new Date(from + "T00:00:00Z").getTime()) / 86400000,
-  );
-}
+// The three pure day helpers live in `core/isodate.ts` so a plain-node unit test can load them
+// without this module's i18n import dragging the paraglide bundle in (#395). Re-exported here,
+// because every caller in the app already asks `$lib/core/calendar` for them, and one copy of
+// the arithmetic is the point.
+export { isoAddDays, isoDiffDays, mondayOnOrBefore } from "./isodate";
 
 /** "2026-07" for an ISO date. */
 export function monthOf(isoDate: string): string {
@@ -36,12 +30,6 @@ export function addMonths(month: string, n: number): string {
   const [y, m] = month.split("-").map(Number);
   const d = new Date(Date.UTC(y, m - 1 + n, 1));
   return d.toISOString().slice(0, 7);
-}
-
-/** ISO Monday on or before the given date. */
-export function mondayOnOrBefore(isoDate: string): string {
-  const d = new Date(isoDate + "T00:00:00Z");
-  return isoAddDays(isoDate, -((d.getUTCDay() + 6) % 7));
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
+import { orgToday } from "$lib/core/today";
 import { Clock } from "@lucide/svelte";
 
 import EntriesPanel from "./EntriesPanel.svelte";
@@ -34,8 +35,13 @@ registerWebModule({
       module: "time",
       component: TimePanel,
       position: 40,
-      // Nothing here yet folds into the hub's one ＋ strip (#364).
-      emptyHref: (id: string) => `/time?company=${id}`,
+      // "Alle uren →" rides the heading line (#400): the host's <h2> would otherwise have left
+      // the link floating in a band of its own under it.
+      ownsHeader: true,
+      // Nothing here yet folds into the hub's one ＋ strip (#364) — as a chip that **unfolds the
+      // card in place**, not as a link to `/time?company=…`. The panel's own ＋ is a dialog now
+      // (#402), so sending someone to the timesheet to log their first hour would have been the
+      // one-way trip this panel just stopped making, kept alive on the empty client.
     },
   ],
   entityPanels: [
@@ -98,7 +104,7 @@ registerWebModule({
       category: "dashboard.category.time",
       size: "md",
       load: async (api) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = orgToday();
         const monthStart = today.slice(0, 8) + "01";
         const { data } = await api.GET("/api/v1/time/stats/team-summary", {
           params: { query: { date_from: monthStart, date_to: today } },

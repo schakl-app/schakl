@@ -3,7 +3,6 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
-import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -11,7 +10,9 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
+import { DUE_SORT, resolveGrouping } from "$lib/modules/tasks/grouping";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -26,12 +27,17 @@ export const load: PageServerLoad = async (event) => {
     unlinked: q.get("unlinked") === "1" || undefined,
     assignee_user_id: q.get("assignee_user_id") || undefined,
     label_id: q.get("label_id") || undefined,
-    due: (q.get("due") as "overdue" | "today" | "week" | null) || undefined,
+    due: (q.get("due") as "overdue" | "today" | "week" | "later" | null) || undefined,
     q: q.get("q") || undefined,
     // "Show me the ones nobody named" (#350). A create-then-edit row that was never finished
     // reads as ordinary work, so without a filter there is no way to find — let alone clear —
     // the ones an interrupted afternoon left behind.
     unnamed: q.get("unnamed") === "1" || undefined,
+    // "Show me the ones with no deadline" (#392). The rule arrived with the column still
+    // nullable (expand/contract, docs/WORKFLOW.md), so an instance upgrades carrying rows the
+    // new rule forbids — and a list sorted by a date they do not have is not a way to find
+    // them. With the ✎ bulk edit beside it, this is how a whole backlog gets dated in one go.
+    undated: q.get("undated") === "1" || undefined,
   };
 
   // Opening /tasks with no assignee filter shows *your* tasks first, not the whole org's — the
@@ -62,7 +68,19 @@ export const load: PageServerLoad = async (event) => {
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, TASKS_TABLE_ID);
   const resolved = resolveColumns(TASK_COLUMNS, pref);
-  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  // What the board *groups* by (#395), and what it therefore asks the API to order by when
+  // nobody has said otherwise. Grouped by deadline it asks for `sort=due` — the composite
+  // "deadline first, then priority" the team's sentence describes — because without it every
+  // task sharing a date falls back to `position`, the hand-dragged board order, and the one
+  // Friday task that cannot slip sits wherever it was last put. Grouped by status it keeps the
+  // dragged order, which is what a status board is for.
+  //
+  // Three layers, and the precedence matters: an explicit `?sort=` wins over the saved layout,
+  // which wins over the grouping's own default. A sort the user asked for orders *within* the
+  // sections and never reshuffles them (#38).
+  const grouping = resolveGrouping(event.url.searchParams.get("group"));
+  const groupingSort = grouping === "due" ? DUE_SORT : undefined;
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? groupingSort;
   const paging = resolvePaging(event.url, pref);
 
   // The hour budget's burn (#313), asked for only by a caller who may read hours — the API
@@ -95,7 +113,15 @@ export const load: PageServerLoad = async (event) => {
     total: tasks?.total ?? 0,
     paging,
     filters,
-    table: { pref, sort: sort ?? null, widths: resolved.widths },
+    grouping,
+    // The *explicit* sort only: the grouping's own default is not something the user picked, so
+    // the column picker must not draw it as a sort in force and clicking a header must not have
+    // to un-pick it first.
+    table: {
+      pref,
+      sort: event.url.searchParams.get("sort") ?? resolved.sort ?? null,
+      widths: resolved.widths,
+    },
   };
 };
 
@@ -114,33 +140,21 @@ export const actions: Actions = {
   bulkDelete: (event) => bulkDeleteAction(event, "task"),
 
   /**
-   * Create-then-edit (#230, docs/UX.md Principle 3): a new task is created minimal —
-   * placeholder title, assigned to its creator, optionally pre-linked to the client/project
-   * the entry point knew — and the user lands on the detail page in edit mode (#78's
-   * `?edit=1` marker), the one surface where a task's definition is edited. No inline
-   * creation form duplicates those fields anymore.
+   * The one create path behind every "＋ nieuwe taak" (#391) — this list's button, the client's
+   * Taken panel, the client header. The user names the task in `TaskQuickCreate` (the dialog
+   * every picker's inline-create already opens) and *then* lands on the detail page in edit
+   * mode (#78's `?edit=1` marker), so create-then-edit's benefit survives: one editing surface,
+   * no second field set to keep in step.
+   *
+   * What no longer survives is the row this action used to write before anyone had been asked
+   * anything — a placeholder title marked `unnamed` (#350), a due date of nothing and an
+   * assignee it picked itself, left on the board by one click and a closed tab.
    */
   create: async (event) => {
     const form = await event.request.formData();
-    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
-      body: {
-        // The API requires a non-empty title, so the row still carries one — but it is a
-        // placeholder nobody typed, and `unnamed` is what says so (#350). Before the flag, an
-        // abandoned create-then-edit row was indistinguishable from real work, and the
-        // placeholder was frozen in the *creator's* locale, so one org held both "Naamloze
-        // taak" and "Untitled task" and neither was searchable as "the ones nobody named".
-        title: t("tasks.untitled"),
-        unnamed: true,
-        // Status is omitted so the API assigns the org's default status (issue #62).
-        priority: "normal",
-        company_id: String(form.get("company_id") ?? "").trim() || null,
-        project_id: String(form.get("project_id") ?? "").trim() || null,
-        assignee_user_id: event.locals.user?.id ?? null,
-        // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
-        requires_interaction: false,
-        visible_to_client: false,
-      },
-    });
+    const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
+    if (!body) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (error || !data) return fail(400, { error: apiErrorKey(error).key });
     throw redirect(303, editHref(`/tasks/${data.id}`));
   },
@@ -168,6 +182,11 @@ export const actions: Actions = {
     }
     const title = String(draft.title ?? "").trim();
     if (!title) return fail(400, { error: "errors.validation" });
+    // Required (#382 meets #392): the sheet asks for it and the speaker reviews it, so an
+    // empty one here is a client that did not — refused rather than defaulted, because a
+    // human is watching and a date nobody chose is what this whole issue is about.
+    const dictatedDue = String(draft.due_date ?? "").trim();
+    if (!dictatedDue) return fail(400, { error: "errors.required" });
 
     const steps = (Array.isArray(draft.checklist_items) ? draft.checklist_items : []) as {
       title?: string;
@@ -183,7 +202,7 @@ export const actions: Actions = {
       body: {
         title,
         description: (draft.description as string | null) || null,
-        due_date: (draft.due_date as string | null) || null,
+        due_date: dictatedDue,
         priority: ((draft.priority as "low" | "normal" | "high" | null) ?? "normal") as
           "low" | "normal" | "high",
         status: (draft.status as string | null) || null,

@@ -4,6 +4,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { originOf } from "$lib/core/origin";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
@@ -156,18 +157,23 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/contacts/{contact_id}", {
       params: { path: { contact_id: event.params.id } },
     });
-    throw redirect(303, "/contacts");
+    // Back where the detour started (#408) — the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve: a server-side redirect has
+    // no `sessionStorage` to read, which is the whole reason the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/contacts");
   },
 
   // Client portal (#193, #296): enable, resend, disable, sign in as. Contributed by the
   // portal module the way the contactmomenten actions below are — this page hosts them, it
   // does not own them.
   ...portalActions({
-    entityType: "contact",
     // `String(...)` because the contributed actions are typed against a generic
     // `RequestEvent`, whose params are all optional; on this route `[id]` always matches.
-    subjectId: (event) => String(event.params.id),
-    returnPath: (event) => `/contacts/${event.params.id}`,
+    subject: (event) => ({
+      entityType: "contact",
+      subjectId: String(event.params.id),
+      returnPath: `/contacts/${event.params.id}`,
+    }),
   }),
 
   // Contactmomenten panel contract (lib/modules/interactions).

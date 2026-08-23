@@ -8,7 +8,7 @@
    */
   import { monthGrid, type CalendarDayAggregate } from "$lib/core/calendar";
   import { capitalizeFirst, monthLabels } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
 
   let {
     year,
@@ -60,7 +60,7 @@
                 : 'bg-surface text-text-muted'} {agg?.tentativeOnly
                 ? 'border border-dashed border-border'
                 : ''} {isToday ? 'ring-1 ring-brand' : ''}"
-              title={agg ? t("calendar.year.count", { count: agg.count }) : undefined}
+              title={agg ? tn("calendar.year.count", agg.count) : undefined}
             >
               {Number(day.slice(8, 10))}
             </a>
@@ -82,7 +82,7 @@
     >
       <span class="text-sm font-medium text-text">{capitalizeFirst(labels[i])}</span>
       <span class="text-xs text-text-muted">
-        {t("calendar.year.count", { count: monthTotal(month) })}
+        {tn("calendar.year.count", monthTotal(month))}
       </span>
     </a>
   {/each}

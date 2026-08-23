@@ -9,6 +9,7 @@
 
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -52,30 +53,38 @@
   };
 </script>
 
-<DashboardWidgetCard
-  title={t("dashboard.widget.interactions.pending_email")}
-  href={payload.total > 0 ? "/interactions?status=pending" : undefined}
-  linkLabel={t("interactions.widget.review_all", { count: payload.total })}
->
+<!-- The total used to ride in the header's link label for want of anywhere else (#407); it
+     belongs on the rows it counts. -->
+<DashboardWidgetCard title={t("dashboard.widget.interactions.pending_email")}>
   {#if payload.total === 0}
     <p class="text-sm text-text-muted">{t("interactions.widget.empty")}</p>
   {:else}
-    <ul class="divide-y divide-border">
-      {#each payload.items as row (row.id)}
-        <li class="py-1.5">
-          <!-- The email itself, not the queue it sits in (issue #15): `?interaction=` opens that
+    <PanelRows
+      rows={payload.items}
+      total={payload.total}
+      href="/interactions?status=pending"
+      linkLabel={t("interactions.widget.review_all", { count: payload.total })}
+      alwaysLink
+    >
+      {#snippet children(shown)}
+        <ul class="divide-y divide-border">
+          {#each shown as row (row.id)}
+            <li class="py-1.5">
+              <!-- The email itself, not the queue it sits in (issue #15): `?interaction=` opens that
                row's detail modal, where it is read and approved. -->
-          <a
-            href="/interactions?status=pending&interaction={row.id}"
-            class="block min-w-0 hover:text-brand"
-          >
-            <span class="block truncate text-sm text-text">{row.subject || "—"}</span>
-            <span class="block truncate text-xs text-text-muted">
-              {sender(row)}{#if row.company_name}&nbsp;· {row.company_name}{/if}
-            </span>
-          </a>
-        </li>
-      {/each}
-    </ul>
+              <a
+                href="/interactions?status=pending&interaction={row.id}"
+                class="block min-w-0 hover:text-brand"
+              >
+                <span class="block truncate text-sm text-text">{row.subject || "—"}</span>
+                <span class="block truncate text-xs text-text-muted">
+                  {sender(row)}{#if row.company_name}&nbsp;· {row.company_name}{/if}
+                </span>
+              </a>
+            </li>
+          {/each}
+        </ul>
+      {/snippet}
+    </PanelRows>
   {/if}
 </DashboardWidgetCard>

@@ -291,24 +291,28 @@
   <span class="tabular-nums text-text">{fmtNumericDate((row as Entry).entry_date)}</span>
 {/snippet}
 
+<!-- Every free-text cell below truncates with an ellipsis (#370). `DataTable` lays out
+     `table-fixed` with `overflow-hidden` on each `<td>`, so a name wider than its column is cut
+     mid-glyph unless it says otherwise — and `truncate` only ellipsizes on a *block* box, since
+     `overflow` does not apply to an inline one. This table had none of it on any column. -->
 {#snippet companyCell(row: Row)}
   {#if row.company_id}
-    <a href="/companies/{row.company_id}" class="text-text-muted hover:text-brand"
+    <a href="/companies/{row.company_id}" class="block truncate text-text-muted hover:text-brand"
       >{row.company_name}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet projectCell(row: Row)}
-  <span class="text-text-muted">{(row as Entry).project_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{(row as Entry).project_name ?? "—"}</span>
 {/snippet}
 
 {#snippet userCell(row: Row)}
-  <span class="text-text-muted">{(row as Entry).user_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{(row as Entry).user_name ?? "—"}</span>
 {/snippet}
 
 {#snippet descriptionCell(row: Row)}
-  <span class="text-text-muted">{(row as Entry).description || "—"}</span>
+  <span class="block truncate text-text-muted">{(row as Entry).description || "—"}</span>
 {/snippet}
 
 {#snippet hoursCell(row: Row)}
@@ -320,7 +324,7 @@
 {/snippet}
 
 {#snippet nameCell(row: Row)}
-  <span class="text-text">{(row as Item).name}</span>
+  <span class="block truncate text-text">{(row as Item).name}</span>
 {/snippet}
 
 {#snippet periodCell(row: Row)}

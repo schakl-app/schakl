@@ -8,8 +8,6 @@
   import { Pencil, Power, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
-  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -17,6 +15,8 @@
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -24,7 +24,6 @@
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TYPE_COLUMNS } from "$lib/modules/subscriptions/columns";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
 
@@ -75,12 +74,18 @@
     setTimeout(() => toggleForm?.requestSubmit(), 0);
   }
 
-  function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
+  /** The list's filters, rendered by the shared bar (#354) — search, then the status pills. */
+  const filterDefs: FilterDef<string>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("subscriptions.types.search_placeholder") },
+    {
+      kind: "pills",
+      key: "status",
+      options: STATUS_FILTERS.map((status) => ({
+        value: status,
+        label: t(`settings.subscriptions.${status}`),
+      })),
+    },
+  ]);
 
   const table = createTableLayout<SubscriptionType>({
     all: () => SUBSCRIPTION_TYPE_COLUMNS,
@@ -110,52 +115,33 @@
   >
 </div>
 
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput />
-  {#each STATUS_FILTERS as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setFilter("status", data.statusFilter === status ? "" : status)}
-      >{t(`settings.subscriptions.${status}`)}</button
-    >
-  {/each}
-  {#if data.statusFilter || data.q}
-    <button
-      class="text-xs text-text-muted underline hover:text-text"
-      onclick={() => {
-        const url = new URL(page.url);
-        url.searchParams.delete("status");
-        url.searchParams.delete("q");
-        void goto(url, { keepFocus: true, noScroll: true });
-      }}
-    >
-      {t("tasks.filter.clear")}
-    </button>
-  {/if}
-  <ImpexBar
-    entity="subscription_type"
-    readPermission="subscriptions.subscription.read"
-    writePermission="subscriptions.type.manage"
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-</div>
+<FilterBar filters={filterDefs} idPrefix="type-filter">
+  {#snippet actions()}
+    <ImpexBar
+      entity="subscription_type"
+      readPermission="subscriptions.subscription.read"
+      writePermission="subscriptions.type.manage"
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+  {/snippet}
+</FilterBar>
 
 {#snippet labelCell(st: SubscriptionType)}
+  <!-- `block w-full truncate` (#370): a tenant names these, so the label is free text, and a
+       button shrinks to fit even as a block box — see the main subscriptions list. -->
   <button
     type="button"
-    class="text-left font-medium {st.active ? 'text-text' : 'text-text-muted'} hover:text-brand"
+    class="block w-full truncate text-left font-medium {st.active
+      ? 'text-text'
+      : 'text-text-muted'} hover:text-brand"
     onclick={() => openEdit(st)}>{subscriptionTypeLabel(st, data.locale)}</button
   >
 {/snippet}

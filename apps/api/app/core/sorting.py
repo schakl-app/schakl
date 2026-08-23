@@ -11,6 +11,7 @@ by a column the response never exposes.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import Select, func
@@ -36,6 +37,30 @@ def user_sort_name(user_id_column: Any) -> Any:
         .where(User.id == user_id_column)
         .scalar_subquery()
     )
+
+
+@dataclass(frozen=True)
+class SortPart:
+    """One column of a **composite** sort key, and whether it runs against the asked direction.
+
+    A list orders by one column and ties break on the list's default, which is enough until the
+    reading order the user asked for *is* two columns — "eerst naar de datum, daarna naar de
+    prioriteit" (#395). ``?sort=due_date`` alone leaves every task sharing a deadline in the
+    board's hand-dragged order, so the high-priority one is wherever it was last put.
+
+    ``invert`` is what keeps the key reversible. The parts of a composite do not all run the same
+    way — a deadline reads soonest-first while a priority reads highest-first — so a part says how
+    it stands *relative* to the request, and ``-due`` then reverses the whole reading rather than
+    only its first column.
+    """
+
+    column: Any
+    invert: bool = False
+
+
+def composite(*parts: Any) -> tuple[SortPart, ...]:
+    """A composite entry for an allow-list. A bare column follows the requested direction."""
+    return tuple(part if isinstance(part, SortPart) else SortPart(part) for part in parts)
 
 
 def parse_sort(sort: str | None, allowed: dict[str, Any]) -> tuple[str, bool] | None:
@@ -74,11 +99,21 @@ def apply_sort(
     checks it. The tiebreaker defaults to the list's own default ordering, so every caller gets
     one without asking; a list whose grouped reading order differs from its default (leave reads
     next absence first and defaults to most recent first) names its own.
+
+    An allow-list entry may be a **composite** (``composite(...)``, #395) instead of one column,
+    for a key whose reading order genuinely is two columns. It orders by each part in turn and
+    then by the tiebreaker exactly as a single column does, so nothing else here changes.
     """
     parsed = parse_sort(sort, allowed)
     if parsed is None:
         return stmt.order_by(default)
     key, descending = parsed
-    column = allowed[key]
-    ordering = column.desc().nulls_last() if descending else column.asc().nulls_last()
-    return stmt.order_by(ordering, tiebreak if tiebreak is not None else default)
+    entry = allowed[key]
+    parts = entry if isinstance(entry, tuple) else (SortPart(entry),)
+    orderings = [_ordering(part, descending) for part in parts]
+    return stmt.order_by(*orderings, tiebreak if tiebreak is not None else default)
+
+
+def _ordering(part: SortPart, descending: bool) -> Any:
+    down = descending != part.invert
+    return part.column.desc().nulls_last() if down else part.column.asc().nulls_last()

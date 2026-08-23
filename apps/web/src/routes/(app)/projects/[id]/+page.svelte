@@ -3,6 +3,7 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
@@ -11,6 +12,7 @@
   import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
@@ -31,6 +33,7 @@
   import { PROJECT_STATUSES } from "$lib/modules/projects/status";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
@@ -59,6 +62,15 @@
   // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
 
+  // A detour that started on a client's page (#408): every exit — Opslaan, Annuleren, ✕ and
+  // Verwijderen — returns to where it started. With no `?from=` there is nowhere to return to and
+  // each one behaves exactly as it did.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
+
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "projects.project.write"));
   const canDelete = $derived(can(page.data.user, "projects.project.delete"));
@@ -66,6 +78,10 @@
   // read-only portal client (#244) reaches this page for a readable project but holds none of
   // these, so each control mirrors its own API permission.
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  // A to-do is named before it exists, in the shared dialog (#391). Nobody is prefilled on the
+  // roster: this list has never assigned its rows, and picking a colleague for someone is worse
+  // than leaving it to whoever picks the work up.
+  let addingTask = $state(false);
   const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   let confirmDelete = $state(false);
 
@@ -192,8 +208,12 @@
   <div>
     <h1 class="mt-1 text-xl font-semibold text-text">{project.name}</h1>
     <p class="mt-1 text-sm text-text-muted">
-      {#if companyName}{companyName} ·
-      {/if}{t(`projects.status.${project.status}`)}
+      <!-- One separator, spelled once (#362). Written as two `{#if}`s it rendered `ITIS ·Actief`:
+           the space before `{/if}` is at a block boundary and the compiler drops it, so the first
+           dot glued itself to the word after it while the second — four words along, outside a
+           block — kept its spaces. Joining the parts puts the spacing in one place that cannot
+           depend on where a block happens to end. -->
+      {[companyName, t(`projects.status.${project.status}`)].filter(Boolean).join(" · ")}
       {#if assignees.length > 0}
         · {t("projects.field.responsible")}:
         <Assignees {assignees} members={data.members} max={6} />
@@ -218,7 +238,7 @@
         canEdit={canWrite}
         exit="cancel"
         onedit={() => (editing = true)}
-        onexit={() => (editing = false)}
+        onexit={leaveEdit}
         items={canDelete
           ? [
               {
@@ -316,7 +336,10 @@
         method="POST"
         action="?/update"
         use:enhance={() =>
-          ({ update }) => {
+          async ({ result, update }) => {
+            // Opened as a detour, saving ends it (#408); a refusal stays put with its message.
+            if (result.type === "success" && origin)
+              return void goto(origin, { invalidateAll: true });
             editing = false;
             void update({ reset: false });
           }}
@@ -485,7 +508,7 @@
           <button
             type="button"
             class="rounded-lg border border-border px-4 py-2 text-sm"
-            onclick={() => (editing = false)}
+            onclick={leaveEdit}
           >
             {t("common.cancel")}
           </button>
@@ -572,14 +595,22 @@
   </div>
 
   {#if canCreateTask}
-    <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
-      <input type="hidden" name="company_id" value={project.company_id ?? ""} />
-      <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
-      <button
-        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.create")}</button
-      >
-    </form>
+    <!-- The same dialog as every other create path (#391): a to-do is a task, so it is named,
+         dated and staffed in the one place that asks for all three. -->
+    <button
+      type="button"
+      class="mb-4 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (addingTask = true)}>{t("projects.add_todo")}</button
+    >
+    <TaskQuickCreate
+      bind:open={addingTask}
+      companyId={project.company_id ?? null}
+      projectId={project.id}
+      members={data.members}
+      action="?/addTask"
+      error={(form?.error as string | undefined) ?? null}
+      pickerSlot="project_todo"
+    />
   {/if}
 
   {#if tasks.length === 0}
@@ -675,5 +706,5 @@
   bind:open={confirmDelete}
   title={t("common.delete")}
   message={t("projects.delete_confirm", { name: project.name })}
-  action="?/deleteProject"
+  action={withOrigin("?/deleteProject", page.url)}
 />

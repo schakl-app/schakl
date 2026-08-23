@@ -38,6 +38,13 @@ The subject provider is the new one and the reason the split works. `PortalSubje
 `(entity_type, id, email, display_name, user_id)` — enough to invite somebody and record it on
 their trail, and nothing about how the owning module stores the link.
 
+`list_logins()` (#406) is the fourth method and the register's whole reason for existing: it
+enumerates the subjects that already carry a login, and enumerating means reading the owner's
+table, which §6 forbids the portal module from doing. It reads through the owner's repository
+like `load()`, batches (one statement for the subjects and one per lookup they share, never a
+`state` call per row), and returns a `PortalSubjectListing` — the subject plus the clients it
+belongs to, because "who at our clients can sign in?" is half-answered by a list of names.
+
 `load()` goes **through the owner's repository**, so the company horizon applies: a membership
 scoped to one company group can only ever invite the contacts of its own clients, and anything
 else is a 404 like every other read. `for_user()` deliberately does **not** — its one caller is
@@ -61,6 +68,24 @@ signs in and still sees exactly their own company.
 
 `/api/v1/portal/logins/{entity_type}/{subject_id}` — `GET` state, `POST` invite/re-enable,
 `DELETE` disable, `POST …/resend`, `POST …/impersonate`. Plus `POST /api/v1/portal/impersonation/stop`.
+
+`GET /api/v1/portal/logins` is the **register** (#406) — every client login in the org, one row
+each. Declared before the `{entity_type}` routes so a literal path can never be swallowed by a
+subject type, and reusing `members.member.write` rather than minting `portal.login.read`: a new
+key means a `DefaultsRevision` and a section invisible in every existing org until somebody edits
+a role, for a list whose actions are that permission anyway.
+
+Four rules it must not get wrong, and only the last is decided in this module:
+
+* **the horizon narrows it** (#285) — it rides on the provider's repository read, and the count
+  is `len()` of the rows, so a restricted admin can never be shown a total the list contradicts;
+* **a portal login never reads it** — externality is its own axis (#274), not a permission, and
+  `members.member.write` is a key a tenant may grant to any role it edits. 403, not an empty
+  list: this is a whole surface, not a panel that can politely be blank;
+* **one batched call**, pinned by
+  `tests/test_perf_query_budgets.py::test_the_portal_login_register_costs_the_same_however_many_logins`;
+* **the order** is by client, then by person — a register is read to answer a question about a
+  client, and a login attached to no client at all files last.
 
 `entity_type` is the registered subject type (`contact`). It is in the URL rather than assumed
 so the portal module names no other module anywhere, a URL included; an unregistered type is a
@@ -136,6 +161,41 @@ exist on their side of a hosted box. `body_no_route` is the self-hosted line and
 The rule generalises past this dialog: once a screen branches on `deployment` at all, every
 sentence on it that names *who fixes this* has to branch too, or the copy contradicts itself
 halfway down.
+
+## Where a login is *managed* — and where it is *found* (#406)
+
+Two surfaces, and they answer different questions on purpose.
+
+**The contact's own page** carries `PortalCard`: this person, this login, invite / resend /
+disable / sign in as. It is where a login is created, because a login is something you give a
+particular person.
+
+**Instellingen → Gebruikers → Klantlogins** is the *register*: every client login the agency
+has, with the client it belongs to and the status. Before it existed a login was reachable from
+exactly one place — the contact — so nobody could say how many existed without opening every
+contact, a client's employee who left kept a live login until somebody remembered which row it
+was, and an invite nobody ever used was invisible.
+
+It sits beside the team, not in a screen of its own, for the reason SSO sits under Team &
+toegang rather than under Integraties (#378): what it is about is *who may sign in*. And it is a
+register with the access actions on it, never a second editor — every row links to the person's
+own record, which stays the one place a person is edited.
+
+Three things about the web half:
+
+* **The gates are `loadPortalCard`'s, reused rather than re-derived** (`loadPortalLogins`):
+  permission → does this workspace run `portal` → is it still entitled. One difference is
+  deliberate: a workspace that does **not run** the module gets no section at all, where a
+  record page still draws a locked card. A card is an affordance where somebody is already
+  looking; a section that exists only to say "not for you" is a worse screen than none.
+* **Enabled but unentitled is locked, not hidden** (#137) — an entitlement is something the
+  agency can change, so the affordance stays and `UpgradeModal` says how.
+* **Each action is gated on the key the call actually makes** (#310): managing the login is the
+  section's own `members.member.write`, and *Inloggen als* is `portal.login.impersonate`, which
+  most staff will not hold. The subject arrives in the **form body** rather than in the route,
+  which is why `portalActions` takes one `subject(event)` resolver that may be async — a record
+  page reads its route params, the register reads the pressed row, and a request body may only
+  be read once.
 
 ## Adding a second kind of subject
 

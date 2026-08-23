@@ -25,6 +25,7 @@ from app.modules.portal.permissions import PORTAL_IMPERSONATE
 from app.modules.portal.schemas import (
     PortalImpersonateRequest,
     PortalImpersonateResponse,
+    PortalLoginRow,
     PortalLoginState,
 )
 from app.modules.portal.service import PortalService
@@ -63,6 +64,26 @@ async def stop_portal_impersonation(
 ) -> None:
     await PortalService(ctx).stop_impersonation()
     clear_grant_cookie(response)
+
+
+# Before ``/logins/{entity_type}/…`` for the same reason ``/impersonation/stop`` is: a literal
+# path declared first can never be swallowed by a later ``{entity_type}`` value.
+@router.get(
+    "/logins",
+    response_model=list[PortalLoginRow],
+    dependencies=[require_permission(_MANAGE)],
+)
+async def list_portal_logins(
+    ctx: RequestContext = Depends(require_context),
+) -> list[PortalLoginRow]:
+    """The org's client logins — the register (#406).
+
+    ``members.member.write`` on purpose, not a ``portal.login.read`` of its own: it is the key
+    every route on this module already declares, and the one the card is gated on. A new key
+    would mean a ``DefaultsRevision`` and a section invisible in every existing org until
+    somebody edited a role (§15) — for a list whose actions are all this permission anyway.
+    """
+    return await PortalService(ctx).logins()
 
 
 @router.get(

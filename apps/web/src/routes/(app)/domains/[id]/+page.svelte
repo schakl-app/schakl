@@ -2,9 +2,11 @@
   import { RefreshCw, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtDateTime, fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -27,6 +29,15 @@
 
   let editing = $state(false);
   let editingWebsite = $state(false);
+
+  // A detour that started on a client's page (#408): every exit — Opslaan, Annuleren, ✕ and
+  // Verwijderen — returns to where it started. With no `?from=` there is nowhere to return to and
+  // each one behaves exactly as it did.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let websiteHost = $state<"root" | "www">("root");
   let confirmDelete = $state(false);
@@ -120,7 +131,7 @@
         canEdit={canWrite}
         exit="cancel"
         onedit={() => (editing = true)}
-        onexit={() => (editing = false)}
+        onexit={leaveEdit}
         items={canDelete
           ? [
               {
@@ -144,7 +155,10 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={busy.wrap("update", () => ({ result, update }) => {
+        use:enhance={busy.wrap("update", () => async ({ result, update }) => {
+          // The detour is over the moment the write lands; a refusal stays put with its message.
+          if (result.type === "success" && origin)
+            return void goto(origin, { invalidateAll: true });
           if (result.type === "success") editing = false;
           void update({ reset: false });
         })}
@@ -176,7 +190,7 @@
           <button
             type="button"
             class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-            onclick={() => (editing = false)}>{t("common.cancel")}</button
+            onclick={leaveEdit}>{t("common.cancel")}</button
           >
           <Button loading={busy.is("update")} disabled={busy.active}>{t("common.save")}</Button>
         </div>
@@ -572,5 +586,5 @@
   bind:open={confirmDelete}
   title={t("domains.delete")}
   message={t("domains.delete_confirm")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />

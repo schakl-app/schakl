@@ -29,6 +29,7 @@
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { orgToday } from "$lib/core/today";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
@@ -80,7 +81,7 @@
 
   const local = interaction ? instantToLocal(interaction.occurred_at) : null;
   let kind = $state(interaction?.kind ?? "");
-  let date = $state(local?.date ?? new Date().toISOString().slice(0, 10));
+  let date = $state(local?.date ?? orgToday());
   let time = $state(local?.time ?? "");
   let error = $state("");
 

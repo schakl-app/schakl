@@ -85,7 +85,10 @@ registerWebModule({
         );
         return api
           .GET("/api/v1/leave/team", {
-            params: { query: { date_from: today, date_to: today } },
+            // A ceiling on a read that had none (#407). One day's absences are bounded by
+            // headcount, so this is a backstop rather than the tile's truncation — what the
+            // tile actually does is collapse to a handful and expand in place.
+            params: { query: { date_from: today, date_to: today, limit: 50 } },
           })
           .then((r) => r.data ?? []);
       },

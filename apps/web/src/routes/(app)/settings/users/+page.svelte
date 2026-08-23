@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Pencil, ShieldOff, UserCheck, UserMinus, UserX } from "@lucide/svelte";
+  import { ChevronDown, Pencil, ShieldOff, UserCheck, UserMinus, UserX } from "@lucide/svelte";
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
   import { fmtDayMonthYear, fmtMoney } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
@@ -21,6 +21,7 @@
     type OpenEmployment,
   } from "$lib/modules/leave/EmploymentModals.svelte";
   import { fmtHours, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import PortalLoginsSection from "$lib/modules/portal/PortalLoginsSection.svelte";
   import { weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
@@ -101,6 +102,19 @@
    * would be #253's control that always refuses, so the row says which it is instead.
    */
   const leftTheTeam = (member: Member) => member.deactivated_at !== null;
+
+  /**
+   * The roster opens on the people who still work here (§9's lifecycle rule, #405).
+   *
+   * `is_active` is the derived answer to both reasons an account is off — this org deactivated
+   * them, or the instance disabled the account — so one predicate splits the list and the row
+   * itself keeps saying which of the two it is. Client-side only: `GET /members` already
+   * returns the whole roster in one call and this list is not paged, so narrowing it here costs
+   * no request and adds no query parameter the pickers and the export would then inherit.
+   */
+  const activeMembers = $derived(data.members.filter((m) => m.is_active));
+  const inactiveMembers = $derived(data.members.filter((m) => !m.is_active));
+  let showDeactivated = $state(false);
 
   function memberActions(member: Member) {
     // Schedule, contracts, recurring and (rate, where permitted) come from the shared helper;
@@ -280,6 +294,182 @@
   </p>
 {/if}
 
+<!-- One row, rendered twice: the active roster and — behind the fold below it — the colleagues
+     who have left. Same markup, same badges, same ⋯, because the fold is about attention, not
+     about capability (#405). The role editor is the second `<li>`, so the snippet renders both
+     and each list stays one `<ul>`. -->
+{#snippet memberRow(member: Member)}
+  {@const effective = effectiveFor(member.role_ids)}
+  <li class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+    <Avatar
+      name={member.full_name}
+      email={member.email}
+      avatarUrl={member.avatar_url ?? null}
+      size="md"
+    />
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="truncate font-medium text-text">{member.full_name || member.email}</span>
+        {#if member.is_self}
+          <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+            >{t("settings.users.you")}</span
+          >
+        {/if}
+        {#if !member.is_active}
+          <!-- Two reasons an account is off, and the admin can act on only one of them, so
+               the badge says which (see `leftTheTeam`). -->
+          <span
+            class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            title={member.deactivated_at
+              ? t("settings.users.deactivated_on", {
+                  date: fmtDayMonthYear(member.deactivated_at),
+                })
+              : t("settings.users.disabled_elsewhere_hint")}
+            >{member.deactivated_at
+              ? t("settings.users.inactive")
+              : t("settings.users.disabled_elsewhere")}</span
+          >
+        {/if}
+        {#if data.restrictedMembershipIds.includes(member.membership_id)}
+          <!-- A visibility restriction (#191) must be visible at a glance — a restricted
+               member quietly seeing "everything they know of" reads as data loss. -->
+          <a
+            href="/settings/company-groups"
+            class="rounded-full px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border hover:text-brand"
+            title={t("settings.users.restricted_hint")}>{t("settings.users.restricted")}</a
+          >
+        {/if}
+        {#if member.company_scope_empty}
+          <!-- #274: a client-role login scoped to no company gets "niet gevonden" on every
+               company-scoped read and write, whatever permissions the role carries — so
+               granting more looks like the fix and never is. Say what is actually missing,
+               here, where the admin is already looking at the account. -->
+          <span
+            class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            title={t("settings.users.no_company_scope_hint")}
+            >{t("settings.users.no_company_scope")}</span
+          >
+        {/if}
+        {#if member.two_factor_enabled}
+          <span
+            class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
+            >{t("settings.users.two_factor_on")}</span
+          >
+        {/if}
+      </div>
+      {#if member.full_name}<p class="truncate text-sm text-text-muted">{member.email}</p>{/if}
+      {#if data.schedules}
+        {@const stale = staleHours(member)}
+        {#if stale !== null}
+          <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+            {t("settings.users.schedule_stale_hours", {
+              hours: fmtHours(stale),
+              inherited: fmtHours(weekHours(data.defaultSchedule as WorkSchedule)),
+            })}
+          </p>
+        {/if}
+      {/if}
+      {#if data.rates && effectiveRateByUser[member.user_id] != null}
+        <p class="mt-0.5 text-xs text-text-muted">
+          {t("settings.users.rate_value", {
+            rate: fmtMoney(Number(effectiveRateByUser[member.user_id])),
+          })}
+          {#if rateByUser[member.user_id] == null}
+            {t("settings.users.rate_default_marker")}
+          {/if}
+        </p>
+      {/if}
+    </div>
+
+    <button
+      type="button"
+      class="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-text"
+      onclick={() => (expanded = expanded === member.membership_id ? "" : member.membership_id)}
+    >
+      {effective.includes(WILDCARD)
+        ? t("settings.users.effective_all")
+        : tn("settings.users.effective_count", effective.length)}
+    </button>
+
+    {#if memberActions(member).length > 0}
+      <ActionsMenu items={memberActions(member)} />
+    {/if}
+  </li>
+
+  {#if expanded === member.membership_id}
+    <li class="bg-surface px-4 py-4">
+      <!-- The whole role set, one save (docs/UX.md). A user may hold several roles; their
+           permissions are the union. `reset: false`: the ticks are component state and a
+           form reset would revert the DOM behind that state's back (docs/UX.md). -->
+      <form
+        method="POST"
+        action="?/saveRoles"
+        class="space-y-3"
+        use:enhance={busy.wrap(
+          `roles:${member.membership_id}`,
+          () =>
+            ({ update }) =>
+              update({ reset: false }),
+        )}
+      >
+        <input type="hidden" name="membership_id" value={member.membership_id} />
+        <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("settings.users.roles")}
+        </p>
+        <ul class="grid gap-2 sm:grid-cols-2">
+          {#each roles as role (role.id)}
+            <li>
+              <label
+                class="flex items-center gap-3 rounded-lg border border-border bg-surface-raised px-3 py-2"
+              >
+                <FormCheckbox
+                  name="role_ids"
+                  value={role.id}
+                  checked={member.role_ids.includes(role.id)}
+                  class="h-4 w-4 rounded border-border"
+                />
+                <span class="flex-1 text-sm text-text">{localeName(role, locale)}</span>
+                {#if role.is_system}
+                  <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
+                    {t("settings.roles.system")}
+                  </span>
+                {/if}
+              </label>
+            </li>
+          {/each}
+        </ul>
+        <p class="text-xs text-text-muted">{t("settings.users.system_role_hint")}</p>
+
+        {#if !effective.includes(WILDCARD)}
+          <details class="rounded-lg border border-border bg-surface-raised px-3 py-2">
+            <summary class="cursor-pointer text-xs font-medium text-text-muted">
+              {t("settings.users.effective")}
+            </summary>
+            <ul class="mt-2 space-y-1">
+              {#each effective as permission (permission)}
+                <li class="text-xs text-text-muted">
+                  {t(`permissions.${permission.split(":")[0]}`)}
+                  {#if permission.includes(":")}
+                    <span class="text-text-muted/70"
+                      >({permission.endsWith(":any")
+                        ? t("settings.roles.scope_any")
+                        : t("settings.roles.scope_own")})</span
+                    >
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+
+        <Button loading={busy.is(`roles:${member.membership_id}`)}>
+          {t("settings.users.save_roles")}
+        </Button>
+      </form>
+    </li>
+  {/if}
+{/snippet}
+
 {#if data.members.length === 0}
   <p
     class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center text-sm text-text-muted"
@@ -287,179 +477,48 @@
     {t("settings.users.empty")}
   </p>
 {:else}
-  <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
-    {#each data.members as member (member.membership_id)}
-      {@const effective = effectiveFor(member.role_ids)}
-      <li class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
-        <Avatar
-          name={member.full_name}
-          email={member.email}
-          avatarUrl={member.avatar_url ?? null}
-          size="md"
+  {#if activeMembers.length > 0}
+    <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
+      {#each activeMembers as member (member.membership_id)}
+        {@render memberRow(member)}
+      {/each}
+    </ul>
+  {/if}
+
+  {#if inactiveMembers.length > 0}
+    <!-- The fold, closed by default. The heading carries the count because a section with no
+         number reads like a section with nothing in it, and saying how much it hides is the
+         whole reason hiding it is safe. Absent entirely when nobody has left. -->
+    <div class="mt-4">
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 rounded-xl border border-dashed border-border px-4 py-2.5 text-sm font-medium text-text-muted hover:border-brand/50 hover:text-text"
+        aria-expanded={showDeactivated}
+        onclick={() => (showDeactivated = !showDeactivated)}
+      >
+        <ChevronDown
+          class="size-4 transition-transform {showDeactivated ? '' : '-rotate-90'}"
+          aria-hidden="true"
         />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2">
-            <span class="truncate font-medium text-text">{member.full_name || member.email}</span>
-            {#if member.is_self}
-              <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
-                >{t("settings.users.you")}</span
-              >
-            {/if}
-            {#if !member.is_active}
-              <!-- Two reasons an account is off, and the admin can act on only one of them, so
-                   the badge says which (see `leftTheTeam`). -->
-              <span
-                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                title={member.deactivated_at
-                  ? t("settings.users.deactivated_on", {
-                      date: fmtDayMonthYear(member.deactivated_at),
-                    })
-                  : t("settings.users.disabled_elsewhere_hint")}
-                >{member.deactivated_at
-                  ? t("settings.users.inactive")
-                  : t("settings.users.disabled_elsewhere")}</span
-              >
-            {/if}
-            {#if data.restrictedMembershipIds.includes(member.membership_id)}
-              <!-- A visibility restriction (#191) must be visible at a glance — a restricted
-                   member quietly seeing "everything they know of" reads as data loss. -->
-              <a
-                href="/settings/company-groups"
-                class="rounded-full px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border hover:text-brand"
-                title={t("settings.users.restricted_hint")}>{t("settings.users.restricted")}</a
-              >
-            {/if}
-            {#if member.company_scope_empty}
-              <!-- #274: a client-role login scoped to no company gets "niet gevonden" on every
-                   company-scoped read and write, whatever permissions the role carries — so
-                   granting more looks like the fix and never is. Say what is actually missing,
-                   here, where the admin is already looking at the account. -->
-              <span
-                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                title={t("settings.users.no_company_scope_hint")}
-                >{t("settings.users.no_company_scope")}</span
-              >
-            {/if}
-            {#if member.two_factor_enabled}
-              <span
-                class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
-                >{t("settings.users.two_factor_on")}</span
-              >
-            {/if}
-          </div>
-          {#if member.full_name}<p class="truncate text-sm text-text-muted">{member.email}</p>{/if}
-          {#if data.schedules}
-            {@const stale = staleHours(member)}
-            {#if stale !== null}
-              <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-                {t("settings.users.schedule_stale_hours", {
-                  hours: fmtHours(stale),
-                  inherited: fmtHours(weekHours(data.defaultSchedule as WorkSchedule)),
-                })}
-              </p>
-            {/if}
-          {/if}
-          {#if data.rates && effectiveRateByUser[member.user_id] != null}
-            <p class="mt-0.5 text-xs text-text-muted">
-              {t("settings.users.rate_value", {
-                rate: fmtMoney(Number(effectiveRateByUser[member.user_id])),
-              })}
-              {#if rateByUser[member.user_id] == null}
-                {t("settings.users.rate_default_marker")}
-              {/if}
-            </p>
-          {/if}
-        </div>
-
-        <button
-          type="button"
-          class="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-text"
-          onclick={() => (expanded = expanded === member.membership_id ? "" : member.membership_id)}
-        >
-          {effective.includes(WILDCARD)
-            ? t("settings.users.effective_all")
-            : t("settings.users.effective_count", { count: effective.length })}
-        </button>
-
-        {#if memberActions(member).length > 0}
-          <ActionsMenu items={memberActions(member)} />
-        {/if}
-      </li>
-
-      {#if expanded === member.membership_id}
-        <li class="bg-surface px-4 py-4">
-          <!-- The whole role set, one save (docs/UX.md). A user may hold several roles; their
-               permissions are the union. `reset: false`: the ticks are component state and a
-               form reset would revert the DOM behind that state's back (docs/UX.md). -->
-          <form
-            method="POST"
-            action="?/saveRoles"
-            class="space-y-3"
-            use:enhance={busy.wrap(
-              `roles:${member.membership_id}`,
-              () =>
-                ({ update }) =>
-                  update({ reset: false }),
-            )}
-          >
-            <input type="hidden" name="membership_id" value={member.membership_id} />
-            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              {t("settings.users.roles")}
-            </p>
-            <ul class="grid gap-2 sm:grid-cols-2">
-              {#each roles as role (role.id)}
-                <li>
-                  <label
-                    class="flex items-center gap-3 rounded-lg border border-border bg-surface-raised px-3 py-2"
-                  >
-                    <FormCheckbox
-                      name="role_ids"
-                      value={role.id}
-                      checked={member.role_ids.includes(role.id)}
-                      class="h-4 w-4 rounded border-border"
-                    />
-                    <span class="flex-1 text-sm text-text">{localeName(role, locale)}</span>
-                    {#if role.is_system}
-                      <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
-                        {t("settings.roles.system")}
-                      </span>
-                    {/if}
-                  </label>
-                </li>
-              {/each}
-            </ul>
-            <p class="text-xs text-text-muted">{t("settings.users.system_role_hint")}</p>
-
-            {#if !effective.includes(WILDCARD)}
-              <details class="rounded-lg border border-border bg-surface-raised px-3 py-2">
-                <summary class="cursor-pointer text-xs font-medium text-text-muted">
-                  {t("settings.users.effective")}
-                </summary>
-                <ul class="mt-2 space-y-1">
-                  {#each effective as permission (permission)}
-                    <li class="text-xs text-text-muted">
-                      {t(`permissions.${permission.split(":")[0]}`)}
-                      {#if permission.includes(":")}
-                        <span class="text-text-muted/70"
-                          >({permission.endsWith(":any")
-                            ? t("settings.roles.scope_any")
-                            : t("settings.roles.scope_own")})</span
-                        >
-                      {/if}
-                    </li>
-                  {/each}
-                </ul>
-              </details>
-            {/if}
-
-            <Button loading={busy.is(`roles:${member.membership_id}`)}>
-              {t("settings.users.save_roles")}
-            </Button>
-          </form>
-        </li>
+        {t("settings.users.deactivated_section", { count: inactiveMembers.length })}
+      </button>
+      {#if showDeactivated}
+        <ul class="mt-2 divide-y divide-border rounded-xl border border-border bg-surface-raised">
+          {#each inactiveMembers as member (member.membership_id)}
+            {@render memberRow(member)}
+          {/each}
+        </ul>
       {/if}
-    {/each}
-  </ul>
+    </div>
+  {/if}
+{/if}
+
+<!-- Klantlogins (#406). Beneath the team, because it answers the same question about a
+     different audience — and the two must not answer "who is still here" differently. Absent
+     when the workspace does not run the portal at all; locked, never hidden, when it does and
+     the licence has lapsed. -->
+{#if data.portalLogins}
+  <PortalLoginsSection data={data.portalLogins} {form} />
 {/if}
 
 <!-- Activeren: no dialog, one shared hidden form (see `activate`). -->

@@ -25,7 +25,7 @@
     fmtWeekdayShort,
     RANGE_DASH,
   } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
   import Button from "$lib/core/ui/Button.svelte";
@@ -185,7 +185,7 @@
     </p>
   {:else if generated !== null}
     <p class="text-sm text-green-600">
-      {t("leave.recurring.generated", { count: generated })}
+      {tn("leave.recurring.generated", generated)}
     </p>
   {/if}
 

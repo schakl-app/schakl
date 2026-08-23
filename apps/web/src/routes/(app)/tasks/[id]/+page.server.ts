@@ -7,6 +7,7 @@ import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
+import { originOf } from "$lib/core/origin";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
@@ -139,9 +140,14 @@ export const load: PageServerLoad = async (event) => {
     schedules: schedules ?? [],
     companyDefinitions: companyDefinitions ?? [],
     context,
+    // `position` travels with the panel (#393): the page interleaves its own sections with
+    // these on one scale, so Drive can sit above Reacties without `google` being edited.
+    // `entityPanelsFor` already sorted on the same fallback, so a panel that declares none
+    // reads the same number here as it did there.
     panels: panels.map((panel, index) => ({
       key: panel.key,
       titleKey: panel.titleKey,
+      position: panel.position ?? 100,
       data: panelData[index],
     })),
   };
@@ -151,6 +157,13 @@ export const actions: Actions = {
   update: async (event) => {
     const form = await event.request.formData();
     if (form.has("title") && !String(form.get("title") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
+    // A deadline may be moved and may not be removed (#392). The field is `required`, so this
+    // is the non-browser backstop rather than the thing a user meets — but the loop below turns
+    // every empty value into an explicit `null`, which is exactly the one the API refuses, and
+    // "errors.validation" over a blank box is a worse sentence than the field's own.
+    if (form.has("due_date") && !String(form.get("due_date") ?? "").trim()) {
       return fail(400, { error: "errors.required" });
     }
     const body: Record<string, unknown> = {};
@@ -583,7 +596,10 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/tasks/{task_id}", {
       params: { path: { task_id: event.params.id } },
     });
-    throw redirect(303, "/tasks");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/tasks");
   },
 
   // Task scheduling (#188) — the same shared helpers the calendar page uses, so the two entry

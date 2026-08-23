@@ -216,11 +216,13 @@
 {/snippet}
 
 {#snippet recordCell(item: Item)}
-  <span class="truncate text-text-muted">{notificationSubject(item)}</span>
+  <!-- `block`, or `truncate` sets `nowrap` and nothing else: `overflow` and `text-overflow` do
+       not apply to an inline box, so the name is cut mid-glyph with no ellipsis (#370). -->
+  <span class="block truncate text-text-muted">{notificationSubject(item)}</span>
 {/snippet}
 
 {#snippet actorCell(item: Item)}
-  <span class="truncate text-text-muted">{item.actor_name ?? t("notifications.system")}</span>
+  <span class="block truncate text-text-muted">{item.actor_name ?? t("notifications.system")}</span>
 {/snippet}
 
 {#snippet whenCell(item: Item)}

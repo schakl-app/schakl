@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
@@ -12,6 +13,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
+import { SUBSCRIPTION_FILTERS } from "$lib/modules/subscriptions/filters";
 import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
 import { priceIncreaseActions } from "$lib/modules/subscriptions/priceincrease.server";
 
@@ -73,9 +75,12 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, SUBSCRIPTIONS_TABLE_ID);
   const resolved = resolveColumns(SUBSCRIPTION_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
-  const typeFilter = event.url.searchParams.get("type") ?? undefined;
-  const companyFilter = event.url.searchParams.get("company") || undefined;
-  const statusFilter = event.url.searchParams.get("status") || undefined;
+  // The bar and this load read the same source, so what the controls show and what the API was
+  // asked for can never disagree (core/filters/types.ts).
+  const filters = readFilters(event.url, [...SUBSCRIPTION_FILTERS]);
+  const typeFilter = filters.type;
+  const companyFilter = filters.company;
+  const statusFilter = filters.status;
   const paging = resolvePaging(event.url, pref);
 
   // The client/project pickers and the two custom-field sets come from the section layout, which
@@ -90,6 +95,7 @@ export const load: PageServerLoad = async (event) => {
           subscription_type_id: typeFilter,
           company_id: companyFilter,
           status: statusFilter as "active" | undefined,
+          q: filters.q,
         },
       },
     }),
@@ -113,6 +119,7 @@ export const load: PageServerLoad = async (event) => {
     types: types.data ?? [],
     templates: templates.data ?? [],
     invoicingSettings: invoicingSettings.data ?? null,
+    filters,
     typeFilter: typeFilter ?? "",
     companyFilter: companyFilter ?? "",
     statusFilter: statusFilter ?? "",

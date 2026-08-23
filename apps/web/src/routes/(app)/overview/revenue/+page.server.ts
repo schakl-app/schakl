@@ -1,10 +1,11 @@
 import { apiFor } from "$lib/core/session";
+import { orgYear } from "$lib/core/today";
 
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   // Manager gate + company lookups live in the /overview layout load.
-  const currentYear = new Date().getUTCFullYear();
+  const currentYear = orgYear();
   const raw = Number(event.url.searchParams.get("year"));
   const year = Number.isInteger(raw) && raw >= 2000 && raw <= 2100 ? raw : currentYear;
 

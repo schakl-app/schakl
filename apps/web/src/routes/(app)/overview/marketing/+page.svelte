@@ -81,7 +81,12 @@
 {/snippet}
 
 {#snippet companyCell(row: Row)}
-  <a href={`/companies/${row.company_id}/marketing`} class="font-medium text-brand hover:underline">
+  <!-- `block truncate` (#370): the fixed table layout clips this cell, and `truncate` on a bare
+       inline `<a>` sets `nowrap` and nothing else — no ellipsis, a name cut mid-glyph. -->
+  <a
+    href={`/companies/${row.company_id}/marketing`}
+    class="block truncate font-medium text-brand hover:underline"
+  >
     {row.company_name}
   </a>
 {/snippet}

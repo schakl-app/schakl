@@ -81,6 +81,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import { orgToday } from "$lib/core/today";
 
   import AvailabilityManager from "./AvailabilityManager.svelte";
   import type { AvailabilityEntry } from "./availability";
@@ -120,7 +121,7 @@
   } = $props();
 
   const busy = new InFlight();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = orgToday();
 
   // One member is targeted at a time; the ⋯ item that opened a modal chose it. Both modals are a
   // single instance, so the returned `form` (page-level, no member id) still lands on the right

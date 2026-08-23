@@ -2,7 +2,7 @@
   import { Copy, Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
@@ -85,9 +85,9 @@
           <p class="mt-0.5 text-sm text-text-muted">
             {role.permissions.includes("*")
               ? t("settings.users.effective_all")
-              : t("settings.roles.permission_count", { count: role.permissions.length })}
+              : tn("settings.roles.permission_count", role.permissions.length)}
             ·
-            {t("settings.roles.member_count", { count: role.member_count })}
+            {tn("settings.roles.member_count", role.member_count)}
           </p>
         </div>
 

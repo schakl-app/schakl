@@ -10,8 +10,8 @@
    * is already set is the API's `google.drive.manage`, and the panel draws those two controls
    * on that gate: a control that would 403 is never drawn (CLAUDE.md §15).
    *
-   * **Host contract:** `?/linkDriveFile`, `?/unlinkDriveFile`, `?/provisionDriveFolder`,
-   * `?/setDriveFolder`.
+   * **Host contract:** `?/linkDriveFile`, `?/unlinkDriveFile`, `?/deleteDriveFile`,
+   * `?/provisionDriveFolder`, `?/setDriveFolder`.
    */
   import { FolderPlus, FolderSearch, Link2Off } from "@lucide/svelte";
 
@@ -32,6 +32,7 @@
   const busy = new InFlight();
 
   const links = $derived((data.links ?? []) as DriveLinkItem[]);
+  const total = $derived(data.total as number | undefined);
   const folder = $derived((data.folder ?? null) as DriveLinkItem | null);
   const viewerConnected = $derived(Boolean(data.viewer_connected));
   const canProvision = $derived(Boolean(data.can_provision));
@@ -45,6 +46,9 @@
   // drive or the configured client-folders parent) rather than at this client's folder.
   let picking = $state(false);
   let confirmDetach = $state(false);
+  // Bumped when the list below bins a file: the browser's listing is live and no page
+  // invalidation reaches it, so it would keep showing a file that has left Drive.
+  let driveVersion = $state(0);
 </script>
 
 {#if !disabled}
@@ -114,6 +118,7 @@
         entityType="company"
         entityId={companyId}
         canWrite={canWrite && viewerConnected}
+        reloadToken={driveVersion}
       />
     {:else}
       <p class="py-2 text-sm text-text-muted">
@@ -152,7 +157,14 @@
       <h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
         {t("google.drive.linked_files")}
       </h3>
-      <DriveLinkList links={looseLinks} {canWrite} />
+      <!-- The provider counts what it capped (#407); the client's own folder is drawn above,
+           so the notice is about the loose attachments beside it. -->
+      <DriveLinkList
+        links={looseLinks}
+        total={total != null ? total - (folder ? 1 : 0) : undefined}
+        {canWrite}
+        ontrashed={() => (driveVersion += 1)}
+      />
     </div>
   {/if}
 {:else}

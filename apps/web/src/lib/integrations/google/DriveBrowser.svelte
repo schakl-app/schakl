@@ -37,6 +37,14 @@
    * mode, or a caller who cannot write) the name falls back to opening Drive: a control that
    * always refuses is worse than no control (#253).
    *
+   * **A file can be removed from where it was uploaded** (#394). This is where uploads happen
+   * and therefore where upload mistakes are noticed, so every row carries the same ⋯ item the
+   * panel's link list does: *Verwijderen uit Drive*, which bins the file itself (30 days,
+   * recoverable) and drops every link naming it. It posts the same-origin DELETE this browser
+   * already uses for its other live acts, and a refusal — Drive's, or "deze map is niet leeg" —
+   * is shown as its own strip **above the list rather than instead of it**: the list is what
+   * tells you which file you just failed to remove.
+   *
    * **Host contract:** the page exposes `?/linkDriveFile`, and `?/setDriveFolder` when the
    * host renders this in pick mode (spread `driveActions`).
    */
@@ -48,14 +56,18 @@
     Link2,
     RefreshCw,
     Search,
+    Trash2,
     Upload,
   } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   import { enhance } from "$app/forms";
   import { invalidateAll } from "$app/navigation";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
 
   import { driveKind } from "./mime";
@@ -86,6 +98,7 @@
     canWrite = false,
     pick = false,
     onpicked,
+    reloadToken = 0,
   }: {
     /** Where browsing starts; null = the org's client-folders parent. */
     rootFolderId?: string | null;
@@ -97,7 +110,17 @@
     pick?: boolean;
     /** Fired once a folder was actually chosen, so the host can leave pick mode. */
     onpicked?: () => void;
+    /**
+     * Bumped by the host when something else on the page changed this folder — today, a file
+     * binned from the link list beside us. The listing is live and belongs to no `load`, so an
+     * `invalidateAll` cannot reach it, and a browser still showing a file that no longer exists
+     * is the exact fault #394 set out to fix, one panel over.
+     */
+    reloadToken?: number;
   } = $props();
+
+  // svelte-ignore state_referenced_locally
+  let seenToken = reloadToken;
 
   // Only a *successful* pick closes the picker: a refused one (a member without
   // `google.drive.manage` re-pointing a folder) must leave the browser where it stands.
@@ -123,6 +146,12 @@
   let newFolderName = $state("");
   let savingFolder = $state(false);
   let folderNameInput = $state<HTMLInputElement | null>(null);
+  // A refusal from an *act* on a row, kept apart from `errorKey`: that one means the listing
+  // itself could not be read, and blanking the list is the honest answer only for that.
+  let actionErrorKey = $state("");
+  let trashTarget = $state<BrowseItem | null>(null);
+  let confirmTrash = $state(false);
+  let trashing = $state(false);
   // What is typed in the box; `listing.query` is what the list on screen actually answers.
   let search = $state("");
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -140,8 +169,7 @@
       folder: listing.folder.name ?? t("google.drive.root"),
     };
     if (listing.items.length === 0) return t("google.drive.search_none", params);
-    if (listing.items.length === 1) return t("google.drive.search_one", params);
-    return t("google.drive.search_results", params);
+    return tn("google.drive.search_results", listing.items.length, params);
   });
 
   async function load(refresh = false) {
@@ -294,6 +322,40 @@
     }
   }
 
+  /**
+   * Bin the file itself. Drive's permissions answer (the API acts as this user), so a refusal
+   * here is Google's own and is reported as such; a non-empty folder is refused by the API
+   * before anything is touched. The dialog closes either way — its own backdrop would hide
+   * the sentence explaining what happened.
+   */
+  async function trash() {
+    const item = trashTarget;
+    if (!item || trashing) return;
+    trashing = true;
+    actionErrorKey = "";
+    try {
+      const response = await fetch(`/api/v1/google/drive/files/${encodeURIComponent(item.id)}`, {
+        method: "DELETE",
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        actionErrorKey = body?.error?.message ?? "errors.google_drive_unavailable";
+        return;
+      }
+      // The listing is live; the record's link list is page data, and the file may have been
+      // linked to this record or to another one entirely — so both are refreshed.
+      await invalidateAll();
+      await load(true);
+    } catch {
+      actionErrorKey = "errors.google_drive_unavailable";
+    } finally {
+      trashing = false;
+      confirmTrash = false;
+      trashTarget = null;
+    }
+  }
+
   async function upload(input: HTMLInputElement) {
     const file = input.files?.[0];
     if (!file || !listing?.folder?.id) return;
@@ -341,6 +403,17 @@
 
   onMount(() => {
     void load();
+  });
+
+  // The body is untracked: `load` reads (and writes) `listing`, `crumbs` and `search`, so a
+  // tracked call would re-run itself on its own result.
+  $effect(() => {
+    const token = reloadToken;
+    untrack(() => {
+      if (token === seenToken) return;
+      seenToken = token;
+      void load(true);
+    });
   });
 </script>
 
@@ -498,6 +571,13 @@
     </form>
   {/if}
 
+  {#if actionErrorKey}
+    <!-- Above the list, never instead of it: the list is what names the file that stayed. -->
+    <p class="border-b border-border bg-surface px-3 py-2 text-sm text-text">
+      {t(actionErrorKey)}
+    </p>
+  {/if}
+
   {#if loading && !listing}
     <p class="px-3 py-4 text-sm text-text-muted">{t("common.loading")}</p>
   {:else if errorKey}
@@ -614,9 +694,52 @@
                 <ExternalLink size={14} aria-hidden="true" />
               </a>
             {/if}
+            {#if canWrite && !pick}
+              <!-- The same ⋯ item the panel's link list carries (#394). Destructive, so it
+                   lives in the overflow menu and confirms — never a naked icon in the row. -->
+              <ActionsMenu
+                compact
+                items={[
+                  {
+                    label: t("google.drive.trash"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => {
+                      actionErrorKey = "";
+                      trashTarget = item;
+                      confirmTrash = true;
+                    },
+                  },
+                ]}
+              />
+            {/if}
           </li>
         {/each}
       </ul>
     {/if}
   {/if}
 </div>
+
+<!-- A callback confirm rather than `ConfirmDialog`: this browser writes through same-origin
+     fetches (the listing is live and belongs to no page load), and `ConfirmDialog` posts a
+     form action. Same wording, same red button. -->
+<Modal bind:open={confirmTrash} title={t("google.drive.trash_title")}>
+  <p class="text-sm text-text-muted">
+    {trashTarget?.is_folder
+      ? t("google.drive.trash_folder_message")
+      : t("google.drive.trash_message")}
+  </p>
+  <p class="mt-3 truncate rounded-lg bg-surface px-3 py-2 text-sm text-text">
+    {trashTarget?.name}
+  </p>
+  <div class="mt-5 flex justify-end gap-2">
+    <button
+      type="button"
+      class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+      onclick={() => (confirmTrash = false)}>{t("common.cancel")}</button
+    >
+    <Button type="button" variant="danger" loading={trashing} onclick={() => void trash()}>
+      {t("google.drive.trash")}
+    </Button>
+  </div>
+</Modal>

@@ -27,6 +27,7 @@ from app.modules.marketing.schemas import (
     MarketingSettingsWrite,
     MarketingSummary,
     OverviewResponse,
+    WebsiteRef,
 )
 from app.modules.marketing.service import MarketingService, MarketingSettingsService
 
@@ -126,6 +127,24 @@ async def available_accounts(
     is the same state the picker already draws for "no credential yet".
     """
     return await MarketingService(ctx).available_accounts(source, website_id)
+
+
+@router.get(
+    "/companies/{company_id}/websites",
+    response_model=list[WebsiteRef],
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def company_websites(
+    company_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> list[WebsiteRef]:
+    """This client's websites — which one a new link attaches to (#399).
+
+    The connect dialog asks for the client and then, for a source whose credential belongs to
+    one **website** (Rank Math), has to ask which site. Away from a client's page there is
+    nothing on the screen that could answer it, which is why that picker used to read "deze
+    klant heeft nog geen website" for a client with two.
+    """
+    return await MarketingService(ctx).company_websites(company_id)
 
 
 # --- metrics: panel + tab (#133) ------------------------------------------------------------- #

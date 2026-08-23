@@ -22,6 +22,8 @@
     fields = {},
     confirmLabel,
     variant = "danger",
+    onfailure,
+    onsuccess,
   }: {
     open?: boolean;
     title: string;
@@ -43,6 +45,16 @@
     confirmLabel?: string;
     /** Confirm-button style: red by default, `primary` when the action destroys nothing. */
     variant?: "danger" | "primary";
+    /**
+     * Called with the action's `error` key when it refuses, so the *host* can say so where the
+     * user is looking. `page.form` is one slot shared by every action on a page, so a panel
+     * cannot tell its own refusal from the edit form's — and a destructive control that reports
+     * nothing at all reads as one that silently worked.
+     */
+    onfailure?: (errorKey: string) => void;
+    /** Ran after a successful action, for a sibling the page load cannot refresh (a live
+     *  listing that belongs to no `load`). */
+    onsuccess?: () => void;
   } = $props();
 
   const busy = new InFlight();
@@ -69,9 +81,17 @@
     <form
       method="POST"
       {action}
-      use:enhance={busy.wrap("", () => ({ update }) => {
+      use:enhance={busy.wrap("", () => async ({ result, update }) => {
         open = false;
-        void update();
+        if (result.type === "failure") {
+          const key = (result.data as { error?: string } | undefined)?.error;
+          if (key && onfailure) {
+            onfailure(key);
+            return;
+          }
+        }
+        await update();
+        onsuccess?.();
       })}
     >
       {#each Object.entries(fields) as [name, value] (name)}
