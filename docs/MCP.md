@@ -44,9 +44,10 @@ the client is for:
 | ChatGPT (as an app/connector) | `https://<host>/mcp/compact` | 14, read-only |
 | A general-purpose agent / n8n | `https://<host>/mcp/agent` | ~127 |
 | A Google Ads agent | `https://<host>/mcp/google-ads` | ~45 |
+| A Google Analytics agent | `https://<host>/mcp/google-analytics` | 17, read-only |
 | Hosting & domains | `https://<host>/mcp/infra` | ~86 |
 | Invoicing | `https://<host>/mcp/finance` | ~83 |
-| Marketing & reporting | `https://<host>/mcp/growth` | ~82 |
+| Marketing & reporting | `https://<host>/mcp/growth` | ~137 |
 | One module on its own | `https://<host>/mcp/<module>` | varies |
 
 Instellingen → API en MCP lists every section this instance serves, with its live tool count,

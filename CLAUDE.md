@@ -74,6 +74,7 @@ apps/
     integrations/  # same descriptor, same registry — a credential for someone else's service (§6a)
       google/      # Workspace: Gmail, Calendar, Drive, Contacts
       google_ads/
+      google_analytics/  # GA4, live and read-only
       cloudflare/
       oxxa/        # registrar
       uptime/      # Uptime Kuma
@@ -237,8 +238,9 @@ and it is worth having with every third-party account in the world cancelled: `c
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
-over there: `google` (Workspace), `google_ads`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma),
-`wordpress`, `mollie`, `timeon` (an outgoing time registration a cutover is still running on).
+over there: `google` (Workspace), `google_ads`, `google_analytics`, `cloudflare`, `oxxa`,
+`uptime` (Uptime Kuma), `wordpress`, `mollie`, `timeon` (an outgoing time registration a
+cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -261,7 +263,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`, `timeon` → `time`. Deliberately *not* "modules this
+  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `timeon` → `time`.
+  Deliberately *not* "modules this
   is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
   (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
@@ -1292,6 +1295,47 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
   post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
   after it is taken.
+- **A dedicated tool group is a router prefix, or it is a list that rots** (`google_analytics`,
+  `docs/GOOGLE_ANALYTICS.md`). The ask was "give agents dedicated Google Analytics tools", and the
+  tempting answer — a curated `/mcp/analytics` section naming GA tools out of `marketing` — is the
+  one §12 already forbids: a hand-written list of tools is a second copy of a router, and the copy
+  is only ever wrong later, silently, in the direction of a tool the module ships and the section
+  does not offer. A section is *derived* from a module's own prefix, so the only way to have a
+  Google Analytics group is to have Google Analytics routes. Four rules generalise. **A source
+  adapter is not a surface**: `marketing` reads GA4 for one purpose — a small nightly aggregate
+  folded in beside four other sources — and every other question anybody asks Analytics needs the
+  property's *own* vocabulary (its custom dimensions, its key events, its metadata document),
+  which no cross-source dashboard can carry without becoming a GA4 client with four sources bolted
+  to it. **The requirement is the credential and nothing else**: it requires `google`, because a
+  `google_connections` row on `analytics.readonly` is the only way to get one, and deliberately
+  *not* `marketing` — over-declaring makes a tenant switch on a licensed dashboard they did not
+  want (§6a's rule, restated because the temptation here was strong). **All-GET is a design, not a
+  phase**: nothing in a client's property is ours to write, and the licence gate reads the
+  *method*, so an expiry leaves Analytics readable — data is never hostage. And **the split inside
+  a read surface is "questions somebody designed" versus "any question at all"**, which is
+  `google_ads.query.run` one integration over: `property.read` covers the seventeen shapes,
+  `report.run` covers any dimension crossed with any metric, so an agency can hand an agent the
+  curated half and nothing else. Its siblings are the ordinary GA4 ones, each of which fails
+  silently: `conversions` was renamed `keyEvents` and asking for the old name 400s the whole
+  report rather than answering zero; every metric value is a **string**; `totals` is Google's own
+  row and must never be a sum of the column, because the ratio metrics are weighted; a report's
+  columns are read back from its **response headers**, since a metric Google declined to return
+  would otherwise shift every column one to the left with every number still plausible; and a
+  sampled or thresholded answer is reported as one, because a sampled number reads as a count on
+  every screen it lands on.
+- **A tool the caller may never use must not be in the model's view, and the service must refuse it
+  anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
+  "how did this client do last month" was a question the platform could answer everywhere except
+  in the box built for asking it. Six read-only tools now ride the `mcp_tools` seam, and the part
+  worth stating is the gating: each spec names the permission its handler's service is about to
+  demand, so the cross-client grid rides `marketing.overview.read` — a manager permission here —
+  while the rest ride `marketing.metrics.read`, which the portal `client` role holds. Folding the
+  two would have put every client's numbers behind a tool one client's login can reach. `ctx.can`
+  filtering the offer and `ctx.require` refusing the call are **both** needed and neither is
+  sufficient: the filter alone makes the guard cosmetic, the service check alone leaves a control
+  drawn that can only refuse (#253). And the writes stay off the catalog on purpose — linking a
+  client to somebody else's advertising account is configuration a person makes once, not
+  something a model should reach for because a sentence sounded like a request.
 - **A credential's absence is evidence about that credential, never a verdict on the screen**
   (#399/#411, `docs/GOOGLE_TAG_MANAGER.md` §3c). Rank Math could not be attached to a client from
   any of the three screens that offered it, and each of the three failed differently, which is

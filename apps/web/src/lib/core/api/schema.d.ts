@@ -3150,6 +3150,386 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google-analytics/properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Google Analytics Properties
+         * @description Every GA4 property the signed-in user's Google account can read. Start here.
+         *
+         *     Answers rather than refuses when there is no credential: `connected` false means nobody has
+         *     connected Google, `has_scope` false means the grant does not carry Analytics — different
+         *     states with different cures, and neither is an error about this request.
+         */
+        get: operations["list_google_analytics_properties_api_v1_google_analytics_properties_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Analytics Property
+         * @description One property's own record: its currency, industry and **reporting timezone**.
+         *
+         *     Read the timezone before comparing these numbers with anything computed elsewhere: every
+         *     date in every report below is a day in that zone, not in the workspace's.
+         */
+        get: operations["get_google_analytics_property_api_v1_google_analytics_properties__property_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Breakdown
+         * @description One dimension, ranked — top pages, channels, sources, devices, countries, events.
+         *
+         *     `row_count` is how many rows exist and `truncated` says the answer is a page of them, so a
+         *     top-10 is never mistaken for the whole list.
+         */
+        get: operations["google_analytics_breakdown_api_v1_google_analytics_properties__property_id__breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/compatibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Compatibility
+         * @description Which fields may still be combined with the ones named.
+         *
+         *     GA4 refuses some pairs outright and its refusal identifies neither half, so this is how a
+         *     working report is composed rather than guessed at through repeated 400s.
+         */
+        get: operations["google_analytics_compatibility_api_v1_google_analytics_properties__property_id__compatibility_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/custom-dimensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Custom Dimensions
+         * @description The property's own dimensions — the fields a report about *this* client can group by.
+         */
+        get: operations["google_analytics_custom_dimensions_api_v1_google_analytics_properties__property_id__custom_dimensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/custom-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Custom Metrics
+         * @description The property's own metrics, with the unit each one is measured in.
+         */
+        get: operations["google_analytics_custom_metrics_api_v1_google_analytics_properties__property_id__custom_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/data-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Data Retention
+         * @description How long this property keeps event-level data.
+         *
+         *     Worth asking before reporting on a long window: a property set to two months has not lost
+         *     last year's data, it deleted it — and an empty chart cannot tell you which.
+         */
+        get: operations["google_analytics_data_retention_api_v1_google_analytics_properties__property_id__data_retention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/data-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Data Streams
+         * @description The web and app streams feeding this property, with their measurement IDs.
+         *
+         *     The measurement ID is what a Tag Manager container has to be sending to; a property with no
+         *     stream is a property nothing has ever been measured into.
+         */
+        get: operations["google_analytics_data_streams_api_v1_google_analytics_properties__property_id__data_streams_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/firebase-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Firebase Links
+         * @description Which Firebase projects feed this property — the app half of a client's measurement.
+         */
+        get: operations["google_analytics_firebase_links_api_v1_google_analytics_properties__property_id__firebase_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/google-ads-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Google Ads Links
+         * @description Which Google Ads customers this property is linked to.
+         *
+         *     The answer to "why does Analytics show no paid traffic": an unlinked property cannot
+         *     attribute it, however much the campaign spent.
+         */
+        get: operations["google_analytics_google_ads_links_api_v1_google_analytics_properties__property_id__google_ads_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/key-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Key Events
+         * @description The events this property counts as conversions (GA4's own name for them is key events).
+         *
+         *     What a client is actually promised is measured. An empty list on a property whose report
+         *     quotes conversions means the number is counting nothing.
+         */
+        get: operations["google_analytics_key_events_api_v1_google_analytics_properties__property_id__key_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Metadata
+         * @description Every dimension and metric this property will accept, custom ones included.
+         *
+         *     Read this before composing a report: GA4 refuses an unknown field with a 400 that names
+         *     neither what was wrong nor what would have worked.
+         */
+        get: operations["google_analytics_metadata_api_v1_google_analytics_properties__property_id__metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Overview
+         * @description How a property did over a period, against the same period a year earlier, with the change
+         *     already computed — plus the acquisition channel split.
+         *
+         *     Rates (engagementRate, bounceRate) are fractions: 0.4595 is 45,95 %. A null relative change
+         *     means there was no baseline, which is not the same as no change. `warnings` says when GA4
+         *     sampled or withheld part of the answer.
+         */
+        get: operations["google_analytics_overview_api_v1_google_analytics_properties__property_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/pivot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Pivot
+         * @description One dimension crossed against another: channel by month, device by landing page.
+         */
+        get: operations["google_analytics_pivot_api_v1_google_analytics_properties__property_id__pivot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/realtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Realtime
+         * @description Who is on the site in the last thirty minutes. There is no period here, by design —
+         *     realtime answers about now and about nothing else.
+         */
+        get: operations["google_analytics_realtime_api_v1_google_analytics_properties__property_id__realtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Report
+         * @description Any dimensions crossed with any metrics — the escape hatch for questions the curated
+         *     reads do not answer.
+         *
+         *     Read-only by construction: the Data API has no write verb, and the property is taken from
+         *     the path, so a report can never reach a property this connection could not already list.
+         *     Check /metadata first — GA4 refuses an unknown or incompatible field with a 400 that names
+         *     neither half, which this returns as a 422 carrying Google's own reason code.
+         */
+        get: operations["google_analytics_report_api_v1_google_analytics_properties__property_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-analytics/properties/{property_id}/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Analytics Timeseries
+         * @description The chosen metrics day by day, oldest first.
+         */
+        get: operations["google_analytics_timeseries_api_v1_google_analytics_properties__property_id__timeseries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/calendar/events": {
         parameters: {
             query?: never;
@@ -18551,6 +18931,313 @@ export interface components {
             totals: components["schemas"]["GoogleAdsMetrics"];
             /** Warnings */
             warnings?: string[];
+        };
+        /** GoogleAnalyticsChange */
+        GoogleAnalyticsChange: {
+            /** Absolute */
+            absolute: number;
+            /** Relative */
+            relative?: number | null;
+            /** Value From */
+            value_from: number;
+            /** Value To */
+            value_to: number;
+        };
+        /** GoogleAnalyticsCompare */
+        GoogleAnalyticsCompare: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Mode */
+            mode: string;
+        };
+        /**
+         * GoogleAnalyticsCompatibility
+         * @description Which dimensions and metrics may be combined with the ones already named.
+         *
+         *     The check exists because GA4 refuses some pairs outright, and its refusal names neither
+         *     half — so the way to build a report that works is to ask this first, not to retry.
+         */
+        GoogleAnalyticsCompatibility: {
+            /** Dimensions */
+            dimensions?: components["schemas"]["GoogleAnalyticsCompatibilityItem"][];
+            /** Metrics */
+            metrics?: components["schemas"]["GoogleAnalyticsCompatibilityItem"][];
+            /** Property Id */
+            property_id: string;
+        };
+        /** GoogleAnalyticsCompatibilityItem */
+        GoogleAnalyticsCompatibilityItem: {
+            /** Api Name */
+            api_name: string;
+            /** Compatibility */
+            compatibility: string;
+        };
+        /**
+         * GoogleAnalyticsField
+         * @description One dimension or metric this property will accept, from its own metadata document.
+         */
+        GoogleAnalyticsField: {
+            /** Api Name */
+            api_name: string;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Custom
+             * @default false
+             */
+            custom: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Type
+             * @default
+             */
+            type: string;
+            /**
+             * Ui Name
+             * @default
+             */
+            ui_name: string;
+        };
+        /**
+         * GoogleAnalyticsMetadata
+         * @description Everything this property can be asked for. Custom dimensions and metrics are in here
+         *     too, under their own api_names, which is the only place they are discoverable.
+         */
+        GoogleAnalyticsMetadata: {
+            /** Dimensions */
+            dimensions?: components["schemas"]["GoogleAnalyticsField"][];
+            /** Metrics */
+            metrics?: components["schemas"]["GoogleAnalyticsField"][];
+            /** Property Id */
+            property_id: string;
+        };
+        /**
+         * GoogleAnalyticsOverview
+         * @description The question an agency asks: how did this property do, against what, and by how much.
+         */
+        GoogleAnalyticsOverview: {
+            /** Change */
+            change?: {
+                [key: string]: components["schemas"]["GoogleAnalyticsChange"] | null;
+            };
+            /** Channels */
+            channels?: {
+                [key: string]: number;
+            };
+            compared_with: components["schemas"]["GoogleAnalyticsCompare"];
+            /**
+             * Currency Code
+             * @default
+             */
+            currency_code: string;
+            period: components["schemas"]["GoogleAnalyticsPeriod"];
+            /** Previous Totals */
+            previous_totals?: {
+                [key: string]: number;
+            };
+            /** Property Id */
+            property_id: string;
+            /**
+             * Time Zone
+             * @default
+             */
+            time_zone: string;
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GoogleAnalyticsPeriod */
+        GoogleAnalyticsPeriod: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Days */
+            days: number;
+        };
+        /**
+         * GoogleAnalyticsProperty
+         * @description One GA4 property the connected Google account can read.
+         */
+        GoogleAnalyticsProperty: {
+            /**
+             * Account Id
+             * @default
+             */
+            account_id: string;
+            /**
+             * Account Name
+             * @default
+             */
+            account_name: string;
+            /**
+             * Currency Code
+             * @default
+             */
+            currency_code: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Industry Category
+             * @default
+             */
+            industry_category: string;
+            /**
+             * Parent
+             * @default
+             */
+            parent: string;
+            /** Property Id */
+            property_id: string;
+            /**
+             * Property Type
+             * @default
+             */
+            property_type: string;
+            /**
+             * Time Zone
+             * @default
+             */
+            time_zone: string;
+        };
+        /**
+         * GoogleAnalyticsPropertyList
+         * @description The properties this caller's Google connection reaches — or why it reaches none.
+         *
+         *     ``connected``/``has_scope`` are reported rather than raised for the picker's reason (#411):
+         *     a missing credential decides a *sentence*, never whether the control exists. A caller that
+         *     has connected Google but never granted Analytics is a different state from one that has
+         *     never connected at all, and only the first is fixed by re-consenting.
+         */
+        GoogleAnalyticsPropertyList: {
+            /**
+             * Connect Flag
+             * @default include_analytics
+             */
+            connect_flag: string;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Has Scope
+             * @default false
+             */
+            has_scope: boolean;
+            /** Properties */
+            properties?: components["schemas"]["GoogleAnalyticsProperty"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * GoogleAnalyticsRealtime
+         * @description Who is on the site right now. No date range exists here — that is the whole point.
+         */
+        GoogleAnalyticsRealtime: {
+            /**
+             * Active Users
+             * @default 0
+             */
+            active_users: number;
+            /** Dimensions */
+            dimensions?: string[];
+            /** Metrics */
+            metrics?: string[];
+            /** Property Id */
+            property_id: string;
+            /** Rows */
+            rows?: components["schemas"]["GoogleAnalyticsRow"][];
+        };
+        /**
+         * GoogleAnalyticsReport
+         * @description A Data API report, flattened.
+         */
+        GoogleAnalyticsReport: {
+            /** Dimensions */
+            dimensions?: string[];
+            /** Metrics */
+            metrics?: string[];
+            period?: components["schemas"]["GoogleAnalyticsPeriod"] | null;
+            /** Property Id */
+            property_id: string;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /** Rows */
+            rows?: components["schemas"]["GoogleAnalyticsRow"][];
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * GoogleAnalyticsResourceList
+         * @description An Admin API listing, verbatim. ``kind`` names which one.
+         */
+        GoogleAnalyticsResourceList: {
+            /** Kind */
+            kind: string;
+            /** Property Id */
+            property_id: string;
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /** GoogleAnalyticsRow */
+        GoogleAnalyticsRow: {
+            /** Dimensions */
+            dimensions?: {
+                [key: string]: string;
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: number;
+            };
         };
         /** GoogleSettingsRead */
         GoogleSettingsRead: {
@@ -38229,6 +38916,590 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_google_analytics_properties_api_v1_google_analytics_properties_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by property name or id. */
+                query?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsPropertyList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_analytics_property_api_v1_google_analytics_properties__property_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsProperty"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_breakdown_api_v1_google_analytics_properties__property_id__breakdown_get: {
+        parameters: {
+            query: {
+                /** @description One GA4 dimension: pagePath, landingPage, sessionDefaultChannelGroup, sessionSource, sessionMedium, deviceCategory, country, city, eventName, browser, or any custom dimension from /metadata. */
+                dimension: string;
+                /** @description Repeatable; defaults to sessions, totalUsers, keyEvents. */
+                metrics?: string[];
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/{property_id} tells you which. */
+                period?: string | null;
+                limit?: number;
+                /** @description A named metric or dimension; prefix with - for descending. */
+                order?: string | null;
+                /** @description Dimension filters, repeatable: name==value (exact), name=@value (contains) or name=^value (begins with). All clauses must match. A clause that parses as none of these is refused rather than ignored. */
+                filters?: string[];
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_compatibility_api_v1_google_analytics_properties__property_id__compatibility_get: {
+        parameters: {
+            query?: {
+                /** @description Already-chosen dimensions. */
+                dimensions?: string[];
+                /** @description Already-chosen metrics. */
+                metrics?: string[];
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsCompatibility"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_custom_dimensions_api_v1_google_analytics_properties__property_id__custom_dimensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_custom_metrics_api_v1_google_analytics_properties__property_id__custom_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_data_retention_api_v1_google_analytics_properties__property_id__data_retention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_data_streams_api_v1_google_analytics_properties__property_id__data_streams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_firebase_links_api_v1_google_analytics_properties__property_id__firebase_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_google_ads_links_api_v1_google_analytics_properties__property_id__google_ads_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_key_events_api_v1_google_analytics_properties__property_id__key_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsResourceList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_metadata_api_v1_google_analytics_properties__property_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsMetadata"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_overview_api_v1_google_analytics_properties__property_id__overview_get: {
+        parameters: {
+            query?: {
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/{property_id} tells you which. */
+                period?: string | null;
+                /** @description year (default — what seasonality survives) or previous. */
+                compare?: string | null;
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_pivot_api_v1_google_analytics_properties__property_id__pivot_get: {
+        parameters: {
+            query: {
+                /** @description Repeatable GA4 metric names. At least one. */
+                metrics: string[];
+                /** @description The dimension to spread across the columns. */
+                pivot_on: string;
+                /** @description The dimension(s) that make the rows. */
+                dimensions?: string[];
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/{property_id} tells you which. */
+                period?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_realtime_api_v1_google_analytics_properties__property_id__realtime_get: {
+        parameters: {
+            query?: {
+                /** @description Repeatable realtime dimensions: unifiedScreenName, country, deviceCategory. */
+                dimensions?: string[];
+                /** @description Repeatable; defaults to activeUsers. */
+                metrics?: string[];
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsRealtime"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_report_api_v1_google_analytics_properties__property_id__report_get: {
+        parameters: {
+            query: {
+                /** @description Repeatable GA4 metric names. At least one. */
+                metrics: string[];
+                /** @description Repeatable GA4 dimension names; none is a total. */
+                dimensions?: string[];
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/{property_id} tells you which. */
+                period?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description A named metric or dimension; prefix with - for descending. */
+                order?: string | null;
+                /** @description Dimension filters, repeatable: name==value (exact), name=@value (contains) or name=^value (begins with). All clauses must match. A clause that parses as none of these is refused rather than ignored. */
+                filters?: string[];
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_analytics_timeseries_api_v1_google_analytics_properties__property_id__timeseries_get: {
+        parameters: {
+            query?: {
+                /** @description Repeatable GA4 metric names; defaults to sessions, totalUsers, keyEvents. */
+                metrics?: string[];
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/{property_id} tells you which. */
+                period?: string | null;
+            };
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAnalyticsReport"];
                 };
             };
             /** @description Validation Error */
