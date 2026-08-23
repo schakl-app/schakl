@@ -1671,6 +1671,7 @@
   "settings.users.revoke_effect_irreversible": "Niet met \u00e9\u00e9n klik terug te draaien: opnieuw uitnodigen herstelt de naam wel, maar de rollen en klantgroepen niet.",
   "settings.users.revoke_effect_prefer_deactivate": "Bedoeld voor een account dat hier nooit had moeten staan. Voor een vertrekkende collega is Deactiveren wat je zoekt.",
   "settings.users.deactivate": "Deactiveren",
+  "settings.users.deactivated_section": "Gedeactiveerd ({count})",
   "settings.users.activate": "Activeren",
   "settings.users.deactivate_confirm": "Deze collega werkt hier niet meer?",
   "settings.users.deactivate_effect_login": "Kan niet meer inloggen; een sessie die nog openstaat werkt vanaf nu ook niet meer.",
