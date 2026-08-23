@@ -212,6 +212,21 @@ export interface EntityPanelSpec {
   /** The host entity this attaches to, e.g. "project". */
   entityType: string;
   position?: number;
+  /**
+   * What this panel *is* on this host (#404) — the same question the API already answers for a
+   * company panel (`PanelSpec.prominence`, #364), asked on this side because an entity panel is
+   * registered in web code and there is no API descriptor to put it on.
+   *
+   * `primary` is a working surface. `register` is reference material: correct, occasionally
+   * consulted, never news — a host draws it under a hairline rule rather than as a bordered box
+   * competing with the work above it (`Card kind="register"`). It is declared **per host**,
+   * because the same panel is not the same thing everywhere: contactmomenten on a *contact* is
+   * the daily surface, and on a task it is a record of what was said about it.
+   *
+   * Defaulting to `primary` is deliberate: an omission draws exactly what it drew before, so a
+   * host that has not adopted the distinction yet is unchanged rather than quietly demoted.
+   */
+  prominence?: "primary" | "register";
   /** i18n key for the panel heading. */
   titleKey: string;
   /**
@@ -549,19 +564,31 @@ export function entityPanelsFor(
 }
 
 /**
- * The component that draws one panel key — the browser-side half, mirroring
+ * The registration behind one panel key — the browser-side half, mirroring
  * {@link companyPanelComponent}. No permission filter: the page renders the panels its `load`
  * returned, and those were already narrowed to the viewer.
+ *
+ * The whole spec rather than only its component, because a host now needs a second answer off
+ * it: `prominence` (#404), which decides whether the panel is drawn as a working surface or as
+ * a register. Two lookups over the same array would be two chances to disagree.
  */
+export function entityPanelSpec(
+  enabled: string[],
+  entityType: string,
+  key: string,
+): EntityPanelSpec | undefined {
+  return [
+    ..._coreEntityPanels,
+    ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? []),
+  ].find((p) => p.entityType === entityType && p.key === key);
+}
+
 export function entityPanelComponent(
   enabled: string[],
   entityType: string,
   key: string,
 ): EntityPanelSpec["component"] | undefined {
-  return [
-    ..._coreEntityPanels,
-    ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? []),
-  ].find((p) => p.entityType === entityType && p.key === key)?.component;
+  return entityPanelSpec(enabled, entityType, key)?.component;
 }
 
 export function dashboardWidgetsFor(

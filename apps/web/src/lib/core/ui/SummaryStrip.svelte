@@ -13,9 +13,16 @@
    * counted, so a striking figure is one click from its rows rather than a prompt to go and find
    * them. A tile with no `href` is drawn as a plain figure, never as a control that goes nowhere.
    *
-   * **A tone is a tone, not a colour.** The API says neutral/good/warn/bad; the palette is
-   * decided here, and it is carried by weight and a coloured *figure* rather than a coloured
-   * card — a wash of amber cards is the "aandachtspunten" mistake in miniature.
+   * **A tone is a tone, not a colour.** The API says neutral/good/warn/bad; the drawing is
+   * decided on this side, and it is carried by weight and a marked *figure* rather than a
+   * coloured card — a wash of amber cards is the "aandachtspunten" mistake in miniature.
+   *
+   * Since #404 the palette itself is no longer decided *here*: `core/state.ts` owns the five
+   * states, this file only translates the API's vocabulary onto them (`stateFromTone`). The
+   * local map it replaced said `text-red-700` where `burn.ts` said `text-red-600` — two shades
+   * of one claim inside `lib/core` — and, being colour alone, said nothing at all to a reader
+   * who cannot separate amber from red. A non-neutral tile now carries the state's glyph
+   * beside its figure, which is the half that survives greyscale.
    *
    * **Nothing is a number.** A module returns no tile rather than a zero: a strip that always
    * says "€ 0,00 openstaand" over a client who has never been invoiced is the chrome the whole
@@ -23,6 +30,9 @@
    */
   import { fmtMoney, fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { stateFromTone, stateTextClass } from "$lib/core/state";
+  import { stateIcon } from "$lib/core/ui/state-icons";
+  import { FIELD_LABEL } from "$lib/core/ui/headings";
 
   export interface SummaryTile {
     key: string;
@@ -37,13 +47,6 @@
   }
 
   let { tiles }: { tiles: SummaryTile[] } = $props();
-
-  const TONE: Record<string, string> = {
-    neutral: "text-text",
-    good: "text-green-700 dark:text-green-400",
-    warn: "text-amber-700 dark:text-amber-400",
-    bad: "text-red-700 dark:text-red-400",
-  };
 
   /** The reader's locale formats every figure (§8) — the API sends the raw value and its units. */
   function display(tile: SummaryTile): string {
@@ -114,6 +117,8 @@
     {#each tiles as tile (tile.key)}
       {@const body = display(tile)}
       {@const hint = hintOf(tile)}
+      {@const state = stateFromTone(tile.tone)}
+      {@const Mark = stateIcon(state)}
       <li class="min-w-0 flex-1 basis-36 lg:basis-0">
         <svelte:element
           this={tile.href ? "a" : "div"}
@@ -122,15 +127,20 @@
             ? 'transition-colors hover:border-brand'
             : ''}"
         >
-          <span class="block truncate text-xs font-medium uppercase tracking-wide text-text-muted">
+          <!-- The one place uppercase survives the #404 scale: this label is genuinely
+               subordinate to the figure under it, and wants to recede rather than rank. -->
+          <span class="block truncate uppercase tracking-wide {FIELD_LABEL}">
             {t(tile.label_key)}
           </span>
           <span
-            class="mt-0.5 block truncate text-lg font-semibold tabular-nums {TONE[
-              tile.tone ?? 'neutral'
-            ] ?? TONE.neutral}"
+            class="mt-0.5 flex items-center gap-1.5 text-lg font-semibold tabular-nums {stateTextClass(
+              state,
+            )}"
           >
-            {body}
+            <!-- Never colour alone (#404). `neutral` has no glyph, so an ordinary figure draws
+                 exactly what it drew before and only the ones making a claim are marked. -->
+            {#if Mark}<Mark size={15} aria-hidden="true" class="shrink-0" />{/if}
+            <span class="min-w-0 truncate">{body}</span>
           </span>
           {#if hint}
             <span class="block truncate text-xs text-text-muted">{hint}</span>

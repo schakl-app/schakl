@@ -32,6 +32,9 @@ const ENTITY_POSITIONS: Partial<Record<keyof typeof ENTITY_FIELDS, number>> = {
   project: 15,
 };
 
+/** The hosts where contactmomenten are a register rather than the working surface (#404). */
+const REGISTER_ON = new Set<string>(["task"]);
+
 const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
   ([entityType, field]) => ({
     key: `interactions.${entityType}`,
@@ -39,6 +42,10 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
     entityType,
     titleKey: "interactions.panel.title",
     position: ENTITY_POSITIONS[entityType as keyof typeof ENTITY_FIELDS] ?? POSITION,
+    // Per host (#404), for the reason `ENTITY_POSITIONS` above already gives: on a project the
+    // communication timeline is daily use, and on a task it is a record of what was said about
+    // one piece of work — reference material, under a rule rather than in a box of its own.
+    prominence: REGISTER_ON.has(entityType) ? ("register" as const) : ("primary" as const),
     // The key `GET /api/v1/interactions` declares — the same one the nav item above carries.
     // A contact page composed this panel for everyone, so a member without it read an empty
     // Contactmomenten block with a create control beside the heading.

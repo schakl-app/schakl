@@ -2,6 +2,8 @@
   /** Dashboard widget: open tasks grouped per project (fallback: per client). */
   import { t } from "$lib/core/i18n";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
+  import Card from "$lib/core/ui/Card.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -46,13 +48,11 @@
     isUnlinked(group) ? t("tasks.filter.unlinked") : (group.label ?? "—");
 </script>
 
-<div class="rounded-xl border border-border bg-surface-raised p-5">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-text">{t("dashboard.open_by_group.title")}</h2>
-    <a href="/tasks?assignee_user_id={ALL_ASSIGNEES}" class="text-xs text-brand hover:underline"
-      >{t("nav.tasks")}</a
-    >
-  </div>
+<Card
+  title={t("dashboard.open_by_group.title")}
+  href="/tasks?assignee_user_id={ALL_ASSIGNEES}"
+  linkLabel={t("nav.tasks")}
+>
   {#if groups.length === 0}
     <p class="text-sm text-text-muted">{t("dashboard.open_by_group.empty")}</p>
   {:else}
@@ -70,11 +70,14 @@
             {/if}
           </a>
           {#if group.overdue > 0}
-            <a
-              href="{listHref(group)}&due=overdue"
-              class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700 hover:underline dark:bg-red-950 dark:text-red-300"
-            >
-              {t("tasks.overdue_count", { count: group.overdue })}
+            <!-- One shade of one claim (#404): the chip and the figure it sits beside read the
+                 same red everywhere, and the glyph is what carries it in greyscale. -->
+            <a href="{listHref(group)}&due=overdue" class="shrink-0 hover:underline">
+              <StateMark
+                state="late"
+                variant="chip"
+                label={t("tasks.overdue_count", { count: group.overdue })}
+              />
             </a>
           {/if}
           <a
@@ -87,4 +90,4 @@
       {/each}
     </ul>
   {/if}
-</div>
+</Card>

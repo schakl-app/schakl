@@ -49,6 +49,8 @@
   import { formatMinutes } from "$lib/modules/time/format";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
+  import PageHeader from "$lib/core/ui/PageHeader.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data, form } = $props();
 
@@ -248,25 +250,24 @@
 
 <TasksNav />
 
-<div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("tasks", t("tasks.title"))}</h1>
+<PageHeader title={navLabel("tasks", t("tasks.title"))}>
+  {#snippet subtitle()}
     <!-- The total is the pager's (#334); overdue is not a count of the list, it is a warning
-         about part of it, so it keeps its place under the heading. -->
+         about part of it, so it keeps its place under the heading — and since #404 it says so
+         with the palette's glyph as well as its colour, because "late" is the one claim this
+         page makes and a red word alone is not one every reader can see. -->
     {#if overdueCount > 0}
-      <p class="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
-        {t("tasks.overdue_count", { count: overdueCount })}
-      </p>
+      <StateMark state="late" label={t("tasks.overdue_count", { count: overdueCount })} />
     {/if}
-  </div>
+  {/snippet}
   <!-- Ask for the name, then create-then-edit for the rest (#391, #230): the dialog posts a
        named task and the action redirects to its detail page in edit mode, so creating and
        editing still share one surface (docs/UX.md Principle 3). Beside it, the other way in
        (#382): a task spoken in one breath, reviewed whole. Not a menu item — this is a primary
        create path, not a variant of one — and on a phone it is the reachable pair the FAB rule
        asks for. -->
-  {#if canCreate}
-    <div class="flex items-center gap-2">
+  {#snippet actions()}
+    {#if canCreate}
       {#if canDictate}
         <button
           type="button"
@@ -285,9 +286,9 @@
       >
         {t("tasks.new")}
       </button>
-    </div>
-  {/if}
-</div>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if canDictate}
   <TaskDictateSheet

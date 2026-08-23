@@ -2,7 +2,10 @@
   /** My Day widget: overdue / due-today / upcoming partitions of my open tasks. */
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { stateTextClass, type UiState } from "$lib/core/state";
   import { orgToday } from "$lib/core/today";
+  import { stateIcon } from "$lib/core/ui/state-icons";
+  import Card from "$lib/core/ui/Card.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -21,7 +24,28 @@
   const upcoming = $derived(tasks.filter((task) => task.due_date == null || task.due_date > today));
 </script>
 
-{#snippet taskList(rows: MyTask[], red: boolean)}
+<!-- A partition heading is an aggregate, and an aggregate opens the list it totals (issue #15):
+     /tasks defaults to the signed-in user, so these are the same tasks. The *state* is the
+     palette's (#404) — "vandaag" used to be `text-brand`, which on the tenant whose brand is
+     gold drew it beside the red "over tijd" as a second warning, and on a blue-branded tenant
+     as a link. Brand is identity and navigation; urgency is `late` / `today` / neutral. -->
+{#snippet partition(state: UiState, label: string, href: string | null, count: number)}
+  {@const Mark = stateIcon(state)}
+  {@const body = `mt-3 mb-1 flex items-center gap-1.5 text-sm font-semibold ${stateTextClass(state)}`}
+  <svelte:element
+    this={href ? "a" : "h3"}
+    href={href ?? undefined}
+    class="{body} {href ? 'hover:underline' : ''} first:mt-0"
+  >
+    {#if Mark}<Mark size={14} aria-hidden="true" class="shrink-0" />{/if}
+    {label}
+    {#if count > 0 && state !== "neutral"}
+      <span class="text-xs font-normal tabular-nums opacity-80">({count})</span>
+    {/if}
+  </svelte:element>
+{/snippet}
+
+{#snippet taskList(rows: MyTask[], state: UiState)}
   <ul class="divide-y divide-border">
     {#each rows as task (task.id)}
       <li class="flex items-center justify-between gap-2 py-1.5">
@@ -34,8 +58,8 @@
           {/if}
         </a>
         <span
-          class="shrink-0 text-xs tabular-nums {red
-            ? 'font-semibold text-red-600 dark:text-red-400'
+          class="shrink-0 text-xs tabular-nums {state === 'late'
+            ? `font-semibold ${stateTextClass('late')}`
             : 'text-text-muted'}"
         >
           {#if task.due_date}
@@ -49,44 +73,31 @@
   </ul>
 {/snippet}
 
-<div class="rounded-xl border border-border bg-surface-raised p-5">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.tasks")}</h2>
-    <a href="/tasks" class="text-xs text-brand hover:underline">{t("nav.tasks")}</a>
-  </div>
-
+<Card title={t("dashboard.my_day.tasks")} href="/tasks" linkLabel={t("nav.tasks")}>
   {#if tasks.length === 0}
     <p class="text-sm text-text-muted">{t("dashboard.my_day.no_tasks")}</p>
   {:else}
     {#if overdue.length > 0}
-      <!-- A partition heading is an aggregate, and an aggregate opens the list it totals
-           (issue #15): /tasks defaults to the signed-in user, so these are the same tasks. -->
-      <a
-        href="/tasks?due=overdue"
-        class="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600 hover:underline dark:text-red-400"
-      >
-        {t("dashboard.my_day.overdue")}
-        <span
-          class="rounded-full bg-red-100 px-1.5 text-[10px] tabular-nums dark:bg-red-950 dark:text-red-300"
-          >{overdue.length}</span
-        >
-      </a>
-      {@render taskList(overdue, true)}
+      {@render partition(
+        "late",
+        t("dashboard.my_day.overdue"),
+        "/tasks?due=overdue",
+        overdue.length,
+      )}
+      {@render taskList(overdue, "late")}
     {/if}
     {#if dueToday.length > 0}
-      <a
-        href="/tasks?due=today"
-        class="mt-3 mb-1 block text-xs font-semibold uppercase tracking-wide text-brand hover:underline"
-      >
-        {t("dashboard.my_day.due_today")}
-      </a>
-      {@render taskList(dueToday, false)}
+      {@render partition(
+        "today",
+        t("dashboard.my_day.due_today"),
+        "/tasks?due=today",
+        dueToday.length,
+      )}
+      {@render taskList(dueToday, "today")}
     {/if}
     {#if upcoming.length > 0}
-      <h3 class="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("dashboard.my_day.upcoming")}
-      </h3>
-      {@render taskList(upcoming, false)}
+      {@render partition("neutral", t("dashboard.my_day.upcoming"), null, upcoming.length)}
+      {@render taskList(upcoming, "neutral")}
     {/if}
   {/if}
-</div>
+</Card>
