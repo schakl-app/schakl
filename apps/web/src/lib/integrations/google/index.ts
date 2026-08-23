@@ -26,6 +26,10 @@ const driveEntityPanels: EntityPanelSpec[] = (
   entityType,
   titleKey: "google.drive.panel.title",
   position: DRIVE_POSITION,
+  // Reference, not work (#404): a Drive row is a link into somebody else's system, consulted
+  // when somebody needs the file and never news. Its own comment on the task page has said so
+  // for two releases ("a Drive row is a reference into somebody else's system").
+  prominence: "register" as const,
   requiresPermission: "google.drive.read",
   load: async (api, { entityId }) => {
     const { data } = await api.GET("/api/v1/google/drive/links", {

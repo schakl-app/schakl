@@ -168,7 +168,10 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   before its provider is *called* (`requires_permission`, or an `explicit_public` reason — a
   panel with neither is a build break, exactly as an undeclared route is); its `prominence`
   (a working surface, or a register: correct, occasionally consulted, never news); its `size`
-  (full or half, for the host's two-column grid); and `empty_when(data)`, which lets the host
+  (full or half, for the host's two-column grid — and since #403 that is what it is *drawn* at: a
+  half with no neighbour stays a half, and the arrangement is computed over the whole ordered list
+  so a panel's width and lane never depend on which of its neighbours this client happens to have
+  nothing in); and `empty_when(data)`, which lets the host
   fold "this client has nothing here yet" into one strip of ＋ chips instead of ten cards that
   are each a heading over a negative sentence. Optionally `summaries` too — the same seam one
   level up: one number, a label, a tone and a link, laid out as the record's vital signs under
@@ -865,6 +868,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   task links were not decided against, they were added years after `spawn_next` was written and
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
+- **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
+  `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
+  `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'
+  overdue counts — not merely unscheduled but **invisible to the entire urgency vocabulary**, which
+  is why the team's *"niet kan worden overgeslagen"* becomes a required field rather than a warning.
+  Four rules generalise past the column. **The rule lives in the write schemas, not in the table**:
+  `TaskCreate.due_date` is required and `TaskUpdate` refuses an explicit `null` while `TaskBase`
+  stays nullable, because `TaskRead` inherits it and every instance upgrades carrying rows the new
+  rule forbids — the entrypoint runs `alembic upgrade head` unattended on somebody else's data
+  (docs/WORKFLOW.md), so the constraint is a later release's decision and the *first* one must leave
+  the backlog editable. **Absent still means leave alone; only clearing stops being allowed** —
+  §18's pair with its second half withdrawn — so a `PATCH` naming nothing but `status` works on a
+  legacy row, which is the acceptance criterion that matters most. **A creator with nobody in front
+  of it states a default rather than raising**, because a 422 in an ARQ worker is a task nobody ever
+  sees: the recurrence generator computes it from the rule, a template item from its
+  `relative_due_days` (else the day it is applied), and an automation rule from its own `due_days`
+  (else the day it fires) — while the **import**, which has a human reading a preview, refuses and
+  names the row (§17/#289: a check the row report cannot name is a check the preview does not have).
+  The **create dialog** #391 put in front of the row is where every hand-made task now answers, one
+  `taskCreateBody` for all five surfaces: the deadline joined the title there for the same reason
+  the title moved, and a rule enforced at four of five doors is a rule with a hole in it. And **a
+  rule shipped over live data owes that data a way out**: `?undated=1` gathers what the release
+  forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
+  and the edit form says in one line what it is about to ask for.
 
 - **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
   SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
@@ -1233,6 +1260,48 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
   post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
   after it is taken.
+- **A credential's absence is evidence about that credential, never a verdict on the screen**
+  (#399/#411, `docs/GOOGLE_TAG_MANAGER.md` §3c). Rank Math could not be attached to a client from
+  any of the three screens that offered it, and each of the three failed differently, which is
+  what made it look like three bugs. The connect dialog (#338) mounted the picker with
+  `hasWebsites` written in as a literal false and carried no site select, so the row read *"deze
+  klant heeft nog geen website"* for a client with two and there was nothing on the dialog to
+  correct it with. The client's Marketing tab short-circuited on `needs_connection` — a question
+  about **Google** — and drew one *"Koppel een Google-account"* over a client whose SE Ranking key
+  (an agency API key) and Rank Math password (a per-website WordPress credential) were already
+  set up: the Cloudflare rule one module over, *a health probe is evidence, never the gate*. And
+  the one screen that worked was `empty_when`-folded into the hub's ＋ strip on precisely the
+  clients with nothing attached, behind a chip pointing at the tab that offered the Google button
+  — a bootstrap deadlock. The same rule fixes all three: **the missing credential decides a
+  sentence, never whether the control is drawn**, since each picker already teaches its own. Its
+  sibling is the same mistake one layer deeper and predates the issue: `_health` asked *every*
+  link whether its Google connection was live, so an SE Ranking project on an install with no
+  Google account at all rendered a red "verbinding verbroken" over a link that was working. Two
+  smaller rules ride along. **Two copies of a question is how one of them stops being asked** —
+  the panel and the dialog each mounted the picker, one answered "which website" properly and one
+  did not, so there is one `MarketingSourcePickers` now and `hasWebsites` is derived in it and
+  nowhere else. And **a chip that replaces a panel must not lead somewhere that cannot act**: with
+  no `emptyHref` it unfolds the card in place, which is what the mechanism was built for (Drive
+  and Ads already worked that way, because their connect flows live *in* the panel).
+  Its other half is about what a client's page is *for*. Three integration cards — Ads, Tag
+  Manager, Timeon — sat under the marketing panel, two of them printing largely what it printed
+  one card up, and the team asked for one control and fewer cards. Four rules generalise. **No
+  daily number means a connection, not a source**: Tag Manager joins the picker as a second,
+  labelled list (`MarketingConnection`) rather than a sixth `MarketingSource`, because a value
+  that `METRICS_BY_SOURCE`, `SCOPE_BY_SOURCE`, `aggregate`, the overview grid, the report sections
+  and the nightly sync must each be taught to say nothing about would still draw a dashboard
+  section with no numbers in it — which is what reads as broken. **Two rows cannot disagree when
+  there is only one**: a container is attached through its own module's route and nothing is
+  written in `marketing_links`, which is a stronger form of #338's mirroring rule than mirroring.
+  **Deleting a card deletes the one fact it carried that nothing else did unless that moves
+  first** — `workspace_changes`, the number its nightly cron exists for, now rides the marketing
+  panel through `app/core/tagmanager.py` (the `core/wordpress.py` seam, with the permission
+  checked *inside the registered provider*, since the borrowing panel is `explicit_public` and
+  §365's "each provider remembers" is a hope). And **a loss with nothing taking its place is
+  stated, not discovered**: Timeon's per-client pairing count and open conflicts are simply gone
+  from the hub, because a cutover ends and its queue is where a decision is actually made. On the
+  web the composition runs the only direction §6 allows — an integration registers a
+  `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
 
 ## 11. Working agreement (for Claude Code)
 

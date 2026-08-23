@@ -508,14 +508,16 @@ export const interactionActions = {
     // — an org with no roster to offer — and is not the same as `[]` ("nobody"), so it is never
     // synthesised here.
     const assignees = parseAssignees(form.get("assignees"));
+    // Required (#392) — the dialog's field says so, and this is the backstop.
     const due_date = String(form.get("due_date") ?? "").trim();
+    if (!due_date) return fail(400, { qcError: "errors.required" });
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
         title,
         company_id: company_id || undefined,
         project_id: project_id || undefined,
         assignees,
-        due_date: due_date || undefined,
+        due_date,
         priority: "normal",
         requires_interaction: false,
         visible_to_client: false,

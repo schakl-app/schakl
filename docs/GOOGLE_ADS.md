@@ -158,9 +158,16 @@ expired one goes read-only rather than half-writable.
 
 The web half follows from the same sentence: there is now **one** connect control
 (`MarketingConnectDialog`), it posts to `POST /marketing/links`, and it is reachable from the
-client's Google Ads panel, from `/marketing/google-ads` and from `/marketing`. It is gated on
-`marketing.link.manage` — the key the call actually makes, not `google_ads.settings.manage`,
-which is what the screen is *about* (#310).
+client's page, from the client's Marketing tab, from `/marketing/google-ads` and from
+`/marketing`. It is gated on `marketing.link.manage` — the key the call actually makes, not
+`google_ads.settings.manage`, which is what the screen is *about* (#310).
+
+**This module draws no card on the client hub** (#411). It used to: a half-width card under the
+marketing panel listing this client's Ads accounts and whether each still answers. Both facts
+are the marketing panel's `gads` row and its health badge one card up, and the card's connect
+button was already `MarketingConnectDialog`, so what it added over its neighbour was a second
+place to read the same answer. `last_error` and `last_verified_at` are still stored, still on
+`/marketing/google-ads` and still in the MCP surface; what the hub keeps is the badge.
 
 ## 8. The credential moved house (expand/contract)
 

@@ -39,6 +39,7 @@ from app.core.periods import (
     resolve_compare,
     resolve_period,
 )
+from app.core.tagmanager import company_containers
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 
@@ -99,6 +100,7 @@ from app.modules.marketing.schemas import (
     MarketingClientRow,
     MarketingClientSource,
     MarketingCompareWindow,
+    MarketingConnection,
     MarketingSettingsRead,
     MarketingSettingsWrite,
     MarketingSummary,
@@ -692,6 +694,20 @@ class MarketingService:
         return resolve_compare(stored)
 
     # --- links (#132) --------------------------------------------------------------------- #
+    async def company_websites(self, company_id: uuid.UUID) -> list[WebsiteRef]:
+        """The client's websites, for the connect dialog's site select (#399).
+
+        Its own endpoint rather than a read of ``/websites``, and gated on
+        ``marketing.link.manage`` rather than on ``websites.website.read``: the question being
+        asked is "which of this client's sites does the Rank Math link attach to", which is
+        part of the link the caller is already allowed to make. Requiring the websites module's
+        own read permission would mean the site-key picker refuses for exactly the person the
+        agency put in charge of connecting marketing sources (#310, the same shape).
+        """
+        self.ctx.require("marketing.link.manage")
+        await self._company_or_404(company_id)
+        return await self._company_websites(company_id)
+
     async def list_links_read(self, company_id: uuid.UUID) -> list[LinkRead]:
         self.ctx.require("marketing.metrics.read")
         # 404 on another tenant's (or a nonexistent) company, so the list can't be probed for the
@@ -1216,8 +1232,20 @@ class MarketingService:
 
     # --- metrics for the panel + tab (#133), stored data only ----------------------------- #
     async def company_marketing(
-        self, company_id: uuid.UUID, range_days: int, period: str | None = None
+        self,
+        company_id: uuid.UUID,
+        range_days: int,
+        period: str | None = None,
+        *,
+        with_connections: bool = False,
     ) -> CompanyMarketing:
+        """This client's linked sources, folded.
+
+        ``with_connections`` is opt-in rather than always-on (#411): the connections row is a
+        statement a *panel* wants and the tab, ``/marketing`` and the client's portal widget do
+        not, and a payload that grows a cost for one of its four callers is how a hub gets slow
+        one field at a time (docs/PERFORMANCE.md).
+        """
         self.ctx.require("marketing.metrics.read")
         await self._company_or_404(company_id)
         today = await self._today()
@@ -1273,6 +1301,29 @@ class MarketingService:
         # Borrowed through the seam, never read out of `reports`: the lender's own service
         # decides what a client-facing login may see (#300).
         narrative = await latest_narrative(self.ctx, company_id)
+        # The same rule one seam over (#411). A client-facing login never receives them: what is
+        # measuring their website is the agency's working surface, and the provider's own
+        # permission (`google_tag_manager.container.read`) is not one a portal membership holds
+        # anyway — checked here as well, because "the permission happens to exclude them" is a
+        # coincidence and `is_portal` is the statement (§15, #274).
+        connections: list[MarketingConnection] = []
+        if with_connections and not self.ctx.is_portal:
+            connections = [
+                MarketingConnection(
+                    kind="gtm",
+                    id=row.id,
+                    external_id=row.public_id,
+                    name=row.name,
+                    status=row.status,
+                    last_error=row.last_error,
+                    pending_changes=row.workspace_changes,
+                    live_count=row.tag_count,
+                    observed_at=row.observed_at,
+                    deep_link=row.deep_link,
+                    href=f"/marketing/tag-manager/{row.id}",
+                )
+                for row in await company_containers(self.ctx, company_id)
+            ]
         return CompanyMarketing(
             company_id=company_id,
             range_days=range_days,
@@ -1286,6 +1337,7 @@ class MarketingService:
             ),
             compare_default=org_default,
             sources=sources,
+            connections=connections,
             needs_connection=not await self._any_connection(),
             can_manage=can_manage,
             show_key_events=show_key_events,
@@ -1429,9 +1481,17 @@ class MarketingService:
         connections: dict[uuid.UUID, GoogleConnection],
         has_data: bool,
     ) -> str:
-        connection = connections.get(link.connection_id) if link.connection_id else None
-        if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
-            return "disconnected"
+        # "Disconnected" is a statement about a **Google grant**, so only a Google-auth source
+        # can be in it (#399). SE Ranking rides one agency API key and Rank Math a per-website
+        # WordPress password; neither ever holds a `connection_id`, so asking this of them
+        # painted a red *"De Google-verbinding van deze koppeling is weg"* over a link that was
+        # working — the same mistake the tab used to make one level up, where one missing Google
+        # credential blanked the whole screen. What is wrong with a keyed source shows up as its
+        # own `last_error`, which the next branch already reads.
+        if source_auth(link.source) == AUTH_GOOGLE:
+            connection = connections.get(link.connection_id) if link.connection_id else None
+            if connection is None or connection.status != ConnectionStatus.ACTIVE.value:
+                return "disconnected"
         if link.last_error:
             return "error"
         if not link.backfill_done and not has_data:

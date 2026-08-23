@@ -110,9 +110,13 @@
         >
         <input id="qc-task-title" name="title" value={title} required class={inputClass} />
       </div>
+      <!-- Required (#392): a task with no deadline is invisible to every urgency screen, so
+           the dialog asks rather than letting one through and finding out on the API. -->
       <div>
-        <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.due_date")}</span>
-        <DateInput name="due_date" id="qc-task-due" />
+        <label for="qc-task-due" class="mb-1 block text-sm font-medium text-text"
+          >{t("tasks.field.due_date")}</label
+        >
+        <DateInput name="due_date" id="qc-task-due" required />
       </div>
       <!-- Guarded on the roster, not on the opening list: a picker whose every option sits
            behind the search is still a picker, and hiding it would take the search with it. -->

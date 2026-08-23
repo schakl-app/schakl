@@ -71,8 +71,12 @@ registerWebModule({
       module: "marketing",
       component: MarketingCompanyPanel,
       position: 50,
-      // Nothing here yet folds into the hub's one ＋ strip (#364).
-      emptyHref: (id: string) => `/companies/${id}/marketing`,
+      // Nothing here yet folds into the hub's one ＋ strip (#364) — and the chip **unfolds this
+      // card in place** rather than linking away (#399). It used to point at
+      // `/companies/<id>/marketing`, which is a dashboard: the one screen that can attach the
+      // first source was hidden on exactly the clients that had none, and the chip replacing it
+      // led somewhere that could only say "nothing linked yet". Drive and Google Ads already
+      // work this way for the same reason — their connect flows live *in* the panel.
     },
   ],
 });

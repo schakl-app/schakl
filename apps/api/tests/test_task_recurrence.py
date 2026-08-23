@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import Task
 from app.modules.tasks.recurrence import advance, spawn_scheduled_recurrences
-from tests.conftest import auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
 
 
 def test_advance_month_end_clamps() -> None:
@@ -93,6 +93,7 @@ async def test_scheduled_cron_spawns_per_org_isolated(client_for) -> None:
             await ca.post(
                 "/api/v1/tasks",
                 json={
+                    "due_date": FAR_FUTURE_DUE,
                     "title": "Weekly digest",
                     "recurrence": {"freq": "weekly", "interval": 1, "mode": "schedule"},
                 },
@@ -101,7 +102,11 @@ async def test_scheduled_cron_spawns_per_org_isolated(client_for) -> None:
         ).json()
         assert a_task["recurrence"]["mode"] == "schedule"
     async with client_for(b.host) as cb:
-        await cb.post("/api/v1/tasks", json={"title": "No recurrence"}, headers=b_headers)
+        await cb.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "No recurrence"},
+            headers=b_headers,
+        )
 
     # A fresh schedule carrier's next_run is always in the future; pull it into the past so
     # the cron considers it due.

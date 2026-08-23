@@ -71,6 +71,19 @@ def test_every_company_panel_declares_a_layout() -> None:
         assert spec.size in (SIZE_FULL, SIZE_HALF), f"{spec.key}: unknown size {spec.size!r}"
 
 
+def test_the_client_s_own_details_are_a_working_surface() -> None:
+    """#403: the one panel #364 sorted by what it is called rather than what it is used for.
+
+    Filed as a register it sat under every working surface on the page — roughly 1.100 px down
+    on a well-filled client, below a block of logged hours. A register is something you
+    occasionally consult; a client's telephone number is what somebody opens the page for when
+    the phone rings.
+    """
+    details = next(spec for spec in _all_company_panels() if spec.key == "companies.details")
+    assert details.prominence == PROMINENCE_PRIMARY
+    assert details.size == SIZE_HALF
+
+
 def test_every_company_summary_declares_a_permission() -> None:
     """The vital-signs strip is the panels seam one level up, so it carries the same rule."""
     known = {spec.key for spec in all_permissions()}

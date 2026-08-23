@@ -49,6 +49,8 @@
   import { formatMinutes } from "$lib/modules/time/format";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
+  import PageHeader from "$lib/core/ui/PageHeader.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data, form } = $props();
 
@@ -193,8 +195,11 @@
     },
     { key: "project", label: t("impex.column.task.project"), type: "fk", options: projectItems },
     { key: "company", label: t("impex.column.task.company"), type: "fk", options: companyItems },
-    // The one clearable field here: a task that loses its deadline is a real state, not a gap.
-    { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: true },
+    // Settable across a selection — pushing a week's deadlines, and how a backlog carried
+    // into #392 gets dated — and **not** clearable: a task with no deadline stopped being a
+    // real state, and a dialog that opens blank over rows that disagree could never tell
+    // "I did not fill this in" from "empty it on all of them".
+    { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: false },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.
@@ -245,25 +250,24 @@
 
 <TasksNav />
 
-<div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("tasks", t("tasks.title"))}</h1>
+<PageHeader title={navLabel("tasks", t("tasks.title"))}>
+  {#snippet subtitle()}
     <!-- The total is the pager's (#334); overdue is not a count of the list, it is a warning
-         about part of it, so it keeps its place under the heading. -->
+         about part of it, so it keeps its place under the heading — and since #404 it says so
+         with the palette's glyph as well as its colour, because "late" is the one claim this
+         page makes and a red word alone is not one every reader can see. -->
     {#if overdueCount > 0}
-      <p class="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
-        {t("tasks.overdue_count", { count: overdueCount })}
-      </p>
+      <StateMark state="late" label={t("tasks.overdue_count", { count: overdueCount })} />
     {/if}
-  </div>
+  {/snippet}
   <!-- Ask for the name, then create-then-edit for the rest (#391, #230): the dialog posts a
        named task and the action redirects to its detail page in edit mode, so creating and
        editing still share one surface (docs/UX.md Principle 3). Beside it, the other way in
        (#382): a task spoken in one breath, reviewed whole. Not a menu item — this is a primary
        create path, not a variant of one — and on a phone it is the reachable pair the FAB rule
        asks for. -->
-  {#if canCreate}
-    <div class="flex items-center gap-2">
+  {#snippet actions()}
+    {#if canCreate}
       {#if canDictate}
         <button
           type="button"
@@ -282,9 +286,9 @@
       >
         {t("tasks.new")}
       </button>
-    </div>
-  {/if}
-</div>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if canDictate}
   <TaskDictateSheet
@@ -402,6 +406,16 @@
       : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
     onclick={() => setFilter("unnamed", data.filters.unnamed ? "" : "1")}
     >{t("tasks.filter.unnamed")}</button
+  >
+  <!-- The rows an instance carried into #392, where the deadline became required. Findable so
+       they can be dated — one at a time, or as a selection through the ✎ beside this list. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.filters.undated
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => setFilter("undated", data.filters.undated ? "" : "1")}
+    >{t("tasks.filter.undated")}</button
   >
   {#each data.labels as label (label.id)}
     <button

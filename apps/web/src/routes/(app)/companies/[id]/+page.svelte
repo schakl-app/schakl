@@ -44,9 +44,14 @@
   import { filedrop } from "$lib/core/ui/filedrop";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
+  import Card from "$lib/core/ui/Card.svelte";
+  import { BAND_HEADING } from "$lib/core/ui/headings";
+  import PageHeader from "$lib/core/ui/PageHeader.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
   import SummaryStrip from "$lib/core/ui/SummaryStrip.svelte";
   import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { arrangePanels, type HubRow } from "$lib/modules/companies/hub";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
@@ -128,59 +133,40 @@
   // A chip whose module has no screen of its own to send you to unfolds its card here instead
   // (see the strip below), so nothing an empty panel offered is lost by absorbing it.
   const unfolded = new SvelteSet<string>();
-  const drawn = $derived(data.panels.filter((p: Panel) => !p.empty || unfolded.has(p.key)));
-  const primary = $derived(drawn.filter((p: Panel) => p.prominence === "primary"));
-  const registers = $derived(drawn.filter((p: Panel) => p.prominence !== "primary"));
   const empties = $derived(data.panels.filter((p: Panel) => p.empty && !unfolded.has(p.key)));
 
-  /**
-   * How the cards fit together.
-   *
-   * `size` said how wide a panel wants to be and the page drew one two-column grid, which is a
-   * *row* layout: every row is as tall as its tallest card, so a short card leaves the gap under
-   * it empty, and a full-width panel after an odd number of halves leaves half a row empty beside
-   * the one before it. On a real client that came to a 271 px void under Abonnementen, a whole
-   * empty half-row beside Uren, and four ragged bottom edges — the page looked unfinished rather
-   * than composed, which is the same complaint #364 set out to fix, one layer down.
-   *
-   * A row layout cannot answer it, so the ordered panels are cut into **blocks** and each block
-   * gets the layout its own count deserves. Three kinds, and each one is hole-free by
-   * construction rather than by luck:
-   *
-   * - `solo` — a full-width panel, **or a half-width one with no half-width neighbour**. A card
-   *   alone on its row takes the row; the alternative is a bordered rectangle beside nothing.
-   * - `pair` — exactly two halves, in a two-column grid that *stretches*. With two cards there is
-   *   nothing to pack, so the tidy answer is a matched pair: bottoms level, one edge, no gap.
-   * - `stack` — three or more halves, packed by CSS multi-column. Each card keeps its natural
-   *   height and the browser balances the two lanes, which is real masonry with no measuring, no
-   *   layout jump after hydration, and no second opinion about a height the browser already knows.
-   *
-   * `items-start` is therefore gone, and so is stretching a two-row list to match a tall card
-   * beside it — the mistake the old comment here rightly warned about. What replaced it is not
-   * "stretch everything": a pair matches because a pair has nothing else to do, and a stack packs
-   * because packing is what three cards want.
-   *
-   * One constraint a contributing module should know: a `stack` is a fragmentation context, so a
-   * panel that opens a dropdown wants `prominence: primary` (where pairs and solos live) or a
-   * popover anchored to the viewport. No panel does that today.
-   */
-  type Block = { key: string; kind: "solo" | "pair" | "stack"; panels: Panel[] };
+  // How the cards fit together (#403) — the rules, and what they replaced, live beside the
+  // function in `$lib/modules/companies/hub.ts`, where they are unit-tested. In one sentence:
+  // a panel is drawn at the width it declared, into a lane it was dealt over the *full* ordered
+  // list, so a client with nothing in a panel sees the rest exactly where a client who has
+  // everything sees them.
+  //
+  // It replaced the run-of-blocks arrangement #404 drew (solo / pair / stack): each block was
+  // hole-free on its own and the *set* of blocks moved from client to client, because a run
+  // boundary depends on which neighbours this client happens to have nothing in. A lane is
+  // allowed to end lower than the one beside it; a panel is not allowed to change width.
+  const primaryRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence === "primary"),
+      unfolded,
+    ),
+  );
+  const registerRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence !== "primary"),
+      unfolded,
+    ),
+  );
 
-  function blocksOf(panels: Panel[]): Block[] {
-    const runs: Panel[][] = [];
-    for (const panel of panels) {
-      const run = runs.at(-1);
-      // A full-width panel always starts (and ends) its own run; halves collect into one.
-      if (panel.size !== "half" || !run || run[0].size !== "half") runs.push([panel]);
-      else run.push(panel);
-    }
-    return runs.map((run) => ({
-      key: run[0].key,
-      kind:
-        run[0].size !== "half" || run.length === 1 ? "solo" : run.length === 2 ? "pair" : "stack",
-      panels: run,
-    }));
-  }
+  /**
+   * What a lane draws its cards as (#404). The pair is stated here rather than derived from the
+   * heading level inside the card snippet: "these are h3s" and "these are references" are two
+   * facts that happen to coincide today, and a page that infers one from the other is a page
+   * where changing the outline silently restyles half the hub.
+   */
+  type LaneKind = { kind: "panel" | "register"; heading: 2 | 3 };
+  const WORKING_LANE: LaneKind = { kind: "panel", heading: 2 };
+  const REGISTER_LANE: LaneKind = { kind: "register", heading: 3 };
 
   // ---- tier 1: the status pill edits in place ---------------------------- //
   // Most real edits are one field, and none of them should cost a dialog, a scroll position and
@@ -228,181 +214,187 @@
   <title>{pageTitle(company.name)}</title>
 </svelte:head>
 
-<div class="mb-5">
-  <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
-    <div class="min-w-0">
-      <div class="flex flex-wrap items-center gap-3">
-        {#if company.logo_file_id}
-          <!-- The client's own logo (#196) — client data, never tenant branding. -->
-          <img
-            src={`/api/v1/companies/${company.id}/logo`}
-            alt=""
-            class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
-          />
-        {/if}
-        <h1 class="text-xl font-semibold text-text">{company.name}</h1>
-
-        {#if editingStatus}
-          <!-- One field, changed where it is shown, PATCHed on pick. -->
-          <form
-            method="POST"
-            action="?/update"
-            class="w-44"
-            bind:this={statusForm}
-            use:enhance={busy.wrap("status", () => async ({ update, result }) => {
-              editingStatus = false;
-              // `keep`: this edits a value that already exists, and there is nothing to reset to.
-              await update({ reset: false });
-              if (result.type === "success") toastSuccess(t("companies.status_saved"));
-            })}
-          >
-            <Combobox
-              items={COMPANY_STATUSES.map((option) => ({
-                value: option,
-                label: t(`companies.status.${option}`),
-              }))}
-              name="status"
-              id="company-status-inline"
-              ariaLabel={t("companies.field.status")}
-              bind:value={statusValue}
-              allowEmpty={false}
-              listClass="w-56"
-              onselect={submitStatus}
-            />
-          </form>
-        {:else}
-          <svelte:element
-            this={canWrite ? "button" : "span"}
-            type={canWrite ? "button" : undefined}
-            onclick={canWrite ? () => (editingStatus = true) : undefined}
-            title={canWrite ? t("companies.field.status") : undefined}
-            class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
-              company.status,
-            )} {canWrite ? 'cursor-pointer hover:ring-1 hover:ring-current/40' : ''}"
-          >
-            {t(`companies.status.${company.status}`)}
-          </svelte:element>
-        {/if}
-      </div>
-      <!-- The name a document is addressed to, and only when it is not the one above it: the
+<!-- The title band (#404): the same shape the dashboard and the task board now open with, and
+     the hub is the screen that proves the shape is right rather than merely shared — the logo,
+     the editable status pill, the second name, the responsible colleagues and five actions all
+     sit in it without the band growing a prop for any of them. -->
+<PageHeader title={company.name} class="mb-5">
+  {#snippet leading()}
+    {#if company.logo_file_id}
+      <!-- The client's own logo (#196) — client data, never tenant branding. -->
+      <img
+        src={`/api/v1/companies/${company.id}/logo`}
+        alt=""
+        class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
+      />
+    {/if}
+  {/snippet}
+  {#snippet beside()}
+    {#if editingStatus}
+      <!-- One field, changed where it is shown, PATCHed on pick. -->
+      <form
+        method="POST"
+        action="?/update"
+        class="w-44"
+        bind:this={statusForm}
+        use:enhance={busy.wrap("status", () => async ({ update, result }) => {
+          editingStatus = false;
+          // `keep`: this edits a value that already exists, and there is nothing to reset to.
+          await update({ reset: false });
+          if (result.type === "success") toastSuccess(t("companies.status_saved"));
+        })}
+      >
+        <Combobox
+          items={COMPANY_STATUSES.map((option) => ({
+            value: option,
+            label: t(`companies.status.${option}`),
+          }))}
+          name="status"
+          id="company-status-inline"
+          ariaLabel={t("companies.field.status")}
+          bind:value={statusValue}
+          allowEmpty={false}
+          listClass="w-56"
+          onselect={submitStatus}
+        />
+      </form>
+    {:else}
+      <svelte:element
+        this={canWrite ? "button" : "span"}
+        type={canWrite ? "button" : undefined}
+        onclick={canWrite ? () => (editingStatus = true) : undefined}
+        title={canWrite ? t("companies.field.status") : undefined}
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
+          company.status,
+        )} {canWrite ? 'cursor-pointer hover:ring-1 hover:ring-current/40' : ''}"
+      >
+        {t(`companies.status.${company.status}`)}
+      </svelte:element>
+    {/if}
+  {/snippet}
+  {#snippet subtitle()}
+    <!-- The name a document is addressed to, and only when it is not the one above it: the
            API sends `null` for "the label is also the legal name", so most clients draw nothing
            here and the header stays one name long. Where it *does* differ, this is the one
            screen that has to say so — the invoice this client gets will be headed with a name
            the H1 does not contain, and nobody should have to open the billing card to discover
            that. Muted and prefixed, so it reads as a fact about the record rather than as a
            second title. -->
-      {#if legalName}
-        <p class="mt-1 text-sm text-text-muted">
-          {t("companies.legal_name")}: <span class="text-text">{legalName}</span>
-        </p>
-      {/if}
-      {#if company.website}
-        <a
-          href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
-        >
-      {/if}
-      {#if assignees.length > 0}
-        <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
-          <span>{t("companies.field.responsible")}:</span>
-          <Assignees {assignees} members={data.members} max={6} />
-        </p>
-      {/if}
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      {#if canLogInteraction}
-        <button
-          type="button"
-          onclick={() => (showLogInteraction = true)}
-          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-        >
-          {t("interactions.add")}
-        </button>
-      {/if}
-      {#if can(page.data.user, "tasks.task.create")}
-        <!-- Ask for the name first (#391), then create-then-edit for the rest (#230): the shared
+    {#if legalName}
+      <p class="mt-1 text-sm text-text-muted">
+        {t("companies.legal_name")}: <span class="text-text">{legalName}</span>
+      </p>
+    {/if}
+    {#if company.website}
+      <a
+        href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
+      >
+    {/if}
+    {#if assignees.length > 0}
+      <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        <span>{t("companies.field.responsible")}:</span>
+        <Assignees {assignees} members={data.members} max={6} />
+      </p>
+    {/if}
+  {/snippet}
+  {#snippet actions()}
+    {#if canLogInteraction}
+      <button
+        type="button"
+        onclick={() => (showLogInteraction = true)}
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      >
+        {t("interactions.add")}
+      </button>
+    {/if}
+    {#if can(page.data.user, "tasks.task.create")}
+      <!-- Ask for the name first (#391), then create-then-edit for the rest (#230): the shared
              dialog posts a named task pre-linked to this client and lands on its detail page in
              edit mode. -->
-        <Button
-          variant="secondary"
-          size="sm"
-          type="button"
-          disabled={busy.active}
-          onclick={() => (creatingTask = true)}
-        >
-          {t("companies.actions.new_task")}
-        </Button>
-      {/if}
-      {#if can(page.data.user, "time.entry.write")}
-        <!-- The same act as the Uren panel's ＋ (#402), so it is the same control: the module's
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        disabled={busy.active}
+        onclick={() => (creatingTask = true)}
+      >
+        {t("companies.actions.new_task")}
+      </Button>
+    {/if}
+    {#if can(page.data.user, "time.entry.write")}
+      <!-- The same act as the Uren panel's ＋ (#402), so it is the same control: the module's
              own entry form in a dialog, this client preset, and this page still underneath it
              when it closes. It used to be a link to `/time?company=…` — the client was carried
              through and the way back was not. -->
-        <button
-          type="button"
-          onclick={() => (loggingTime = true)}
-          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-        >
-          {t("companies.actions.log_time")}
-        </button>
-      {/if}
-      {#if hasReporting}
-        <CompanyAIActions companyId={company.id} companyName={company.name} />
-      {/if}
-      {#if canWrite || canDelete || canApplyTemplate}
-        <ActionsMenu
-          items={[
-            ...(canWrite
-              ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
-              : []),
-            ...(canApplyTemplate
-              ? [
-                  {
-                    label: t("companies.actions.apply_template_menu"),
-                    icon: ListChecks,
-                    onclick: () => (showTemplate = true),
-                  },
-                ]
-              : []),
-            ...(canDelete
-              ? [
-                  {
-                    label: t("common.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () => (confirmDelete = true),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      {/if}
-    </div>
-  </div>
-  {#if form?.templateApplied}
-    <p class="mt-3 text-xs text-green-600 dark:text-green-400">
-      {t("companies.template_applied")}
-    </p>
-  {/if}
-</div>
+      <button
+        type="button"
+        onclick={() => (loggingTime = true)}
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      >
+        {t("companies.actions.log_time")}
+      </button>
+    {/if}
+    {#if hasReporting}
+      <CompanyAIActions companyId={company.id} companyName={company.name} />
+    {/if}
+    {#if canWrite || canDelete || canApplyTemplate}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
+            : []),
+          ...(canApplyTemplate
+            ? [
+                {
+                  label: t("companies.actions.apply_template_menu"),
+                  icon: ListChecks,
+                  onclick: () => (showTemplate = true),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
+  {/snippet}
+</PageHeader>
+
+{#if form?.templateApplied}
+  <!-- A good outcome, said in the palette's `ok` (#404) rather than in a green nobody chose:
+       this was one of two competing greens in `lib/` for the identical claim. -->
+  <StateMark state="ok" class="-mt-2 mb-4" label={t("companies.template_applied")} />
+{/if}
 
 <!-- Are we all right with this client? Five numbers, above the fold, each opening what it counted. -->
 <SummaryStrip tiles={data.summary} />
 
-{#snippet card(panel: Panel, heading: 2 | 3)}
+<!-- **The two lanes look like two lanes** (#404). #364 already told this page which panels are
+     working surfaces and which are registers, and it drew both as the identical white bordered
+     box — so the distinction existed in the data, was announced by one 12 px muted heading, and
+     was invisible everywhere else. A register is correct, occasionally consulted and never news:
+     it gets `Card kind="register"`, which is a hairline rule and the page's own ground rather
+     than a rectangle competing with the work above it. Nothing about the composition changed;
+     the page still knows the name of no module. -->
+{#snippet card(panel: Panel, lane: LaneKind)}
   {@const spec = companyPanelComponent(enabled, panel.key)}
-  <section id={`panel-${panel.key}`} class="rounded-xl border border-border bg-surface-raised p-5">
-    <!-- A panel with a control beside its title draws its own heading row (#364); everything
-         else gets the host's, so a module contributing a plain list writes no chrome. -->
-    {#if !spec?.ownsHeader}
-      {#if heading === 3}
-        <h3 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h3>
-      {:else}
-        <h2 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h2>
-      {/if}
-    {/if}
+  <Card
+    id={`panel-${panel.key}`}
+    kind={lane.kind}
+    level={lane.heading}
+    title={spec?.ownsHeader ? undefined : t(panel.title_key)}
+  >
     {#if spec}
       {@const PanelComponent = spec.component}
       <PanelComponent
@@ -421,30 +413,27 @@
           2,
         )}</pre>
     {/if}
-  </section>
+  </Card>
 {/snippet}
 
-{#snippet lane(panels: Panel[], heading: 2 | 3)}
-  <!-- A column of blocks; each block decides how its own cards sit beside each other. Every kind
-       collapses to one column below `lg`, so a phone gets one stack and the rule that fits the
-       cards together is a desktop rule only. -->
+{#snippet lane(rows: HubRow<Panel>[], kind: LaneKind)}
+  <!-- A column of rows: a full-width panel is its own row, a run of halves is two lanes. Both
+       collapse to one column below `lg` — the lane wrappers go `display: contents` and each card
+       carries its seat as a flex `order` — so a phone reads one stack in declared order and the
+       two-lane rule is a desktop rule only. -->
   <div class="flex flex-col gap-4">
-    {#each blocksOf(panels) as block (block.key)}
-      {#if block.kind === "solo"}
-        {@render card(block.panels[0], heading)}
-      {:else if block.kind === "pair"}
-        <div class="grid gap-4 lg:grid-cols-2">
-          {#each block.panels as panel (panel.key)}
-            {@render card(panel, heading)}
-          {/each}
-        </div>
+    {#each rows as row (row.key)}
+      {#if row.kind === "full"}
+        {@render card(row.panel, kind)}
       {:else}
-        <!-- `-mb-4` cancels the last card's own bottom margin, which is what a multi-column
-             container has instead of `gap` for the vertical direction. -->
-        <div class="-mb-4 lg:columns-2 lg:gap-4">
-          {#each block.panels as panel (panel.key)}
-            <div class="mb-4 break-inside-avoid">
-              {@render card(panel, heading)}
+        <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
+          {#each row.lanes as seats, index (index)}
+            <div class="contents lg:flex lg:flex-col lg:gap-4">
+              {#each seats as { panel, seat } (panel.key)}
+                <div style:order={seat}>
+                  {@render card(panel, kind)}
+                </div>
+              {/each}
             </div>
           {/each}
         </div>
@@ -453,17 +442,20 @@
   </div>
 {/snippet}
 
-{#if primary.length > 0}
-  {@render lane(primary, 2)}
+{#if primaryRows.length > 0}
+  {@render lane(primaryRows, WORKING_LANE)}
 {/if}
 
-{#if registers.length > 0}
+{#if registerRows.length > 0}
   <!-- Reference material: correct, occasionally consulted, never news. It keeps its own lane
-       and its own heading so the working surfaces above are unmistakably the foreground. -->
-  <h2 class="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-text-muted">
+       and its own heading so the working surfaces above are unmistakably the foreground.
+       The heading is `BAND_HEADING` now (#404): it used to be 12 px uppercase muted over 14 px
+       dark panel titles, which is the hierarchy the wrong way up — the container quieter than
+       its own contents, on the one screen whose whole argument is that the two lanes differ. -->
+  <h2 class="mb-3 mt-8 {BAND_HEADING}">
     {t("companies.section.registers")}
   </h2>
-  {@render lane(registers, 3)}
+  {@render lane(registerRows, REGISTER_LANE)}
 {/if}
 
 {#if empties.length > 0}
@@ -471,8 +463,8 @@
        ten links." A module with nothing to show earns a chip, not a heading, a border and 100 px
        — and ten ＋ actions in one row are easier to find than ten cards to scroll past, so this
        improves discoverability rather than hiding anything. -->
-  <section class="mt-8 rounded-xl border border-dashed border-border p-4">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+  <Card kind="strip" class="mt-8">
+    <h2 class={BAND_HEADING}>
       {t("companies.section.nothing_yet")}
     </h2>
     <ul class="mt-3 flex flex-wrap gap-2">
@@ -505,7 +497,7 @@
         </li>
       {/each}
     </ul>
-  </section>
+  </Card>
 {/if}
 
 {#if canApplyTemplate}

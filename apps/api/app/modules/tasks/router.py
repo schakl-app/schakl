@@ -93,6 +93,13 @@ async def list_tasks(
             "ones. Omitted returns both."
         ),
     ),
+    undated: bool | None = Query(
+        None,
+        description=(
+            "Only tasks with no deadline (rows written before the date became required, "
+            "#392), or only dated ones. Omitted returns both."
+        ),
+    ),
     sort: str | None = Query(
         None, description="title | due_date | priority | status | assignee | …, '-' desc"
     ),
@@ -122,6 +129,7 @@ async def list_tasks(
         due_to=due_to,
         q=q,
         unnamed=unnamed,
+        undated=undated,
         sort=sort,
         with_meta=meta,
         hours=hours,

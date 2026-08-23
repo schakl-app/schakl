@@ -34,7 +34,6 @@ from __future__ import annotations
 from arq import cron
 
 from app.integrations.timeon.jobs import timeon_nightly, timeon_prune_runs
-from app.integrations.timeon.panels import TIMEON_PANELS
 from app.integrations.timeon.permissions import TIMEON_PERMISSIONS
 from app.integrations.timeon.router import router
 from app.registry import KIND_INTEGRATION, ModuleDescriptor, registry
@@ -52,7 +51,12 @@ module = ModuleDescriptor(
     # pairings before they disconnect.
     sku="timeon",
     permissions=TIMEON_PERMISSIONS,
-    panels=TIMEON_PANELS,
+    # **No company panel** (#411), and the loss is deliberate rather than overlooked: the
+    # hub's card carried this client's pairing count and their open conflicts, and nothing
+    # takes its place. Timeon is a cutover integration whose home is `/timeon` — the screen
+    # somebody opens *because* a sync is running — and a card on every client's page for a
+    # migration that ends is a card that outlives its reason. The conflicts queue is where
+    # a decision is actually made; the hub only ever said one was waiting.
     cron_jobs=[
         # 04:20 — clear of the platform's 04:00/04:40/05:00 jobs, and after midnight in every
         # European zone so "yesterday's hours" means yesterday.

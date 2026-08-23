@@ -195,11 +195,12 @@ class TemplateService:
         today = await org_today(session, org_id)
         created: list[Task] = []
         for offset, item in enumerate(items, start=1):
-            due = (
-                today + timedelta(days=item.relative_due_days)
-                if item.relative_due_days is not None
-                else None
-            )
+            # A deadline is required (#392), and a template item that names no
+            # ``relative_due_days`` has to state one rather than inherit ``NULL``: the day the
+            # template was applied. It is the answer that keeps the spawned work in front of
+            # somebody — an onboarding checklist that lands on nobody's overdue list is the
+            # failure this rule exists to end — and it is one edit away on the task itself.
+            due = today + timedelta(days=item.relative_due_days or 0)
             task = Task(
                 org_id=org_id,
                 company_id=company_id,

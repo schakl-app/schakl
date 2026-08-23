@@ -82,7 +82,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             company_id=values.get("company_id"),
             project_id=values.get("project_id"),
             assignee_user_id=values.get("assignee_user_id"),
-            due_date=values.get("due_date"),
+            due_date=values["due_date"],
             allocated_minutes=int(float(values["allocated_minutes"]))
             if values.get("allocated_minutes")
             else None,
@@ -130,7 +130,13 @@ TASK_IMPEX = ImpexDescriptor(
             field="assignee_user_id",
             getter=lambda t: getattr(t, "assignee", None),
         ),
-        ImpexColumn("due_date", data_type="date"),
+        # Required (#392), which for an import means *present in the header and non-empty in
+        # every row* — and therefore named, per row, in the preview rather than surfacing as a
+        # request-level 422 the report cannot point at (CLAUDE.md §17, #289). A default would
+        # have been the wrong answer here: unlike the recurrence generator or an automation
+        # rule, an import has a human reading a preview, so the honest move is to refuse and
+        # say which rows.
+        ImpexColumn("due_date", data_type="date", required=True),
         ImpexColumn("allocated_minutes", data_type="number"),
         ImpexColumn("description"),
     ),

@@ -3,6 +3,8 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
+import { marketingActions } from "$lib/modules/marketing/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -36,10 +38,20 @@ export const load: PageServerLoad = async (event) => {
     metrics: metricsP.then((r) => r.data ?? null),
     range,
     website,
+    // Whether to draw the ＋ (#399). This tab used to offer nothing at all on a client with no
+    // links: its one empty state pointed at the client page, where the gesture lives behind
+    // ⋯ → Bewerken, and with no Google grant anywhere in the org it did not even do that.
+    // The client list behind the dialog is not fetched here — the route *is* the client.
+    canLink: can(event.locals.user, "marketing.link.manage"),
   };
 };
 
 export const actions: Actions = {
+  // The same writes the client page's panel posts (#338/#399) — `marketingActions` reads the
+  // client off `event.params.id`, which this route has too, so the dialog needs no second
+  // answer for which client it is attaching to. `gtmActions` brings the connections half.
+  ...marketingActions,
+  ...gtmActions,
   // Save the client's curated tab layout (#192). The editor posts the whole layout —
   // its own source replaced, the others carried through — as one JSON value.
   saveLayout: async (event) => {

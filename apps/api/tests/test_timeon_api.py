@@ -62,14 +62,19 @@ def test_the_three_permissions_are_admin_only_and_never_a_clients() -> None:
     assert all(spec.default_roles == ("admin",) for spec in module.permissions)
 
 
-def test_the_company_panel_declares_its_own_permission() -> None:
-    """#365: anything that fans out to module-contributed providers carries the same rule as a
-    route. A panel declaring neither a permission nor an explicit public reason is a build break —
-    the company hub called thirteen providers behind one key and seven of them checked nothing."""
-    panel = module.panels[0]
-    assert panel.requires_permission == "timeon.sync.run"
-    # Never `time.entry.read`: a client-portal login may hold that at `:own` (#266).
-    assert panel.requires_permission != "time.entry.read"
+def test_this_integration_draws_nothing_on_the_company_hub() -> None:
+    """No company panel, and the loss is deliberate (#411, docs/TIMEON.md §9a).
+
+    It used to declare one, gated on ``timeon.sync.run`` — never ``time.entry.read``, which a
+    client-portal login may hold at ``:own`` (#266). The card carried this client's pairing
+    count and their open conflicts, and unlike the Ads and Tag Manager cards removed beside it,
+    **nothing takes its place**: a cutover ends, and a card on every client's page for a
+    migration with a stated end date is a card that outlives its reason.
+
+    Asserted rather than left implicit, because the way this comes back is somebody restoring
+    the panel for a good reason and not re-reading why it went — at which point it needs a
+    permission again, and #365 says a provider declaring none is a build break."""
+    assert module.panels == []
 
 
 # --------------------------------------------------------------------------------------- #

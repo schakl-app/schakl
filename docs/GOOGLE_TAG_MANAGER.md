@@ -180,11 +180,50 @@ first, which is the cost this shape exists to avoid. The box says so, and the id
 other way anybody identifies a container.
 
 Three surfaces render it (`GtmContainerSearch.svelte`): Instellingen → Tag Manager, the
-`/marketing/tag-manager` connect dialog, and — new — the **client's own page**, where the Tag
-Manager panel now carries a `＋ Container koppelen` that keeps the client from the route the way
-every other panel's ＋ does (#338's argument, one integration over). It posts to the company
-page's own `?/gtmLink`, mounted by `gtmActions`, and mirrors `google_tag_manager.settings.manage`
-— the key the *call* makes, not the one the panel is about (#310).
+`/marketing/tag-manager` connect dialog, and the **client's own page** — which since #411 is
+the marketing picker rather than a card of this module's own; see §3c. It posts to the host
+page's `?/gtmLink`, mounted by `gtmActions`, and mirrors `google_tag_manager.settings.manage` —
+the key the *call* makes, not the one the surface is about (#310).
+
+## 3c. On a client's page this module has no card, and that is the point (#411)
+
+The hub used to draw three integration cards in a row under the marketing panel — Google Ads,
+Tag Manager, Timeon — and two of them printed largely what the panel above them already printed.
+The team asked for one control that attaches every marketing source, Tag Manager included, and
+for the three cards to go. Both halves are one change and each carries a rule.
+
+**A connection is not a source.** `MarketingSource` has always, correctly, excluded GTM: a
+container has no marketeer-facing number of its own, no adapter, no daily rows and no
+drill-down, and the conversions it fires arrive through GA4 already. Making it a sixth source to
+reuse one picker would have bought a value that `METRICS_BY_SOURCE`, `SCOPE_BY_SOURCE`,
+`primary_metric`, `aggregate`, the overview grid, the report sections and the nightly sync each
+have to be taught to say nothing about — and would still have drawn a dashboard section with no
+numbers in it, which is precisely what reads as broken. So the picker offers **two labelled
+lists**: five metric sources, and the connections (`MarketingConnection`,
+`marketing/schemas.py`), of which this is the only one today. The rule for the next one is the
+question this has now been asked twice: **no daily number means a connection, not a source.**
+
+**There is no second row to disagree with.** Google Ads is mirrored both ways because a marketing
+link and a `google_ads_accounts` row both exist (#338). A container is attached through *this*
+module's own `POST /gtm/containers` and nothing is written in `marketing_links`, so the
+`gtm_containers` row **is** the link — a stronger form of the same guarantee, because two rows
+cannot disagree when there is only one.
+
+**What the card carried that nothing else did had to move first.** `workspace_changes` is the
+number the nightly cron exists for, and deleting the card without moving it would have deleted
+the warning. It rides the marketing panel's connections row now, reached through
+`app/core/tagmanager.py` — the `core/wordpress.py` seam pattern, because §6 forbids `marketing`
+importing this package. **The permission travels with the provider**: the registered provider
+checks `google_tag_manager.container.read` itself and answers `[]` for a caller who does not
+hold it, because the borrowing panel is `explicit_public` by design and "each provider
+remembers" is #365's hope rather than #365's rule. The read is opt-in
+(`company_marketing(..., with_connections=True)`): the same payload feeds the client's tab,
+`/marketing` and the portal widget, and none of those draws the row.
+
+On the web the mirror is `MarketingConnectorSpec` (`lib/core/registry.ts`): this integration
+registers its own connect surface and the marketing picker composes it, the way the company hub
+composes panels it knows nothing about. That is the direction §6 allows — a module may not
+import an integration's component to mount it.
 
 ## 3b. The container page: five requests, and a shell that does not wait for them
 

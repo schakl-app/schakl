@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
 from app.integrations.google.drive.models import DriveLink
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 
 
 async def _setup(client_for, slug: str, *, role: str = "member"):
@@ -96,7 +96,7 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
     async with client_for(t.host) as c:
         # Rows on both companies, one company-less row.
         for company, title in ((a, "Task A"), (b, "Task B"), (None, "Task loose")):
-            body = {"title": title}
+            body = {"title": title, "due_date": FAR_FUTURE_DUE}
             if company:
                 body["company_id"] = company["id"]
             assert (
@@ -134,7 +134,9 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
 
         # Writes are scoped too: creating a task on an invisible company reads as 404.
         refused = await c.post(
-            "/api/v1/tasks", json={"title": "X", "company_id": b["id"]}, headers=member_h
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "X", "company_id": b["id"]},
+            headers=member_h,
         )
         assert refused.status_code == 404
         # …and so is moving one there — even the member's own task (the ownership rule would
@@ -142,6 +144,7 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
         mine = await c.post(
             "/api/v1/tasks",
             json={
+                "due_date": FAR_FUTURE_DUE,
                 "title": "Mine",
                 "company_id": a["id"],
                 # `own` for a task is the assignee (§15), so assign it to the member.
@@ -869,7 +872,7 @@ async def test_horizon_reaches_a_tasks_hour_budget(client_for) -> None:
     async with client_for(t.host) as c:
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Klantwerk", "allocated_minutes": 300},
+            json={"due_date": FAR_FUTURE_DUE, "title": "Klantwerk", "allocated_minutes": 300},
             headers=owner_h,
         )
         assert task.status_code == 201, task.text
