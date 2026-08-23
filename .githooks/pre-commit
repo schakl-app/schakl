@@ -8,6 +8,11 @@
 #                      Because it runs the repo's own `uv run ruff`, hook and CI share a
 #                      ruff version and a pyproject config — they can never disagree.
 #
+#   apps/web/**.{svelte,ts} → today:check  (→ Web job → "Tenant clock check")
+#                        node scripts/today-check.mjs
+#                      Catches a date read off UTC's clock instead of the tenant's. Shipped in
+#                      twenty-nine places at once (#396), including every overdue marker in the app.
+#
 #   apps/web/**.svelte → forms:check  (→ Web job → "Form reset check")
 #                        node scripts/forms-check.mjs
 #                      Catches a form that would blank what the user just saved. Plain node,
@@ -31,6 +36,7 @@ set -euo pipefail
 # Staged (Added/Copied/Modified) files. `|| true` so "no match" (grep exit 1) doesn't trip `set -e`.
 staged_py=$(git diff --cached --name-only --diff-filter=ACM -- apps/api | grep '\.py$' || true)
 staged_svelte=$(git diff --cached --name-only --diff-filter=ACM -- apps/web | grep '\.svelte$' || true)
+staged_web=$(git diff --cached --name-only --diff-filter=ACM -- apps/web | grep -E '\.(svelte|ts)$' || true)
 # Any staged change that can move the commercial boundary: a marker, the list itself, or the
 # `__init__.py` a `sku=` is declared in. `ACMD` and not `ACM` — *deleting* a marker is the
 # change most worth catching.
@@ -60,6 +66,17 @@ if [ -n "$staged_svelte" ]; then
     echo >&2
     echo "pre-commit: a form would blank what the user just saved — this would go red in CI." >&2
     echo "            Read:   docs/UX.md, \"Saving must never blank the form\"" >&2
+    echo "            Bypass (not recommended): git commit --no-verify" >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$staged_web" ]; then
+  echo "pre-commit: today:check (apps/web)…"
+  if ! node scripts/today-check.mjs; then
+    echo >&2
+    echo "pre-commit: a date is being read off UTC's clock, not the tenant's — this would go red in CI." >&2
+    echo "            Read:   CLAUDE.md §8, and apps/web/src/lib/core/today.ts" >&2
     echo "            Bypass (not recommended): git commit --no-verify" >&2
     exit 1
   fi

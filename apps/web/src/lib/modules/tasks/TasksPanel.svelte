@@ -4,6 +4,7 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { orgToday } from "$lib/core/today";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
@@ -33,7 +34,7 @@
     project_id?: string | null;
   }
   const tasks = $derived((data.tasks ?? []) as PanelTask[]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgToday();
 
   // The client page's ＋ opens the same dialog as every other create path (#391).
   let creating = $state(false);

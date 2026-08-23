@@ -32,8 +32,11 @@ from __future__ import annotations
 
 from arq import cron
 
+# ``contributions`` is imported for its side effect: it registers the company-container
+# provider on the core seam (#411). The card this module used to draw on the hub is gone, and
+# the one fact it carried that nothing else did rides the marketing panel now.
+from app.integrations.google_tag_manager import contributions  # noqa: F401
 from app.integrations.google_tag_manager.jobs import gtm_sync_all
-from app.integrations.google_tag_manager.panels import gtm_company_panel
 from app.integrations.google_tag_manager.permissions import GOOGLE_TAG_MANAGER_PERMISSIONS
 from app.integrations.google_tag_manager.router import router
 from app.registry import KIND_INTEGRATION, ModuleDescriptor, registry
@@ -55,7 +58,6 @@ module = ModuleDescriptor(
     # site, and it certainly must not leave a container half-edited.
     sku="google_tag_manager",
     permissions=GOOGLE_TAG_MANAGER_PERMISSIONS,
-    panels=[gtm_company_panel],
     # 05:35 — after marketing (04:45) and google_ads (05:15). All three walk every org making
     # outbound Google calls, and stacking them on one minute is how a box with thirty clients
     # meets its own rate limits at four in the morning.

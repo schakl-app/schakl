@@ -9,6 +9,7 @@
    */
   import { t } from "$lib/core/i18n";
   import { formatNumber, formatValid, NUMBER_TOKENS } from "$lib/core/numbering";
+  import { orgYear } from "$lib/core/today";
 
   let {
     id,
@@ -33,7 +34,7 @@
   // Belt-and-braces with `InFlight.keep()`: this makes the field safe in *any* form.
   const savedValue = value;
 
-  const year = new Date().getFullYear();
+  const year = orgYear();
   const valid = $derived(formatValid(value));
   const preview = $derived(
     valid ? [nextSeq, nextSeq + 1].map((seq) => formatNumber(value, year, seq)) : [],

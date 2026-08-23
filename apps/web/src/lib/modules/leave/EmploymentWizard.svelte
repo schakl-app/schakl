@@ -28,6 +28,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { orgToday } from "$lib/core/today";
 
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "./format";
   import RecurringDeleteDialog from "./RecurringDeleteDialog.svelte";
@@ -104,7 +105,7 @@
 
   const busy = new InFlight();
   const locale = getLocale();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = orgToday();
   // Deleting a contract confirms and posts from its own dialog (docs/UX.md: every delete
   // confirms, and the dialog owns the form) — a submit inside the wizard form would post the
   // wizard instead.

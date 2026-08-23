@@ -8,6 +8,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { hasPermission } from "$lib/core/permissions";
 import { registerWebModule, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
+import { orgToday } from "$lib/core/today";
 import { SquareCheckBig } from "@lucide/svelte";
 
 import { localDayTime } from "./schedule";
@@ -151,7 +152,7 @@ registerWebModule({
             },
           },
         });
-        const today = new Date().toISOString().slice(0, 10);
+        const today = orgToday();
         return (data?.items ?? [])
           .filter((task) => task.due_date && !task.completed_at)
           .map((task) => ({

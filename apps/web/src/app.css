@@ -28,6 +28,20 @@
   --border: #e5e5e5;
 }
 
+/* A third surface (#404): the tint a `stat` card sits on. A figure card carries no border —
+ * a box drawn around one number is chrome around a fact — so it needs a fill that separates it
+ * from *both* the page (`--surface`) and the panels beside it (`--surface-raised`), which the
+ * two existing tokens cannot do between them.
+ *
+ * Mixed from `--text` rather than stated per theme on purpose: the two themes already disagree
+ * about which of the pair is lighter, so a hand-picked pair is two values to keep in step and
+ * this is none. It is hueless by construction, which is also what keeps it out of the brand's
+ * way (§7) — a tinted card must never look like a tenant colour. Declared after the dark block
+ * would be wrong; it reads whatever `--text` resolves to at use, so one declaration covers both. */
+:root {
+  --surface-tint: color-mix(in srgb, var(--text) 5%, var(--surface-raised));
+}
+
 /* Dark value must match `DARK_SURFACE` in lib/core/theme.ts, which contrast-corrects the
  * tenant brand colour against this same background — keep the two in sync by hand. */
 :root[data-theme="dark"] {
@@ -43,6 +57,7 @@
   --color-accent: var(--brand-accent);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-tint: var(--surface-tint);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-border: var(--border);

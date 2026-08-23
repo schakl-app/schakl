@@ -10,6 +10,7 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { orgToday } from "$lib/core/today";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
@@ -64,7 +65,7 @@
     toggleAction = "?/toggle",
     members = [],
     statuses = [],
-    today = new Date().toISOString().slice(0, 10),
+    today = orgToday(),
   }: {
     task: TaskLike;
     toggleAction?: string;

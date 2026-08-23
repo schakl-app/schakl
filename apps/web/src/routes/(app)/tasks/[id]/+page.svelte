@@ -16,6 +16,7 @@
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -47,7 +48,9 @@
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
-  import { entityPanelComponent } from "$lib/core/registry";
+  import { entityPanelSpec } from "$lib/core/registry";
+  import Card from "$lib/core/ui/Card.svelte";
+  import { PANEL_HEADING } from "$lib/core/ui/headings";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
@@ -58,7 +61,7 @@
   // Panels contributed by enabled modules (CLAUDE.md §6) — contactmomenten, Drive, and
   // whatever ships later, composed exactly like the project page does.
   const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
-  const panelComponent = (key: string) => entityPanelComponent(enabledModules, "task", key);
+  const panelSpec = (key: string) => entityPanelSpec(enabledModules, "task", key);
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
@@ -708,7 +711,7 @@
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgToday();
   const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
@@ -879,11 +882,14 @@
           value={task.title}
           required
           form="task-edit"
-          class="w-full flex-1 rounded-lg border border-border p-2 text-lg font-semibold text-text outline-none focus:border-brand"
+          class="w-full flex-1 rounded-lg border border-border p-2 text-xl font-semibold text-text outline-none focus:border-brand"
         />
       {:else}
+        <!-- 20 px, the one page-title size (#404's scale). It was 18 px here and 20 px on the
+             other 97 H1s in the app — a page title that shrinks when you open a record is a
+             hierarchy the reader has to re-learn per screen. -->
         <h1
-          class="flex-1 text-lg font-semibold {isDone
+          class="flex-1 text-xl font-semibold {isDone
             ? 'text-text-muted line-through'
             : 'text-text'}"
         >
@@ -982,7 +988,7 @@
          already put them. A responsive grid rather than a stack: nine one-line facts read as a
          band and as nine stacked rows they read as a wall. -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      <h3 class="mb-3 {PANEL_HEADING}">
         {t("tasks.detail.properties")}
       </h3>
       <div class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1349,7 +1355,7 @@
          but their read state is always here, instead of a chip in one place and nothing anywhere
          for the rule. -->
     <section id="planning" class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      <h3 class="mb-3 {PANEL_HEADING}">
         {t("tasks.detail.planning")}
       </h3>
 
@@ -1366,10 +1372,18 @@
                 name="due_date"
                 value={task.due_date ?? ""}
                 formId="task-edit"
+                required
                 onchange={onDueChanged}
               />
             </div>
             <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            <!-- Rows written before #392 open, render and edit exactly as before — but saving
+                 one asks for the date it never had, which is the way out rather than a refusal. -->
+            {#if !task.due_date}
+              <p class="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                {t("tasks.detail.due_required_hint")}
+              </p>
+            {/if}
           {:else}
             <span class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.due_date")}</span
@@ -1453,7 +1467,7 @@
   {#snippet description()}
     <!-- Description — the first thing said about the work itself. -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      <h3 class="mb-2 {PANEL_HEADING}">
         {t("tasks.field.description")}
       </h3>
       {#if editMode}
@@ -1479,7 +1493,7 @@
            is exactly the clutter use mode exists to avoid. -->
     {#if (task.checklists ?? []).length > 0 || editMode}
       <section class="rounded-xl border border-border bg-surface-raised p-5">
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        <h3 class="mb-3 {PANEL_HEADING}">
           {t("tasks.checklist.title")}
         </h3>
 
@@ -1895,14 +1909,18 @@
            uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
            no files → no section, until you edit. -->
     {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
-      <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <!-- A register (#404): where the files are is looked up when somebody needs a file, and
+           it is never the news on a task. Under a rule rather than in the eighth bordered box —
+           and the Drive card directly under it declares the same, so the two now read as one
+           reference band without either page or module having to arrange that. -->
+      <Card kind="register">
         <!-- Drive now sits directly under this card (#393), and to a reader the two are one
              idea: "waar staan de bestanden van deze taak". They are not the same thing — these
              bytes live here and a Drive row is a reference into somebody else's system, which
              is why deleting means something different in each — so the heading gets one line
              saying which is which. Merging them would make that difference unsayable. -->
         <div class="mb-3">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <h3 class={PANEL_HEADING}>
             {t("tasks.links.title")}
           </h3>
           <p class="text-[11px] text-text-muted">{t("tasks.links.stored_here")}</p>
@@ -1985,7 +2003,7 @@
             />
           </div>
         {/if}
-      </section>
+      </Card>
     {/if}
   {/snippet}
 
@@ -2014,10 +2032,9 @@
   {#snippet activity()}
     <!-- Activity — the staff paper trail, never a portal surface. -->
     {#if !isPortal}
-      <section class="rounded-xl border border-border bg-surface-raised p-5">
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-          {t("tasks.activity.title")}
-        </h3>
+      <!-- The trail is the quietest thing on the page and hangs last (docs/UX.md Principle 4).
+           A register, therefore — it was the same white box as the checklist above it. -->
+      <Card kind="register" level={3} title={t("tasks.activity.title")}>
         {#if activities.length === 0}
           <p class="text-sm text-text-muted">—</p>
         {:else}
@@ -2063,7 +2080,7 @@
             </button>
           {/if}
         {/if}
-      </section>
+      </Card>
     {/if}
   {/snippet}
 
@@ -2071,14 +2088,20 @@
        enabled modules contribute, each at the `position` it declares. -->
   {#each orderedSections as item (item.key)}
     {#if item.kind === "panel"}
-      {@const PanelComponent = panelComponent(item.panel.key)}
-      {#if PanelComponent}
-        <section class="rounded-xl border border-border bg-surface-raised p-5">
-          <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-            {t(item.panel.titleKey)}
-          </h3>
+      {@const spec = panelSpec(item.panel.key)}
+      {#if spec}
+        {@const PanelComponent = spec.component}
+        <!-- A contributed panel says what it *is* on this host (#404). Drive and contactmomenten
+             declare `register` for a task, so they are drawn under a hairline rule instead of as
+             two more bordered boxes among eight — which is most of the reason an empty task page
+             ran 1500 px tall with nothing on it. -->
+        <Card
+          kind={spec.prominence === "register" ? "register" : "panel"}
+          level={3}
+          title={t(item.panel.titleKey)}
+        >
           <PanelComponent data={item.panel.data} context={data.context} lookups={panelLookups} />
-        </section>
+        </Card>
       {/if}
     {:else}
       {@const render = {

@@ -56,6 +56,153 @@
    of them" (docs/PERFORMANCE.md). **A convenience like this is not a nice-to-have bolted onto
    one screen; it is what the screen was for.**
 
+## The visual system
+
+> Four decisions taken once (#404), after the team said the CRM "voelt al snel voller en
+> ingewikkelder dan nodig" — much on one page, little to tell the parts apart. The complaint is
+> not about how much is shown; it is about there being no shape to it. Measured before the fix,
+> on a seeded instance at 1440 px: the dashboard drew **13 cards in 1 treatment**, the task page
+> **8 cards in 1 treatment** with all seven of its section headings in the least legible style
+> the system has, and the client hub **12 cards in 2**. Every card in the product was the same
+> object — `#ffffff` on a `#e5e5e5` hairline at 12 px radius — and text was two values.
+>
+> Fixing thirteen screens one at a time is how a product ends up with thirteen answers, so what
+> follows is the small set of primitives instead. They live in `$lib/core/`, they are the whole
+> vocabulary, and a screen that needs a fifth of anything should change these rather than write
+> its own.
+
+### 1. A state palette, fixed and tenant-independent (`core/state.ts`)
+
+> **A semantic state may never be expressed in the tenant's brand colour, and never in colour
+> alone.** Brand is for identity and navigation. States come from a fixed palette that does not
+> move with the tenant, and each one is carried by a glyph as well as its colour.
+
+Five states, and the vocabulary is closed: `late` (the moment has passed — overdue, unpaid,
+over budget, monitor down) · `today` (due now; not a fault, but nobody may scroll past it) ·
+`soon` (approaching, worth knowing before it is either of the above) · `ok` (actively fine, not
+merely the absence of a problem) · `neutral` (no state — the default, and the only one that is
+not a claim). Draw one with `StateMark`, which renders the glyph so a caller cannot forget it;
+reach for `stateTextClass` / `stateChipClass` / `stateFillClass` only inside another primitive.
+
+Both halves of the rule were being broken, and for one reason: there was no palette, so every
+surface invented one. Colour therefore carried exactly one meaning across the whole product —
+**bad** — which is why the interface read as flat where it was quiet and alarming where it was
+not. There was no "this is fine", no "this needs attention but is not late", so any emphasis at
+all had to be red.
+
+Three things the fix makes concrete, each worth carrying past this file:
+
+- **Brand is not a state, and the proof is a tenant we run today.** On that instance
+  `--brand-primary` is **gold**, indistinguishable from an amber warning. My Day drew its
+  "vandaag" partition in `text-brand` directly beside a red "over tijd" — so on that tenant the
+  screen said *warning* twice in two hues, and on a blue-branded tenant it said *link*. Same
+  markup, three meanings, none of them chosen. `burn.ts` had the same bug with a longer
+  pedigree: the burn scale has been documented as "green < 75 %" for years and drew `bg-brand`,
+  so a project comfortably inside its budget was painted the colour of the step above it.
+- **Never colour alone is an accessibility requirement and a legibility one.** `late`, `today`
+  and `soon` are three adjacent hues *on purpose* — urgency is a ramp and a ramp is what a reader
+  scans — which is exactly what a red-green or monochrome reader cannot separate. The glyph is
+  the half that survives greyscale. This is the billable-marker rule ("the glyph carries the state
+  as well as the colour, because a tenant's brand may be green") stated once instead of per
+  surface.
+- **`neutral` has no glyph, and that is the rule rather than an omission.** A mark beside every
+  quiet figure is the wash-of-amber-cards mistake wearing an icon: it spends attention on the
+  rows with nothing to say, which is the one budget a state palette exists to protect. The
+  absence *is* the mark.
+
+The API's own tone vocabulary (`SummaryTile.tone`: neutral/good/warn/bad, #364) is translated at
+the seam by `stateFromTone`, never re-decided. Before that, `SummaryStrip` said `text-red-700`
+where `burn.ts` said `text-red-600` — two shades of one claim inside `lib/core` alone.
+
+### 2. A heading scale, four rungs (`core/ui/headings.ts`)
+
+| level          | size | for                                                    |
+|----------------|------|--------------------------------------------------------|
+| `PAGE_TITLE`   | 20px | what this page is. One per page, in the title band.     |
+| `BAND_HEADING` | 16px | a named group of cards. Outranks every card inside it.  |
+| `PANEL_HEADING`| 14px | one card's own title. `Card` draws this for you.        |
+| `FIELD_LABEL`  | 12px | one field's name inside a card. The quietest rung.      |
+
+**A band heading is never quieter than the panels inside it.** That inversion was live on two
+screens, and it is worth naming because it does not look like a bug in a diff — each treatment
+reads fine alone, and only the *pair* reads wrong. The client hub banded its registers in 12 px
+uppercase muted over 14 px dark panel titles: the container quieter than its own contents, on
+the one screen whose whole argument is that the two lanes differ. A task's seven section
+headings were all 12 px uppercase muted — the least legible treatment in the system, applied to
+the page's own skeleton — so the quietest text on the page was the thing that structured it.
+
+**Uppercase is not a rung.** It had been doing duty as one, and it cannot: uppercase makes text
+harder to scan, not more important. Where structure needs saying, say it a size louder. The one
+survivor is a `FIELD_LABEL` over a figure (`SummaryStrip`), where the label is genuinely
+subordinate to the number under it and wants to recede.
+
+### 3. A card is not one thing (`core/ui/Card.svelte`)
+
+| kind       | for                                    | treatment                       |
+|------------|----------------------------------------|---------------------------------|
+| `stat`     | one figure and its context             | no border, tinted fill          |
+| `panel`    | a list or a form — the working surface | today's card, and the default   |
+| `register` | occasionally consulted reference       | no fill, a hairline rule on top  |
+| `strip`    | grouped ＋ affordances                 | dashed outline, no fill         |
+
+The set is small and closed on purpose: five would be a palette to choose from, and a palette is
+how thirteen screens end up with thirteen answers. Nothing distinguished a number from a list
+before it — the dashboard drew "Uren vandaag" (one figure) and "Openstaande taken per project"
+(twelve rows) in identical boxes under identical 14 px headings, so the reader had to parse each
+card to find out what kind of thing it was.
+
+**`register` is the kind that carries the argument, and it is the only one that is not a box.**
+Reference material is correct, occasionally consulted and never news, so it gets a rule and the
+page's own ground rather than a bordered rectangle competing with the working surfaces above it.
+That is what finally makes the client hub's two lanes look like two lanes: #364 had already told
+the page which panels are which, and it drew both identically, so the distinction lived in the
+data, was announced by one muted heading, and was invisible everywhere else.
+
+`stat` needed a third surface token. A figure card carries no border — a box drawn around one
+number is chrome around a fact — so it needs a fill that separates it from *both* the page
+(`--surface`) and the panels beside it (`--surface-raised`), which the two existing tokens
+cannot do between them. `--surface-tint` is mixed from `--text` rather than stated per theme:
+the two themes disagree about which of the pair is lighter, so a hand-picked pair is two values
+to keep in step and a mix is none. It is hueless by construction, which is also what keeps it
+out of the brand's way (CLAUDE.md §7).
+
+**A contributed panel says what it is.** A company panel already declares
+`prominence: primary | register` at the API (#364); `EntityPanelSpec.prominence` is the same
+answer on the web side, where an entity panel is registered in code and has no API descriptor to
+carry it. It is declared **per host**, because the same panel is not the same thing everywhere:
+contactmomenten on a *contact* is the daily surface, and on a task it is a record of what was
+said about one piece of work. Omitting it means `primary`, so a host that has not adopted the
+distinction draws exactly what it drew before.
+
+### 4. One page skeleton (`core/ui/PageHeader.svelte`)
+
+Breadcrumb → **title band** → optional vital signs → content. The breadcrumb is already app-wide
+(the `(app)` layout derives it from the route) and the content is whatever the screen is; the
+band is the part that had been re-invented per page. `/tasks` opened with tabs, a title, filter
+chips and a toolbar; the dashboard had a bespoke flex row; the client hub had a header of its
+own — and two of the three drew a 20 px H1 against the task page's 18 px.
+
+Screens should differ in what the band *contains*, not in its shape: `leading` (a client's logo,
+a record's avatar), the title, `beside` (a status pill, a marker), `subtitle`, `actions`. The
+client hub is the proof rather than merely a consumer — its logo, its editable status pill, its
+second legal name, its responsible colleagues and its five actions all sit in the band without
+it growing a prop for any of them.
+
+Deliberately **not** in the band: breadcrumbs (the layout's), the vital-signs strip
+(`SummaryStrip`, contributed per record), and tabs or filters — those belong to the content, and
+putting them in the band is what made `/tasks` a four-storey opening. A band that grows a `tabs`
+prop has stopped being one shape.
+
+### Adopting it
+
+The primitives are in place and the four screens the issue measured are converted; the rest of
+the app is unchanged and still correct, because every default is what it already drew. Two
+things are known to still want doing and are named here rather than left to be rediscovered:
+the other six entity-panel hosts (project, contact, domain, website, invoice, quote) do not read
+`prominence` yet, and the ~200 hand-written `text-red-600 dark:text-red-400` form errors across
+the app should become one token — 19 of them omit the dark variant entirely, which is a real
+contrast bug in dark mode rather than only an inconsistency.
+
 ## Interaction patterns
 
 - **Dates are European everywhere**: displayed and typed as `dd-mm-jjjj` via the shared
@@ -770,6 +917,9 @@
   budget bar are filtered by exactly that day. A page that recomputed it in UTC landed on the
   previous day for half the year, quietly dragging last month's evening into this month's total.
 - **Budget burn has exactly one scale**, in `core/burn.ts` — green < 75 %, amber < 100 %, red ≥ 100 %.
+  The *colours* moved out again in #404 (the state palette above): `ok`/`soon`/`late`, so the
+  "green" this paragraph has promised for years is finally the drawn thing rather than the
+  `bg-brand` that was actually there. What stays in `burn.ts` is where the thresholds sit.
   The percentage is **unclamped** so an over-budget project reports a negative remainder and reads
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
@@ -988,7 +1138,8 @@
   hidden ISO / `HH:MM` value, and parse loose typing. Time is always 24-hour: never
   introduce an AM/PM surface.
 - **Budgets colour-code burn**: green < 75 %, amber < 100 %, red ≥ 100 % — the same scale
-  for task time budgets and project hour budgets (total or monthly).
+  for task time budgets and project hour budgets (total or monthly), drawn from the state
+  palette (`ok` / `soon` / `late`), never from the tenant's brand.
 - **Verlof is tracked in hours, shown with a days equivalent** (`≈ n dagen`). The divisor is the
   employee's **average scheduled working day**, computed by the API — never `contracturen ÷ 5`,
   which tells a three-day part-timer their working day is 4,8 hours long. Employees request under
@@ -1272,6 +1423,21 @@
   its ancestors is worse than a long one: those crumbs are the only link to the records they name.
   A label is clipped by width with its full text in `title`, never shortened in JavaScript, which
   would mean deciding where a name may break.
+  **A record may name its client through a collection as well as through a column** (#401). The
+  confirmation was a scalar foreign key read off the record, which modelled one-to-many and nothing
+  else — and a contact belongs to its clients through `company_contacts`, so `ContactRead` answers
+  with a *list* and carries no `company_id`. `record["company_id"]` was `undefined`, which reads as
+  "not this client" and never as "this record cannot answer the question": the trail reset, and "up"
+  from a client's contact person became the org-wide address book. That was the team's complaint,
+  and it failed on exactly one entity — a task opened from the same page kept its client, which is
+  what makes the mechanism worth fixing rather than replacing. So `PARENT_RULES` takes a column
+  *or* a collection and confirms on the first that matches. The safety property is untouched: the
+  record still decides, it is still the record's own data, and a contact of a different client
+  still refuses the crumb. This is CLAUDE.md §15's "failure mode (1) — no anchor" one layer out,
+  which is why the test sweeps every record type the row can be about against the **generated API
+  types** rather than against this paragraph: a model whose client link is indirect declares
+  `__company_horizon_clause__` on the server for the same reason, and a new detail page now has to
+  say which of the two it is.
   `tests/unit/breadcrumbs.test.ts` sweeps the real route tree and fails on any segment nothing
   names. That is the enforcement this row needs: it is rendered by the layout for every page, so a
   new screen gets one whether or not anyone thought about it, and "nobody thought about it" looked
@@ -1371,6 +1537,28 @@
     refuses is a broken control).
 
 ## Known mistakes to not repeat
+
+- **Expressing a semantic state in the tenant's brand colour** (#404). My Day drew its
+  "vandaag" partition in `text-brand` beside a red "over tijd", and `core/burn.ts` drew a
+  healthy budget in `bg-brand` beside an amber one — so on the tenant whose brand is **gold**
+  both screens said *warning* twice in two hues, and on a blue-branded tenant they said *link*.
+  Same markup, a different meaning per tenant, which is not a state at all. Brand is identity
+  and navigation; states come from `core/state.ts` and do not move. **And never colour alone**:
+  every state carries a glyph, because `late`, `today` and `soon` are three adjacent hues by
+  design and adjacent hues are what a colour-blind reader cannot separate.
+- **A container drawn quieter than its own contents** (#404). The client hub banded its
+  registers in 12 px uppercase muted over 14 px dark panel titles; a task drew all seven of its
+  section headings the same way, so the least legible treatment in the system was carrying the
+  page's skeleton. Neither looks wrong in a diff — each treatment is fine alone and only the
+  *pair* is upside down — which is exactly why the ladder is stated once in
+  `core/ui/headings.ts` rather than judged per screen. **Uppercase is not a rung**: it makes
+  text harder to scan, not more important. Say structure a size louder.
+- **One card treatment for every kind of thing on the page** (#404). Thirteen dashboard tiles,
+  eight task sections and twelve hub panels were the same white bordered box, so a single figure
+  and a twelve-row list cost the same to scroll past and the reader had to parse each one to
+  learn what it was. `Card`'s four kinds are the vocabulary; the one that carries the argument
+  is `register`, which is **not a box** — a hairline rule and the page's own ground, because
+  reference material must not compete with the work above it.
 
 - Buttons that configure org-wide behaviour placed inside a working screen (the old "save
   as team default" on the dashboard) — config goes to Settings.
@@ -1911,6 +2099,16 @@
   because routing is a web question), and where the module has no such screen — Drive's "koppel
   een map", Google Ads' connect flow live *in the panel* — the chip unfolds that card in place.
 
+  **The `emptyHref` has to lead somewhere that can act, or the fold is a deadlock** (#399). The
+  marketing chip pointed at `/companies/<id>/marketing`, which is a *dashboard*: on a client with
+  nothing linked the one screen that could attach the first source was folded away, and the chip
+  replacing it led to a screen whose only offer was "Koppel een Google-account" — for a client
+  whose SE Ranking key and Rank Math password did not need one. Ask the question the other way
+  round before writing an `emptyHref`: *if this client has nothing here, does that URL let them
+  make the first one?* If the answer is no, drop it and let the chip unfold the card, which is
+  what the mechanism was built for. Marketing has none now, and the tab grew a ＋ of its own —
+  because a screen the chip *could* legitimately point at is one that can act.
+
   **A panel declares its own weight, because only the module knows.** `prominence` is a working
   surface (something the reader acts on today) or a **register** (correct, occasionally consulted,
   never news); `size` is full or half. How the page then fits them together is the entry below.
@@ -1953,11 +2151,13 @@
     belongs in the primary lane (pairs and solos) or wants a viewport-anchored popover.
 
   Every kind collapses to one column below `lg`, so this is a desktop rule and a phone still gets
-  one stack. The same complaint reached the vital-signs strip, where the *count* is what varies: a
-  fixed five-column grid fits five tiles and nothing else, so a client with no invoices contributed
-  four and the strip stopped 232 px short of the right edge, the empty slot reading as a tile that
-  had failed to load. "Nothing is a number" (above) is what makes the count variable in the first
-  place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
+  one stack. **The block rule itself did not survive**: the entry below replaces it, because a run
+  boundary that moves with this client's empty panels is a layout per client. What survives is the
+  reading of the two declarations, and the vital-signs half of the same complaint — where the
+  *count* is what varies: a fixed five-column grid fits five tiles and nothing else, so a client
+  with no invoices contributed four and the strip stopped 232 px short of the right edge, the empty
+  slot reading as a tile that had failed to load. "Nothing is a number" (above) is what makes the
+  count variable in the first place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
   count nobody promised — one row at `lg` and up, whole rows below it.
 
 - **A layout whose widths depend on which neighbours are empty is a layout per client** (#403,
@@ -2076,3 +2276,37 @@
   port itself. Those two are the app's only full-screen scroll ports; everything else that scrolls
   is a `max-h-*` list inside a card.
 
+
+- **A field that is required is asked for at every door, and a screen may not offer a way to
+  empty it** (#392, tasks' deadline). *"Binnen het CRM moet altijd een datum bekend zijn, zodat de
+  taak zichtbaar blijft en niet kan worden overgeslagen."* An undated task is not merely
+  unscheduled: it is missing from `?due=overdue`, from the Agenda's deadline feed and from both
+  dashboards' overdue counts, so it is invisible to the whole urgency vocabulary — which is why
+  the answer is a required field rather than a warning. Four rules generalise past this one field.
+  **Every create surface asks, and there is one place that makes them.** The task board's ＋, the
+  client header, the client's Taken panel, a project's to-do list and every picker's inline-create
+  are five doors onto one write, and a rule enforced at four of them is a rule with a hole in it —
+  so the deadline joined the title inside `taskCreateBody` (#391), which refuses without either
+  rather than inventing one, and `TaskQuickCreate` and the dictation sheet mark both fields
+  `required` so the refusal is met before the round trip. The API is still the boundary
+  (`TaskCreate.due_date` is required; `TaskUpdate` refuses an explicit `null`).
+  **A deadline is not a calendar booking.** `Vervaldatum` and `Geplande blokken` sit in one
+  Planning section (#335) and only the first is mandatory: setting one never implies the other,
+  and planning the work into the agenda stays optional.
+  **`required` on a control the form does not own validates nothing, and it looks identical to
+  one that does.** A control is a candidate for constraint validation only while it is associated
+  with the form being submitted, so on the single-save detail layouts — where the field sits
+  outside `<form id="task-edit">` and joins it by `form=` — `required` on `DateInput`'s visible
+  box was inert, and putting it on the hidden input beside it would have been inert too (a hidden
+  control is barred from validation by definition). The visible box now carries `form={formId}`
+  as well; it has no `name`, so it submits nothing and only validates. Invisible in review, and
+  invisible in use until somebody saves an empty field: check `form.checkValidity()` in a browser
+  rather than reading the attribute. Its sibling: **a required field's picker loses its
+  "Wissen"** — a control that empties a box the very next submit refuses is #253's control that
+  can only refuse, and drawing it teaches the user a gesture the form will punish.
+  **The rows written before the rule are a design problem, not a migration problem.** The column
+  stays nullable for a release (expand/contract, docs/WORKFLOW.md), so an instance upgrades
+  carrying tasks the new rule forbids: they open, they render and they save in every field, the
+  edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
+  edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
+  have been the first thing an agency met after upgrading.

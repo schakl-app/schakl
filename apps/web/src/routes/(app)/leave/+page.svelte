@@ -6,6 +6,7 @@
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
@@ -183,7 +184,7 @@
   // when it would not need approval to undo (an approver, or the owner's own future self-service
   // leave); otherwise the API would 403 and offering it is a dead end.
   const canApprove = $derived(can(page.data.user, "leave.request.approve"));
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = orgToday();
 
   function canEdit(request: Request): boolean {
     return request.status === "pending" || request.status === "approved";

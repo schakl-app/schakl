@@ -3,6 +3,9 @@
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { formatMinutes } from "$lib/modules/time/format";
+  import Card from "$lib/core/ui/Card.svelte";
+  import { stateTextClass } from "$lib/core/state";
+  import { stateIcon } from "$lib/core/ui/state-icons";
 
   let { data }: { data: unknown } = $props();
 
@@ -16,13 +19,18 @@
   const billablePct = $derived(
     stats && stats.minutes > 0 ? Math.round((stats.billable_minutes / stats.minutes) * 100) : 0,
   );
+  /* Hours nobody has approved yet are `soon` — worth knowing before they are a problem — and they
+     carry the glyph, because a lone amber figure says nothing at all to a reader who cannot
+     separate it from the black one beside it (#404). Nothing to approve draws no mark. */
+  const OpenMark = $derived(stats?.open_minutes ? stateIcon("soon") : null);
 </script>
 
-<div class="rounded-xl border border-border bg-surface-raised p-5">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-text">{t("dashboard.team_month.title")}</h2>
-    <a href="/overview" class="text-xs text-brand hover:underline">{t("nav.overview")}</a>
-  </div>
+<Card
+  kind="panel"
+  title={t("dashboard.team_month.title")}
+  href="/overview"
+  linkLabel={t("nav.overview")}
+>
   {#if !stats}
     <p class="text-sm text-text-muted">{t("dashboard.team_month.empty")}</p>
   {:else}
@@ -51,13 +59,14 @@
       <a href="/overview?status=open" class="group">
         <span class="block text-xs text-text-muted">{t("time.overview.total.open")}</span>
         <span
-          class="block text-lg font-semibold tabular-nums group-hover:text-brand {stats.open_minutes
-            ? 'text-amber-600 dark:text-amber-400'
+          class="flex items-center gap-1.5 text-lg font-semibold tabular-nums group-hover:text-brand {stats.open_minutes
+            ? stateTextClass('soon')
             : 'text-text'}"
         >
+          {#if OpenMark}<OpenMark size={15} aria-hidden="true" class="shrink-0" />{/if}
           {formatMinutes(stats.open_minutes)}
         </span>
       </a>
     </div>
   {/if}
-</div>
+</Card>

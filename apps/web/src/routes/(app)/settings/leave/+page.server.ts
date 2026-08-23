@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
+import { orgYear } from "$lib/core/today";
 import type { LeaveCalendarDisplay } from "$lib/modules/leave/format";
 import { defaultSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
@@ -19,7 +20,7 @@ function parseSchedule(raw: FormDataEntryValue | null): WorkSchedule | null {
 }
 
 function currentYear(): number {
-  return new Date().getUTCFullYear();
+  return orgYear();
 }
 
 function parseYear(raw: string | null): number {

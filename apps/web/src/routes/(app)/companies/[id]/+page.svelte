@@ -44,6 +44,10 @@
   import { filedrop } from "$lib/core/ui/filedrop";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
+  import Card from "$lib/core/ui/Card.svelte";
+  import { BAND_HEADING } from "$lib/core/ui/headings";
+  import PageHeader from "$lib/core/ui/PageHeader.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
   import SummaryStrip from "$lib/core/ui/SummaryStrip.svelte";
   import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
@@ -135,6 +139,11 @@
   // a panel is drawn at the width it declared, into a lane it was dealt over the *full* ordered
   // list, so a client with nothing in a panel sees the rest exactly where a client who has
   // everything sees them.
+  //
+  // It replaced the run-of-blocks arrangement #404 drew (solo / pair / stack): each block was
+  // hole-free on its own and the *set* of blocks moved from client to client, because a run
+  // boundary depends on which neighbours this client happens to have nothing in. A lane is
+  // allowed to end lower than the one beside it; a panel is not allowed to change width.
   const primaryRows = $derived(
     arrangePanels(
       data.panels.filter((p: Panel) => p.prominence === "primary"),
@@ -147,6 +156,16 @@
       unfolded,
     ),
   );
+
+  /**
+   * What a lane draws its cards as (#404). The pair is stated here rather than derived from the
+   * heading level inside the card snippet: "these are h3s" and "these are references" are two
+   * facts that happen to coincide today, and a page that infers one from the other is a page
+   * where changing the outline silently restyles half the hub.
+   */
+  type LaneKind = { kind: "panel" | "register"; heading: 2 | 3 };
+  const WORKING_LANE: LaneKind = { kind: "panel", heading: 2 };
+  const REGISTER_LANE: LaneKind = { kind: "register", heading: 3 };
 
   // ---- tier 1: the status pill edits in place ---------------------------- //
   // Most real edits are one field, and none of them should cost a dialog, a scroll position and
@@ -190,179 +209,185 @@
   <title>{pageTitle(company.name)}</title>
 </svelte:head>
 
-<div class="mb-5">
-  <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
-    <div class="min-w-0">
-      <div class="flex flex-wrap items-center gap-3">
-        {#if company.logo_file_id}
-          <!-- The client's own logo (#196) — client data, never tenant branding. -->
-          <img
-            src={`/api/v1/companies/${company.id}/logo`}
-            alt=""
-            class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
-          />
-        {/if}
-        <h1 class="text-xl font-semibold text-text">{company.name}</h1>
-
-        {#if editingStatus}
-          <!-- One field, changed where it is shown, PATCHed on pick. -->
-          <form
-            method="POST"
-            action="?/update"
-            class="w-44"
-            bind:this={statusForm}
-            use:enhance={busy.wrap("status", () => async ({ update, result }) => {
-              editingStatus = false;
-              // `keep`: this edits a value that already exists, and there is nothing to reset to.
-              await update({ reset: false });
-              if (result.type === "success") toastSuccess(t("companies.status_saved"));
-            })}
-          >
-            <Combobox
-              items={COMPANY_STATUSES.map((option) => ({
-                value: option,
-                label: t(`companies.status.${option}`),
-              }))}
-              name="status"
-              id="company-status-inline"
-              ariaLabel={t("companies.field.status")}
-              bind:value={statusValue}
-              allowEmpty={false}
-              listClass="w-56"
-              onselect={submitStatus}
-            />
-          </form>
-        {:else}
-          <svelte:element
-            this={canWrite ? "button" : "span"}
-            type={canWrite ? "button" : undefined}
-            onclick={canWrite ? () => (editingStatus = true) : undefined}
-            title={canWrite ? t("companies.field.status") : undefined}
-            class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
-              company.status,
-            )} {canWrite ? 'cursor-pointer hover:ring-1 hover:ring-current/40' : ''}"
-          >
-            {t(`companies.status.${company.status}`)}
-          </svelte:element>
-        {/if}
-      </div>
-      <!-- The name a document is addressed to, and only when it is not the one above it: the
+<!-- The title band (#404): the same shape the dashboard and the task board now open with, and
+     the hub is the screen that proves the shape is right rather than merely shared — the logo,
+     the editable status pill, the second name, the responsible colleagues and five actions all
+     sit in it without the band growing a prop for any of them. -->
+<PageHeader title={company.name} class="mb-5">
+  {#snippet leading()}
+    {#if company.logo_file_id}
+      <!-- The client's own logo (#196) — client data, never tenant branding. -->
+      <img
+        src={`/api/v1/companies/${company.id}/logo`}
+        alt=""
+        class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
+      />
+    {/if}
+  {/snippet}
+  {#snippet beside()}
+    {#if editingStatus}
+      <!-- One field, changed where it is shown, PATCHed on pick. -->
+      <form
+        method="POST"
+        action="?/update"
+        class="w-44"
+        bind:this={statusForm}
+        use:enhance={busy.wrap("status", () => async ({ update, result }) => {
+          editingStatus = false;
+          // `keep`: this edits a value that already exists, and there is nothing to reset to.
+          await update({ reset: false });
+          if (result.type === "success") toastSuccess(t("companies.status_saved"));
+        })}
+      >
+        <Combobox
+          items={COMPANY_STATUSES.map((option) => ({
+            value: option,
+            label: t(`companies.status.${option}`),
+          }))}
+          name="status"
+          id="company-status-inline"
+          ariaLabel={t("companies.field.status")}
+          bind:value={statusValue}
+          allowEmpty={false}
+          listClass="w-56"
+          onselect={submitStatus}
+        />
+      </form>
+    {:else}
+      <svelte:element
+        this={canWrite ? "button" : "span"}
+        type={canWrite ? "button" : undefined}
+        onclick={canWrite ? () => (editingStatus = true) : undefined}
+        title={canWrite ? t("companies.field.status") : undefined}
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
+          company.status,
+        )} {canWrite ? 'cursor-pointer hover:ring-1 hover:ring-current/40' : ''}"
+      >
+        {t(`companies.status.${company.status}`)}
+      </svelte:element>
+    {/if}
+  {/snippet}
+  {#snippet subtitle()}
+    <!-- The name a document is addressed to, and only when it is not the one above it: the
            API sends `null` for "the label is also the legal name", so most clients draw nothing
            here and the header stays one name long. Where it *does* differ, this is the one
            screen that has to say so — the invoice this client gets will be headed with a name
            the H1 does not contain, and nobody should have to open the billing card to discover
            that. Muted and prefixed, so it reads as a fact about the record rather than as a
            second title. -->
-      {#if legalName}
-        <p class="mt-1 text-sm text-text-muted">
-          {t("companies.legal_name")}: <span class="text-text">{legalName}</span>
-        </p>
-      {/if}
-      {#if company.website}
-        <a
-          href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
-        >
-      {/if}
-      {#if assignees.length > 0}
-        <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
-          <span>{t("companies.field.responsible")}:</span>
-          <Assignees {assignees} members={data.members} max={6} />
-        </p>
-      {/if}
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      {#if canLogInteraction}
-        <button
-          type="button"
-          onclick={() => (showLogInteraction = true)}
-          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-        >
-          {t("interactions.add")}
-        </button>
-      {/if}
-      {#if can(page.data.user, "tasks.task.create")}
-        <!-- Ask for the name first (#391), then create-then-edit for the rest (#230): the shared
+    {#if legalName}
+      <p class="mt-1 text-sm text-text-muted">
+        {t("companies.legal_name")}: <span class="text-text">{legalName}</span>
+      </p>
+    {/if}
+    {#if company.website}
+      <a
+        href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
+      >
+    {/if}
+    {#if assignees.length > 0}
+      <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        <span>{t("companies.field.responsible")}:</span>
+        <Assignees {assignees} members={data.members} max={6} />
+      </p>
+    {/if}
+  {/snippet}
+  {#snippet actions()}
+    {#if canLogInteraction}
+      <button
+        type="button"
+        onclick={() => (showLogInteraction = true)}
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      >
+        {t("interactions.add")}
+      </button>
+    {/if}
+    {#if can(page.data.user, "tasks.task.create")}
+      <!-- Ask for the name first (#391), then create-then-edit for the rest (#230): the shared
              dialog posts a named task pre-linked to this client and lands on its detail page in
              edit mode. -->
-        <Button
-          variant="secondary"
-          size="sm"
-          type="button"
-          disabled={busy.active}
-          onclick={() => (creatingTask = true)}
-        >
-          {t("companies.actions.new_task")}
-        </Button>
-      {/if}
-      {#if can(page.data.user, "time.entry.write")}
-        <!-- Carry the client through: a bare /time landed on the entry form with whatever
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        disabled={busy.active}
+        onclick={() => (creatingTask = true)}
+      >
+        {t("companies.actions.new_task")}
+      </Button>
+    {/if}
+    {#if can(page.data.user, "time.entry.write")}
+      <!-- Carry the client through: a bare /time landed on the entry form with whatever
              client was last used, so the one you were looking at was the one thing the trip
              lost. Same deep link the time panel below already uses. -->
-        <a
-          href={`/time?company=${company.id}`}
-          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-        >
-          {t("companies.actions.log_time")}
-        </a>
-      {/if}
-      {#if hasReporting}
-        <CompanyAIActions companyId={company.id} companyName={company.name} />
-      {/if}
-      {#if canWrite || canDelete || canApplyTemplate}
-        <ActionsMenu
-          items={[
-            ...(canWrite
-              ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
-              : []),
-            ...(canApplyTemplate
-              ? [
-                  {
-                    label: t("companies.actions.apply_template_menu"),
-                    icon: ListChecks,
-                    onclick: () => (showTemplate = true),
-                  },
-                ]
-              : []),
-            ...(canDelete
-              ? [
-                  {
-                    label: t("common.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () => (confirmDelete = true),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      {/if}
-    </div>
-  </div>
-  {#if form?.templateApplied}
-    <p class="mt-3 text-xs text-green-600 dark:text-green-400">
-      {t("companies.template_applied")}
-    </p>
-  {/if}
-</div>
+      <a
+        href={`/time?company=${company.id}`}
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      >
+        {t("companies.actions.log_time")}
+      </a>
+    {/if}
+    {#if hasReporting}
+      <CompanyAIActions companyId={company.id} companyName={company.name} />
+    {/if}
+    {#if canWrite || canDelete || canApplyTemplate}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
+            : []),
+          ...(canApplyTemplate
+            ? [
+                {
+                  label: t("companies.actions.apply_template_menu"),
+                  icon: ListChecks,
+                  onclick: () => (showTemplate = true),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
+  {/snippet}
+</PageHeader>
+
+{#if form?.templateApplied}
+  <!-- A good outcome, said in the palette's `ok` (#404) rather than in a green nobody chose:
+       this was one of two competing greens in `lib/` for the identical claim. -->
+  <StateMark state="ok" class="-mt-2 mb-4" label={t("companies.template_applied")} />
+{/if}
 
 <!-- Are we all right with this client? Five numbers, above the fold, each opening what it counted. -->
 <SummaryStrip tiles={data.summary} />
 
-{#snippet card(panel: Panel, heading: 2 | 3)}
+<!-- **The two lanes look like two lanes** (#404). #364 already told this page which panels are
+     working surfaces and which are registers, and it drew both as the identical white bordered
+     box — so the distinction existed in the data, was announced by one 12 px muted heading, and
+     was invisible everywhere else. A register is correct, occasionally consulted and never news:
+     it gets `Card kind="register"`, which is a hairline rule and the page's own ground rather
+     than a rectangle competing with the work above it. Nothing about the composition changed;
+     the page still knows the name of no module. -->
+{#snippet card(panel: Panel, lane: LaneKind)}
   {@const spec = companyPanelComponent(enabled, panel.key)}
-  <section id={`panel-${panel.key}`} class="rounded-xl border border-border bg-surface-raised p-5">
-    <!-- A panel with a control beside its title draws its own heading row (#364); everything
-         else gets the host's, so a module contributing a plain list writes no chrome. -->
-    {#if !spec?.ownsHeader}
-      {#if heading === 3}
-        <h3 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h3>
-      {:else}
-        <h2 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h2>
-      {/if}
-    {/if}
+  <Card
+    id={`panel-${panel.key}`}
+    kind={lane.kind}
+    level={lane.heading}
+    title={spec?.ownsHeader ? undefined : t(panel.title_key)}
+  >
     {#if spec}
       {@const PanelComponent = spec.component}
       <PanelComponent
@@ -381,10 +406,10 @@
           2,
         )}</pre>
     {/if}
-  </section>
+  </Card>
 {/snippet}
 
-{#snippet lane(rows: HubRow<Panel>[], heading: 2 | 3)}
+{#snippet lane(rows: HubRow<Panel>[], kind: LaneKind)}
   <!-- A column of rows: a full-width panel is its own row, a run of halves is two lanes. Both
        collapse to one column below `lg` — the lane wrappers go `display: contents` and each card
        carries its seat as a flex `order` — so a phone reads one stack in declared order and the
@@ -392,14 +417,14 @@
   <div class="flex flex-col gap-4">
     {#each rows as row (row.key)}
       {#if row.kind === "full"}
-        {@render card(row.panel, heading)}
+        {@render card(row.panel, kind)}
       {:else}
         <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
           {#each row.lanes as seats, index (index)}
             <div class="contents lg:flex lg:flex-col lg:gap-4">
               {#each seats as { panel, seat } (panel.key)}
                 <div style:order={seat}>
-                  {@render card(panel, heading)}
+                  {@render card(panel, kind)}
                 </div>
               {/each}
             </div>
@@ -411,16 +436,19 @@
 {/snippet}
 
 {#if primaryRows.length > 0}
-  {@render lane(primaryRows, 2)}
+  {@render lane(primaryRows, WORKING_LANE)}
 {/if}
 
 {#if registerRows.length > 0}
   <!-- Reference material: correct, occasionally consulted, never news. It keeps its own lane
-       and its own heading so the working surfaces above are unmistakably the foreground. -->
-  <h2 class="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-text-muted">
+       and its own heading so the working surfaces above are unmistakably the foreground.
+       The heading is `BAND_HEADING` now (#404): it used to be 12 px uppercase muted over 14 px
+       dark panel titles, which is the hierarchy the wrong way up — the container quieter than
+       its own contents, on the one screen whose whole argument is that the two lanes differ. -->
+  <h2 class="mb-3 mt-8 {BAND_HEADING}">
     {t("companies.section.registers")}
   </h2>
-  {@render lane(registerRows, 3)}
+  {@render lane(registerRows, REGISTER_LANE)}
 {/if}
 
 {#if empties.length > 0}
@@ -428,8 +456,8 @@
        ten links." A module with nothing to show earns a chip, not a heading, a border and 100 px
        — and ten ＋ actions in one row are easier to find than ten cards to scroll past, so this
        improves discoverability rather than hiding anything. -->
-  <section class="mt-8 rounded-xl border border-dashed border-border p-4">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+  <Card kind="strip" class="mt-8">
+    <h2 class={BAND_HEADING}>
       {t("companies.section.nothing_yet")}
     </h2>
     <ul class="mt-3 flex flex-wrap gap-2">
@@ -462,7 +490,7 @@
         </li>
       {/each}
     </ul>
-  </section>
+  </Card>
 {/if}
 
 {#if canApplyTemplate}

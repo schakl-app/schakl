@@ -8,7 +8,7 @@ from pwdlib import PasswordHash
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import Tenant, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, Tenant, add_membership, auth_cookie, make_tenant
 
 _password_hash = PasswordHash.recommended()
 
@@ -62,7 +62,11 @@ async def test_set_task_labels_and_list_aggregates(client_for) -> None:
     t = await make_tenant("label-set")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         l1 = (
             await c.post(
                 "/api/v1/tasks/labels", json={"name": "A", "color": "red"}, headers=headers
@@ -99,7 +103,11 @@ async def test_checklists_and_items(client_for) -> None:
     t = await make_tenant("checklist")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         checklist = (
             await c.post(
                 f"/api/v1/tasks/{task['id']}/checklists",
@@ -136,7 +144,11 @@ async def test_checklists_and_items_reorder(client_for) -> None:
     t = await make_tenant("checklist-order")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
 
         async def checklist(title: str) -> dict:
@@ -199,8 +211,16 @@ async def test_reorder_refuses_foreign_and_duplicate_ids(client_for) -> None:
     t = await make_tenant("checklist-order-guard")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        mine = (await c.post("/api/v1/tasks", json={"title": "Mine"}, headers=headers)).json()
-        other = (await c.post("/api/v1/tasks", json={"title": "Other"}, headers=headers)).json()
+        mine = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Mine"},
+            headers=headers,
+        )).json()
+        other = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Other"},
+            headers=headers,
+        )).json()
         ours = (
             await c.post(
                 f"/api/v1/tasks/{mine['id']}/checklists", json={"title": "A"}, headers=headers
@@ -259,7 +279,11 @@ async def test_duplicate_checklist(client_for) -> None:
     t = await make_tenant("checklist-dup")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         source = (
             await c.post(
                 f"/api/v1/tasks/{task['id']}/checklists",
@@ -303,7 +327,11 @@ async def test_duplicate_checklist(client_for) -> None:
         assert same_name["title"] == "Launch"
 
         # A checklist belonging to another task is a 404, not somebody else's copy.
-        other = (await c.post("/api/v1/tasks", json={"title": "Other"}, headers=headers)).json()
+        other = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Other"},
+            headers=headers,
+        )).json()
         stray = await c.post(
             f"/api/v1/tasks/{other['id']}/checklists/{source['id']}/duplicate",
             json={},
@@ -320,7 +348,11 @@ async def test_comments_permissions_and_activity(client_for) -> None:
 
     async with client_for(t.host) as c:
         task = (
-            await c.post("/api/v1/tasks", json={"title": "T"}, headers=owner_headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+                headers=owner_headers,
+            )
         ).json()
         comment = (
             await c.post(
@@ -372,7 +404,11 @@ async def test_inline_edits_and_deletes_land_in_activity(client_for) -> None:
     t = await make_tenant("inline-activity")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            headers=headers,
+        )).json()
         tid = task["id"]
 
         comment = (
@@ -425,7 +461,11 @@ async def test_subresources_tenant_isolation(client_for) -> None:
     b_headers = await auth_cookie(b.user)
 
     async with client_for(a.host) as ca:
-        task = (await ca.post("/api/v1/tasks", json={"title": "S"}, headers=a_headers)).json()
+        task = (await ca.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "S"},
+            headers=a_headers,
+        )).json()
         label = (
             await ca.post(
                 "/api/v1/tasks/labels", json={"name": "L", "color": "red"}, headers=a_headers

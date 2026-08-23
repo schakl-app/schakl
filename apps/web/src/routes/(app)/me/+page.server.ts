@@ -4,6 +4,7 @@ import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { orgYear } from "$lib/core/today";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async (event) => {
     leaveEnabled
       ? // #265: combined per-group balances — one "Vakantieverlof" figure, not two vacation rows.
         api.GET("/api/v1/leave/balance/groups", {
-          params: { query: { user_id: userId, year: new Date().getFullYear() } },
+          params: { query: { user_id: userId, year: orgYear() } },
         })
       : Promise.resolve({ data: null }),
     leaveEnabled

@@ -255,3 +255,4 @@ export function weekdayNames(): string[] {
   const formatter = fmt({ weekday: "long", timeZone: "UTC" });
   return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(Date.UTC(2024, 0, 1 + i))));
 }
+

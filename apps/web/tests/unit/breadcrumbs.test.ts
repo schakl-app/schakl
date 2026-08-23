@@ -25,8 +25,11 @@ import {
   isParentOf,
   literalLabelKey,
   pageRecord,
+  parentRules,
+  RECORD_TYPES,
   routeParamNames,
   type CrumbLink,
+  type ParentRule,
 } from "../../src/lib/core/breadcrumb-labels.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -163,4 +166,132 @@ describe("a trail is drawn only over a link the record confirms", () => {
     const invoice = pageRecord({ invoice: { id: "i1", number: "2026-001" } }, echo)!;
     assert.equal(isParentOf(site, invoice), false);
   });
+});
+
+describe("a client is confirmed through a collection as well as through a column", () => {
+  // The bug (#401): a contact belongs to its clients through `company_contacts`, so `ContactRead`
+  // answers with a list and carries no `company_id`. Every other record confirmed its client from
+  // a column, so the mechanism looked complete and failed on exactly one entity — the crumb row
+  // reset and "up" from a client's contact person became the org-wide address book.
+  const marieke = (companies: { company_id: string }[]) =>
+    pageRecord({ contact: { id: "k1", first_name: "Marieke", companies } }, echo)!;
+
+  test("a contact opened from one of its own clients keeps the client", () => {
+    assert.equal(isParentOf(acme, marieke([{ company_id: "c1" }])), true);
+  });
+
+  test("a contact of several clients keeps the one you came from", () => {
+    const record = marieke([{ company_id: "c7" }, { company_id: "c1" }]);
+    assert.equal(isParentOf(acme, record), true);
+  });
+
+  test("a contact opened from someone else's client does not", () => {
+    assert.equal(isParentOf(acme, marieke([{ company_id: "c7" }])), false);
+  });
+
+  test("a contact attached to nobody does not", () => {
+    assert.equal(isParentOf(acme, marieke([])), false);
+  });
+
+  test("a collection rule only ever confirms its own ancestor type", () => {
+    // `companies` says nothing about the project you happened to walk through a moment ago.
+    assert.equal(isParentOf(site, marieke([{ company_id: "c1" }])), false);
+  });
+});
+
+/**
+ * The third half: every record the crumb row can be about is asked whether it *can* confirm a
+ * client, against the generated API types rather than against anybody's memory (#401).
+ *
+ * This is CLAUDE.md §15's "failure mode (1) — no anchor" one layer out. A model whose client link
+ * is indirect declares `__company_horizon_clause__` on the server for exactly that reason; the
+ * trail needs the matching rule, and the way that went wrong was invisible — `record["company_id"]`
+ * on a record that has no such column is `undefined`, which reads as "not this client" and never
+ * as "this record cannot answer the question".
+ *
+ * A new detail page therefore has to be listed here: either with the endpoint whose response the
+ * sweep checks, or with a stated reason why no client is involved at all.
+ */
+const DETAIL_ENDPOINT: Record<string, string | null> = {
+  // The client itself — an ancestor, never a child of one.
+  company: null,
+  contact: "/api/v1/contacts/{contact_id}",
+  project: "/api/v1/projects/{project_id}",
+  task: "/api/v1/tasks/{task_id}",
+  domain: "/api/v1/domains/{domain_id}",
+  website: "/api/v1/websites/{website_id}",
+  invoice: "/api/v1/invoicing/invoices/{invoice_id}",
+  quote: "/api/v1/invoicing/quotes/{quote_id}",
+  report: "/api/v1/reporting/reports/{report_id}",
+  ads_account: "/api/v1/google-ads/accounts/{account_id}",
+  // Org-wide or instance-level: no client hub leads here, so no client crumb to confirm.
+  org: null,
+  automation_rule: null,
+  role: null,
+};
+
+const SCHEMA = readFileSync(join(here, "../../src/lib/core/api/schema.d.ts"), "utf8");
+
+/** The block of a named `interface`-level entry, matched by its own indentation. */
+function block(indent: number, name: string, within = SCHEMA): string | null {
+  const pad = " ".repeat(indent);
+  const start = within.indexOf(`\n${pad}${name}: {\n`);
+  if (start < 0) return null;
+  const end = within.indexOf(`\n${pad}};`, start);
+  return end < 0 ? null : within.slice(start, end);
+}
+
+/** The schema name a `GET <path>` answers with, walked path → operation → 200 response. */
+function responseSchema(path: string): string | null {
+  const pathBlock = block(4, JSON.stringify(path));
+  const operation = pathBlock?.match(/\n {8}get: operations\["([^"]+)"\]/)?.[1];
+  if (!operation) return null;
+  const opBlock = block(4, operation);
+  return opBlock?.match(/200: \{[\s\S]*?components\["schemas"\]\["(\w+)"\]/)?.[1] ?? null;
+}
+
+/** One property line of a schema, at the single indentation its own properties sit on. */
+function property(schema: string, name: string): string | null {
+  const body = block(8, schema);
+  const line = body?.match(new RegExp(`^ {12}${name}\\??: (.+)$`, "m"))?.[1];
+  return line ?? null;
+}
+
+/** Whether a record answering with this schema could ever satisfy the rule. */
+function satisfiable(rule: ParentRule, schema: string): boolean {
+  if (!("collection" in rule)) return property(schema, rule.fk) !== null;
+  const item = property(schema, rule.collection)?.match(
+    /components\["schemas"\]\["(\w+)"\]\[\]/,
+  )?.[1];
+  return Boolean(item && property(item, rule.fk) !== null);
+}
+
+describe("every record the crumb row can be about can confirm its client", () => {
+  test("the sweep can read the generated schema", () => {
+    // A green run over an unparseable file would assert nothing at all.
+    assert.equal(responseSchema("/api/v1/contacts/{contact_id}"), "ContactRead");
+    assert.ok(property("ContactRead", "companies"), "ContactRead has no companies list");
+    assert.equal(property("ContactRead", "company_id"), null);
+  });
+
+  for (const type of RECORD_TYPES) {
+    test(type, () => {
+      assert.ok(
+        type in DETAIL_ENDPOINT,
+        `"${type}" is a record the crumb row can be about and nothing says whether it hangs off ` +
+          "a client. Add it to DETAIL_ENDPOINT with its detail endpoint, or with null and a " +
+          "comment saying why no client is involved.",
+      );
+      const path = DETAIL_ENDPOINT[type];
+      if (!path) return;
+      const schema = responseSchema(path);
+      assert.ok(schema, `no 200 response schema found for GET ${path}`);
+      assert.ok(
+        parentRules("company").some((rule) => satisfiable(rule, schema!)),
+        `${schema} (GET ${path}) names its client in no way PARENT_RULES.company can read, so a ` +
+          `${type} opened from a client's page would drop the client from the crumb row. Either ` +
+          "the API owes it a company reference, or the trail owes it a rule (#401).",
+      );
+    });
+  }
 });

@@ -14,6 +14,7 @@
 </script>
 
 <DashboardWidgetCard
+  kind="stat"
   title={t("dashboard.widget.invoicing.quotes_open")}
   href="/quotes"
   linkLabel={t("invoicing.quotes")}

@@ -18,7 +18,7 @@
  */
 import { fmtMonthYear } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
-import { getTimeZone } from "$lib/core/timezone";
+import { orgToday } from "$lib/core/today";
 
 import { monthTokens, quarterTokens } from "./period-tokens";
 
@@ -42,13 +42,7 @@ const _quarterLabel = (year: number, quarter: number): string =>
  * lives, which is the whole reason this reads the org zone instead of `new Date().getMonth()`.
  */
 export function anchorMonth(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: getTimeZone(),
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return parts; // en-CA formats as YYYY-MM-DD
+  return orgToday();
 }
 
 /** The named months to offer, newest first, starting with the month `anchor` falls in. */
