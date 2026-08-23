@@ -608,6 +608,8 @@
   "tasks.assign_to_me": "Aan mij toewijzen",
   "tasks.toggle_done": "Gereed markeren",
   "tasks.overdue_count": "{count} over tijd",
+  "tasks.due_today_count": "{count} vandaag",
+  "tasks.due_week_count": "{count} deze week",
   "tasks.search_placeholder": "Taken zoeken…",
   "settings.ai.feature_task_assist": "Taak inspreken",
   "tasks.dictate.open": "Inspreken",

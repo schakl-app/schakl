@@ -608,6 +608,8 @@
   "tasks.assign_to_me": "Assign to me",
   "tasks.toggle_done": "Toggle done",
   "tasks.overdue_count": "{count} overdue",
+  "tasks.due_today_count": "{count} today",
+  "tasks.due_week_count": "{count} this week",
   "tasks.search_placeholder": "Search tasks…",
   "settings.ai.feature_task_assist": "Dictate a task",
   "tasks.dictate.open": "Dictate",

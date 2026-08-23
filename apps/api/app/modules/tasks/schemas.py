@@ -377,7 +377,14 @@ class DashboardTaskGroup(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     count: int
+    # The urgency partition (#398). A count says how *much* work a client is carrying and
+    # nothing about whether any of it is late, so the tile that ranked on it put five
+    # comfortable tasks above one that was due last Tuesday. These three are disjoint and each
+    # is exactly what its ``?due=`` chip shows, so every figure opens the list it counted;
+    # ``count`` stays, because "how much is there" is still a question, just not the first one.
     overdue: int
+    due_today: int = 0
+    due_week: int = 0
 
 
 class DashboardTaskItem(BaseModel):
@@ -398,11 +405,17 @@ class DashboardTaskItem(BaseModel):
 
 
 class DashboardTaskGroups(BaseModel):
-    """The tile's page **and** how many groups exist behind it (#407).
+    """The tile's page **and** how many groups exist behind it (#407, #398).
 
     The tile used to render every group a GROUP BY produced — an agency running eighty live
     projects got eighty rows on their My Day. A page needs a size, and a size needs a number
     beside it or the reader cannot tell the whole answer from the first screen of one.
+
+    ``total`` counts the **groups**, not the tasks — it is what "en nog 7" is drawn from — and
+    it rides on the same grouped query as the rows, so saying what is not shown costs no second
+    read. ``items`` rather than ``groups`` because every capped dashboard read answers the same
+    shape (:class:`DashboardMineSummary`, the project budgets tile); one envelope the widgets
+    share is what keeps a reader from having to remember which key this particular tile used.
     """
 
     items: list[DashboardTaskGroup]

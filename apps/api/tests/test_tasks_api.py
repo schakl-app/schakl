@@ -169,21 +169,25 @@ async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_fo
         response = await c.get("/api/v1/tasks/dashboard-groups", headers=headers)
         assert response.status_code == 200
         # A page of groups plus how many exist (#407): this GROUP BY had no LIMIT, and the tile
-        # rendered every row it produced.
-        assert response.json()["total"] == 1
-        assert response.json()["items"] == [
-            {
-                "entity_type": "project",
-                "entity_id": project["id"],
-                "label": "Grouped Project",
-                # A project row names its client too: two clients may each run a "Website", and
-                # the tile drew them as two identical rows (issue #15).
-                "company_id": company["id"],
-                "company_name": "Grouped Co",
-                "count": 1,
-                "overdue": 1,
-            }
-        ]
+        # rendered every row it produced. The four figures are #398's urgency partition.
+        assert response.json() == {
+            "items": [
+                {
+                    "entity_type": "project",
+                    "entity_id": project["id"],
+                    "label": "Grouped Project",
+                    # A project row names its client too: two clients may each run a "Website",
+                    # and the tile drew them as two identical rows (issue #15).
+                    "company_id": company["id"],
+                    "company_name": "Grouped Co",
+                    "count": 1,
+                    "overdue": 1,
+                    "due_today": 0,
+                    "due_week": 0,
+                }
+            ],
+            "total": 1,
+        }
 
 
 async def test_dashboard_group_without_client_or_project_is_addressable(client_for) -> None:
@@ -597,3 +601,152 @@ async def test_tasks_tenant_isolation(client_for) -> None:
         assert (
             await cb.get(f"/api/v1/tasks/{a_task_id}", headers=b_headers)
         ).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# The tile ranks by urgency, not by volume (#398)
+# --------------------------------------------------------------------------- #
+async def _group_task(c, headers, *, title, company_id, due) -> None:
+    res = await c.post(
+        "/api/v1/tasks",
+        json={"title": title, "company_id": company_id, "due_date": due},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+
+
+async def test_dashboard_groups_rank_by_urgency_and_count_each_bucket(
+    client_for, count_queries
+) -> None:
+    """A client with something late outranks a client with five comfortable tasks (#398).
+
+    The complaint the team wrote is that a bare count says nothing about urgency, and the tile
+    was *ordered* on that bare count - so the one row carrying an overdue task sat at position
+    eleven, below six rows with nothing late on them at all.
+    """
+    t = await make_tenant("task-groups-urgency")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    async with client_for(t.host) as c:
+        busy = (
+            await c.post("/api/v1/companies", json={"name": "Bulk BV"}, headers=headers)
+        ).json()
+        late = (
+            await c.post("/api/v1/companies", json={"name": "Achterstand BV"}, headers=headers)
+        ).json()
+        soon = (
+            await c.post("/api/v1/companies", json={"name": "Vandaag BV"}, headers=headers)
+        ).json()
+
+        # Five comfortable tasks: the row that used to be first.
+        for n in range(5):
+            await _group_task(
+                c, headers, title=f"Rustig {n}", company_id=busy["id"], due=FAR_FUTURE_DUE
+            )
+        # One task, due last Tuesday: the row that used to be eleventh.
+        await _group_task(
+            c,
+            headers,
+            title="Te laat",
+            company_id=late["id"],
+            due=(today - timedelta(days=6)).isoformat(),
+        )
+        # One today plus one inside the week: second, above volume and below lateness.
+        await _group_task(
+            c, headers, title="Vandaag", company_id=soon["id"], due=today.isoformat()
+        )
+        await _group_task(
+            c,
+            headers,
+            title="Deze week",
+            company_id=soon["id"],
+            due=(today + timedelta(days=3)).isoformat(),
+        )
+
+        # One grouped query for the whole tile, four aggregates and the group total included
+        # (docs/PERFORMANCE.md - a budget test, because the shape is invisible in the JSON).
+        with count_queries() as counted:
+            res = await c.get("/api/v1/tasks/dashboard-groups", headers=headers)
+        assert res.status_code == 200
+        assert len(counted.matching("from tasks")) == 1
+
+        body = res.json()
+        rows = body["items"]
+        assert [row["label"] for row in rows] == ["Achterstand BV", "Vandaag BV", "Bulk BV"]
+        assert body["total"] == 3
+
+        by_name = {row["label"]: row for row in rows}
+        assert (by_name["Achterstand BV"]["overdue"], by_name["Achterstand BV"]["count"]) == (1, 1)
+        assert by_name["Vandaag BV"]["due_today"] == 1
+        assert by_name["Vandaag BV"]["due_week"] == 1
+        assert by_name["Vandaag BV"]["overdue"] == 0
+        # Far-future work is in none of the three buckets: a row with nothing urgent on it
+        # draws no counters at all, which is what keeps the tile scannable.
+        assert by_name["Bulk BV"]["count"] == 5
+        assert (by_name["Bulk BV"]["overdue"], by_name["Bulk BV"]["due_today"]) == (0, 0)
+        assert by_name["Bulk BV"]["due_week"] == 0
+
+
+async def test_every_dashboard_counter_opens_exactly_what_it_counted(client_for) -> None:
+    """docs/UX.md principle 7, made literal: the four figures and their four lists agree.
+
+    The three buckets are a *partition*, which is why ``?due=week`` is the seven days after
+    today rather than including it - a counter beside "Vandaag" that opened a superset of it
+    would be a figure the reader cannot take apart.
+    """
+    t = await make_tenant("task-groups-links")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        for title, due in (
+            ("Te laat", today - timedelta(days=1)),
+            ("Vandaag", today),
+            ("Overmorgen", today + timedelta(days=2)),
+            ("Laatste dag", today + timedelta(days=7)),
+            ("Net erbuiten", today + timedelta(days=8)),
+        ):
+            await _group_task(
+                c, headers, title=title, company_id=company["id"], due=due.isoformat()
+            )
+
+        row = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["items"][0]
+        assert (row["overdue"], row["due_today"], row["due_week"], row["count"]) == (1, 1, 2, 5)
+
+        base = f"/api/v1/tasks?company_id={company['id']}"
+        for bucket, due in (("overdue", "overdue"), ("due_today", "today"), ("due_week", "week")):
+            listed = await c.get(f"{base}&due={due}", headers=headers)
+            assert listed.status_code == 200, listed.text
+            assert listed.json()["total"] == row[bucket], due
+        assert (await c.get(base, headers=headers)).json()["total"] == row["count"]
+
+        # The eighth day is outside the week on purpose, and today is outside it too.
+        week = await c.get(f"{base}&due=week", headers=headers)
+        assert sorted(item["title"] for item in week.json()["items"]) == [
+            "Laatste dag",
+            "Overmorgen",
+        ]
+
+
+async def test_dashboard_groups_are_capped_and_say_how_many_are_not_shown(client_for) -> None:
+    """A tile listing every project an agency runs is a scroll, not a summary (CLAUDE.md §17)."""
+    t = await make_tenant("task-groups-cap")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        for n in range(12):
+            company = (
+                await c.post(
+                    "/api/v1/companies", json={"name": f"Klant {n:02d}"}, headers=headers
+                )
+            ).json()
+            await _group_task(
+                c, headers, title=f"Werk {n}", company_id=company["id"], due=FAR_FUTURE_DUE
+            )
+
+        body = (await c.get("/api/v1/tasks/dashboard-groups?limit=5", headers=headers)).json()
+        assert len(body["items"]) == 5
+        # Not "5": the remainder is what the tile has to be able to say out loud, and a short
+        # list that cannot is one that reads as complete.
+        assert body["total"] == 12

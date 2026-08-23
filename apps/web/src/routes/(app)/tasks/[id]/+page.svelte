@@ -915,12 +915,28 @@
                     label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
                     icon: Pencil,
                     onclick: () => {
+                      // "Klaar" is an assertion that the work is done, so it commits it (#409).
+                      // Flipping the flag was a second Annuleren under the opposite word: the
+                      // page left edit mode, the header showed the stored title again, and
+                      // nothing said the save had not happened — the kebab sits at the top of a
+                      // whole-page edit surface whose one save is at the bottom, so reaching for
+                      // the control nearest the field you just changed is what lost the change.
+                      // `requestSubmit` rather than `submit` so the title's `required` is checked
+                      // and `use:enhance` runs; that handler closes edit mode on success and
+                      // keeps it open on a validation failure, with the error shown.
+                      if (editMode) {
+                        if (!busy.is("update")) editForm?.requestSubmit();
+                        return;
+                      }
                       // Re-arm the relation picks so a stale pick never overrides the stored
                       // relation on a later edit session.
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
-                      editMode = !editMode;
-                      if (!editMode) clearEditIntent();
+                      // Opening only — the leaving half returned above. So this is no longer a
+                      // toggle, and the `clearEditIntent()` that used to ride on its false arm
+                      // (#402) is not dropped but relocated: the submit runs `use:enhance`, whose
+                      // handler already consumes the marker on the save that closes the mode.
+                      editMode = true;
                     },
                   },
                 ]

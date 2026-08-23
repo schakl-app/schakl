@@ -25,6 +25,18 @@
    "Klaar" is the tell — a button wearing a menu's coat, and two clicks plus a menu for the one
    act the user still wants. Both shapes live in `EditToggle` (`$lib/core/ui/`), which keeps
    drawing the menu for whatever *else* the screen put in it.
+   **And the control that ends an editing surface commits it** (#409). "Klaar" is an assertion
+   that the work is done, so a Klaar that only flips the flag is a second Annuleren wearing the
+   opposite word — and the failure is invisible at the moment it happens: the page leaves edit
+   mode, the header shows the stored title again, and nothing says a save did not occur. The user
+   finds out tomorrow, from a task that still says what it said yesterday. So an exit that
+   discards is called **Annuleren** and nothing else, and an exit that says it is finished
+   *submits* — through `requestSubmit()`, never `submit()`, so `required` is checked and the
+   surface's own `use:enhance` runs, which is what keeps a validation failure inside edit mode
+   with the error showing instead of dropping the work. It matters most where the edit surface is
+   the *whole page*: the task detail page joins title, status, dates, priority, relations,
+   visibility and planning to one `form="task-edit"` whose save is at the foot, and reaching for
+   the control nearest the field you just changed is exactly what lost the change.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -489,6 +501,28 @@ contrast bug in dark mode rather than only an inconsistency.
   `tasks.filter.unlinked` now — the same words as the chip on the list it opens, so the
   destination confirms where you landed. The only text left unlinked is empty-state copy and a
   restatement of a figure already linked beside it.
+- **A count is not an urgency, and a tile ranked on one is ranked on the wrong thing** (#398).
+  "Openstaande taken per project / klant" drew a name and a grey number, ordered by that number
+  — so a client with five comfortable tasks sat above a client with one that was due last
+  Tuesday, and on a real instance the two rows carrying something overdue landed at positions
+  **3 and 11**, the second one below six rows with nothing late on them at all. The loudest
+  thing in each row was the one figure that says nothing about whether anything is wrong. Four
+  rules, and none of them is about tasks. **A row about work says how much of it is late, due
+  today and due this week** — three `filter`\ ed counts on the query that was already grouped,
+  so it costs no round trip, which is precisely why the omission was an omission rather than a
+  trade-off. **The ordering leads on urgency and keeps volume as the tiebreak** it should always
+  have been. **The buckets are a partition, so each one opens exactly the list it counted**: the
+  three `?due=` chips are one exclusive control, and that made "Deze week" the seven days
+  *after* today rather than a superset of the "Vandaag" chip beside it — a counter whose list
+  quietly includes its neighbour's rows is a figure the reader cannot take apart (Principle 7),
+  and one constant (`TASK_WEEK_DAYS`) is what stops the tile and the list disagreeing about
+  where the week ends. **A zero draws nothing**: four zeros on a row is four facts nobody asked
+  for, and the row exists to be scanned. The states come from the palette's urgency ramp
+  (`late` / `today` / `soon`, #404), never from the tenant's brand, and the total stays last and
+  stays muted — "how much is there" is still a question, just no longer the first one. The tile
+  is **capped and says so**, because this list grows with the client book and a short list that
+  looks complete reads as "that is all of them" (CLAUDE.md §17); the group total rides in on the
+  same grouped query as a window count, so saying what is not shown costs nothing either.
 - **A tile about *when* needs a section per urgency, and the section it exists for is drawn even
   when it is empty** (#397, `$lib/modules/tasks/due.ts`). "Mijn openstaande taken" partitioned
   into three — over tijd, vandaag, and *Binnenkort*, which was everything else — so this
@@ -499,8 +533,10 @@ contrast bug in dark mode rather than only an inconsistency.
   uses the same four names with the same edges, or the two screens file one task under two
   headings and neither can explain why. Making that true meant narrowing `?due=week` to start
   *after* today — as a lone filter chip a superset of `today` is harmless, and as a section
-  heading counting 2 above a list of 3 it is not — and adding `?due=later`, which carries the
-  undated rows, because four values that do not cover the list let a tile drop rows in silence.
+  heading counting 2 above a list of 3 it is not; #398 reached that conclusion from the other
+  tile first, which is the corroboration, not a coincidence — and adding `?due=later`, which
+  carries the undated rows, because four values that do not cover the list let a tile drop rows
+  in silence.
   **The heading the tile exists for renders at zero**, with its own sentence ("Niets voor
   vandaag"): an absent heading and a zero are different claims, and a colleague could not tell
   "nothing due today" from "this tile does not do today". Every *other* section still hides when
@@ -1220,7 +1256,9 @@ contrast bug in dark mode rather than only an inconsistency.
   (#337): a detail page keeps its Opslaan/Annuleren at the foot of the form *and* an
   `EditToggle` exit at the heading — a long record scrolls its own buttons out of view — but
   never a third one folded back into the ⋯. A panel that saves each act as it happens exits
-  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses.
+  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses,
+  or with a **Klaar** that submits that same form (#409) — what it may never be is a Klaar that
+  throws the edit away, because the word promises the opposite of what it does.
 - **Native controls inherit the huisstijl** via `accent-color: var(--brand-primary)` on
   `:root` (checkboxes, radios). But `<html lang>` does **not** control how they format:
   browsers render `<input type="date">` and `<input type="time">` after the *browser/OS*
