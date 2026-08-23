@@ -3,7 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { type PickerMember } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -404,7 +404,7 @@
                 {:else}
                   {t("tasks.templates.trigger_manual")}
                 {/if}
-                · {t("tasks.templates.item_count", { count: (template.items ?? []).length })}
+                · {tn("tasks.templates.item_count", (template.items ?? []).length)}
               </p>
             </div>
             {#if canManageTemplates}

@@ -4,7 +4,7 @@
   import { page } from "$app/state";
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -252,7 +252,7 @@
      new days just moved. -->
 {#if form?.recurringAdded}
   <p class="mb-4 text-sm text-green-600 dark:text-green-400">
-    {t("leave.recurring.generated", { count: form.recurringGenerated ?? 0 })}
+    {tn("leave.recurring.generated", form.recurringGenerated ?? 0)}
   </p>
 {/if}
 

@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
@@ -9,12 +10,16 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { CONTACT_COLUMNS, CONTACTS_TABLE_ID } from "$lib/modules/contacts/columns";
+import { CONTACT_FILTERS } from "$lib/modules/contacts/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const q = event.url.searchParams.get("q") || undefined;
+  // The bar and this load read the same keys from the same place, so what the controls show and
+  // what the API was asked for cannot disagree (core/filters/types.ts).
+  const filters = readFilters(event.url, [...CONTACT_FILTERS]);
+  const q = filters.q;
 
   // The saved layout decides the sort the *server* applies — a paginated list sorted in the
   // browser sorts the wrong set. It comes from the layout load, which does not rerun on filter
@@ -23,9 +28,9 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, CONTACTS_TABLE_ID);
   const resolved = resolveColumns(CONTACT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
-  const contact_type_id = event.url.searchParams.get("type") || undefined;
+  const contact_type_id = filters.type;
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
-  const company_id = event.url.searchParams.get("company") || undefined;
+  const company_id = filters.company;
 
   const paging = resolvePaging(event.url, pref);
 

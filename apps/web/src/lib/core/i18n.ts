@@ -39,6 +39,29 @@ export function t(key: string, params?: Record<string, unknown>): string {
 }
 
 /**
+ * A counted message: `<key>_one` when there is exactly one of the thing, `<key>` otherwise.
+ *
+ * Paraglide here does not compile ICU `{n, plural, …}` — it ships the whole construct as garbage
+ * — so a plural is a **pair of keys** and the reader's side picks (CLAUDE.md §8). That convention
+ * existed and was applied one string at a time, which is how "1 contactmomenten", "1 taken" and a
+ * digest mail headed "1 nieuwe meldingen" all shipped (#343): the pair is invisible in a diff, and
+ * the ternary was re-typed in five files that each spelled it slightly differently.
+ *
+ * `count` is passed through as a parameter, so a call site names the number once.
+ *
+ * A `_one` that has not been written yet falls back to the plural rather than rendering the raw
+ * key at the user — a missing singular is a copy defect, not a broken screen. It is a *build*
+ * failure instead: `scripts/i18n-check.mjs` fails a `_one` with no sibling and a counted key with
+ * no `_one`, so the fallback can never be what ships.
+ */
+export function tn(key: string, count: number, params?: Record<string, unknown>): string {
+  const merged = { count, ...params };
+  if (count !== 1) return t(key, merged);
+  const singular = t(`${key}_one`, merged);
+  return singular === `${key}_one` ? t(key, merged) : singular;
+}
+
+/**
  * `t()` for a caller that must **name** the locale instead of inheriting the request's.
  *
  * Paraglide resolves the locale from an AsyncLocalStorage store bound by its middleware

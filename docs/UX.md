@@ -953,6 +953,37 @@ contrast bug in dark mode rather than only an inconsistency.
       *collapsed* bar from silently explaining an empty list — and an empty list under a filter
       says `common.no_results`, never "je hebt nog geen domeinen", which sends the reader
       hunting for the wrong problem.
+
+    Three more, added when the remaining seven lists were brought onto it (#354). The bar had
+    been the rule for four screens and the *description* of the other seven, which is not the
+    same thing: chips were styled four different ways across the app, each list ordered its
+    toolbar differently (search first vs. scope first, the client picker before or after the
+    chips), and `/subscriptions` had no search box at all while every comparable list had one.
+    - **Two vocabularies never share an undifferentiated row.** `/subscriptions` drew nine
+      identical plain-text chips — `Concept Actief Gepauzeerd Opgezegd SEO Hosting Onderhoud
+      Marketing Support` — of which the first four were statuses and the last five were
+      abonnementstypes, with no divider, no label and no heading. Nothing said that pressing
+      *Opgezegd* and pressing *Hosting* narrow along different axes, or whether the two combine.
+      A short, closed, recognisable vocabulary is `pills`; anything a tenant defines, or anything
+      past about six, is a `select` with the column's own label as its placeholder — which is
+      also what stops the row wrapping to three lines on the instance that defines ten.
+    - **One selected treatment, whatever the chip's colour.** `FilterOption.class` exists for a
+      vocabulary where the colour *is* information — a client's lifecycle, a project's status, a
+      tenant's task label, all of which the table draws in the same colours — but it only sets
+      the *unselected* look. "Which of these is on" is the bar's one ring, on every list, so a
+      reader never learns a second answer per screen. A filter with nothing to say in colour
+      leaves it off: a colour that means nothing is one people have to learn not to read.
+    - **A control the bar cannot express is a `custom` def, not a `<div>` beside the bar.** The
+      task board's assignee is a `MemberPicker` whose "everyone" is a sentinel; the escape hatch
+      renders it *inside* the bar, so the ordering, the mobile collapse and "wissen" stay the
+      bar's. Such a def says whether it is `active`, because "the URL has this key" is not always
+      the question — an absent assignee resolves to *you*, which is a default and not a filter.
+      The keys stay whatever that screen's links already carry: `/tasks` uses `company_id` where
+      the registers use `company`, because the dashboard tiles, the client hub and half the
+      notification hrefs deep-link there and renaming a parameter breaks every link already sent.
+
+    `filter-bar.test.ts` is what keeps this from being a description again: it fails a list route
+    that renders its own `SearchInput` or filter-chip row instead of the bar.
   - **A screen that holds a queue opens on the queue, and the queue carries its size.**
     Interacties opened on the whole timeline with the unreviewed e-mails scattered through it
     wearing an amber pill, and its two views were a pair of borderless words whose *selected*
@@ -1485,6 +1516,25 @@ contrast bug in dark mode rather than only an inconsistency.
   reference. Plain links, no Tabs primitive; a viewer whose permissions leave only one tab
   gets no tab row at all. Every tab that lists rows is a full `DataTable` (filters, sort,
   personal columns), not a card list.
+- **A nav item is named after the page it opens, and no two of them share a name** (#351,
+  `nav-labels.test.ts`). The sidebar had two items reading *Overzicht* — one opening `/marketing`,
+  headed **Marketing**, and one opening `/overview`, headed **Urenoverzicht**. Neither named its
+  page, both breadcrumbs read *Overzicht* as well, and the two rows measured identically, so
+  nothing on the screen could tell a reader which was which. The pages had perfectly good names;
+  the nav had thrown them away. Nothing in the build could notice either: a label is a lookup of a
+  key that exists, and two keys holding one word is not a type error, so it is a test now — over
+  the resolved strings, in both locales, because a collision can exist in one language and not the
+  other. Two things ride along. The `<h1>` on a renameable section already falls back to
+  `nav.<key>`, so the item's default label must be that same key or the heading and the sidebar
+  disagree by construction. And **a group of one is not a group**: membership is declared per item
+  and which members a tenant can see depends on their modules and permissions, so a group of three
+  collapses to a chevron, a heading and a single indented row repeating the heading's own subject
+  on any install that enabled one of them. A lone member renders as the plain top-level item it
+  would have been, and the group reappears the moment a second one is visible.
+- **A crumb names the section, not the tab it lands on.** `/overview` opens on Uren, so labelling
+  its crumb "Urenoverzicht" would read `Urenoverzicht › Omzet` two clicks later — a lie about where
+  revenue lives. The sidebar item is named for the page it opens; the breadcrumb literal is named
+  for the section that holds all four tabs.
 - **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
   screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
   to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
@@ -1726,6 +1776,61 @@ contrast bug in dark mode rather than only an inconsistency.
     refuses is a broken control).
 
 ## Known mistakes to not repeat
+
+- **A table cell either ellipsizes or says it wraps** (#370, `scripts/cells-check.mjs`).
+  `DataTable` lays out `table-fixed` and puts `overflow-hidden` on every `<td>`, so a column no
+  longer grows to its content — anything wider **is** clipped. For an ellipsis the content needs
+  `truncate` *and* a box `overflow` applies to: on a bare inline `<span>` or `<a>`, `overflow` and
+  `text-overflow` do not apply at all, so `truncate` sets `white-space: nowrap` and nothing else
+  and the name is cut mid-glyph. `block truncate`, `inline-block max-w-full truncate`, `block
+  w-full truncate` on a `<button>` (which shrinks to fit even as a block box), or being a flex
+  item all work. **Both mistakes are invisible in review** — `class="truncate"` reads as correct
+  whichever element it is on, the two spellings are indistinguishable until something renders,
+  `svelte-check` is happy either way, and a short name looks right on screen — so it is a lint
+  rather than a memory, beside `forms:check` and `today:check` for exactly the same reason.
+  A cell that should genuinely wrap (the notification sentence *is* the content of that list)
+  says `cells:wrap` in a comment, so the decision is on the page.
+- **A settings card's description is a sentence and ends like one** (#355). The Instellingen
+  index draws 47 cards; ten had lost their closing full stop and they were interleaved with the
+  rest, so the eye catches it going down the page. Nothing could notice — each subtitle is a
+  separate key in a 5,000-key catalogue, written months apart by whoever added the screen, and the
+  drift is only visible with the whole grid on screen at once. `settings-copy.test.ts` asserts it
+  now, in both locales, along with its inverse: a card **title** is a label and carries no stop.
+- **A counted noun needs both numbers** (#343). Paraglide here does not compile ICU
+  `{n, plural, …}`, so a plural is a **pair of keys** — `<key>` and `<key>_one` — read by
+  `tn(key, count)` on the web and `translate_count` on the API. The convention existed and was
+  applied one string at a time, which is how "1 contactmomenten", "1 taken" and a digest mail
+  subject reading *"1 nieuwe meldingen"* all shipped: the pair is invisible in a diff, and the
+  ternary had been re-typed in five files that each spelled it slightly differently. A bracketed
+  suffix — `{count} abonnement(en)` — is not the escape: it reads as machine output, `i18n:check`
+  now fails a counted message that carries one, and it also fails a `_one` with no plural beside
+  it.
+- **A control in the label slot of `← label →` is claiming to be the current view** (#352). The
+  interactions list drew `[←] Deze week [→]` over an *unfiltered* list: the middle position in
+  that triple is where every calendar in the world puts the range you are looking at, so the row
+  named a filter that was not on, and `←` from there landed on the week before *today* rather than
+  the week before what you were reading. The arrows are drawn only while a week actually is the
+  view; with no range set the middle control is one button that turns the filter on, which is what
+  it always was. Its sibling: **one empty state, not two.** The table's own empty snippet says
+  which of several empty things this is; the pager underneath said "Geen resultaten" as well, on
+  every list in the app. The pager's range slot is simply quiet at zero now — the frame and the
+  size selector stay, because a filter that matched nothing is still a view of a list.
+- **A separator's spacing lives in one place** (#362). `{#if company}{company} ·\n{/if}{status}`
+  rendered `ITIS ·Actief`: the space before `{/if}` is at a block boundary and the compiler drops
+  it, so the first dot glued itself to the word after it while the second one — four words along,
+  outside a block — kept its spaces. Join the parts (`[a, b].filter(Boolean).join(" · ")`) rather
+  than spelling the separator twice at two different indentation depths.
+- **A card with no heading reads as loose fields**, and a **disabled field explained by a sentence
+  that is repeated 130px lower is two mistakes at once** (#362). The contact detail page stacked
+  five cards of which only the second had no title; Mijn account opened with an e-mail input the
+  user cannot type in, under the same paragraph the *E-mailadres wijzigen* card prints above the
+  field that works. A fact about the record is a read-only line; the explanation belongs with the
+  control it describes, and nowhere else.
+- **A hand-maintained list of what a registry contains goes stale** (#362). Instellingen → Import
+  & export led with *"klanten, contactpersonen, projecten, taken, urenstaten, abonnementen,
+  domeinen, websites en hosting"* over a page offering thirteen entities: every module that
+  contributes an `ImpexDescriptor` has to remember to edit a sentence in two locale files. Describe
+  the page instead — "elke lijst die je hier ziet, kan als bestand in en uit".
 
 - **Expressing a semantic state in the tenant's brand colour** (#404). My Day drew its
   "vandaag" partition in `text-brand` beside a red "over tijd", and `core/burn.ts` drew a

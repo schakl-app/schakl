@@ -32,7 +32,9 @@ export const ROOTS: Record<string, string> = {
   interactions: "nav.interactions",
   leave: "nav.leave",
   reports: "nav.reports",
-  overview: "nav.overview",
+  // The *section*, not the tab it opens on: `/overview/revenue` reads "Overzichten › Omzet",
+  // and "Urenoverzicht › Omzet" would be a lie about where revenue lives (#351).
+  overview: "overview.section.title",
   notifications: "notifications.title",
   me: "hr.me.title",
   settings: "settings.title",

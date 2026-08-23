@@ -1,6 +1,5 @@
 <script lang="ts">
   import { applyAction, enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
@@ -11,6 +10,8 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
@@ -18,7 +19,6 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -27,9 +27,9 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
+  import type { CompanyFilterKey } from "$lib/modules/companies/filters";
   import {
     COMPANY_STATUS_ALL,
     COMPANY_STATUSES,
@@ -118,26 +118,41 @@
     reloadOn: [HOURS_COLUMN],
   });
 
-  // Every filter here is the API's — a browser-side one narrows the page you happen to hold, not
-  // the list — and every one of them resets to page 1 (`paging.ts`).
-  //
-  // The empty token is the default view (every status but archived, #329) rather than "no filter",
-  // which is why pressing the pill you are already on still returns you to it: the way back from
-  // a narrowing is the same gesture it always was. "Alles" carries its own token so that view is
-  // linkable (§9).
-  function setStatusFilter(status: string) {
-    const url = resetPage(new URL(page.url));
-    if (status && status !== data.statusFilter) url.searchParams.set("status", status);
-    else url.searchParams.delete("status");
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
-
-  function toggleMine() {
-    const url = resetPage(new URL(page.url));
-    if (data.mine) url.searchParams.delete("mine");
-    else url.searchParams.set("mine", "1");
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
+  /**
+   * The list's filters, rendered by the shared bar (#354).
+   *
+   * Every one is the API's — a browser-side filter narrows the page you happen to hold, not the
+   * list — and every one resets to page 1; both are the bar's job now rather than three
+   * hand-written `goto`s per screen.
+   *
+   * The empty token is the default view (every status but archived, #329) rather than "no
+   * filter", which is why it is a pill of its own: a list that silently leaves the archive out
+   * looks identical to one that has no archive, and the only thing that can tell them apart is
+   * a control showing itself selected. "Alles" carries its own token so that view is linkable
+   * (§9). Status keeps its colours because they are the same colours the status column draws —
+   * the *selected* treatment is the bar's one ring, on every list.
+   */
+  const filterDefs: FilterDef<CompanyFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("companies.search_placeholder") },
+    {
+      kind: "pills",
+      key: "mine",
+      options: [{ value: "1", label: t("companies.filter.mine") }],
+    },
+    {
+      kind: "pills",
+      key: "status",
+      options: [
+        { value: "", label: t("companies.filter.not_archived") },
+        { value: COMPANY_STATUS_ALL, label: t("companies.filter.all") },
+        ...COMPANY_STATUSES.map((status) => ({
+          value: status,
+          label: t(`companies.status.${status}`),
+          class: `${statusPillClass(status)} opacity-70 hover:opacity-100`,
+        })),
+      ],
+    },
+  ]);
 
   function confirmDeleteOf(company: Company) {
     deleteId = company.id;
@@ -282,47 +297,8 @@
   {/if}
 </div>
 
-<!-- Search + status filter pills + the personal column picker -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput placeholder={t("companies.search_placeholder")} />
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.mine
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.mine}
-    onclick={toggleMine}>{t("companies.filter.mine")}</button
-  >
-  <!-- The default view is a pill of its own, not the absence of one: a list that silently leaves
-       the archive out looks identical to a list that has none, and the only thing that can say
-       which is a control showing itself selected. "Alles" sits beside it for the other half. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.statusFilter === ''
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.statusFilter === ""}
-    onclick={() => setStatusFilter("")}>{t("companies.filter.not_archived")}</button
-  >
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.statusFilter === COMPANY_STATUS_ALL
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.statusFilter === COMPANY_STATUS_ALL}
-    onclick={() => setStatusFilter(COMPANY_STATUS_ALL)}>{t("companies.filter.all")}</button
-  >
-  {#each COMPANY_STATUSES as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'ring-2 ring-brand ' + statusPillClass(status)
-        : statusPillClass(status) + ' opacity-70 hover:opacity-100'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setStatusFilter(status)}>{t(`companies.status.${status}`)}</button
-    >
-  {/each}
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="company-filter">
+  {#snippet actions()}
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -351,8 +327,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 {#if showCreate}
   <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a

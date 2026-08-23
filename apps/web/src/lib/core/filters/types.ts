@@ -19,12 +19,24 @@
  * **A filter drops the page.** Applying one goes through a single `goto` that calls `resetPage`,
  * so page 7 of the old filter can never be served as page 7 of the new one.
  */
+import type { Snippet } from "svelte";
+
 import { resetPage } from "$lib/core/table/paging";
 
 /** One choice in a `select` or `pills` filter. `value` is what lands in the URL. */
 export interface FilterOption {
   value: string;
   label: string;
+  /**
+   * The chip's own colours, for a vocabulary where the colour *is* information — a client's
+   * lifecycle, a project's status, a tenant's label. Only meaningful on `pills`, and only the
+   * unselected look: the selected treatment is the bar's one ring, on every list, so "which of
+   * these is on" never depends on which screen you are reading (#354).
+   *
+   * Leave it off and the chip is the neutral one. Most filters want that — a colour that means
+   * nothing is a colour a reader has to learn not to read.
+   */
+  class?: string;
 }
 
 interface FilterBase<K extends string> {
@@ -90,12 +102,36 @@ export interface PillsFilter<K extends string = string> extends FilterBase<K> {
   options: FilterOption[];
 }
 
+/**
+ * A control this bar cannot express, rendered by the page and *placed* by the bar.
+ *
+ * The escape hatch exists so a screen with one unusual filter can still be the shared bar rather
+ * than a hand-rolled row that re-types the ordering, the clear link and the mobile collapse — the
+ * copies #354 found. It is deliberately thin: the snippet renders a control, and everything
+ * *around* it (where it sits, whether the bar is open on a phone, whether it counts towards
+ * "wissen") stays the bar's, which is the whole point.
+ *
+ * `active` is what the bar cannot work out for itself when the control does not own a plain URL
+ * key — a member picker whose "me" state is a user id, a date pair. Say it, or the count and the
+ * clear link quietly disagree with the screen.
+ */
+export interface CustomFilter<K extends string = string> extends FilterBase<K> {
+  kind: "custom";
+  render: Snippet;
+  /** Is this filter currently narrowing the list? Defaults to "the URL has this key". */
+  active?: boolean;
+  /** Extra keys this control owns, cleared by "wissen" along with `key`. */
+  extraKeys?: readonly string[];
+}
+
 export type FilterDef<K extends string = string> =
-  SearchFilter<K> | SelectFilter<K> | PillsFilter<K>;
+  SearchFilter<K> | SelectFilter<K> | PillsFilter<K> | CustomFilter<K>;
 
 /** The filter keys a bar owns — what "wissen" clears, and nothing else (never the sort or size). */
 export function filterKeys(defs: FilterDef[]): string[] {
-  return defs.filter((def) => !def.hidden).map((def) => def.key);
+  return defs
+    .filter((def) => !def.hidden)
+    .flatMap((def) => [def.key, ...(def.kind === "custom" ? (def.extraKeys ?? []) : [])]);
 }
 
 /**

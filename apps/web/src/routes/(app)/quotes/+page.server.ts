@@ -1,12 +1,14 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { QUOTE_COLUMNS, QUOTES_TABLE_ID } from "$lib/modules/invoicing/columns";
+import { DOCUMENT_FILTERS } from "$lib/modules/invoicing/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -17,9 +19,12 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, QUOTES_TABLE_ID);
   const resolved = resolveColumns(QUOTE_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
-  const statusFilter = event.url.searchParams.get("status") ?? undefined;
-  const companyFilter = event.url.searchParams.get("company") ?? undefined;
-  const q = event.url.searchParams.get("q") ?? undefined;
+  // The bar and this load read the same keys from the same place, so what the controls show and
+  // what the API was asked for cannot disagree (core/filters/types.ts).
+  const filters = readFilters(event.url, [...DOCUMENT_FILTERS]);
+  const statusFilter = filters.status;
+  const companyFilter = filters.company;
+  const q = filters.q;
   const paging = resolvePaging(event.url, pref);
 
   // Only the URL-dependent read; the client picker comes from the section layout, which does

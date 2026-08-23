@@ -93,6 +93,8 @@ async def _fetch_page(
         offset=offset,
         company_id=filters.get("company_id"),
         status=filters.get("status"),
+        subscription_type_id=filters.get("subscription_type_id"),
+        q=filters.get("q"),
         sort=filters.get("sort"),
     )
     # _attach carries company_name + current amount; the type key rides along for the
@@ -237,7 +239,7 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
     read_permission="subscriptions.subscription.read",
     write_permission="subscriptions.subscription.write",
     natural_keys=("name",),
-    filters=("status", "company_id", "sort"),
+    filters=("q", "status", "company_id", "subscription_type_id", "sort"),
     columns=(
         ImpexColumn("name", required=True),
         ImpexColumn(

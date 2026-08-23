@@ -99,10 +99,14 @@
   aria-label={t("table.paging.label")}
   data-sveltekit-preload-data="hover"
 >
-  <!-- At zero the range computes to "0–0 van 0", which is arithmetic rather than an answer. The
-       size selector and the frame stay: a filter that matched nothing is still a view of a list. -->
+  <!-- At zero the range computes to "0–0 van 0", which is arithmetic rather than an answer — and
+       "Geen resultaten" here is the *second* time the screen says so, because the table above has
+       already drawn its own empty state and that one can say which of several empty things this is
+       (#352). Two sentences about one fact is one too many, so the slot goes quiet and the frame
+       stays: a filter that matched nothing is still a view of a list, and the size selector is
+       still the control it was. -->
   <span class="text-text-muted">
-    {total === 0 ? t("table.paging.empty") : t("table.paging.range", { from, to, total })}
+    {total === 0 ? "" : t("table.paging.range", { from, to, total })}
   </span>
 
   <div class="flex items-center justify-between gap-3 sm:justify-end">

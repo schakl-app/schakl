@@ -36,7 +36,7 @@ from app.core.crypto import decrypt
 from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
 from app.core.timezone import org_zoneinfo
-from app.i18n import translate
+from app.i18n import translate_count
 from app.modules.notifications.events import (
     CHANNEL_EMAIL,
     CHANNEL_EXTERNAL,
@@ -85,6 +85,7 @@ _ALLOWED_SCHEMES = frozenset(
         "http",
     }
 )
+
 
 class SsrfError(ValueError):
     """A channel URL points at a blocked (private/link-local/loopback) address."""
@@ -208,9 +209,7 @@ class ExternalChannel:
             if pref is None or not pref.enabled:
                 continue
             # A personal channel only ever carries its owner's notifications.
-            target = (
-                notifications[0] if config.user_id is None else by_user.get(config.user_id)
-            )
+            target = notifications[0] if config.user_id is None else by_user.get(config.user_id)
             if target is None:
                 continue
             session.add(
@@ -355,7 +354,7 @@ async def build_digest_message(
     if len(rendered) == 1:
         title = rendered[0][0]
     else:
-        title = translate("notifications.email.digest_subject", locale, count=len(rendered))
+        title = translate_count("notifications.email.digest_subject", locale, count=len(rendered))
     if not title.startswith(brand.brand_name):
         title = f"{brand.brand_name}: {title}"
     body = "\n\n".join(f"{sentence}\n{link}" if link else sentence for sentence, link in rendered)

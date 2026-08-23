@@ -2,7 +2,6 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
@@ -12,13 +11,14 @@
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { projectName, UNNAMED_CLASS } from "$lib/core/unnamed";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -29,10 +29,10 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
+  import type { ProjectFilterKey } from "$lib/modules/projects/filters";
   import {
     PROJECT_STATUS_ALL,
     PROJECT_STATUSES,
@@ -127,13 +127,6 @@
   }
 
   // Filtered by the API — matching any assignee, not just the primary.
-  function toggleMine() {
-    const url = resetPage(new URL(page.url));
-    if (data.mine) url.searchParams.delete("mine");
-    else url.searchParams.set("mine", "1");
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
-
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it. Archived
   // clients sit behind the search rather than among the live ones, and the one this list is
   // *currently* filtered by stays on offer whatever its status (`companies/picker.ts`).
@@ -141,22 +134,49 @@
     splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
   );
   const companyItems = $derived(companyPicker.live);
-  function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
-
-  /** The status pills. Absent = the working set, `all` = everything; see `+page.server.ts`. */
-  function setStatusFilter(status: string) {
-    const url = resetPage(new URL(page.url));
-    // A second press on the pill you are already on goes back to the default view rather than
-    // doing nothing: a filter you cannot unset with the control you set it with is a trap.
-    if (status && status !== data.statusFilter) url.searchParams.set("status", status);
-    else url.searchParams.delete("status");
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
+  /**
+   * The list's filters, rendered by the shared bar (#354).
+   *
+   * Same order as every other list here: search, then the pickers, then the pills. It used to
+   * open with *Mijn projecten* — the one screen whose scope chip sat to the *left* of the search
+   * box — which is the kind of drift a shared bar exists to end.
+   *
+   * Absent status = the working set, `all` = everything (#329, see `+page.server.ts`), so the
+   * default is a pill of its own and pressing the one you are on returns you to it: a filter you
+   * cannot unset with the control you set it with is a trap.
+   */
+  const filterDefs: FilterDef<ProjectFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("projects.search_placeholder") },
+    {
+      kind: "select",
+      key: "company",
+      placeholder: t("projects.field.company"),
+      options: companyItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    { kind: "pills", key: "mine", options: [{ value: "1", label: t("projects.filter.mine") }] },
+    {
+      kind: "pills",
+      key: "status",
+      options: [
+        { value: "", label: t("projects.filter.not_archived") },
+        { value: PROJECT_STATUS_ALL, label: t("projects.filter.all") },
+        ...PROJECT_STATUSES.map((status) => ({
+          value: status,
+          label: t(`projects.status.${status}`),
+          class: `${statusPillClass(status)} opacity-70 hover:opacity-100`,
+        })),
+      ],
+    },
+    // The abandoned create-then-edit rows (#350), gathered so they can be renamed or deleted.
+    // Orthogonal to the status pills: a nameless project has a status like any other.
+    {
+      kind: "pills",
+      key: "unnamed",
+      options: [{ value: "1", label: t("projects.filter.unnamed") }],
+    },
+  ]);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Status, client and the billable default: the three that say how a *batch* of work is run —
@@ -338,74 +358,8 @@
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
-<!-- Filter + search + the personal column picker, on their own wrapping row (issue #36): title,
-     a fixed 224px search box, the picker and the primary action on one unwrappable line have a
-     min-content width no phone has. This is the shape `companies` already uses. -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.mine
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.mine}
-    onclick={toggleMine}>{t("projects.filter.mine")}</button
-  >
-  <SearchInput />
-  <div class="w-44">
-    <Combobox
-      items={companyItems}
-      archived={companyPicker.retired}
-      archivedLabel={companyArchivedLabel()}
-      name="_filter_company"
-      value={data.companyFilter}
-      placeholder={t("projects.filter.company")}
-      onselect={(v) => setFilter("company", v)}
-      id="filter-company"
-    />
-  </div>
-  <!-- The default view is a pill of its own, not the absence of one: a list that silently leaves
-       the archive out looks identical to a list that has none, and the only thing that can say
-       which is a control showing itself selected. "Alles" sits beside it for the other half. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.statusFilter === ''
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.statusFilter === ""}
-    onclick={() => setStatusFilter("")}>{t("projects.filter.not_archived")}</button
-  >
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.statusFilter === PROJECT_STATUS_ALL
-      ? 'bg-brand/10 text-brand ring-2 ring-brand'
-      : 'bg-surface text-text-muted hover:text-text'}"
-    aria-pressed={data.statusFilter === PROJECT_STATUS_ALL}
-    onclick={() => setStatusFilter(PROJECT_STATUS_ALL)}>{t("projects.filter.all")}</button
-  >
-  {#each PROJECT_STATUSES as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'ring-2 ring-brand ' + statusPillClass(status)
-        : statusPillClass(status) + ' opacity-70 hover:opacity-100'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setStatusFilter(status)}>{t(`projects.status.${status}`)}</button
-    >
-  {/each}
-  <!-- The abandoned create-then-edit rows (#350), gathered so they can be renamed or deleted.
-       Orthogonal to the status pills: a nameless project has a status like any other. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.unnamed
-      ? 'bg-brand text-white'
-      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
-    aria-pressed={data.unnamed}
-    onclick={() => setFilter("unnamed", data.unnamed ? "" : "1")}
-    >{t("projects.filter.unnamed")}</button
-  >
-  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
-       with the list sits at the far end, and that is the same on every list here. -->
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="project-filter">
+  {#snippet actions()}
     <ImpexBar
       entity="project"
       readPermission="projects.project.read"
@@ -433,8 +387,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 <BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
@@ -491,7 +445,7 @@
         bind:value={newCompany}
         id="new-project-company"
         allowEmpty={false}
-        placeholder={t("projects.filter.company")}
+        placeholder={t("projects.field.company")}
         oncreate={(name) => {
           qcCompanyName = name;
           qcCompanyOpen = true;

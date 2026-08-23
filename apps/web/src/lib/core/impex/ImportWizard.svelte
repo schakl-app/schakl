@@ -21,7 +21,7 @@
 
   import { enhance } from "$app/forms";
 
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
@@ -355,7 +355,7 @@
           </ul>
           {#if current.error_count > SHOWN_ERRORS}
             <p class="mt-1 text-xs text-text-muted">
-              {t("impex.more_errors", { count: current.error_count - SHOWN_ERRORS })}
+              {tn("impex.more_errors", current.error_count - SHOWN_ERRORS)}
             </p>
           {/if}
         {/if}

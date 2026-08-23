@@ -64,7 +64,7 @@
   import { enhance } from "$app/forms";
   import { invalidateAll } from "$app/navigation";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -169,8 +169,7 @@
       folder: listing.folder.name ?? t("google.drive.root"),
     };
     if (listing.items.length === 0) return t("google.drive.search_none", params);
-    if (listing.items.length === 1) return t("google.drive.search_one", params);
-    return t("google.drive.search_results", params);
+    return tn("google.drive.search_results", listing.items.length, params);
   });
 
   async function load(refresh = false) {

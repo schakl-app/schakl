@@ -26,7 +26,7 @@
 
   import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
   import { fmtDateTime } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -446,7 +446,7 @@
       <div class="space-y-3 text-sm">
         {#if threaded}
           <p class="text-xs font-medium text-text-muted">
-            {t("interactions.conversation_count", { count: messages.length })}
+            {tn("interactions.conversation_count", messages.length)}
           </p>
         {/if}
 

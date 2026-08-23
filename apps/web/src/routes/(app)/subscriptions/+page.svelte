@@ -2,7 +2,6 @@
   import { BookmarkPlus, Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
@@ -10,11 +9,12 @@
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -32,6 +32,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
+  import type { SubscriptionFilterKey } from "$lib/modules/subscriptions/filters";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
@@ -140,16 +141,42 @@
       data.locale,
     );
   }
-  // All filters ride URL params and the API applies them (#153) — the list is paginated.
-  function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
-  function setTypeFilter(typeId: string) {
-    setFilter("type", typeId !== data.typeFilter ? typeId : "");
-  }
+  /**
+   * The list's filters, rendered by the shared bar (#354).
+   *
+   * This row used to be nine identical plain-text chips — four statuses then five
+   * tenant-defined types — with no divider, no label and no heading, so nothing said that
+   * pressing *Opgezegd* and pressing *Hosting* narrow along different axes, or whether the two
+   * combine. Status stays pills, which is the house treatment for a short, stable vocabulary a
+   * reader recognises on sight; the types become a named picker beside the client, because
+   * there is no fixed number of them and a tenant with ten would have wrapped the row to three
+   * lines. And the list gets the `?q=` box every other list here has.
+   */
+  const filterDefs: FilterDef<SubscriptionFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("subscriptions.search_placeholder") },
+    {
+      kind: "select",
+      key: "company",
+      placeholder: t("subscriptions.field.company"),
+      options: companyItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    {
+      kind: "pills",
+      key: "status",
+      options: STATUSES.map((status) => ({
+        value: status,
+        label: t(`subscriptions.status.${status}`),
+      })),
+    },
+    {
+      kind: "select",
+      key: "type",
+      placeholder: t("subscriptions.field.type"),
+      options: typeItems,
+    },
+  ]);
 
   // --- the shared DataTable (#153, #24) --------------------------------------
   const table = createTableLayout<Subscription>({
@@ -402,66 +429,19 @@
   </div>
 {/if}
 
-<!-- Filter row (#153) — all server-side: the list is paginated. Client picker, status
-     pills, type pills (#142) and the personal column picker share one wrapping row. -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <div class="w-44">
-    <Combobox
-      items={companyItems}
-      archived={companyPicker.retired}
-      archivedLabel={companyArchivedLabel()}
-      name="_filter_company"
-      value={data.companyFilter}
-      placeholder={t("subscriptions.filter.company")}
-      onselect={(v) => setFilter("company", v)}
-      id="filter-company"
-    />
-  </div>
-  {#each STATUSES as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setFilter("status", data.statusFilter === status ? "" : status)}
-      >{t(`subscriptions.status.${status}`)}</button
-    >
-  {/each}
-  {#each activeTypes as st (st.id)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.typeFilter === st.id
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.typeFilter === st.id}
-      onclick={() => setTypeFilter(st.id)}>{subscriptionTypeLabel(st, data.locale)}</button
-    >
-  {/each}
-  {#if data.typeFilter || data.statusFilter || data.companyFilter}
-    <button
-      class="text-xs text-text-muted underline hover:text-text"
-      onclick={() => {
-        const url = resetPage(new URL(page.url));
-        url.searchParams.delete("type");
-        url.searchParams.delete("status");
-        url.searchParams.delete("company");
-        void goto(url, { keepFocus: true, noScroll: true });
-      }}
-    >
-      {t("tasks.filter.clear")}
-    </button>
-  {/if}
-  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
-       with the list sits at the far end, and that is the same on every list here. -->
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="subscription-filter">
+  {#snippet actions()}
+    <!-- Export carries what the screen is narrowed by, so the file *is* the list on screen,
+         whole (docs/UX.md) — the API declares exactly these on the export route. -->
     <ImpexBar
       entity="subscription"
       readPermission="subscriptions.subscription.read"
       writePermission="subscriptions.subscription.write"
       filters={{
+        q: data.filters.q,
         status: data.statusFilter,
         company_id: data.companyFilter,
+        subscription_type_id: data.typeFilter,
         sort: data.table.sort,
       }}
       locale={data.locale}
@@ -478,8 +458,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 {#if form?.templateSaved}
   <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">

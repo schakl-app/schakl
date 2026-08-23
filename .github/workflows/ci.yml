@@ -251,6 +251,11 @@ jobs:
       # the tenant's, and nothing else in the build can see it (CLAUDE.md §8).
       - name: Tenant clock check
         run: node scripts/today-check.mjs
+      # And again: `DataTable` is `table-fixed` with `overflow-hidden` on every cell, so a name
+      # wider than its column is cut mid-glyph — and `truncate` on a bare inline element sets
+      # `nowrap` and nothing else. Both spellings read as correct in a diff (#370).
+      - name: Table cell clipping check
+        run: node scripts/cells-check.mjs
       - run: pnpm install --frozen-lockfile
       - name: Type check
         run: pnpm --filter @schakl/web check
