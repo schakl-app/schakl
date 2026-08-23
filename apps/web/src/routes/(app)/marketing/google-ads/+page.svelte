@@ -117,11 +117,15 @@
 {/if}
 
 {#if data.canLink}
+  <!-- `connectors={false}`: a host narrowed to one source offers no connections. This screen
+       is about Ads, and a Tag Manager box on it would be an answer to a question nobody asked
+       here (#411). -->
   <MarketingConnectDialog
     bind:open={connecting}
     companies={data.companies}
     locale={data.locale}
     sources={["gads"]}
+    connectors={false}
     title={t("google_ads.page.link_first")}
     error={form?.error ?? null}
     qcError={form?.qcError ?? null}

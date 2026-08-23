@@ -17,7 +17,7 @@ from sqlalchemy import text
 from app.core.auth.models import User
 from app.core.tenancy import set_current_org
 from app.db import async_session_maker
-from tests.conftest import _password_hash, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, _password_hash, add_membership, auth_cookie, make_tenant
 
 # A fixed weekday, like the scheduling suite: nothing here has holiday logic, but the window
 # has to be deterministic. Times are the time module's wall-clock-as-UTC convention.
@@ -37,7 +37,7 @@ async def _open_key(client, headers) -> str:
 
 
 async def _task(client, headers, **over) -> dict:
-    body = {"title": "Homepage herzien"}
+    body = {"title": "Homepage herzien", "due_date": FAR_FUTURE_DUE}
     body.update(over)
     res = await client.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text

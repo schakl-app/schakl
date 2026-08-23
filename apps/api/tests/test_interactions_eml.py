@@ -21,7 +21,7 @@ from email.message import EmailMessage
 
 from app.config import settings
 from app.modules.interactions.eml import EmlParseError, looks_like_eml, parse_eml
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 _PDF = b"%PDF-1.4 " + b"0" * 32
 
@@ -581,7 +581,11 @@ async def test_upload_can_ask_for_the_ai_task_fill_in(client_for, monkeypatch) -
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Offerte nakijken", "company_id": company["id"]},
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Offerte nakijken",
+                    "company_id": company["id"],
+                },
                 headers=headers,
             )
         ).json()

@@ -12,18 +12,17 @@
  * never sees it — and it disappears entirely for a tenant who has not enabled the integration,
  * because the shell renders nav from the enabled set.
  *
- * The company panel is the *server*-contributed kind: `app/integrations/timeon/panels.py`
- * declares a `PanelSpec`, the company hub asks `GET /companies/{id}/panels` for every enabled
- * module's data in one round trip, and the registry's job here is only to say which component
- * draws the key. Registering nothing would not hide it — the hub renders an unknown key as a raw
- * JSON dump.
+ * **No company panel** (#411), and the loss is deliberate rather than overlooked: the hub's card
+ * carried this client's pairing count and their open conflicts, and nothing takes its place.
+ * Timeon is a cutover integration whose home is `/timeon` — the screen somebody opens *because* a
+ * sync is running — and a card on every client's page for a migration that ends is a card that
+ * outlives its reason. The conflicts queue is where a decision is actually made; the hub only
+ * ever said that one was waiting.
  */
 import { RefreshCw } from "@lucide/svelte";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
-
-import TimeonCompanyPanel from "./TimeonCompanyPanel.svelte";
 
 registerWebModule({
   name: "timeon",
@@ -41,21 +40,6 @@ registerWebModule({
       position: 71,
       // UX-only hide; the page load and the API both re-check (docs/UX.md).
       requiresPermission: "timeon.sync.run",
-    },
-  ],
-  companyPanels: [
-    {
-      key: "timeon.company",
-      module: "timeon",
-      component: TimeonCompanyPanel,
-      // Beside the hours panel (40) rather than among the assets. The API says 62; this mirrors
-      // it so the two orders cannot disagree.
-      position: 62,
-      // A client with nothing in Timeon folds into the "nog niets vastgelegd" strip (#364), and
-      // the chip has somewhere to go: connecting is a settings act, never a per-client one, so
-      // it points at the credential screen rather than offering a create control that would be
-      // wrong on a company page.
-      emptyHref: () => "/settings/timeon",
     },
   ],
 });

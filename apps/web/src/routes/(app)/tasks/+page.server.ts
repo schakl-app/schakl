@@ -32,6 +32,11 @@ export const load: PageServerLoad = async (event) => {
     // reads as ordinary work, so without a filter there is no way to find — let alone clear —
     // the ones an interrupted afternoon left behind.
     unnamed: q.get("unnamed") === "1" || undefined,
+    // "Show me the ones with no deadline" (#392). The rule arrived with the column still
+    // nullable (expand/contract, docs/WORKFLOW.md), so an instance upgrades carrying rows the
+    // new rule forbids — and a list sorted by a date they do not have is not a way to find
+    // them. With the ✎ bulk edit beside it, this is how a whole backlog gets dated in one go.
+    undated: q.get("undated") === "1" || undefined,
   };
 
   // Opening /tasks with no assignee filter shows *your* tasks first, not the whole org's — the
@@ -156,6 +161,11 @@ export const actions: Actions = {
     }
     const title = String(draft.title ?? "").trim();
     if (!title) return fail(400, { error: "errors.validation" });
+    // Required (#382 meets #392): the sheet asks for it and the speaker reviews it, so an
+    // empty one here is a client that did not — refused rather than defaulted, because a
+    // human is watching and a date nobody chose is what this whole issue is about.
+    const dictatedDue = String(draft.due_date ?? "").trim();
+    if (!dictatedDue) return fail(400, { error: "errors.required" });
 
     const steps = (Array.isArray(draft.checklist_items) ? draft.checklist_items : []) as {
       title?: string;
@@ -171,7 +181,7 @@ export const actions: Actions = {
       body: {
         title,
         description: (draft.description as string | null) || null,
-        due_date: (draft.due_date as string | null) || null,
+        due_date: dictatedDue,
         priority: ((draft.priority as "low" | "normal" | "high" | null) ?? "normal") as
           "low" | "normal" | "high",
         status: (draft.status as string | null) || null,

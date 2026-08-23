@@ -3,6 +3,7 @@
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
+  import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -18,6 +19,7 @@
 </script>
 
 <DashboardWidgetCard
+  kind="stat"
   title={t("dashboard.widget.invoicing.outstanding")}
   href="/invoices"
   linkLabel={t("nav.invoicing")}
@@ -33,14 +35,17 @@
     </a>
   </p>
   {#if summary.overdue_count > 0}
-    <a
-      href="/invoices?overdue=1"
-      class="mt-1 block text-sm font-medium text-red-600 hover:underline dark:text-red-400"
-    >
-      {t("invoicing.widget.overdue", {
-        count: summary.overdue_count,
-        total: fmtMoney(summary.overdue_total),
-      })}
+    <!-- Past its term is `late`, drawn from the palette rather than a hand-written red (#404):
+         the glyph is what says "overdue" to a reader who cannot separate it from the muted line
+         above, and one shade means this figure and the invoice list agree. -->
+    <a href="/invoices?overdue=1" class="mt-1 block hover:underline">
+      <StateMark
+        state="late"
+        label={t("invoicing.widget.overdue", {
+          count: summary.overdue_count,
+          total: fmtMoney(summary.overdue_total),
+        })}
+      />
     </a>
   {/if}
 </DashboardWidgetCard>

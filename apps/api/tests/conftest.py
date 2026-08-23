@@ -209,6 +209,20 @@ def org_today() -> date:
     return datetime.now(resolve_zoneinfo(None)).date()
 
 
+#: A deadline for a task whose deadline is not what the test is about (#392).
+#:
+#: ``due_date`` is required on create, so every task a test makes needs one — and the one it
+#: gets must not accidentally *be* the subject of some other assertion. A far-future date is
+#: the only value with that property: it is never overdue, never today, never inside "this
+#: week", never inside an agenda window and never inside the reminder cron's horizon, so a
+#: task carrying it counts exactly as the undated task it replaced did in every list, tile and
+#: sweep that reasons about urgency. A date near today would quietly change those counts; a
+#: past one would make every test task overdue.
+#:
+#: A test whose subject *is* the deadline names its own date, from :func:`org_today`.
+FAR_FUTURE_DUE = "2099-12-31"
+
+
 def leave_workday(index: int = 0) -> date:
     """The ``index``-th weekday from the first Monday of November, this year.
 

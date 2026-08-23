@@ -12,7 +12,7 @@ from pwdlib import PasswordHash
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
 
 _ph = PasswordHash.recommended()
 
@@ -63,7 +63,12 @@ async def test_responsible_defaults_down_to_project_and_task(client_for) -> None
         # Task inherits it as the assignee (from the project).
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Kickoff", "project_id": project_id, "company_id": company_id},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Kickoff",
+                "project_id": project_id,
+                "company_id": company_id,
+            },
             headers=headers,
         )
         assert task.status_code == 201
@@ -96,7 +101,12 @@ async def test_responsible_and_assignee_overrides_win(client_for) -> None:
         # …and an explicit task assignee overrides the project's responsible.
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Design", "project_id": project_id, "assignee_user_id": owner},
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Design",
+                "project_id": project_id,
+                "assignee_user_id": owner,
+            },
             headers=headers,
         )
         assert task.json()["assignee_user_id"] == owner
@@ -111,7 +121,7 @@ async def test_no_parent_responsible_means_no_default(client_for) -> None:
         company_id = company.json()["id"]
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Loose", "company_id": company_id},
+            json={"due_date": FAR_FUTURE_DUE, "title": "Loose", "company_id": company_id},
             headers=headers,
         )
         assert task.json()["assignee_user_id"] is None

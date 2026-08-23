@@ -27,7 +27,6 @@ from arq import cron
 
 from app.integrations.google_ads.jobs import google_ads_backfill_account, google_ads_sync_all
 from app.integrations.google_ads.mcp import GOOGLE_ADS_MCP_TOOLS
-from app.integrations.google_ads.panels import google_ads_company_panel
 from app.integrations.google_ads.permissions import GOOGLE_ADS_PERMISSIONS
 from app.integrations.google_ads.provider import install as install_provider
 from app.integrations.google_ads.report_sections import GOOGLE_ADS_REPORT_SECTIONS
@@ -52,7 +51,10 @@ module = ModuleDescriptor(
     # campaigns did last month, and it certainly must not leave a campaign half-edited.
     sku="google_ads",
     permissions=GOOGLE_ADS_PERMISSIONS,
-    panels=[google_ads_company_panel],
+    # **No company panel** (#411). What it drew — which Ads accounts this client has, and
+    # whether each still answers — is the marketing panel's `gads` row and its health badge,
+    # one card up; the connect control was already `MarketingConnectDialog` (#338). Two cards
+    # saying the same thing is not two answers, it is one answer read twice.
     # Curated tools *beside* the ones every route already contributes: the three shapes where a
     # single call beats three plus arithmetic the model should not be doing.
     mcp_tools=GOOGLE_ADS_MCP_TOOLS,

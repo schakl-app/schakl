@@ -158,6 +158,13 @@ export const actions: Actions = {
     if (form.has("title") && !String(form.get("title") ?? "").trim()) {
       return fail(400, { error: "errors.required" });
     }
+    // A deadline may be moved and may not be removed (#392). The field is `required`, so this
+    // is the non-browser backstop rather than the thing a user meets — but the loop below turns
+    // every empty value into an explicit `null`, which is exactly the one the API refuses, and
+    // "errors.validation" over a blank box is a worse sentence than the field's own.
+    if (form.has("due_date") && !String(form.get("due_date") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
     const body: Record<string, unknown> = {};
     // Only fields present in the submitting form are patched (partial updates).
     for (const field of [

@@ -21,7 +21,7 @@ from app.integrations.google.calendar.push import handle_leave_gone, push_link
 from app.integrations.google.calendar.service import sync_connection
 from app.integrations.google.models import GoogleConnection, GoogleSettings
 from app.integrations.google.oauth import SCOPE_CALENDAR, SCOPE_CALENDAR_FULL
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
 
 
 class _StubResponse:
@@ -889,7 +889,11 @@ async def _schedule_a_task(c, headers, *, assignee: uuid.UUID) -> tuple[str, str
     """A task with one planned block on it — the pair the Google mirror keys off."""
     task = await c.post(
         "/api/v1/tasks",
-        json={"title": "Redesign homepage", "assignee_user_id": str(assignee)},
+        json={
+            "due_date": FAR_FUTURE_DUE,
+            "title": "Redesign homepage",
+            "assignee_user_id": str(assignee),
+        },
         headers=headers,
     )
     assert task.status_code == 201, task.text

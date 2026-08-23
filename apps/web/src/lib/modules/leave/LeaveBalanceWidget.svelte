@@ -4,6 +4,7 @@
   import { t } from "$lib/core/i18n";
 
   import { fmtHours, hoursToDays } from "./format";
+  import Card from "$lib/core/ui/Card.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -39,11 +40,7 @@
   );
 </script>
 
-<div class="rounded-xl border border-border bg-surface-raised p-5">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.leave")}</h2>
-    <a href="/leave" class="text-xs text-brand hover:underline">{t("nav.leave")}</a>
-  </div>
+<Card kind="stat" title={t("dashboard.my_day.leave")} href="/leave" linkLabel={t("nav.leave")}>
   <!-- The balance links to the leave overview it summarizes (issue #15). -->
   <a href="/leave" class="block text-2xl font-semibold text-text hover:text-brand">
     {t("leave.widget.remaining", { hours: fmtHours(summary.remaining_hours) })}
@@ -66,4 +63,4 @@
       </a>
     </p>
   {/if}
-</div>
+</Card>

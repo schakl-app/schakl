@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
 
 
 async def test_due_extension_requires_reason(client_for) -> None:
@@ -59,7 +59,7 @@ async def test_allocated_minutes_and_logged(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Budgeted", "allocated_minutes": 120},
+                json={"due_date": FAR_FUTURE_DUE, "title": "Budgeted", "allocated_minutes": 120},
                 headers=headers,
             )
         ).json()
@@ -90,7 +90,11 @@ async def test_task_links_crud_and_isolation(client_for) -> None:
     b_headers = await auth_cookie(b.user)
 
     async with client_for(a.host) as ca:
-        task = (await ca.post("/api/v1/tasks", json={"title": "L"}, headers=a_headers)).json()
+        task = (await ca.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "L"},
+            headers=a_headers,
+        )).json()
         link = (
             await ca.post(
                 f"/api/v1/tasks/{task['id']}/links",

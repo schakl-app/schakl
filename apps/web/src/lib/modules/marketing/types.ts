@@ -33,6 +33,59 @@ export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
  */
 export const SITE_KEY_SOURCES: readonly MarketingSource[] = ["rankmath"];
 
+/**
+ * A client attachment that is **not** a metrics source (#411).
+ *
+ * The team asked for Tag Manager "in the picker where you have Analytics, Search Console, Ads,
+ * SE Ranking and Rank Math", which is right about the *control* and wrong about the
+ * *vocabulary*. A container has no marketeer-facing number of its own — no adapter, no daily
+ * rows, no KPI row, no drill-down — and the conversions it fires already arrive through GA4. A
+ * sixth `MarketingSource` would need a value that `HEADLINE_METRICS`, `ALL_METRICS`,
+ * `DRILLDOWNS` and their five API twins each have to be taught to say nothing about, and would
+ * still draw a dashboard section with no numbers in it, which is exactly what reads as broken.
+ *
+ * So the connect control offers **two labelled lists** and this is the second. A connection is
+ * attached through its own module's route — Tag Manager's `POST /gtm/containers`, which
+ * `gtmActions` already mounts — so there is no marketing link row behind it: the container row
+ * *is* the link. That is a stronger form of #338's "the two must not disagree" than mirroring,
+ * because two rows cannot disagree when there is only one.
+ *
+ * The rule for the next one is the question this file has now answered twice: **no daily
+ * number means a connection, not a source.**
+ */
+export type MarketingConnectionKind = "gtm";
+
+/**
+ * The declared vocabulary a payload's `kind` may use.
+ *
+ * Which connect surfaces a *screen* mounts comes from the registry rather than from here
+ * (`marketingConnectorsFor`), because that is per-tenant and permission-filtered. This list is
+ * the vocabulary itself: it is what keeps the two lists disjoint, which is the property the
+ * whole distinction rests on and the one a test can hold.
+ */
+export const ALL_CONNECTIONS: MarketingConnectionKind[] = ["gtm"];
+
+/** One attached connection as the panel draws it — mirrors the API's `MarketingConnection`. */
+export interface MarketingConnectionRow {
+  kind: MarketingConnectionKind;
+  /** The contributing module's own row id — what its screens address the connection by. */
+  id: string;
+  /** What anybody quotes: `GTM-XXXXXXX`. */
+  external_id: string;
+  name: string;
+  status: string;
+  last_error: string | null;
+  /** Staged and never published — the one fact the deleted Tag Manager card carried (#411). */
+  pending_changes: number;
+  /** How much is live right now, so "12 tags, 3 staged" is one sentence. */
+  live_count: number;
+  observed_at: string | null;
+  /** Into the provider's own console. */
+  deep_link: string;
+  /** The in-app screen that works on it. */
+  href: string;
+}
+
 export interface KpiValue {
   current: number;
   previous: number;
@@ -156,6 +209,8 @@ export interface CompanyMarketing {
   /** The org default, so the editor's inherit option can say what it inherits. */
   compare_default: ComparePeriod;
   sources: SourceMetrics[];
+  /** Attachments that carry no metrics (#411). Only the company panel asks for them. */
+  connections?: MarketingConnectionRow[];
   needs_connection: boolean;
   can_manage: boolean;
   /** Whether GA4 key events / conversions are shown for this client (#134). */

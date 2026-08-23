@@ -9,13 +9,20 @@ employee's display name, never by their user id.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from pwdlib import PasswordHash
+from sqlalchemy import text
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import (
+    FAR_FUTURE_DUE,
+    add_membership,
+    auth_cookie,
+    make_tenant,
+    org_today,
+)
 
 _ph = PasswordHash.recommended()
 
@@ -39,7 +46,13 @@ async def _member(org_id, email: str, full_name: str | None) -> User:
 
 
 async def _task(client, headers, title: str, **fields) -> str:
-    body = {"title": title, "status": "open", "priority": "normal", **fields}
+    body = {
+        "title": title,
+        "status": "open",
+        "priority": "normal",
+        "due_date": FAR_FUTURE_DUE,
+        **fields,
+    }
     res = await client.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()["id"]
@@ -106,14 +119,31 @@ async def test_sorting_by_assignee_never_duplicates_a_task(client_for) -> None:
 
 
 async def test_due_date_sorts_with_undated_tasks_last_in_both_directions(client_for) -> None:
+    """A row with no deadline sorts last whichever way the column is pointed.
+
+    No API can *make* one any more (#392) — a deadline is required on create — but the column
+    stays nullable for a release (expand/contract), so every instance upgrades carrying rows
+    written before the rule. "Nulls last in both directions" is what keeps them out of the top
+    of a list somebody sorted to see their most urgent work, so the undated row is written
+    straight to the table here: that is the only shape the sort still has to answer for.
+    """
     t = await make_tenant("tk-due")
     async with client_for(t.host) as c:
         h = await auth_cookie(t.user)
-        today = date.today()
+        today = org_today()
         await _task(c, h, "later", due_date=(today + timedelta(days=5)).isoformat())
         await _task(c, h, "soon", due_date=today.isoformat())
-        await _task(c, h, "someday")  # no due date
+        undated = await _task(c, h, "someday", due_date=today.isoformat())
 
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text("UPDATE tasks SET due_date = NULL WHERE id = :id"), {"id": undated}
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        h = await auth_cookie(t.user)
         assert await _titles(c, h, "sort=due_date") == ["soon", "later", "someday"]
         assert await _titles(c, h, "sort=-due_date") == ["later", "soon", "someday"]
 
