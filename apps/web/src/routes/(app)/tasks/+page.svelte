@@ -33,6 +33,7 @@
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
+  import { DUE_BUCKETS } from "$lib/modules/tasks/due";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
@@ -82,7 +83,10 @@
   );
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
 
-  const dueOptions = ["overdue", "today", "week"] as const;
+  // The four urgency buckets the dashboard tile and the board draw their sections from
+  // (`$lib/modules/tasks/due`) — a partition, so picking one narrows to exactly the rows that
+  // section counted, and the four together are the whole list.
+  const dueOptions = DUE_BUCKETS;
 
   const today = orgToday();
 

@@ -82,7 +82,7 @@ async def list_tasks(
     assignee_contact_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None, max_length=50, description="A configured status key"),
     label_id: uuid.UUID | None = Query(None),
-    due: Literal["overdue", "today", "week"] | None = Query(None),
+    due: Literal["overdue", "today", "week", "later"] | None = Query(None),
     due_from: date | None = Query(None, description="Deadline window start (the Agenda feed)"),
     due_to: date | None = Query(None, description="Deadline window end (inclusive)"),
     q: str | None = Query(None, max_length=200),

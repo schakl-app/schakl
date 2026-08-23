@@ -423,19 +423,25 @@ class DashboardTaskGroups(BaseModel):
 
 
 class DashboardMineSummary(BaseModel):
-    """My open tasks: the page, and the bucket counts of the **whole** set (#407).
+    """My open tasks: the page, and the bucket counts of the **whole** set (#407, #397).
 
-    The widget partitions its rows into overdue / today / later and prints a count per bucket.
-    Counted off a truncated page those three numbers are wrong rather than partial — worse
-    than silence, because they read as measured. So the buckets are counted in SQL over every
-    open task assigned to the caller, and the rows below them are the page.
+    The widget partitions its rows into over tijd / vandaag / deze week / later and prints a
+    count per bucket. Counted off a truncated page those numbers are wrong rather than partial —
+    worse than silence, because they read as measured. So the buckets are counted in SQL over
+    every open task assigned to the caller, and the rows below them are the page.
+
+    Four counts rather than three since #397: ``upcoming`` was "everything that is not overdue
+    and not today", which is the tile's whole complaint — the week and the rest were one number
+    as well as one heading. The boundaries are the ``?due=`` filter's, so a heading and the list
+    it opens count the same rows.
     """
 
     items: list[DashboardTaskItem]
     total: int
     overdue: int
     due_today: int
-    upcoming: int
+    due_week: int
+    later: int
 
 
 # --------------------------------------------------------------------------- #

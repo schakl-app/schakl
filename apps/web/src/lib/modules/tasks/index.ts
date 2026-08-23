@@ -52,8 +52,12 @@ registerWebModule({
         api
           .GET("/api/v1/tasks/dashboard-mine")
           // The bucket counts come from the API now (#407): derived in the browser off a
-          // page of twenty they were three wrong numbers for anyone with more open work.
-          .then((r) => r.data ?? { items: [], total: 0, overdue: 0, due_today: 0, upcoming: 0 }),
+          // page of twenty they were wrong numbers for anyone with more open work. Four of
+          // them since #397 — "upcoming" was the week and the rest as one number.
+          .then(
+            (r) =>
+              r.data ?? { items: [], total: 0, overdue: 0, due_today: 0, due_week: 0, later: 0 },
+          ),
       component: MyTasksWidget,
     },
     {
