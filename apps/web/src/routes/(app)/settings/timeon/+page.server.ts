@@ -111,6 +111,15 @@ export const actions: Actions = {
         create_missing_projects: checked(form, "create_missing_projects"),
         create_missing_users: checked(form, "create_missing_users"),
         auto_sync: checked(form, "auto_sync"),
+        // The schedule (#388). Sent whatever `auto_sync` says, so switching automatic syncing
+        // off and back on does not lose the cadence somebody chose — the switch is the on/off
+        // and these three are *when*, which is a different question.
+        auto_frequency: String(form.get("auto_frequency") ?? "daily") as never,
+        auto_interval_hours: Number(form.get("auto_interval_hours") ?? 4) || 4,
+        // "HH:MM" from `TimeInput`, which owns the control precisely so a machine set to en-US
+        // does not ask a Dutch tenant for an AM/PM value (#13). A blank field is not a state
+        // here — the column is NOT NULL and the API ignores a null — so the default stands in.
+        auto_time: String(form.get("auto_time") ?? "").trim() || "04:20",
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

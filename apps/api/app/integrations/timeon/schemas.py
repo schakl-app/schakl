@@ -9,7 +9,7 @@ the next ``gen:client``.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.integrations.timeon.models import (
     ConflictPolicy,
     SyncDirection,
+    SyncFrequency,
     TimeonAccountStatus,
     TimeonConflictStatus,
     TimeonLinkKind,
@@ -62,6 +63,22 @@ class TimeonAccountRead(BaseModel):
     create_missing_users: bool = False
     auto_sync: bool = False
 
+    #: The schedule, and what it resolves to (#388). ``auto_time`` is a **local wall clock** in
+    #: ``timezone``; ``next_auto_run_at`` is the instant it comes out as, computed server-side by
+    #: the same function the worker decides with — a browser re-deriving it would be a second
+    #: opinion about a question the API answered holding the org's zone (#312's rule).
+    auto_frequency: SyncFrequency = SyncFrequency.DAILY
+    auto_interval_hours: int = 4
+    auto_time: time
+    #: The zone the schedule is read in, so a screen can *name* it rather than print a bare
+    #: number a reader has to guess the meaning of.
+    timezone: str | None = None
+    #: When an automatic run last fired, and when the next one falls. Both exist because a job
+    #: that decides not to run leaves no trace, and five nights of that looked exactly like five
+    #: nights of nothing having changed in Timeon (#387).
+    last_auto_run_at: datetime | None = None
+    next_auto_run_at: datetime | None = None
+
     active: bool
     status: TimeonAccountStatus
     last_verified_at: datetime | None = None
@@ -106,6 +123,12 @@ class TimeonAccountUpdate(BaseModel):
     create_missing_projects: bool | None = None
     create_missing_users: bool | None = None
     auto_sync: bool | None = None
+    #: The schedule. Unlike ``history_floor`` above, an explicit ``null`` here is *ignored* rather
+    #: than meaning "clear": the columns are NOT NULL and "no frequency" is not a state — off is
+    #: ``auto_sync=false``, which is the one switch that says it.
+    auto_frequency: SyncFrequency | None = None
+    auto_interval_hours: int | None = Field(default=None, ge=1, le=24)
+    auto_time: time | None = None
 
 
 class TimeonVerifyResult(BaseModel):

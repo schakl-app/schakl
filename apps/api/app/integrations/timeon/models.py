@@ -34,7 +34,7 @@ this module owns *the identity of the Timeon row it is paired with* and when we 
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -46,6 +46,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -86,6 +87,29 @@ class SyncDirection(StrEnum):
     PULL = "pull"
     PUSH = "push"
     TWO_WAY = "two_way"
+
+
+class SyncFrequency(StrEnum):
+    """How often an automatic sync runs — the tenant's operational choice, not ours (#388).
+
+    Before this the answer was one hardcoded ``cron(hour=4, minute=20)``: **04:20 UTC**, identical
+    for every account on every instance, invisible from every screen except as a sentence in a
+    help text. That is too little for what this integration is. During a cutover both systems are
+    written to all day, so how often the two are reconciled decides how large the two-writer
+    window gets — an agency running the migration wants hourly while people are logging in both
+    places, and nightly once the traffic is one-way again. One number in our code cannot say that,
+    and cannot say it *differently per connection* for an agency with two Timeon organisations.
+
+    ``hourly`` / ``every_n_hours`` are the cutover cadences; ``daily`` and ``weekdays`` are the
+    settled ones. "Off" is deliberately **not** a value here: :attr:`TimeonAccount.auto_sync` is
+    already the on/off, it is what the nightly's own "only an account that asked for it runs" rule
+    reads, and a second way to say off is a second thing to keep in step with the first.
+    """
+
+    HOURLY = "hourly"
+    EVERY_N_HOURS = "every_n_hours"
+    DAILY = "daily"
+    WEEKDAYS = "weekdays"
 
 
 class ConflictPolicy(StrEnum):
@@ -276,9 +300,40 @@ class TimeonAccount(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    #: Run nightly without being asked. Off until somebody has watched a dry run and a real one.
+    #: Run without being asked. Off until somebody has watched a dry run and a real one.
     auto_sync: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    #: *When*, once ``auto_sync`` says whether. Four columns rather than one cron expression: a
+    #: schedule a tenant sets in a form is a schedule a screen has to be able to read back, and
+    #: ``20 4 * * *`` is not a sentence anybody checks. Defaults reproduce the hardcoded job this
+    #: replaced (daily at 04:20) so an instance that upgrades and touches nothing keeps its
+    #: nightly — resolved in the org's zone now rather than in UTC, which is the one deliberate
+    #: change: 04:20 UTC is 06:20 in Amsterdam in summer and 05:20 in winter, so the "nightly"
+    #: drifted by an hour twice a year on the only clock the tenant has (§8).
+    auto_frequency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SyncFrequency.DAILY.value, server_default="daily"
+    )
+    #: Only read when :attr:`auto_frequency` is ``every_n_hours``. Kept as its own column rather
+    #: than folded into the frequency string, so switching a connection from "elke 4 uur" to
+    #: "dagelijks" and back does not lose the 4.
+    auto_interval_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4, server_default="4"
+    )
+    #: The time of day for ``daily``/``weekdays``, as **local wall clock** in the org's zone —
+    #: naive on purpose, exactly as ``leave_requests`` stores a leave time (§14): a schedule that
+    #: means "04:20" means it on both sides of a DST change, and storing an instant would move it
+    #: twice a year.
+    auto_time: Mapped[time] = mapped_column(
+        Time, nullable=False, default=time(4, 20), server_default="04:20:00"
+    )
+    #: When an automatic run last *fired* for this connection — success or failure, which is the
+    #: point: due-ness has to advance or a failing account is retried every tick. Distinct from
+    #: ``last_pull_at`` (which a manual run also writes) because "did the schedule work?" and
+    #: "when did we last read Timeon?" are the question #387 was about and its neighbour.
+    last_auto_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     active: Mapped[bool] = mapped_column(

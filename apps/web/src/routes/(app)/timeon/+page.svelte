@@ -20,7 +20,7 @@
   import { AlertTriangle, Link2Off, RefreshCw } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
+  import { fmtClockTime, fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -68,6 +68,30 @@
       .filter(([key]) => key.startsWith("hour."))
       .reduce((sum, [, value]) => sum + value, 0),
   );
+
+  /** The connection's cadence in words — the same four sentences `SyncPlan` writes. */
+  function scheduleLabel(row: TimeonAccount): string {
+    const at = fmtClockTime((row.auto_time ?? "04:20").slice(0, 5));
+    const zone = row.timezone ?? "UTC";
+    if (row.auto_frequency === "hourly") return t("timeon.schedule.hourly");
+    if (row.auto_frequency === "every_n_hours") {
+      return t("timeon.schedule.every_n_hours", { hours: row.auto_interval_hours ?? 4 });
+    }
+    if (row.auto_frequency === "weekdays") {
+      return t("timeon.schedule.weekdays", { time: at, zone });
+    }
+    return t("timeon.schedule.daily", { time: at, zone });
+  }
+
+  /**
+   * A run the server reports as due *now* is "bij de eerstvolgende ronde", never a timestamp in
+   * the past: the tick is the clock's resolution and printing a past moment reads as a fault.
+   */
+  function nextRunLabel(when: string): string {
+    return new Date(when).getTime() <= Date.now() + 1000
+      ? t("timeon.schedule.next_soon")
+      : t("timeon.schedule.next", { when: fmtDateTime(when) });
+  }
 
   const linkStatusTone: Record<string, string> = {
     linked: "text-text-muted",
@@ -138,7 +162,25 @@
                 {t("timeon.workspace.never_run")}
               {/if}
               · {t(`timeon.direction.${account.hours_direction}`)}
-              {#if account.auto_sync}· {t("timeon.workspace.nightly")}{/if}
+            </p>
+            <!-- **When it runs, and when it ran** (#387/#388). The line above says when Timeon
+                 was last *read*, which a manual sync also answers; this one is about the
+                 schedule — the thing that promised "elke nacht" and then did nothing for five
+                 nights with no screen anywhere able to say so. -->
+            <p class="mt-0.5 text-sm text-text-muted">
+              {#if account.auto_sync}
+                {scheduleLabel(account)}
+                {#if account.last_auto_run_at}
+                  · {t("timeon.schedule.last", { when: fmtDateTime(account.last_auto_run_at) })}
+                {:else}
+                  · {t("timeon.schedule.never")}
+                {/if}
+                {#if account.next_auto_run_at}
+                  · {nextRunLabel(account.next_auto_run_at)}
+                {/if}
+              {:else}
+                {t("timeon.schedule.manual")}
+              {/if}
             </p>
           </div>
           <dl class="flex gap-5">

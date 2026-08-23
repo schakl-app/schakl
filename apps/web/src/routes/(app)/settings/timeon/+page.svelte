@@ -31,6 +31,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import RunReport from "$lib/integrations/timeon/RunReport.svelte";
   import SyncPlan from "$lib/integrations/timeon/SyncPlan.svelte";
   import type { TimeonAccount, TimeonRun } from "$lib/integrations/timeon/types";
@@ -66,6 +67,19 @@
     draft[account.id] = { ...(draft[account.id] ?? {}), ...patch };
   }
 
+  /**
+   * "Volgende: 24-08-2026 04:20", or "bij de eerstvolgende ronde" for a run that is already due.
+   *
+   * The server answers `now` when a connection is due (including one that has never run), and
+   * printing that as a moment in the past reads as a fault where the honest sentence is "within
+   * the quarter of an hour". The tick is the clock's resolution, not the schedule.
+   */
+  function nextRunLabel(when: string): string {
+    return new Date(when).getTime() <= Date.now() + 1000
+      ? t("timeon.schedule.next_soon")
+      : t("timeon.schedule.next", { when: fmtDateTime(when) });
+  }
+
   const inputClass =
     "w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const labelClass = "mb-1 block text-sm font-medium text-text";
@@ -90,8 +104,11 @@
 
   /**
    * The switches, in reading order: what the sync may never touch first, what it may create
-   * second, and when it runs last. `active` is at the end because it is about the connection
-   * rather than about the sync.
+   * second. `active` is at the end because it is about the connection rather than about the sync.
+   *
+   * `auto_sync` used to sit here and no longer does (#388): *whether* it runs automatically and
+   * *when* are one decision made in one place, and a checkbox in this list with its schedule in
+   * another fieldset is the shape that let "Rond 04:20" survive as help text for a year.
    */
   const FLAGS = [
     "protect_invoiced",
@@ -99,9 +116,11 @@
     "push_approvals",
     "create_missing_projects",
     "create_missing_users",
-    "auto_sync",
     "active",
   ] as const;
+
+  /** The cadences, in the order an agency moves through them during a cutover. */
+  const FREQUENCIES = ["hourly", "every_n_hours", "daily", "weekdays"] as const;
 </script>
 
 <svelte:head><title>{pageTitle(t("settings.timeon.title"))}</title></svelte:head>
@@ -371,6 +390,107 @@
                   </label>
                 {/each}
               </div>
+            </fieldset>
+
+            <fieldset class="rounded-lg border border-border p-3">
+              <legend class="px-1 text-sm font-medium text-text">
+                {t("settings.timeon.schedule")}
+              </legend>
+              <!-- Whether *and* when, together. A cadence is an operational choice an agency
+                   makes during a cutover — hourly while people log hours in both systems,
+                   nightly once the traffic is one-way again — and it belongs to the connection,
+                   not to a constant in our source (#388). -->
+              <label class="flex items-start gap-2 text-sm text-text">
+                <FormCheckbox
+                  name="auto_sync"
+                  checked={Boolean(account.auto_sync)}
+                  class="mt-0.5"
+                  onchange={(event) => edit(account, { auto_sync: event.currentTarget.checked })}
+                />
+                <span>
+                  {t("settings.timeon.auto_sync")}
+                  <span class="block text-xs text-text-muted">
+                    {t("settings.timeon.auto_sync_help")}
+                  </span>
+                </span>
+              </label>
+
+              <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class={labelClass} for="frequency-{account.id}">
+                    {t("settings.timeon.auto_frequency")}
+                  </label>
+                  <select
+                    id="frequency-{account.id}"
+                    name="auto_frequency"
+                    class={inputClass}
+                    value={account.auto_frequency}
+                    onchange={(event) =>
+                      edit(account, { auto_frequency: event.currentTarget.value } as never)}
+                  >
+                    {#each FREQUENCIES as frequency (frequency)}
+                      <option value={frequency}>{t(`timeon.frequency.${frequency}`)}</option>
+                    {/each}
+                  </select>
+                </div>
+                <!-- Both controls stay **in the form** and one of them is hidden, rather than
+                     the irrelevant one being torn out of the DOM. A field that is not rendered
+                     is a field that is not posted, and this form sends the whole policy — so
+                     picking "om de zoveel uur", saving, and switching back to "elke dag" would
+                     have silently reset a 09:30 to the default. Keeping the value is the same
+                     argument the interval column is stored separately for. -->
+                <div class:hidden={shown(account).auto_frequency !== "every_n_hours"}>
+                  <label class={labelClass} for="interval-{account.id}">
+                    {t("settings.timeon.auto_interval_hours")}
+                  </label>
+                  <input
+                    id="interval-{account.id}"
+                    name="auto_interval_hours"
+                    type="number"
+                    min="1"
+                    max="24"
+                    class={inputClass}
+                    value={account.auto_interval_hours}
+                    oninput={(event) =>
+                      edit(account, {
+                        auto_interval_hours: Number(event.currentTarget.value) || 4,
+                      })}
+                  />
+                </div>
+                <div class:hidden={shown(account).auto_frequency === "every_n_hours"}>
+                  <label class={labelClass} for="autotime-{account.id}">
+                    {t("settings.timeon.auto_time")}
+                  </label>
+                  <!-- `TimeInput`, never a native `type="time"`: that one renders after the
+                       browser's own locale, so a machine set to en-US asks a Dutch tenant for
+                       an AM/PM value (#13). -->
+                  <TimeInput
+                    name="auto_time"
+                    id="autotime-{account.id}"
+                    value={(account.auto_time ?? "04:20").slice(0, 5)}
+                    onchange={(value) => edit(account, { auto_time: value })}
+                  />
+                  <p class="mt-1 text-xs text-text-muted">
+                    {t("settings.timeon.auto_time_help", {
+                      zone: account.timezone ?? "UTC",
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <!-- What the schedule resolved to, from the server: the *last* automatic run and
+                   the *next* one. A schedule you cannot see is one you cannot trust, which is
+                   how a nightly that never fired survived five nights (#387). -->
+              <p class="mt-3 text-xs text-text-muted">
+                {#if account.last_auto_run_at}
+                  {t("timeon.schedule.last", { when: fmtDateTime(account.last_auto_run_at) })}
+                {:else}
+                  {t("timeon.schedule.never")}
+                {/if}
+                {#if account.next_auto_run_at}
+                  · {nextRunLabel(account.next_auto_run_at)}
+                {/if}
+              </p>
             </fieldset>
 
             <!-- Live, from the unsaved form: what Save would make tonight's run do. -->
