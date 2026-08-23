@@ -1,5 +1,7 @@
 <script lang="ts">
   import { Mic, Trash2 } from "@lucide/svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import { filterUrl, type FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
 
@@ -20,16 +22,13 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
@@ -215,11 +214,12 @@
     fieldErrors: form?.bulkFields ?? null,
   });
 
+  /**
+   * The one filter that is set from outside the bar (the assignee picker inside it, and the
+   * board's own controls). Through `filterUrl`, which drops the page along with the filter.
+   */
   function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
+    void goto(filterUrl(page.url, key, value), { keepFocus: true, noScroll: true });
   }
 
   // The person switcher defaults to yourself (an absent `assignee_user_id` resolves to
@@ -240,12 +240,79 @@
   function setAssigneeFilter(value: string) {
     setFilter("assignee_user_id", value || ALL_ASSIGNEES);
   }
-  const hasFilters = $derived(Object.values(data.filters).some(Boolean));
-  const activeFilterCount = $derived(Object.values(data.filters).filter(Boolean).length);
-  // On a phone the filter bar collapses behind one toggle: five stacked controls otherwise push
-  // the actual tasks a full screen down. Open when arriving with a filter in the URL.
-  // svelte-ignore state_referenced_locally
-  let showFilters = $state(Object.values(data.filters).some(Boolean));
+
+  /**
+   * The board's filters, rendered by the shared bar (#354).
+   *
+   * This screen had the pattern first — the mobile collapse behind a counted toggle, the "wissen"
+   * link, the search-then-pickers-then-chips order — hand-written, and the four other lists each
+   * grew a partial copy of it. It is the bar's now, so the copies cannot drift again.
+   *
+   * The keys are the long ones (`company_id`, not `company`), unlike the register lists: the
+   * dashboard tiles, the client hub and half the notification hrefs deep-link here, and renaming
+   * a URL parameter breaks every link anyone has already sent.
+   *
+   * Two things the bar cannot express, and they say so rather than being drawn beside it. The
+   * assignee is a `MemberPicker`, whose "everyone" is a sentinel rather than an empty value —
+   * absent means *you* here. And a tenant's labels carry their own colour, which is the one
+   * place a chip's colour is information rather than decoration.
+   */
+  const filterDefs: FilterDef<string>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("tasks.search_placeholder") },
+    {
+      kind: "select",
+      key: "company_id",
+      placeholder: t("tasks.field.company"),
+      options: companyItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    {
+      kind: "select",
+      key: "project_id",
+      placeholder: t("tasks.field.project"),
+      options: projectItems,
+      archived: projectPicker.retired,
+      archivedLabel: projectArchivedLabel(),
+    },
+    {
+      kind: "custom",
+      key: "assignee_user_id",
+      hidden: isPortal,
+      render: assigneeFilter,
+      // Absent resolves to *you* server-side, so "is this narrowing the list" is not "is the
+      // parameter present": it is "is this anyone other than the default".
+      active: assigneeFilterValue !== "" && assigneeFilterValue !== (page.data.user?.id ?? ""),
+    },
+    {
+      kind: "pills",
+      key: "due",
+      options: dueOptions.map((option) => ({ value: option, label: t(`tasks.due.${option}`) })),
+    },
+    // The dashboard tile's "no client or project" bucket arrives here as `?unlinked=1`; the chip
+    // is what makes that a visible filter rather than a silently narrowed list.
+    {
+      kind: "pills",
+      key: "unlinked",
+      options: [{ value: "1", label: t("tasks.filter.unlinked") }],
+    },
+    // The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or deleted;
+    // without it they sit among real work with nothing to gather them by.
+    { kind: "pills", key: "unnamed", options: [{ value: "1", label: t("tasks.filter.unnamed") }] },
+    // The rows an instance carried into #392, where the deadline became required. Findable so
+    // they can be dated — one at a time, or as a selection through the ✎ beside this list.
+    { kind: "pills", key: "undated", options: [{ value: "1", label: t("tasks.filter.undated") }] },
+    {
+      kind: "pills",
+      key: "label_id",
+      hidden: data.labels.length === 0,
+      options: data.labels.map((label) => ({
+        value: label.id,
+        label: label.name,
+        class: labelChipClass(label.color),
+      })),
+    },
+  ]);
 </script>
 
 <svelte:head>
@@ -326,117 +393,51 @@
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
-<!-- Filter bar. Collapsed behind one toggle below `sm` (docs/UX.md: a phone is not a smaller
-     desktop) — always expanded from `sm` up. -->
-<button
-  type="button"
-  class="mb-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text sm:hidden {showFilters
-    ? 'border-brand text-brand'
-    : ''}"
-  aria-expanded={showFilters}
-  onclick={() => (showFilters = !showFilters)}
->
-  {t("tasks.filter.toggle")}
-  {#if activeFilterCount > 0}
-    <span class="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white"
-      >{activeFilterCount}</span
-    >
-  {/if}
-</button>
-<div class="mb-4 flex-wrap items-center gap-2 {showFilters ? 'flex' : 'hidden'} sm:flex">
-  <SearchInput placeholder={t("tasks.search_placeholder")} />
+{#snippet assigneeFilter()}
+  <!-- A `MemberPicker`, not a `Combobox` over ids: it draws avatars and knows the deactivated
+       from the current (`$lib/core/members`). The bar places it; the control stays ours. -->
   <div class="w-full sm:w-44">
-    <Combobox
-      items={companyItems}
-      archived={companyPicker.retired}
-      archivedLabel={companyArchivedLabel()}
-      name="_filter_company"
-      value={data.filters.company_id ?? ""}
-      placeholder={t("tasks.field.company")}
-      onselect={(v) => setFilter("company_id", v)}
-      id="filter-company"
+    <MemberPicker
+      members={data.members}
+      name="_filter_assignee"
+      value={assigneeFilterValue}
+      placeholder={t("tasks.field.assignee")}
+      onselect={setAssigneeFilter}
+      id="filter-assignee"
     />
   </div>
-  <div class="w-full sm:w-44">
-    <Combobox
-      items={projectItems}
-      archived={projectPicker.retired}
-      archivedLabel={projectArchivedLabel()}
-      name="_filter_project"
-      value={data.filters.project_id ?? ""}
-      placeholder={t("tasks.field.project")}
-      onselect={(v) => setFilter("project_id", v)}
-      id="filter-project"
+{/snippet}
+
+<FilterBar filters={filterDefs} idPrefix="task-filter">
+  {#snippet actions()}
+    <ImpexBar
+      entity="task"
+      readPermission="tasks.task.read"
+      writePermission="tasks.task.write"
+      filters={{
+        q: data.filters.q,
+        company_id: data.filters.company_id,
+        project_id: data.filters.project_id,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
     />
-  </div>
-  {#if !isPortal}
-    <div class="w-full sm:w-44">
-      <MemberPicker
-        members={data.members}
-        name="_filter_assignee"
-        value={assigneeFilterValue}
-        placeholder={t("tasks.field.assignee")}
-        onselect={setAssigneeFilter}
-        id="filter-assignee"
-      />
-    </div>
-  {/if}
-  {#each dueOptions as option (option)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.filters.due === option
-        ? 'bg-brand text-white'
-        : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
-      onclick={() => setFilter("due", data.filters.due === option ? "" : option)}
-      >{t(`tasks.due.${option}`)}</button
-    >
-  {/each}
-  <!-- The dashboard tile's "no client or project" bucket arrives here as `?unlinked=1`; the chip
-       is what makes that a visible filter rather than a silently narrowed list. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.filters.unlinked
-      ? 'bg-brand text-white'
-      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
-    onclick={() => setFilter("unlinked", data.filters.unlinked ? "" : "1")}
-    >{t("tasks.filter.unlinked")}</button
-  >
-  <!-- The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or
-       deleted; without it they sit among real work with nothing to gather them by. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.filters.unnamed
-      ? 'bg-brand text-white'
-      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
-    onclick={() => setFilter("unnamed", data.filters.unnamed ? "" : "1")}
-    >{t("tasks.filter.unnamed")}</button
-  >
-  <!-- The rows an instance carried into #392, where the deadline became required. Findable so
-       they can be dated — one at a time, or as a selection through the ✎ beside this list. -->
-  <button
-    class="rounded-full px-3 py-1 text-xs font-medium
-      {data.filters.undated
-      ? 'bg-brand text-white'
-      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
-    onclick={() => setFilter("undated", data.filters.undated ? "" : "1")}
-    >{t("tasks.filter.undated")}</button
-  >
-  {#each data.labels as label (label.id)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.filters.label_id === label.id ? 'ring-2 ring-brand ' : ''}{labelChipClass(
-        label.color,
-      )}"
-      onclick={() => setFilter("label_id", data.filters.label_id === label.id ? "" : label.id)}
-      >{label.name}</button
-    >
-  {/each}
-  {#if hasFilters}
-    <a href="/tasks" class="text-xs text-text-muted underline hover:text-text"
-      >{t("tasks.filter.clear")}</a
-    >
-  {/if}
-</div>
+    <!-- Reachable even when a filter empties the board: the sort that emptied it is cycled off
+         from here. -->
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  {/snippet}
+</FilterBar>
 
 <!-- Cells. The complete toggle stays a real <form> inside its <td>: it works with no JS, and
      `use:enhance` only upgrades it. Everything else that used to be a badge on `TaskRow` is now
@@ -639,35 +640,6 @@
     <p class="mt-1 text-sm text-text-muted">{t("tasks.empty_hint")}</p>
   </div>
 {/snippet}
-
-<!-- The picker stays reachable even when a filter empties the board — the sort that emptied it
-     is cycled off from here. -->
-<div class="mb-2 flex flex-wrap items-center justify-end gap-2">
-  <ImpexBar
-    entity="task"
-    readPermission="tasks.task.read"
-    writePermission="tasks.task.write"
-    filters={{
-      q: data.filters.q,
-      company_id: data.filters.company_id,
-      project_id: data.filters.project_id,
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
-         do rather than what the list shows, so it sits after Kolommen rather than among the
-         list's own controls. Pressing it opens the selection strip above the table. -->
-  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-</div>
 
 <BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 

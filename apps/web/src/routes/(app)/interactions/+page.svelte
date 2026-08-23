@@ -39,6 +39,8 @@
   import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -46,7 +48,6 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
@@ -159,6 +160,40 @@
    * control that can point at itself.
    */
   const reviewing = $derived(data.filters.pending as boolean);
+
+  /**
+   * What narrows whichever of the two views you are on, rendered by the shared bar (#354).
+   *
+   * Two of the three stand down over the review queue, and both for the same reason (#253's
+   * control that always refuses): every pending row is an e-mail — `record_email` is the one
+   * writer that ever sets `pending`, and it writes `kind=email` — so the kind select could only
+   * pick the kind already showing; and an unreviewed e-mail is private to its mailbox owner, so
+   * every colleague but you would answer an empty list. The kind comes back the moment a link
+   * arrives with it set, because a filter that is narrowing the list must be visible whatever
+   * view it is narrowing.
+   */
+  const filterDefs: FilterDef<string>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("interactions.search") },
+    {
+      kind: "select",
+      key: "kind",
+      hidden: reviewing && !data.filters.kind,
+      placeholder: t("interactions.column.kind"),
+      options: kinds.map((kind) => ({ value: kind.key, label: kindLabel(kind, data.locale) })),
+    },
+    {
+      kind: "custom",
+      key: "owner",
+      hidden: reviewing,
+      render: ownerFilter,
+      // "mijn" is the same filter spelled another way, so the bar has to be told about it or
+      // "wissen" would leave the list narrowed to one person with nothing saying so.
+      extraKeys: ["mine"],
+      // "me" is the *default* this list opens on, not a filter somebody set — counting it would
+      // offer "wissen" on arrival and badge the phone's toggle with a 1 nobody asked for.
+      active: (data.filters.ownerValue ?? "me") !== "me",
+    },
+  ]);
   /** The viewer's own unreviewed moments, whatever this list is currently narrowed to. */
   const pendingTotal = $derived((data.pendingTotal as number | undefined) ?? 0);
   const viewTabClass = (active: boolean) =>
@@ -622,51 +657,39 @@
       {t("interactions.filter.all")}
     </a>
   </div>
-  <!-- Every row in the review queue is an e-mail — `record_email` is the one writer that ever
-       sets `pending`, and it writes `kind=email` (`interactions/system.py`) — so over the queue
-       this control can only pick the kind that is already showing, or one that answers nothing.
-       Drawn there only when a link arrives with it set, for the same reason the date row is. -->
-  {#if !reviewing || data.filters.kind}
-    <select
-      value={data.filters.kind ?? ""}
-      onchange={(e) => applyFilter({ kind: e.currentTarget.value || null })}
-      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-      aria-label={t("interactions.column.kind")}
-    >
-      <option value="">{t("interactions.filter.all_kinds")}</option>
-      {#each kinds as kind (kind.key)}
-        <option value={kind.key}>{kindLabel(kind, data.locale)}</option>
-      {/each}
-    </select>
-  {/if}
-  <!-- The colleague half is a `MemberPicker` like every other "which colleague" control: a
-       deactivated account is behind the search wearing "Gedeactiveerd", never beside the people
-       still here. Filtering by somebody who has left is a real question — this is their mail —
-       so they are found by typing rather than dropped. The signed-in user is excluded because
-       "mijn" already names them.
-       Not drawn over the review queue at all: an unreviewed e-mail is private to its mailbox
-       owner, so every option but "mijn" would return nothing there — a control whose only
-       possible answer is an empty list is #253's control that always refuses. -->
-  {#if !reviewing}
-    <div class="w-full sm:w-44">
-      <MemberPicker
-        members={ownerMembers}
-        extra={ownerExtra}
-        exclude={me ? [me] : []}
-        name="_filter_owner"
-        id="filter-owner"
-        value={data.filters.ownerValue}
-        allowEmpty={false}
-        placeholder={t("interactions.filter.owner")}
-        ariaLabel={t("interactions.filter.owner")}
-        onselect={(v) => applyFilter({ owner: v, mine: null })}
-      />
-    </div>
-  {/if}
-  <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of
-       a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->
-  <div class="ml-auto flex flex-wrap items-center gap-2">
-    <SearchInput placeholder={t("interactions.search")} />
+</div>
+
+<!-- The narrowing controls, in the shared bar (#354): search first, then the pickers, then the
+     actions at the far end. The search box used to sit on the *right*, among Kolommen and the ✎,
+     which is the one ordering no other list here uses.
+
+     The view switch above stays out of it on purpose. It is not a filter: it decides which of two
+     screens this is — a to-do queue or a register — and everything in the bar narrows whichever
+     one you are on. -->
+{#snippet ownerFilter()}
+  <!-- A `MemberPicker` like every other "which colleague" control: a deactivated account is
+       behind the search wearing "Gedeactiveerd", never beside the people still here. Filtering
+       by somebody who has left is a real question — this is their mail — so they are found by
+       typing rather than dropped. The signed-in user is excluded because "mijn" already names
+       them. -->
+  <div class="w-full sm:w-44">
+    <MemberPicker
+      members={ownerMembers}
+      extra={ownerExtra}
+      exclude={me ? [me] : []}
+      name="_filter_owner"
+      id="filter-owner"
+      value={data.filters.ownerValue}
+      allowEmpty={false}
+      placeholder={t("interactions.filter.owner")}
+      ariaLabel={t("interactions.filter.owner")}
+      onselect={(v) => applyFilter({ owner: v, mine: null })}
+    />
+  </div>
+{/snippet}
+
+<FilterBar filters={filterDefs} idPrefix="interaction-filter">
+  {#snippet actions()}
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -678,8 +701,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 <!-- Date navigation (#238): jump to a week, filter a month, or type any range — three ways of
      writing the same `from`/`to` params. Wraps on its own line so a phone never scrolls (#36).
@@ -691,24 +714,34 @@
      rule `FilterBar` states by opening itself when a filter is already on). -->
 {#if !reviewing || dateFrom || dateTo}
   <div class="mb-3 flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
+    <!-- The arrows exist only while a week *is* the view (#352). `← label →` is where every
+         calendar in the world puts the range you are looking at, so over an unfiltered list the
+         middle slot reading "Deze week" claimed a filter that was not on — and `←` from there
+         landed on the week before *today*, which is not "the week before what I was looking at".
+         With no week set the middle control is one button that turns the filter on, reading as
+         what it is; the step arrows come back the moment there is something to step from. -->
     <div class="flex items-center gap-1">
-      <a
-        href={weekHref(-1)}
-        aria-label={t("interactions.filter.prev_week")}
-        class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
-      >
-        ←
-      </a>
+      {#if weekActive}
+        <a
+          href={weekHref(-1)}
+          aria-label={t("interactions.filter.prev_week")}
+          class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+        >
+          ←
+        </a>
+      {/if}
       <a href={weekHref(0)} class={tabClass(weekActive)}>
         {weekActive ? fmtPeriod(dateFrom, dateTo) : t("interactions.filter.this_week")}
       </a>
-      <a
-        href={weekHref(1)}
-        aria-label={t("interactions.filter.next_week")}
-        class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
-      >
-        →
-      </a>
+      {#if weekActive}
+        <a
+          href={weekHref(1)}
+          aria-label={t("interactions.filter.next_week")}
+          class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+        >
+          →
+        </a>
+      {/if}
     </div>
     <select
       value={monthActive}

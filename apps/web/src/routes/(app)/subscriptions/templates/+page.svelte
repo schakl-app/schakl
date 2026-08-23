@@ -17,13 +17,14 @@
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TEMPLATE_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
@@ -80,12 +81,19 @@
     showModal = true;
   }
 
-  function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
+  /** The list's filters, rendered by the shared bar (#354) — search, then the type pills. */
+  const filterDefs: FilterDef<string>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("subscriptions.templates.search_placeholder") },
+    {
+      kind: "pills",
+      key: "type",
+      hidden: activeTypes.length === 0,
+      options: activeTypes.map((st) => ({
+        value: st.id,
+        label: subscriptionTypeLabel(st, data.locale),
+      })),
+    },
+  ]);
 
   const table = createTableLayout<Template>({
     all: () => SUBSCRIPTION_TEMPLATE_COLUMNS,
@@ -199,15 +207,18 @@
 />
 
 {#snippet nameCell(tpl: Template)}
+  <!-- `block w-full truncate`, as on the main subscriptions list (#370): a button shrinks to fit
+       even as a block box, so without `w-full` the `nowrap` that `truncate` sets lets it grow
+       past its column and the fixed layout cuts it mid-letter with no ellipsis. -->
   <button
     type="button"
-    class="text-left font-medium text-text hover:text-brand"
+    class="block w-full truncate text-left font-medium text-text hover:text-brand"
     onclick={() => openEdit(tpl)}>{tpl.name}</button
   >
 {/snippet}
 
 {#snippet typeCell(tpl: Template)}
-  <span class="text-text-muted"
+  <span class="block truncate text-text-muted"
     >{tpl.subscription_type_id ? typeLabel(tpl.subscription_type_id) : "—"}</span
   >
 {/snippet}

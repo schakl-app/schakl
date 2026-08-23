@@ -922,6 +922,37 @@ contrast bug in dark mode rather than only an inconsistency.
       *collapsed* bar from silently explaining an empty list — and an empty list under a filter
       says `common.no_results`, never "je hebt nog geen domeinen", which sends the reader
       hunting for the wrong problem.
+
+    Three more, added when the remaining seven lists were brought onto it (#354). The bar had
+    been the rule for four screens and the *description* of the other seven, which is not the
+    same thing: chips were styled four different ways across the app, each list ordered its
+    toolbar differently (search first vs. scope first, the client picker before or after the
+    chips), and `/subscriptions` had no search box at all while every comparable list had one.
+    - **Two vocabularies never share an undifferentiated row.** `/subscriptions` drew nine
+      identical plain-text chips — `Concept Actief Gepauzeerd Opgezegd SEO Hosting Onderhoud
+      Marketing Support` — of which the first four were statuses and the last five were
+      abonnementstypes, with no divider, no label and no heading. Nothing said that pressing
+      *Opgezegd* and pressing *Hosting* narrow along different axes, or whether the two combine.
+      A short, closed, recognisable vocabulary is `pills`; anything a tenant defines, or anything
+      past about six, is a `select` with the column's own label as its placeholder — which is
+      also what stops the row wrapping to three lines on the instance that defines ten.
+    - **One selected treatment, whatever the chip's colour.** `FilterOption.class` exists for a
+      vocabulary where the colour *is* information — a client's lifecycle, a project's status, a
+      tenant's task label, all of which the table draws in the same colours — but it only sets
+      the *unselected* look. "Which of these is on" is the bar's one ring, on every list, so a
+      reader never learns a second answer per screen. A filter with nothing to say in colour
+      leaves it off: a colour that means nothing is one people have to learn not to read.
+    - **A control the bar cannot express is a `custom` def, not a `<div>` beside the bar.** The
+      task board's assignee is a `MemberPicker` whose "everyone" is a sentinel; the escape hatch
+      renders it *inside* the bar, so the ordering, the mobile collapse and "wissen" stay the
+      bar's. Such a def says whether it is `active`, because "the URL has this key" is not always
+      the question — an absent assignee resolves to *you*, which is a default and not a filter.
+      The keys stay whatever that screen's links already carry: `/tasks` uses `company_id` where
+      the registers use `company`, because the dashboard tiles, the client hub and half the
+      notification hrefs deep-link there and renaming a parameter breaks every link already sent.
+
+    `filter-bar.test.ts` is what keeps this from being a description again: it fails a list route
+    that renders its own `SearchInput` or filter-chip row instead of the bar.
   - **A screen that holds a queue opens on the queue, and the queue carries its size.**
     Interacties opened on the whole timeline with the unreviewed e-mails scattered through it
     wearing an amber pill, and its two views were a pair of borderless words whose *selected*

@@ -10,6 +10,8 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
@@ -31,16 +33,9 @@
   import { page } from "$app/state";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
+  import type { ContactFilterKey } from "$lib/modules/contacts/filters";
   import { contactTypeLabel } from "$lib/modules/contacts/types";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
-
-  function typeHref(typeId: string): string {
-    const params = new URLSearchParams(page.url.searchParams);
-    if (typeId) params.set("type", typeId);
-    else params.delete("type");
-    const qs = params.toString();
-    return qs ? `/contacts?${qs}` : "/contacts";
-  }
 
   let { data, form } = $props();
 
@@ -70,12 +65,35 @@
     splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
   );
   const companyFilterItems = $derived(companyPicker.live);
-  function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
+
+  /**
+   * The list's filters, rendered by the shared bar (#354).
+   *
+   * The contact types used to be a *second* row of chips below the toolbar — a row that only
+   * existed when the tenant had defined any, in a third chip styling nothing else on the app
+   * used. They are the same kind of thing as a status, so they are pills in the same bar, and
+   * "Alle typen" is dropped: pressing the chip you are on is how you get back, everywhere.
+   */
+  const filterDefs: FilterDef<ContactFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("contacts.search_placeholder") },
+    {
+      kind: "select",
+      key: "company",
+      placeholder: t("contacts.field.company"),
+      options: companyFilterItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    {
+      kind: "pills",
+      key: "type",
+      hidden: data.types.length === 0,
+      options: data.types.map((ct) => ({
+        value: ct.id,
+        label: contactTypeLabel(ct, data.locale),
+      })),
+    },
+  ]);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Only the client link, and only in the attaching direction. Someone's name, address and phone
@@ -326,24 +344,8 @@
   {/if}
 </div>
 
-<!-- Search + the personal column picker, on their own wrapping row (issue #36): title, a fixed
-     224px search box, the picker and the primary action on one unwrappable line have a
-     min-content width no phone has. This is the shape `companies` already uses. -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput />
-  <div class="w-44">
-    <Combobox
-      items={companyFilterItems}
-      archived={companyPicker.retired}
-      archivedLabel={companyArchivedLabel()}
-      name="_filter_company"
-      value={data.companyFilter}
-      placeholder={t("contacts.filter.company")}
-      onselect={(v) => setFilter("company", v)}
-      id="filter-company"
-    />
-  </div>
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="contact-filter">
+  {#snippet actions()}
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -369,29 +371,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
-
-{#if data.types.length > 0}
-  <div class="mb-4 flex flex-wrap gap-1.5">
-    <a
-      href={typeHref("")}
-      class="rounded-full border px-3 py-1 text-xs
-        {data.typeFilter === ''
-        ? 'border-brand bg-brand/10 font-medium text-brand'
-        : 'border-border text-text-muted hover:text-text'}">{t("contacts.all_types")}</a
-    >
-    {#each data.types as ct (ct.id)}
-      <a
-        href={typeHref(ct.id)}
-        class="rounded-full border px-3 py-1 text-xs
-          {data.typeFilter === ct.id
-          ? 'border-brand bg-brand/10 font-medium text-brand'
-          : 'border-border text-text-muted hover:text-text'}">{contactTypeLabel(ct, data.locale)}</a
-      >
-    {/each}
-  </div>
-{/if}
+  {/snippet}
+</FilterBar>
 
 {#if showCreate}
   <form
