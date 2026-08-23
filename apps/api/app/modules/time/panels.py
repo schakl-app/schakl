@@ -23,12 +23,12 @@ from sqlalchemy import func, select
 
 from app.core.tenancy import RequestContext
 from app.modules.time.models import TimeEntry
-from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
+from app.registry import PANEL_FEED, PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
-# How many recent entries the panel shows. The panel used to load the client's *entire*
-# timesheet to display this handful and one total — the total is an aggregate now, and the list
-# is bounded, so a client with ten years of history costs the same as a new one.
-_RECENT = 10
+# How many recent entries the panel shows — the hub's shared feed default (#407). The panel used
+# to load the client's *entire* timesheet to display this handful and one total; the total is an
+# aggregate now and the list is bounded, so ten years of history costs what a new client costs.
+_RECENT = PANEL_FEED
 
 
 async def _time_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:

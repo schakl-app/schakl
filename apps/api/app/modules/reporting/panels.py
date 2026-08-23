@@ -18,17 +18,22 @@ import uuid
 from app.core.tenancy import RequestContext
 from app.modules.reporting.models import ReportAudience
 from app.modules.reporting.service import ProfileService, ReportService
-from app.registry import SIZE_HALF, PanelSpec
+from app.registry import PANEL_FEED, SIZE_HALF, PanelSpec
 
-_RECENT = 6
+#: The feed default (#407). Six was its own number; the count beside it is the point.
+_RECENT = PANEL_FEED
 
 
 async def _reporting_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     # Declared on the spec (#365) — the composer never calls this without the read grant.
+    # ``count=True`` (#407): the panel drew six documents with nothing to say whether the
+    # client has six or sixty, and the count is one indexed query over a table already keyed
+    # on ``(org_id, company_id)``.
     reports = await ReportService(ctx).list(
-        company_id=company_id, limit=_RECENT, count=False
+        company_id=company_id, limit=_RECENT, count=True
     )
     payload: dict = {
+        "total": reports.total,
         "reports": [row.model_dump(mode="json") for row in reports.items],
         "can_manage": ctx.can("reporting.profile.manage"),
         "can_send": ctx.can("reporting.report.send"),

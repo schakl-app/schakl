@@ -32,6 +32,7 @@
   const busy = new InFlight();
 
   const links = $derived((data.links ?? []) as DriveLinkItem[]);
+  const total = $derived(data.total as number | undefined);
   const folder = $derived((data.folder ?? null) as DriveLinkItem | null);
   const viewerConnected = $derived(Boolean(data.viewer_connected));
   const canProvision = $derived(Boolean(data.can_provision));
@@ -156,7 +157,14 @@
       <h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
         {t("google.drive.linked_files")}
       </h3>
-      <DriveLinkList links={looseLinks} {canWrite} ontrashed={() => (driveVersion += 1)} />
+      <!-- The provider counts what it capped (#407); the client's own folder is drawn above,
+           so the notice is about the loose attachments beside it. -->
+      <DriveLinkList
+        links={looseLinks}
+        total={total != null ? total - (folder ? 1 : 0) : undefined}
+        {canWrite}
+        ontrashed={() => (driveVersion += 1)}
+      />
     </div>
   {/if}
 {:else}

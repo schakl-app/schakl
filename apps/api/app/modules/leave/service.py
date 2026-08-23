@@ -3493,7 +3493,12 @@ class LeaveService:
         return days
 
     async def team(
-        self, *, date_from: date, date_to: date, user_id: uuid.UUID | None = None
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        user_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[TeamLeaveItem]:
         """Occupying absences overlapping the range, with names — the calendar/timesheet feed.
 
@@ -3517,6 +3522,13 @@ class LeaveService:
         )
         if user_id is not None:
             stmt = stmt.where(LeaveRequest.user_id == user_id)
+        # A ceiling for the callers that draw a *tile* rather than a calendar (#407). The
+        # calendar asks for a date window and needs every row inside it; the My Day tile asks
+        # about one day, where the honest bound is the org's headcount — so the cap is a
+        # backstop against an absurd range, not the tile's own truncation, and the browser
+        # collapses what it draws.
+        if limit is not None:
+            stmt = stmt.limit(limit)
         rows = (await self.ctx.session.execute(stmt)).all()
         if not rows:
             return []

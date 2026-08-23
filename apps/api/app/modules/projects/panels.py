@@ -11,11 +11,11 @@ from sqlalchemy import case
 
 from app.core.tenancy import RequestContext
 from app.modules.projects.models import Project, ProjectStatus
-from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
+from app.registry import PANEL_ROWS, PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
-#: How many projects the client card shows before handing over to the list — the domains and
-#: websites panels' number and rule: a panel is the first page of the list it links to.
-_PANEL_LIMIT = 5
+#: The register default, stated once for the whole hub (#407): a panel is the first page of
+#: the list it links to.
+_PANEL_LIMIT = PANEL_ROWS
 
 _STATUS_ORDER = {
     ProjectStatus.ACTIVE.value: 0,

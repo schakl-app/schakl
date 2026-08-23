@@ -6,6 +6,7 @@
   import { orgToday } from "$lib/core/today";
   import { stateIcon } from "$lib/core/ui/state-icons";
   import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -16,9 +17,22 @@
     due_date: string | null;
     company_name?: string | null;
   }
-  const tasks = $derived((data ?? []) as MyTask[]);
+  interface MinePayload {
+    items: MyTask[];
+    total: number;
+    overdue: number;
+    due_today: number;
+    upcoming: number;
+  }
+  const payload = $derived(
+    (data ?? { items: [], total: 0, overdue: 0, due_today: 0, upcoming: 0 }) as MinePayload,
+  );
+  const tasks = $derived(payload.items ?? []);
   const today = orgToday();
 
+  // The rows are a page; the numbers beside the headings are the **whole** set (#407). Derived
+  // in the browser off twenty fetched rows they were three wrong numbers rather than three
+  // partial ones — and a wrong number reads as measured, which is worse than saying nothing.
   const overdue = $derived(tasks.filter((task) => task.due_date != null && task.due_date < today));
   const dueToday = $derived(tasks.filter((task) => task.due_date === today));
   const upcoming = $derived(tasks.filter((task) => task.due_date == null || task.due_date > today));
@@ -45,59 +59,70 @@
   </svelte:element>
 {/snippet}
 
-{#snippet taskList(rows: MyTask[], state: UiState)}
-  <ul class="divide-y divide-border">
-    {#each rows as task (task.id)}
-      <li class="flex items-center justify-between gap-2 py-1.5">
-        <a href={`/tasks/${task.id}`} class="group min-w-0 flex-1">
-          <span class="block truncate text-sm text-text group-hover:text-brand">{task.title}</span>
-          {#if task.company_name}
-            <!-- Which client's work this is. "Nieuwsbrief plannen" is four indistinguishable
+{#snippet taskList(rows: MyTask[], state: UiState, whole: number, href: string)}
+  <PanelRows {rows} collapsed={5} total={whole} {href} alwaysLink={rows.length === 0}>
+    {#snippet children(shown)}
+      <ul class="divide-y divide-border">
+        {#each shown as task (task.id)}
+          <li class="flex items-center justify-between gap-2 py-1.5">
+            <a href={`/tasks/${task.id}`} class="group min-w-0 flex-1">
+              <span class="block truncate text-sm text-text group-hover:text-brand"
+                >{task.title}</span
+              >
+              {#if task.company_name}
+                <!-- Which client's work this is. "Nieuwsbrief plannen" is four indistinguishable
                  rows on a list spanning four clients, and only opening one tells them apart. -->
-            <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
-          {/if}
-        </a>
-        <span
-          class="shrink-0 text-xs tabular-nums {state === 'late'
-            ? `font-semibold ${stateTextClass('late')}`
-            : 'text-text-muted'}"
-        >
-          {#if task.due_date}
-            {fmtDayMonth(task.due_date)}
-          {:else}
-            {t(`tasks.priority.${task.priority}`)}
-          {/if}
-        </span>
-      </li>
-    {/each}
-  </ul>
+                <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+              {/if}
+            </a>
+            <span
+              class="shrink-0 text-xs tabular-nums {state === 'late'
+                ? `font-semibold ${stateTextClass('late')}`
+                : 'text-text-muted'}"
+            >
+              {#if task.due_date}
+                {fmtDayMonth(task.due_date)}
+              {:else}
+                {t(`tasks.priority.${task.priority}`)}
+              {/if}
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {/snippet}
+  </PanelRows>
 {/snippet}
 
 <Card title={t("dashboard.my_day.tasks")} href="/tasks" linkLabel={t("nav.tasks")}>
-  {#if tasks.length === 0}
+  {#if payload.total === 0}
     <p class="text-sm text-text-muted">{t("dashboard.my_day.no_tasks")}</p>
   {:else}
-    {#if overdue.length > 0}
+    <!-- A partition is drawn on its **whole** count, never on how many of its rows landed on
+         this page (#407). The page is ordered by deadline, so somebody with eighteen overdue
+         tasks had every row spent before "Later" was reached — and a bucket of twenty-two that
+         renders nothing at all is the silent truncation this issue is about, one level in. With
+         no rows to draw, the partition is its heading and its way through. -->
+    {#if payload.overdue > 0}
       {@render partition(
         "late",
         t("dashboard.my_day.overdue"),
         "/tasks?due=overdue",
-        overdue.length,
+        payload.overdue,
       )}
-      {@render taskList(overdue, "late")}
+      {@render taskList(overdue, "late", payload.overdue, "/tasks?due=overdue")}
     {/if}
-    {#if dueToday.length > 0}
+    {#if payload.due_today > 0}
       {@render partition(
         "today",
         t("dashboard.my_day.due_today"),
         "/tasks?due=today",
-        dueToday.length,
+        payload.due_today,
       )}
-      {@render taskList(dueToday, "today")}
+      {@render taskList(dueToday, "today", payload.due_today, "/tasks?due=today")}
     {/if}
-    {#if upcoming.length > 0}
-      {@render partition("neutral", t("dashboard.my_day.upcoming"), null, upcoming.length)}
-      {@render taskList(upcoming, "neutral")}
+    {#if payload.upcoming > 0}
+      {@render partition("neutral", t("dashboard.my_day.upcoming"), null, payload.upcoming)}
+      {@render taskList(upcoming, "neutral", payload.upcoming, "/tasks")}
     {/if}
   {/if}
 </Card>

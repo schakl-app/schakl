@@ -154,7 +154,8 @@ async def _match_contact(
             return matched
     if not first_name:
         return None
-    for contact, _ in await ContactService(ctx).contacts_for_company(company.id):
+    linked, _ = await ContactService(ctx).contacts_for_company(company.id)
+    for contact, _ in linked:
         # Only a contact with no address of its own: one who *has* a different e-mail is a
         # different person who happens to share a name, not this row.
         if not contact.email and _same_person(contact, first_name, last_name):

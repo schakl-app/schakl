@@ -167,11 +167,13 @@ export const actions: Actions = {
   // portal module the way the contactmomenten actions below are — this page hosts them, it
   // does not own them.
   ...portalActions({
-    entityType: "contact",
     // `String(...)` because the contributed actions are typed against a generic
     // `RequestEvent`, whose params are all optional; on this route `[id]` always matches.
-    subjectId: (event) => String(event.params.id),
-    returnPath: (event) => `/contacts/${event.params.id}`,
+    subject: (event) => ({
+      entityType: "contact",
+      subjectId: String(event.params.id),
+      returnPath: `/contacts/${event.params.id}`,
+    }),
   }),
 
   // Contactmomenten panel contract (lib/modules/interactions).

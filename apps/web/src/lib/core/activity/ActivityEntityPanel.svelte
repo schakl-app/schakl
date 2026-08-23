@@ -14,7 +14,7 @@
     lookups,
   }: { data: unknown; context: EntityPanelContext; lookups: EntityPanelLookups } = $props();
 
-  const feed = $derived(data as { items: never[]; limit: number });
+  const feed = $derived(data as { items: never[]; hasMore?: boolean });
 </script>
 
-<ActivityFeed items={feed.items ?? []} limit={feed.limit ?? 10} />
+<ActivityFeed items={feed.items ?? []} hasMore={feed.hasMore ?? false} />

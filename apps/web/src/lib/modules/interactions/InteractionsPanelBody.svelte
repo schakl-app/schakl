@@ -17,7 +17,6 @@
    */
   import {
     ArrowDownLeft,
-    ArrowRight,
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
@@ -40,6 +39,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import EmlUploadForm from "./EmlUploadForm.svelte";
@@ -111,12 +111,10 @@
   }
 
   // A busy record's timeline grows without bound: show the newest few, reveal the rest in
-  // place — the activity feed's pattern (docs/UX.md). Server truncation (PANEL_LIMIT) is
-  // reported separately below.
+  // place, then hand over for what the server did not send. Both affordances are `PanelRows`'
+  // since #407 — this file and `ActivityFeed` had the same `COLLAPSED = 3` written out twice,
+  // and their two ways of saying "there are more" were one sentence in two shapes.
   const COLLAPSED = 3;
-  let showAll = $state(false);
-  const collapsible = $derived(items.length > COLLAPSED);
-  const shown = $derived(collapsible && !showAll ? items.slice(0, COLLAPSED) : items);
 
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
@@ -262,145 +260,126 @@
 {#if items.length === 0}
   <p class="py-4 text-sm text-text-muted">{t("interactions.panel.empty")}</p>
 {:else}
-  <ul class="divide-y divide-border">
-    {#each shown as item (item.id)}
-      {@const Icon = kindIcon(item.kind)}
-      {@const chips = linkChips(item)}
-      <!-- id anchor: a task's "afgerond met contactmoment" trail entry deep-links here (#157). -->
-      <li id="interaction-{item.id}" class="scroll-mt-20 py-2.5">
-        <div class="flex items-start gap-3">
-          <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
-          <!-- The row opens a detail modal (#184); the preview is a short, wrapped teaser. -->
-          <button
-            type="button"
-            class="-mx-1.5 -my-1 min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-surface"
-            onclick={() => openDetail(item)}
-          >
-            <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span class="text-sm font-medium text-text">
-                {item.subject || t(`interactions.kind.${item.kind}`)}
-              </span>
-              {#if item.kind === "email" && item.direction !== "none"}
-                {#if item.direction === "inbound"}
-                  <ArrowDownLeft size={13} class="text-text-muted" aria-hidden="true" />
-                  <span class="sr-only">{t("interactions.direction.inbound")}</span>
-                {:else}
-                  <ArrowUpRight size={13} class="text-text-muted" aria-hidden="true" />
-                  <span class="sr-only">{t("interactions.direction.outbound")}</span>
-                {/if}
-              {/if}
-              {#if (item.conversation_count ?? 1) > 1}
-                <!-- The email folds a conversation (#272): show how many messages it holds. -->
-                <span
-                  title={t("interactions.conversation_count", { count: item.conversation_count })}
-                  class="inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
-                >
-                  <Mail size={10} aria-hidden="true" />
-                  {item.conversation_count}
-                  <span class="sr-only"
-                    >{t("interactions.conversation_count", {
-                      count: item.conversation_count,
-                    })}</span
-                  >
+  <PanelRows
+    rows={items}
+    collapsed={COLLAPSED}
+    {total}
+    href={listHref ?? undefined}
+    linkLabel={t("interactions.panel.view_all", { count: total })}
+  >
+    {#snippet children(shown)}
+      <ul class="divide-y divide-border">
+        {#each shown as item (item.id)}
+          {@const Icon = kindIcon(item.kind)}
+          {@const chips = linkChips(item)}
+          <!-- id anchor: a task's "afgerond met contactmoment" trail entry deep-links here (#157). -->
+          <li id="interaction-{item.id}" class="scroll-mt-20 py-2.5">
+            <div class="flex items-start gap-3">
+              <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
+              <!-- The row opens a detail modal (#184); the preview is a short, wrapped teaser. -->
+              <button
+                type="button"
+                class="-mx-1.5 -my-1 min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-surface"
+                onclick={() => openDetail(item)}
+              >
+                <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span class="text-sm font-medium text-text">
+                    {item.subject || t(`interactions.kind.${item.kind}`)}
+                  </span>
+                  {#if item.kind === "email" && item.direction !== "none"}
+                    {#if item.direction === "inbound"}
+                      <ArrowDownLeft size={13} class="text-text-muted" aria-hidden="true" />
+                      <span class="sr-only">{t("interactions.direction.inbound")}</span>
+                    {:else}
+                      <ArrowUpRight size={13} class="text-text-muted" aria-hidden="true" />
+                      <span class="sr-only">{t("interactions.direction.outbound")}</span>
+                    {/if}
+                  {/if}
+                  {#if (item.conversation_count ?? 1) > 1}
+                    <!-- The email folds a conversation (#272): show how many messages it holds. -->
+                    <span
+                      title={t("interactions.conversation_count", {
+                        count: item.conversation_count,
+                      })}
+                      class="inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+                    >
+                      <Mail size={10} aria-hidden="true" />
+                      {item.conversation_count}
+                      <span class="sr-only"
+                        >{t("interactions.conversation_count", {
+                          count: item.conversation_count,
+                        })}</span
+                      >
+                    </span>
+                  {/if}
+                  {#if item.status === "pending"}
+                    <span
+                      class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
+                    >
+                      {t("interactions.pending")}
+                    </span>
+                  {/if}
+                  {#if item.closes_task}
+                    <!-- This moment closed its linked task (#157). -->
+                    <span
+                      class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400"
+                    >
+                      {t("interactions.closed_task")}
+                    </span>
+                  {/if}
                 </span>
-              {/if}
-              {#if item.status === "pending"}
-                <span
-                  class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
-                >
-                  {t("interactions.pending")}
+                <span class="mt-0.5 block text-xs text-text-muted">
+                  {fmtDateTime(item.occurred_at)}{#if item.owner_name}&nbsp;· {item.owner_name}{/if}
                 </span>
-              {/if}
-              {#if item.closes_task}
-                <!-- This moment closed its linked task (#157). -->
-                <span
-                  class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400"
-                >
-                  {t("interactions.closed_task")}
-                </span>
-              {/if}
-            </span>
-            <span class="mt-0.5 block text-xs text-text-muted">
-              {fmtDateTime(item.occurred_at)}{#if item.owner_name}&nbsp;· {item.owner_name}{/if}
-            </span>
-            {#if item.snippet}
-              <!-- A teaser, wrapped — never a sideways scroll (#184), and decoded before it is
+                {#if item.snippet}
+                  <!-- A teaser, wrapped — never a sideways scroll (#184), and decoded before it is
                    shown: Gmail's snippet arrives HTML-escaped and preheader-padded (#263). -->
-              <span class="mt-0.5 line-clamp-2 break-words text-xs text-text-muted"
-                >{snippetPreview(item.snippet, 140)}</span
-              >
-            {/if}
-          </button>
+                  <span class="mt-0.5 line-clamp-2 break-words text-xs text-text-muted"
+                    >{snippetPreview(item.snippet, 140)}</span
+                  >
+                {/if}
+              </button>
 
-          {#if item.status === "pending" && isOwner(item)}
-            <!-- The owner's call, made where the email shows up. Non-destructive → inline. -->
-            <form method="POST" action="?/approveInteraction" use:enhance={busy.wrap(item.id)}>
-              <input type="hidden" name="id" value={item.id} />
-              <Button
-                type="submit"
-                variant="secondary"
-                size="xs"
-                loading={busy.is(item.id)}
-                disabled={busy.active}
-              >
-                {t("interactions.approve")}
-              </Button>
-            </form>
-          {/if}
-          {#if menuItems(item).length > 0}
-            <ActionsMenu compact items={menuItems(item)} />
-          {/if}
-        </div>
+              {#if item.status === "pending" && isOwner(item)}
+                <!-- The owner's call, made where the email shows up. Non-destructive → inline. -->
+                <form method="POST" action="?/approveInteraction" use:enhance={busy.wrap(item.id)}>
+                  <input type="hidden" name="id" value={item.id} />
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    size="xs"
+                    loading={busy.is(item.id)}
+                    disabled={busy.active}
+                  >
+                    {t("interactions.approve")}
+                  </Button>
+                </form>
+              {/if}
+              {#if menuItems(item).length > 0}
+                <ActionsMenu compact items={menuItems(item)} />
+              {/if}
+            </div>
 
-        {#if chips.length > 0}
-          <!-- Where else this row lives (#147) — links, outside the expand button. Full text
+            {#if chips.length > 0}
+              <!-- Where else this row lives (#147) — links, outside the expand button. Full text
                colour at `text-xs`: who it was with never reads quieter than the muted
                timestamp above it (#238). -->
-          <div class="mt-1 flex flex-wrap gap-1 pl-7">
-            {#each chips as chip (chip.href)}
-              <a
-                href={chip.href}
-                class="rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
-              >
-                {chip.label}
-              </a>
-            {/each}
-          </div>
-        {/if}
-      </li>
-    {/each}
-  </ul>
-  {#if collapsible}
-    <button
-      type="button"
-      class="mt-3 text-xs font-medium text-brand hover:underline"
-      onclick={() => (showAll = !showAll)}
-    >
-      {showAll ? t("common.show_less") : t("common.show_all", { count: items.length })}
-    </button>
-  {/if}
-{/if}
-
-{#if total > items.length}
-  <!-- The truncation notice *is* the way through it (#323). A navigation is a link, never a
-       click handler (docs/UX.md) — so it opens in a new tab, previews on hover and survives a
-       middle click like every other "see the rest" control in the app. -->
-  <p class="mt-3 border-t border-border pt-3 text-xs">
-    {#if listHref}
-      <a
-        href={listHref}
-        data-sveltekit-preload-data="hover"
-        class="inline-flex items-center gap-1 font-medium text-brand hover:underline"
-      >
-        {t("interactions.panel.truncated_link", { shown: items.length, total })}
-        <ArrowRight size={13} aria-hidden="true" />
-      </a>
-    {:else}
-      <span class="text-text-muted">
-        {t("interactions.panel.truncated", { shown: items.length, total })}
-      </span>
-    {/if}
-  </p>
+              <div class="mt-1 flex flex-wrap gap-1 pl-7">
+                {#each chips as chip (chip.href)}
+                  <a
+                    href={chip.href}
+                    class="rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
+                  >
+                    {chip.label}
+                  </a>
+                {/each}
+              </div>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/snippet}
+  </PanelRows>
 {/if}
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>

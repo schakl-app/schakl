@@ -1307,7 +1307,11 @@ async def test_trashing_bins_the_file_and_drops_every_link_org_wide(
             await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
         ).json()
         task = (
-            await c.post("/api/v1/tasks", json={"title": "Review"}, headers=headers)
+            await c.post(
+                "/api/v1/tasks",
+                json={"due_date": FAR_FUTURE_DUE, "title": "Review"},
+                headers=headers,
+            )
         ).json()
 
         # One file, linked to two different records.

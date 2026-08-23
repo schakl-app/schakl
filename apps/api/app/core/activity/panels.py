@@ -24,8 +24,18 @@ PANEL_LIMIT = 10
 
 def _provider(entity_type: str):
     async def provide(ctx: RequestContext, entity_id: uuid.UUID) -> dict:
-        items = await ActivityService(ctx).feed(entity_type, entity_id, PANEL_LIMIT)
+        service = ActivityService(ctx)
+        items = await service.feed(entity_type, entity_id, PANEL_LIMIT)
+        # "De 10 meest recente worden getoond" was true and unreadable: ten of eleven and ten
+        # of eleven hundred are the same sentence (#407). Counted only when the page is full,
+        # so an ordinary record pays nothing for a number that would equal ``len(items)``.
+        total = (
+            await service.count(entity_type, entity_id)
+            if len(items) >= PANEL_LIMIT
+            else len(items)
+        )
         return {
+            "total": total,
             "items": [
                 {
                     "id": str(item["id"]),

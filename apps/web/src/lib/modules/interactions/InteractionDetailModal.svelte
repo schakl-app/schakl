@@ -495,7 +495,9 @@
                 {#if trail === null}
                   <p class="text-xs text-text-muted">{t("common.loading")}</p>
                 {:else}
-                  <ActivityFeed items={trail} limit={50} />
+                  <!-- 50 is the endpoint's own ceiling; a full page is the only evidence there
+                       is more, and the trail has no list page to hand over to (#407). -->
+                  <ActivityFeed items={trail} hasMore={trail.length >= 50} />
                 {/if}
               </div>
             {/if}

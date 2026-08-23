@@ -9,7 +9,9 @@
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
 
   const items = $derived((data.items ?? []) as never[]);
-  const limit = $derived((data.limit ?? 10) as number);
+  // The provider counts the whole trail (#407), so this panel says "10 van 137" rather than
+  // "de 10 meest recente", which reads the same for a record with eleven changes.
+  const total = $derived(data.total as number | undefined);
 </script>
 
-<ActivityFeed {items} {limit} />
+<ActivityFeed {items} {total} />
