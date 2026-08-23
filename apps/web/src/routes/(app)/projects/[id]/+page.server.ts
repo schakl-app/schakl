@@ -7,6 +7,7 @@ import { dedupeGets } from "$lib/core/api/dedupe";
 import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
+import { originOf } from "$lib/core/origin";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
@@ -193,7 +194,10 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/projects/{project_id}", {
       params: { path: { project_id: event.params.id } },
     });
-    throw redirect(303, "/projects");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/projects");
   },
 
   /** Document attachment (#123): multipart through a plain fetch — the typed client has no

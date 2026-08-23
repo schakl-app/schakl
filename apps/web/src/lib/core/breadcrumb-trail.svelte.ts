@@ -16,8 +16,10 @@
  *
  * Three consequences worth stating:
  *  - It is **browser-only**. `afterNavigate` never runs server-side, so a first load, a reload and
- *    a shared link all render the plain path-derived row. That is the honest answer: nobody came
- *    from anywhere.
+ *    a shared link all render the plain path-derived row until hydration. That is the honest
+ *    answer where nobody came from anywhere — and where somebody did, the URL says so: a `?from=`
+ *    (#408) is a *stated* ancestor that outranks the inferred one, confirmed by the record exactly
+ *    as an inferred one is, so a reload and a new tab keep the client the detour started at.
  *  - It **walks back**, rather than resetting, when the immediately previous record is not a
  *    parent: leaving a task for one of its client's invoices keeps `Bedrijven › Acme`, because the
  *    invoice names Acme even though it has nothing to do with the task.
@@ -32,6 +34,7 @@ import {
   MAX_ANCESTORS,
   pageRecord,
   routeParamNames,
+  statedAncestor,
   type CrumbLink,
   type PageRecord,
 } from "$lib/core/breadcrumb-labels";
@@ -53,7 +56,13 @@ export function trackCrumbTrail(): void {
     const candidates = previous
       ? [...previous.trail, ...(previous.self ? [previous.self] : [])]
       : [];
-    trail = record ? confirmedAncestors(candidates, record) : [];
+    const inferred = record ? confirmedAncestors(candidates, record) : [];
+    // A `?from=` is a *stated* ancestor, so it outranks the one visit order suggests (#408) —
+    // which is also what gives a reload, a new tab and the page after a `redirect(303, …)` the
+    // crumb they have never had. Where the inferred trail already ends on the same record it is
+    // kept whole: it is the same claim, confirmed the same way, and deeper.
+    const stated = record ? statedAncestor(page.url, record, labelFromPageData) : null;
+    trail = stated ? preferStated(inferred, stated) : inferred;
     previous = { trail, self: selfLink(record) };
   });
 }
@@ -70,6 +79,39 @@ function confirmedAncestors(candidates: CrumbLink[], record: PageRecord): CrumbL
     }
   }
   return [];
+}
+
+/** The stated ancestor, unless the inferred trail is the same claim arrived at with more depth. */
+function preferStated(inferred: CrumbLink[], stated: CrumbLink): CrumbLink[] {
+  const last = inferred[inferred.length - 1];
+  if (last && last.type === stated.type && last.id === stated.id) return inferred;
+  return [stated];
+}
+
+/**
+ * What this page's own load already calls a record — the label for a stated ancestor the record
+ * confirms and cannot name (a task carries `company_id` and no client name).
+ *
+ * Deliberately only the lists a section layout loads for its own pickers: no fetch, and nothing
+ * here decides *whether* an ancestor is drawn — `statedAncestor` has already made the record
+ * confirm it, and this answers the separate question of what to print.
+ */
+const LOOKUP_KEYS: Record<string, string> = {
+  company: "companies",
+  project: "projects",
+  contact: "contacts",
+  task: "tasks",
+  domain: "domains",
+};
+
+function labelFromPageData(type: string, id: string): string | null {
+  const rows = (page.data as Record<string, unknown>)[LOOKUP_KEYS[type] ?? ""];
+  if (!Array.isArray(rows)) return null;
+  const row = rows.find(
+    (entry) => entry && typeof entry === "object" && (entry as Record<string, unknown>).id === id,
+  ) as Record<string, unknown> | undefined;
+  const label = row?.name ?? row?.title;
+  return typeof label === "string" && label.trim() ? label : null;
 }
 
 /** This page as an ancestor of the next one: its record, addressed at its own URL. */

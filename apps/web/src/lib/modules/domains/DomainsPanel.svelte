@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
 
   interface PanelDomain {
@@ -36,7 +37,7 @@
       <li class="flex items-center gap-2 py-2">
         <div class="min-w-0 flex-1">
           <a
-            href="/domains/{domain.id}"
+            href={fromHref(`/domains/${domain.id}`, page.url)}
             class="block truncate text-sm font-medium text-brand hover:underline">{domain.name}</a
           >
           <!-- Renewal + resolved price (#250): what it costs and when it next bills. -->
@@ -59,14 +60,14 @@
             <!-- Straight to the site's own page. The id was already resolved server-side, so
                  this costs nothing the boolean did not. -->
             <a
-              href="/websites/{domain.website_id}"
+              href={fromHref(`/websites/${domain.website_id}`, page.url)}
               class="shrink-0 text-xs text-text-muted hover:text-brand hover:underline"
             >
               {t("websites.title")}
             </a>
           {:else if can(page.data.user, "websites.website.write")}
             <a
-              href="/domains/{domain.id}#website"
+              href={`${fromHref(`/domains/${domain.id}`, page.url)}#website`}
               class="shrink-0 text-xs text-brand hover:underline"
             >
               ＋ {t("domains.panel.add_website")}

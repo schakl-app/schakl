@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { orgToday } from "$lib/core/today";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
@@ -59,7 +60,7 @@
              client's portal contacts. -->
         <span class="flex min-w-0 flex-1 items-center gap-1.5">
           <a
-            href={`/tasks/${task.id}`}
+            href={fromHref(`/tasks/${task.id}`, page.url)}
             class="min-w-0 truncate text-sm font-medium text-text hover:text-brand"
           >
             {task.title}

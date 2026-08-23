@@ -7,6 +7,7 @@ import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
+import { originOf } from "$lib/core/origin";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
@@ -595,7 +596,10 @@ export const actions: Actions = {
     await apiFor(event).DELETE("/api/v1/tasks/{task_id}", {
       params: { path: { task_id: event.params.id } },
     });
-    throw redirect(303, "/tasks");
+    // Back where the detour started (#408); the register only when nothing said otherwise. This
+    // is the case the browser-only breadcrumb trail can never serve — a server-side redirect has
+    // no `sessionStorage` to read, which is why the origin travels in the URL.
+    throw redirect(303, originOf(event.url) ?? "/tasks");
   },
 
   // Task scheduling (#188) — the same shared helpers the calendar page uses, so the two entry

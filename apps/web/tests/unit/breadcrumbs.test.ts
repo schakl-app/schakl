@@ -28,6 +28,7 @@ import {
   parentRules,
   RECORD_TYPES,
   routeParamNames,
+  statedAncestor,
   type CrumbLink,
   type ParentRule,
 } from "../../src/lib/core/breadcrumb-labels.ts";
@@ -196,6 +197,79 @@ describe("a client is confirmed through a collection as well as through a column
   test("a collection rule only ever confirms its own ancestor type", () => {
     // `companies` says nothing about the project you happened to walk through a moment ago.
     assert.equal(isParentOf(site, marieke([{ company_id: "c1" }])), false);
+  });
+});
+
+describe("a stated ancestor outranks an inferred one, and is confirmed the same way", () => {
+  // #408. The navigation-order trail lives in `sessionStorage`, so a reload, a new tab and the
+  // page after a `redirect(303, …)` have never had a crumb. A `?from=` says the ancestor outright
+  // — and says only a *path*, never a label, because the label is display text and the URL is
+  // written by whoever is holding the keyboard.
+  const at = (href: string) => new URL(href, "https://bureau.schakl.test");
+  const marieke = (companies: { company_id: string; name: string }[]) =>
+    pageRecord({ contact: { id: "k1", first_name: "Marieke", companies } }, echo)!;
+
+  test("a contact opened from one of its own clients names it", () => {
+    const crumb = statedAncestor(
+      at("/contacts/k1?from=%2Fcompanies%2Fc1"),
+      marieke([{ company_id: "c1", name: "Bakkerij Van Loon" }]),
+    );
+    assert.deepEqual(crumb, {
+      type: "company",
+      id: "c1",
+      label: "Bakkerij Van Loon",
+      href: "/companies/c1",
+    });
+  });
+
+  test("a `?from=` naming a client the record is not linked to is not a crumb", () => {
+    // Otherwise a hand-written URL would become a hierarchy — the one safety property the
+    // inferred trail already has, and the one a stated ancestor must not be allowed to skip.
+    const crumb = statedAncestor(
+      at("/contacts/k1?from=%2Fcompanies%2Fc9"),
+      marieke([{ company_id: "c1", name: "Bakkerij Van Loon" }]),
+    );
+    assert.equal(crumb, null);
+  });
+
+  test("the origin's own query is ignored when reading which record it names", () => {
+    const crumb = statedAncestor(
+      at("/contacts/k1?from=%2Fcompanies%2Fc1%3Ftab%3Dwork"),
+      marieke([{ company_id: "c1", name: "Bakkerij Van Loon" }]),
+    );
+    assert.equal(crumb?.href, "/companies/c1");
+  });
+
+  test("a section the trail knows no parent rule for states nothing", () => {
+    // Still a perfectly good return destination — the two questions are separate, and only the
+    // crumb needs confirming.
+    const crumb = statedAncestor(
+      at("/contacts/k1?from=%2Finstellingen"),
+      marieke([{ company_id: "c1", name: "Bakkerij Van Loon" }]),
+    );
+    assert.equal(crumb, null);
+  });
+
+  test("a record that confirms an ancestor it cannot name draws no crumb without a lookup", () => {
+    // A task carries `company_id` and no client name. The lookup is what the page's own load
+    // already holds; without one the honest answer is no crumb rather than an invented label.
+    const task = pageRecord({ task: { id: "t1", title: "Fix", company_id: "c1" } }, echo)!;
+    const url = at("/tasks/t1?from=%2Fcompanies%2Fc1");
+    assert.equal(statedAncestor(url, task), null);
+    assert.equal(statedAncestor(url, task, () => "Bakkerij Van Loon")?.label, "Bakkerij Van Loon");
+  });
+
+  test("a record's own name for the ancestor wins over the lookup", () => {
+    const project = pageRecord(
+      { project: { id: "p1", name: "Site", company_id: "c1", company_name: "Bakkerij Van Loon" } },
+      echo,
+    )!;
+    const crumb = statedAncestor(
+      at("/projects/p1?from=%2Fcompanies%2Fc1"),
+      project,
+      () => "Anders",
+    );
+    assert.equal(crumb?.label, "Bakkerij Van Loon");
   });
 });
 

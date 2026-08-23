@@ -2,9 +2,11 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { formatPhone } from "$lib/core/phone";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
@@ -92,6 +94,17 @@
 
   // Submits in flight (#242): the firing button spins while its siblings freeze.
   const busy = new InFlight();
+
+  // Opened from a client's Contactpersonen panel, this page is a **detour** (#408): the visitor
+  // was reading the client, came here to fix a phone number, and is finished the moment it is
+  // saved. So every exit — Opslaan, Annuleren, ✕ and Verwijderen — returns to where the detour
+  // started. Without a `?from=` there is nowhere to return to and each one behaves exactly as it
+  // did: this page, with the form closed.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editing = false;
+  }
 </script>
 
 <svelte:head>
@@ -111,7 +124,7 @@
       canEdit={canWrite}
       exit="cancel"
       onedit={() => (editing = true)}
-      onexit={() => (editing = false)}
+      onexit={leaveEdit}
       items={canDelete
         ? [
             {
@@ -172,8 +185,12 @@
   <form
     method="POST"
     action="?/update"
-    use:enhance={busy.wrap("save", () => ({ update }) => {
-      void update({ reset: false }).then(() => (editing = false));
+    use:enhance={busy.wrap("save", () => async ({ result, update }) => {
+      // The detour is over the moment the write lands, so leave without spending a reload on the
+      // page being left. A refusal stays put with its message — the form is where it is fixable.
+      if (result.type === "success" && origin) return void goto(origin, { invalidateAll: true });
+      await update({ reset: false });
+      if (result.type === "success") editing = false;
     })}
     class="rounded-xl border border-border bg-surface-raised p-5"
   >
@@ -261,7 +278,7 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (editing = false)}>{t("common.cancel")}</button
+        onclick={leaveEdit}>{t("common.cancel")}</button
       >
     </div>
   </form>
@@ -336,7 +353,7 @@
   bind:open={confirmDelete}
   title={t("common.delete")}
   message={t("contacts.delete_confirm", { name: fullName })}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />
 
 <!-- Quick-create a new client and attach it to this contact, without leaving the page. -->

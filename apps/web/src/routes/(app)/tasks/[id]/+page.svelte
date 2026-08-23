@@ -11,10 +11,12 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { originOf, withOrigin } from "$lib/core/origin";
   import { pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
@@ -497,6 +499,15 @@
   let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
 
+  // A detour that started on a client's or a project's page (#408): leaving edit mode — by
+  // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
+  // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
+  const origin = $derived(originOf(page.url));
+  function leaveEdit(): void {
+    if (origin) void goto(origin, { invalidateAll: true });
+    else editMode = false;
+  }
+
   // --- acting on the *stored* record from inside edit mode (#335 F7) ----------------------- //
   // Create-then-edit (#230) is right: the record exists, so Inplannen is reachable without a
   // save. But the modal prefills from what is **stored**, so typing a title and a budget and then
@@ -923,7 +934,8 @@
                       // relation on a later edit session.
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
-                      editMode = !editMode;
+                      if (editMode) leaveEdit();
+                      else editMode = true;
                     },
                   },
                 ]
@@ -2133,9 +2145,15 @@
       action="?/update"
       use:enhance={busy.wrap("update", () => async ({ update, result }) => {
         // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
-        // keeps edit mode open: the user asked to plan, not to stop editing.
+        // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
+        // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
+        // in service of.
         const waiting = pendingSave;
         pendingSave = null;
+        if (result.type === "success" && !waiting && origin) {
+          dueReason = "";
+          return void goto(origin, { invalidateAll: true });
+        }
         if (result.type === "success") editMode = waiting !== null;
         dueReason = "";
         await update();
@@ -2148,7 +2166,7 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (editMode = false)}
+        onclick={leaveEdit}
       >
         {t("common.cancel")}
       </button>
@@ -2199,7 +2217,7 @@
   bind:open={confirmDelete}
   title={t("tasks.detail.delete")}
   message={t("tasks.detail.delete_confirm")}
-  action="?/delete"
+  action={withOrigin("?/delete", page.url)}
 />
 
 <!-- Shared confirm for inline sub-item deletes (comment / checklist / item / link) -->

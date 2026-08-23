@@ -3,6 +3,7 @@
    *  panel there — hosting is shared infrastructure, the websites are the client's). */
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
   import { can } from "$lib/core/permissions";
 
@@ -29,7 +30,7 @@
     {#each websites as site (site.id)}
       <li class="flex items-center gap-2 py-2">
         <a
-          href={`/websites/${site.id}`}
+          href={fromHref(`/websites/${site.id}`, page.url)}
           class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
         >
           {site.root ? site.name : `www.${site.name}`}
