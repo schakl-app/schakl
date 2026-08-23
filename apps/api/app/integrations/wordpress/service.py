@@ -27,7 +27,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.activity import ActivityService
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext, TenantScopedRepository
-from app.core.wordpress import WordPressCredential
+from app.core.wordpress import (
+    STAGE_AI_VISIBILITY_UNAVAILABLE,
+    STAGE_CREDENTIAL_REFUSED,
+    STAGE_NO_BRANDS,
+    STAGE_NO_CREDENTIAL,
+    STAGE_NOT_ADMINISTRATOR,
+    STAGE_RANKMATH_MISSING,
+    STAGE_RANKMATH_TOO_OLD,
+    STAGE_READY,
+    STAGE_SITE_ERROR,
+    STAGE_UNREACHABLE,
+    WordPressCredential,
+    WordPressSetupState,
+)
 from app.errors import AppError
 from app.integrations.wordpress.client import (
     CAPABILITIES,
@@ -174,6 +187,121 @@ def open_client(credential: WordPressCredential) -> WordPressClient:
     """
     return WordPressClient(
         credential.base_url, credential.username, credential.app_password
+    )
+
+
+#: Where each unmet prerequisite is actually fixed, inside the client's own ``wp-admin``.
+#: Built from the stored ``base_url`` and never guessed: a link to a site we have no address
+#: for is a control that can only refuse (#253), so a state with no credential row carries no
+#: links at all.
+_ADMIN_PATHS = {
+    # WordPress's own "an application wants access" screen. Deliberately this rather than
+    # ``profile.php#application-passwords``: it opens the form with the name prefilled, which
+    # is two fewer things to explain to somebody who has never minted one.
+    "app_passwords": "/wp-admin/authorize-application.php?app_name=schakl",
+    "plugins": "/wp-admin/plugin-install.php?s=rank%20math&tab=search&type=term",
+    "ai_visibility": "/wp-admin/admin.php?page=rank-math-ai-visibility",
+}
+
+
+def _links(base_url: str) -> dict[str, str]:
+    base = base_url.rstrip("/")
+    return {name: f"{base}{path}" for name, path in _ADMIN_PATHS.items()} if base else {}
+
+
+def _stage_from_failure(exc: Exception, site: WordPressSite) -> str:
+    """Which prerequisite a live AI Visibility failure names.
+
+    The **slug** is the diagnosis, not the status code: ``rest_no_route``, ``rest_forbidden``
+    and ``aiv_unauthorized`` are three different jobs for three different people and two of
+    them share a 403 (``client.describe_failure`` says the same thing one layer down). The
+    stored probe only ever breaks a tie the slug cannot — it is a memory, and the call that
+    just happened is evidence.
+    """
+    if isinstance(exc, WordPressUnreachable):
+        return STAGE_UNREACHABLE
+
+    status = getattr(exc, "status", None)
+    code = getattr(exc, "code", None) or ""
+    caps = site.capabilities or {}
+
+    if code == "aiv_unauthorized":
+        # Rank Math answered, and said this site has no Content AI subscription reaching AI
+        # Visibility. Nothing about the credential is wrong.
+        return STAGE_AI_VISIBILITY_UNAVAILABLE
+    if status in (401, 403):
+        # An administrator check we have *observed* to fail outranks the generic refusal: every
+        # AI Visibility route is `manage_options`, so a valid editor credential refuses here and
+        # re-minting it would produce exactly the same 403.
+        if caps.get("admin") is False:
+            return STAGE_NOT_ADMINISTRATOR
+        if code == "rest_forbidden":
+            return STAGE_NOT_ADMINISTRATOR
+        return STAGE_CREDENTIAL_REFUSED
+    if status == 404 or code == "rest_no_route":
+        # The route is not registered. Whether that is "no plugin", "too old" or "the feature is
+        # switched off" is a question the plugin list already answered, and the honest order is
+        # absent → too old → present and still not serving.
+        if not site.rankmath_version:
+            return STAGE_RANKMATH_MISSING
+        if not supports_ai_visibility(site.rankmath_version):
+            return STAGE_RANKMATH_TOO_OLD
+        return STAGE_AI_VISIBILITY_UNAVAILABLE
+    # A 500 from the site, a WAF page, a PHP fatal. Not unreachable — we got an answer — and
+    # emphatically not the credential, so it keeps its own state rather than borrowing one that
+    # would send somebody to re-mint a password that is fine.
+    return STAGE_SITE_ERROR
+
+
+async def describe_setup(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    website_id: uuid.UUID,
+    *,
+    exc: Exception | None = None,
+    brand_count: int | None = None,
+) -> WordPressSetupState:
+    """The ``app.core.wordpress`` seam's diagnosis provider.
+
+    Registered in this package's ``__init__`` beside the resolver.
+
+    Scoped by ``org_id`` and deliberately **not** re-checking the company horizon, for the
+    reason :func:`resolve_credential` gives: the caller has already loaded this website through
+    its own tenant-scoped repository, and a second opinion here would be a different answer to
+    a question already asked.
+
+    It reads the stored row and never dials out. Everything it needs from the site itself
+    arrived with ``exc`` or ``brand_count`` — the call the borrower just made — which is what
+    keeps this from being a second round trip on a screen that already spent one.
+    """
+    site = await session.scalar(
+        select(WordPressSite).where(
+            WordPressSite.org_id == org_id,
+            WordPressSite.website_id == website_id,
+            WordPressSite.active.is_(True),
+        )
+    )
+    if site is None or not site.app_password_encrypted:
+        # No row, a deactivated one, or one whose secret was never stored. All three mean the
+        # same thing to somebody trying to connect, and none of them tells us a site address.
+        return WordPressSetupState(stage=STAGE_NO_CREDENTIAL)
+
+    links = _links(site.base_url)
+    if exc is not None:
+        return WordPressSetupState(
+            stage=_stage_from_failure(exc, site),
+            detail=describe_failure(exc),
+            links=links,
+            rankmath_version=site.rankmath_version,
+        )
+    if brand_count == 0:
+        # The route answered, so the plugin is there, the credential is an administrator's and
+        # the subscription reaches. What is missing is a brand, which is a job in Rank Math.
+        return WordPressSetupState(
+            stage=STAGE_NO_BRANDS, links=links, rankmath_version=site.rankmath_version
+        )
+    return WordPressSetupState(
+        stage=STAGE_READY, links=links, rankmath_version=site.rankmath_version
     )
 
 
@@ -409,4 +537,10 @@ class WordPressService:
             raise AppError("not_found", "errors.not_found", status_code=404)
 
 
-__all__ = ["CAPABILITIES", "WordPressService", "open_client", "resolve_credential"]
+__all__ = [
+    "CAPABILITIES",
+    "WordPressService",
+    "describe_setup",
+    "open_client",
+    "resolve_credential",
+]

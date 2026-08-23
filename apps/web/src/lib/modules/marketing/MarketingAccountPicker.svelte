@@ -13,6 +13,8 @@
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
+  import MarketingRankMathSetup from "./MarketingRankMathSetup.svelte";
+
   import {
     connectHref,
     SITE_KEY_SOURCES,
@@ -61,24 +63,39 @@
   const needsWebsite = $derived(SITE_KEY_SOURCES.includes(source));
   const missingWebsite = $derived(needsWebsite && !websiteId);
 
+  // The client, for the one control that needs it and cannot post it: "voeg eerst een website
+  // toe" is an instruction, and an instruction with nothing to press is the shape #435 is about.
+  // Resolved here rather than handed down, because `companyId` is deliberately empty on the
+  // company page (the route is the answer there) and this only ever builds a link.
+  const clientId = $derived(companyId || (page.params.id ?? ""));
+
   // One consent covers all three sources, and it comes back *here* — this picker is where the
   // gap was noticed, so it is where the user expects to land with it closed.
   const connect = $derived(connectHref(page.url.pathname + page.url.search));
 
   let loading = $state(true);
+  // A re-ask is not a first load: the checklist stays on screen and only its button says it is
+  // working. Swapping the whole block back to "Beschikbare accounts laden…" throws away the
+  // sentence somebody is in the middle of following.
+  let rechecking = $state(false);
   let response = $state<AccountsResponse | null>(null);
   let value = $state("");
   let form: HTMLFormElement | undefined = $state();
   let picked = $state<{ external_id: string; display_name: string; config: string } | null>(null);
 
-  async function load() {
-    loading = true;
+  async function load(refresh = false) {
+    if (refresh) rechecking = true;
+    else loading = true;
     try {
       const query = new URLSearchParams({ source });
       // Read only for the sources that need it, so switching the website select above does not
       // refetch the four pickers whose answer it cannot change: an unread prop is an untracked
       // one, which makes this branch the dependency list as well as the query string.
       if (needsWebsite) query.set("website_id", websiteId);
+      // Skips the API's short account cache. Somebody who has just created the brand in
+      // WordPress and come back must not be shown a ten-minute-old list with no control that
+      // disagrees with it — that is the "not all of them" half of the same complaint.
+      if (refresh) query.set("refresh", "1");
       const res = await fetch(`/marketing/accounts?${query.toString()}`);
       response = (await res.json()) as AccountsResponse;
     } catch {
@@ -94,6 +111,7 @@
       };
     } finally {
       loading = false;
+      rechecking = false;
     }
   }
 
@@ -105,12 +123,16 @@
       loading = false;
       return;
     }
+    // Reads nothing this call writes (`loading`, `rechecking`, `response`), so the refresh
+    // path cannot re-enter it.
     void load();
   });
 
   const colleagues = $derived(
     (response?.connected_via ?? []).map((o) => `${o.name} (${o.email})`).join(", "),
   );
+  // Only a site-key source has one, and `ready` is not a state to draw a checklist over.
+  const setupStage = $derived(needsWebsite ? (response?.setup_stage ?? null) : null);
   const linked = $derived(new Set(linkedIds));
   const items = $derived(
     (response?.accounts ?? [])
@@ -135,6 +157,19 @@
   }
 </script>
 
+{#snippet recheck()}
+  <!-- One control, two hosts: an empty list and a full one both mean "ask the site again", and
+       two copies of it is how one of them stops being offered. -->
+  <button
+    type="button"
+    class="text-sm font-medium text-brand hover:underline disabled:opacity-60"
+    disabled={rechecking}
+    onclick={() => load(true)}
+  >
+    {t(rechecking ? "marketing.picker.loading" : "marketing.rankmath_setup.action.recheck")}
+  </button>
+{/snippet}
+
 <div class="space-y-1.5">
   <span class="text-xs font-medium text-text-muted">{t(`marketing.picker.${source}`)}</span>
   {#if missingWebsite}
@@ -144,6 +179,18 @@
     <p class="text-sm text-text-muted">
       {t(hasWebsites ? "marketing.rankmath_pick_website" : "marketing.rankmath_needs_website")}
     </p>
+    {#if !hasWebsites && clientId}
+      <!-- The sentence above names a job on another screen, so it carries the control that
+           starts it — `?company=&new=1` opens the create dialog already narrowed to this client
+           (the deep link the websites list already understands). Without it this is an
+           instruction with nothing to press, which is the shape #435 is about. -->
+      <a
+        href="/websites?company={clientId}&new=1"
+        class="text-sm font-medium text-brand hover:underline"
+      >
+        {t("marketing.rankmath_add_website")}
+      </a>
+    {/if}
   {:else if loading}
     <p class="text-sm text-text-muted">{t("marketing.picker.loading")}</p>
   {:else if response && !response.connected}
@@ -180,31 +227,31 @@
     >
       {t("marketing.reconnect")}
     </a>
+  {:else if setupStage && setupStage !== "ready"}
+    <!-- A site-key source's prerequisites live in somebody else's product, so the picker draws
+         the whole path rather than one sentence (#435). This branch comes *before* the
+         `configured` and `error` ones because it is the better answer to both: "the credential
+         was refused" and "there is no credential" are one `configured=false`, and "Rank Math is
+         not installed" is not an error at all — it is a thing still to do. -->
+    <MarketingRankMathSetup
+      stage={setupStage}
+      detail={response?.setup_detail ?? null}
+      links={response?.setup_links ?? {}}
+      {websiteId}
+      {rechecking}
+      onrecheck={() => load(true)}
+    />
   {:else if response && !response.configured}
     <!-- "Not configured" means a different thing per source and has a different cure. Ads
          needs a developer token; SE Ranking needs the agency's API key. Neither is fixed by
          reconnecting Google, so neither offers that — and the message carries the link to
          where it *is* fixed, rather than naming a screen and leaving you to find it. -->
-    {#if needsWebsite}
-      <!-- A site-key credential is not agency configuration, so Instellingen cures nothing here:
-           the WordPress connection lives on this one website's page. The API collapses "no
-           credential" and "credential refused" into the same `configured=false`, and with a site
-           named the first is overwhelmingly the case — so name it, and link to the panel that
-           fixes it. -->
-      <p class="text-sm text-text-muted">{t("marketing.rankmath_not_connected")}</p>
-      <a href="/websites/{websiteId}" class="text-sm font-medium text-brand hover:underline">
-        {t("marketing.picker.connect_wordpress")}
-      </a>
-    {:else}
-      <p class="text-sm text-text-muted">
-        {t(
-          source === "gads" ? "marketing.ads_not_configured" : `marketing.${source}_not_configured`,
-        )}
-      </p>
-      <a href="/settings/marketing" class="text-sm font-medium text-brand hover:underline">
-        {t("marketing.picker.configure")}
-      </a>
-    {/if}
+    <p class="text-sm text-text-muted">
+      {t(source === "gads" ? "marketing.ads_not_configured" : `marketing.${source}_not_configured`)}
+    </p>
+    <a href="/settings/marketing" class="text-sm font-medium text-brand hover:underline">
+      {t("marketing.picker.configure")}
+    </a>
   {:else if response?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(response.error)}</p>
     <!-- A disabled Cloud API is not a token problem: a reconnect mints the same token against
@@ -221,6 +268,9 @@
     {/if}
   {:else if items.length === 0}
     <p class="text-sm text-text-muted">{t("marketing.picker.none")}</p>
+    {#if needsWebsite}
+      {@render recheck()}
+    {/if}
   {:else}
     <Combobox
       {items}
@@ -231,6 +281,14 @@
       placeholder={t("marketing.picker.placeholder")}
       onselect={choose}
     />
+    {#if needsWebsite}
+      <!-- The **populated** picker needs this most, and it is the state that looks healthiest:
+           the option list is cached for ten minutes, so somebody who has just created a brand
+           in WordPress and come straight back is shown a list that is confidently missing it,
+           with nothing on screen disagreeing. That is the "not all of them" half of #435, and
+           an empty-state-only control would not have reached it. -->
+      {@render recheck()}
+    {/if}
   {/if}
 
   <!-- Submitted programmatically on select; posts to the company page's ?/marketingLink action. -->

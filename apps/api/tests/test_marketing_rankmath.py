@@ -382,3 +382,199 @@ async def test_the_picker_without_a_website_teaches_rather_than_erroring(client_
         # And nothing was cached: "not configured" is the answer on every page load forever,
         # not a miss worth storing — the same reason the Google path never caches a failure.
         assert wp.redis.store == {}
+
+
+# --- the guided setup (#435) ------------------------------------------------------------- #
+#
+# ``configured`` was one boolean over four prerequisites that live in two other products, so
+# "there is no credential" and "the credential was refused" answered identically, and "Rank Math
+# is not installed" and "this client has no brand yet" were both an empty list. These pin the
+# stage each state actually produces — the picker draws a different sentence and a different
+# button per stage, so a stage that regresses is a screen that sends somebody to the wrong
+# screen, which is exactly the failure that reads as "it just says no accounts".
+
+
+async def _connected(c, headers, website) -> None:
+    assert (
+        await c.post(
+            "/api/v1/wordpress/sites",
+            json={
+                "website_id": website["id"],
+                "base_url": "https://klant.nl",
+                "username": "agency",
+                "app_password": PASSWORD,
+            },
+            headers=headers,
+        )
+    ).status_code == 201
+
+
+async def _accounts(c, headers, website, *, refresh: bool = False) -> dict:
+    query = f"source=rankmath&website_id={website['id']}"
+    if refresh:
+        query += "&refresh=1"
+    return (await c.get(f"/api/v1/marketing/accounts?{query}", headers=headers)).json()
+
+
+async def test_a_website_with_no_credential_names_the_stage(client_for, wp) -> None:
+    t = await make_tenant("rm-stage-none")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "no_credential"
+        assert accounts["configured"] is False
+        # No row, so no site address, so no link — a control built out of a guess is one that
+        # can only refuse (#253).
+        assert accounts["setup_links"] == {}
+
+
+async def test_a_refused_credential_is_not_a_missing_one(client_for, wp) -> None:
+    """The bug this issue is named after. Both were ``configured=False``, so the picker drew
+    *"deze website heeft nog geen WordPress-koppeling"* over a website that has one — and the
+    cure (re-mint the application password) was on no screen anywhere."""
+    t = await make_tenant("rm-stage-refused")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        wp.app_password = "somebody rotated it"
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "credential_refused"
+        assert accounts["configured"] is False
+        # And the key that says so is finally reachable: `_org_key_error` read
+        # `exc.response.status_code`, which a WordPress failure does not have, so every refusal
+        # fell through to the generic "er ging iets mis".
+        assert accounts["error"] == "marketing.rankmath_key_rejected"
+        assert accounts["setup_links"]["app_passwords"].startswith("https://klant.nl/wp-admin/")
+
+
+async def test_an_editors_password_is_a_scope_problem_not_a_wrong_one(client_for, wp) -> None:
+    """Every AI Visibility route is ``manage_options``. Re-minting the same account's password
+    would fail identically, so this must not read as "the credentials were refused"."""
+    t = await make_tenant("rm-stage-editor")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        # Observed by the probe, which is what lets the stage tell this from a bad password:
+        # both are a 403 on the same route.
+        site_id = (
+            await c.get(
+                f"/api/v1/wordpress/sites?website_id={website['id']}", headers=headers
+            )
+        ).json()[0]["id"]
+        wp.is_admin = False
+        await c.post(f"/api/v1/wordpress/sites/{site_id}/verify", headers=headers)
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "not_administrator"
+        # Not an error: a prerequisite nobody has completed is a thing still to do, and a red
+        # "er ging iets mis" over a checklist explaining the exact next step is the noise.
+        assert accounts["error"] is None
+
+
+async def test_rank_math_absent_and_too_old_are_different_stages(client_for, wp) -> None:
+    t = await make_tenant("rm-stage-plugin")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        site_id = (
+            await c.get(
+                f"/api/v1/wordpress/sites?website_id={website['id']}", headers=headers
+            )
+        ).json()[0]["id"]
+
+        wp.rankmath_version = None
+        await c.post(f"/api/v1/wordpress/sites/{site_id}/verify", headers=headers)
+        assert (await _accounts(c, headers, website))["setup_stage"] == "rankmath_missing"
+
+        # Installed, and older than the release that first shipped AI Visibility. "Install it"
+        # and "update it" are two different jobs and only one of them is possible here.
+        wp.rankmath_version = "1.0.272"
+        await c.post(f"/api/v1/wordpress/sites/{site_id}/verify", headers=headers)
+        assert (await _accounts(c, headers, website))["setup_stage"] == "rankmath_too_old"
+
+
+async def test_an_unsubscribed_rank_math_says_so(client_for, wp) -> None:
+    """``aiv_unauthorized`` is Rank Math saying this site's plan does not reach AI Visibility.
+    Nothing about the WordPress credential is wrong, and sending somebody to re-mint one is a
+    wasted afternoon."""
+    t = await make_tenant("rm-stage-plan")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        wp.aiv_subscribed = False
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "ai_visibility_unavailable"
+        assert accounts["setup_links"]["ai_visibility"].endswith("page=rank-math-ai-visibility")
+
+
+async def test_a_working_site_with_no_brands_is_not_an_empty_picker(client_for, wp) -> None:
+    """The reported symptom. Rank Math answers, so everything is set up — what is missing is a
+    brand, which is a job in Rank Math and was drawn as "Geen accounts beschikbaar"."""
+    t = await make_tenant("rm-stage-brands")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        wp.brands = []
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "no_brands"
+        # The plumbing *is* configured — that is the whole difference from every stage above,
+        # and it is why this one links into Rank Math rather than back to the website page.
+        assert accounts["configured"] is True
+        assert accounts["accounts"] == []
+
+
+async def test_a_site_that_is_set_up_reads_ready_and_costs_no_diagnosis(client_for, wp) -> None:
+    t = await make_tenant("rm-stage-ready")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        accounts = await _accounts(c, headers, website)
+        assert accounts["setup_stage"] == "ready"
+        assert [a["external_id"] for a in accounts["accounts"]] == ["brand-1"]
+        # A non-empty list is itself the evidence that every prerequisite is met, so the common
+        # case pays for no extra read (docs/PERFORMANCE.md).
+        assert accounts["setup_links"] == {}
+
+
+async def test_a_brand_added_a_minute_ago_is_reachable_without_waiting_out_the_cache(
+    client_for, wp
+) -> None:
+    """The "not all of them" half. The option list is cached for ten minutes, so somebody who
+    has just created the brand they came here to link was handed a stale list with no control
+    that disagreed with it."""
+    t = await make_tenant("rm-refresh")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, website = await _company_website(c, headers)
+        await _connected(c, headers, website)
+        assert len((await _accounts(c, headers, website))["accounts"]) == 1
+
+        wp.brands = [
+            *wp.brands,
+            {"id": "brand-9", "name": "Nieuw merk", "url": "https://nieuw.nl", "score": 10},
+        ]
+        # Still the cached answer…
+        assert len((await _accounts(c, headers, website))["accounts"]) == 1
+        # …until asked again.
+        fresh = await _accounts(c, headers, website, refresh=True)
+        assert [a["external_id"] for a in fresh["accounts"]] == ["brand-1", "brand-9"]
+        # And the fresh answer replaces the stale entry rather than bypassing it forever.
+        assert len((await _accounts(c, headers, website))["accounts"]) == 2
+
+
+async def test_a_google_source_has_no_setup_stage(client_for, wp) -> None:
+    """The stage is a site-key concept. A source with no per-website setup must not grow one,
+    or the picker draws a four-step checklist over a Google connection."""
+    t = await make_tenant("rm-stage-ga4")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        accounts = (
+            await c.get("/api/v1/marketing/accounts?source=ga4", headers=headers)
+        ).json()
+        assert accounts["setup_stage"] is None

@@ -113,6 +113,13 @@ async def available_accounts(
             " every other source."
         ),
     ),
+    refresh: bool = Query(
+        False,
+        description=(
+            "Skip the short account cache and ask the provider again. What a picker offers"
+            " after somebody has just created the thing they came here to link."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> AccountsResponse:
     """The accounts/properties/sites the caller's connection can reach for ``source``.
@@ -125,8 +132,17 @@ async def available_accounts(
     parameter would 422 the four existing sources, which have no website to name. The source
     that needs it says so itself — ``rankmath`` answers ``configured=False`` without one, which
     is the same state the picker already draws for "no credential yet".
+
+    For a **site-key** source the answer also carries ``setup_stage`` / ``setup_detail`` /
+    ``setup_links``: which of the four things Rank Math AI Visibility needs is the first unmet
+    one, what the site itself said about it, and the screen in the client's own ``wp-admin``
+    that cures it (#435). ``configured`` alone could not tell "the credential was refused" from
+    "there is no credential", nor "the plugin is not installed" from "this client has no brand
+    yet" — all four arrived as one boolean or as an empty list.
     """
-    return await MarketingService(ctx).available_accounts(source, website_id)
+    return await MarketingService(ctx).available_accounts(
+        source, website_id, refresh=refresh
+    )
 
 
 @router.get(

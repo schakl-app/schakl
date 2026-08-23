@@ -26,7 +26,7 @@ from __future__ import annotations
 from app.core.wordpress import register_wordpress_resolver
 from app.integrations.wordpress.permissions import WORDPRESS_PERMISSIONS
 from app.integrations.wordpress.router import router
-from app.integrations.wordpress.service import open_client, resolve_credential
+from app.integrations.wordpress.service import describe_setup, open_client, resolve_credential
 from app.registry import KIND_INTEGRATION, ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -56,4 +56,8 @@ registry.register(module)
 # than imported there, so nothing outside this package ever names `WordPressSite` — or
 # `WordPressClient`, which is why the client factory rides along: a borrower asks this module
 # for a client instead of constructing one from a class it had to import.
-register_wordpress_resolver(resolve_credential, open_client)
+# `describe_setup` rides along for the same reason (#435): a borrower that cannot import
+# `WordPressError` was left duck-typing an exception's attributes to tell "the password is
+# wrong" from "the plugin is not installed", and got it wrong. Classifying a refusal is this
+# module's vocabulary, so it is this module's job.
+register_wordpress_resolver(resolve_credential, open_client, describe_setup)

@@ -241,6 +241,21 @@ export interface AccountsResponse {
   /** Colleagues whose connection already reaches this source — so the empty state can say
    *  "already connected via X" instead of a bare "not connected". */
   connected_via: ConnectionOwner[];
+  /**
+   * For a **site-key** source (Rank Math) only: which of the four prerequisites is the first
+   * unmet one, `"ready"` when none is (#435). `null` for every other source, which has no
+   * per-website setup to be partway through.
+   *
+   * It is what `configured` structurally could not be. One boolean answered "there is no
+   * credential" and "the credential was refused" identically, and an empty `accounts` answered
+   * "Rank Math is not installed" and "this client has no brand yet" identically — four
+   * different jobs, in two products, for three different people.
+   */
+  setup_stage?: string | null;
+  /** WordPress's own words about the refusal above. A quote: rendered, never translated. */
+  setup_detail?: string | null;
+  /** Deep links into the client's own wp-admin: `app_passwords`, `plugins`, `ai_visibility`. */
+  setup_links?: Record<string, string>;
 }
 
 export interface DrilldownRow {

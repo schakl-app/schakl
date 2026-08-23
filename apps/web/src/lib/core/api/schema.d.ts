@@ -8215,6 +8215,13 @@ export interface paths {
          *     parameter would 422 the four existing sources, which have no website to name. The source
          *     that needs it says so itself — ``rankmath`` answers ``configured=False`` without one, which
          *     is the same state the picker already draws for "no credential yet".
+         *
+         *     For a **site-key** source the answer also carries ``setup_stage`` / ``setup_detail`` /
+         *     ``setup_links``: which of the four things Rank Math AI Visibility needs is the first unmet
+         *     one, what the site itself said about it, and the screen in the client's own ``wp-admin``
+         *     that cures it (#435). ``configured`` alone could not tell "the credential was refused" from
+         *     "there is no credential", nor "the plugin is not installed" from "this client has no brand
+         *     yet" — all four arrived as one boolean or as an empty list.
          */
         get: operations["available_accounts_api_v1_marketing_accounts_get"];
         put?: never;
@@ -13382,6 +13389,14 @@ export interface components {
              * @default false
              */
             has_scope: boolean;
+            /** Setup Detail */
+            setup_detail?: string | null;
+            /** Setup Links */
+            setup_links?: {
+                [key: string]: string;
+            };
+            /** Setup Stage */
+            setup_stage?: string | null;
             source: components["schemas"]["MarketingSource"];
         };
         /** ActionRead */
@@ -48542,6 +48557,8 @@ export interface operations {
                 source: components["schemas"]["MarketingSource"];
                 /** @description Required for a source whose credential is per website (rankmath); ignored by every other source. */
                 website_id?: string | null;
+                /** @description Skip the short account cache and ask the provider again. What a picker offers after somebody has just created the thing they came here to link. */
+                refresh?: boolean;
             };
             header?: never;
             path?: never;

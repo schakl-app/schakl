@@ -292,7 +292,6 @@ async def test_rank_math_without_a_content_ai_subscription(client_for, wp) -> No
 
 async def test_an_old_rank_math_is_installed_but_has_no_ai_visibility(client_for, wp) -> None:
     wp.rankmath_version = "1.0.272"
-    wp.aiv_subscribed = False  # the routes do not exist on this version either
     t = await make_tenant("wp-old-rm")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
