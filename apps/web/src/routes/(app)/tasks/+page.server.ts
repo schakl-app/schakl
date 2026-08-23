@@ -12,6 +12,7 @@ import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
 import { taskCreateBody } from "$lib/modules/tasks/create";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
+import { DUE_SORT, resolveGrouping } from "$lib/modules/tasks/grouping";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -67,7 +68,19 @@ export const load: PageServerLoad = async (event) => {
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, TASKS_TABLE_ID);
   const resolved = resolveColumns(TASK_COLUMNS, pref);
-  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  // What the board *groups* by (#395), and what it therefore asks the API to order by when
+  // nobody has said otherwise. Grouped by deadline it asks for `sort=due` — the composite
+  // "deadline first, then priority" the team's sentence describes — because without it every
+  // task sharing a date falls back to `position`, the hand-dragged board order, and the one
+  // Friday task that cannot slip sits wherever it was last put. Grouped by status it keeps the
+  // dragged order, which is what a status board is for.
+  //
+  // Three layers, and the precedence matters: an explicit `?sort=` wins over the saved layout,
+  // which wins over the grouping's own default. A sort the user asked for orders *within* the
+  // sections and never reshuffles them (#38).
+  const grouping = resolveGrouping(event.url.searchParams.get("group"));
+  const groupingSort = grouping === "due" ? DUE_SORT : undefined;
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? groupingSort;
   const paging = resolvePaging(event.url, pref);
 
   // The hour budget's burn (#313), asked for only by a caller who may read hours — the API
@@ -100,7 +113,15 @@ export const load: PageServerLoad = async (event) => {
     total: tasks?.total ?? 0,
     paging,
     filters,
-    table: { pref, sort: sort ?? null, widths: resolved.widths },
+    grouping,
+    // The *explicit* sort only: the grouping's own default is not something the user picked, so
+    // the column picker must not draw it as a sort in force and clicking a header must not have
+    // to un-pick it first.
+    table: {
+      pref,
+      sort: event.url.searchParams.get("sort") ?? resolved.sort ?? null,
+      widths: resolved.widths,
+    },
   };
 };
 

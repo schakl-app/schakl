@@ -101,7 +101,12 @@ async def list_tasks(
         ),
     ),
     sort: str | None = Query(
-        None, description="title | due_date | priority | status | assignee | …, '-' desc"
+        None,
+        description=(
+            "due | title | due_date | priority | status | assignee | …, '-' desc. "
+            "`due` is the urgency reading the board opens on: deadline first, then priority, "
+            "highest first."
+        ),
     ),
     meta: bool = Query(True, description="Include label/checklist/comment aggregates"),
     hours: bool = Query(

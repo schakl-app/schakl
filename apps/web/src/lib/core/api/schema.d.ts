@@ -52937,7 +52937,7 @@ export interface operations {
                 unnamed?: boolean | null;
                 /** @description Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. */
                 undated?: boolean | null;
-                /** @description title | due_date | priority | status | assignee | …, '-' desc */
+                /** @description due | title | due_date | priority | status | assignee | …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
                 meta?: boolean;

@@ -189,6 +189,39 @@ async def test_task_hour_budget_is_one_grouped_query_however_many_tasks(
         assert (plain_at_30, enriched_at_30) == (plain_at_3, enriched_at_3)
 
 
+async def test_the_boards_urgency_sort_costs_no_statement_at_all(client_for, count_queries) -> None:
+    """``sort=due`` is two ``ORDER BY`` expressions, not two reads (#395).
+
+    The board opens grouped into *Over tijd · Vandaag · Deze week · Later*, and the obvious wrong
+    way to build that is one query per bucket — four counts and four pages, growing with every
+    section somebody adds. The buckets are a partition of one ordered page, so the ordering is
+    the whole of the server's part: the same statement count as the hand-dragged default, at
+    three rows and at thirty.
+    """
+    t = await make_tenant("perf-task-due-sort")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Seed the status vocabulary, or the first read below pays for it (see above).
+        assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
+
+        async def statements(query: str) -> int:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            return len(counter)
+
+        for i in range(3):
+            await _task(c, headers, company_id=company, title=f"D{i}")
+        await statements("")  # warm whatever a first read of a new row set pays for
+        assert await statements("sort=due") == await statements("")
+
+        for i in range(3, 30):
+            await _task(c, headers, company_id=company, title=f"D{i}")
+        at_30 = await statements("sort=due")
+        assert at_30 == await statements(""), "the urgency sort started paying per row"
+
+
 async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
     """The saving is on the hot path only — an org that has none must still get them."""
     t = await make_tenant("perf-statuses-fresh")

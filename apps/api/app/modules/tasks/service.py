@@ -30,7 +30,7 @@ from app.core.richtext import (
     markdown_excerpt,
     sanitize_markdown,
 )
-from app.core.sorting import apply_sort, user_sort_name
+from app.core.sorting import SortPart, apply_sort, composite, user_sort_name
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_today
 from app.core.urls import reject_dangerous_url
@@ -172,6 +172,16 @@ SORTABLE = {
     "assignee": user_sort_name(Task.assignee_user_id),
     "created_at": Task.created_at,
     "updated_at": Task.updated_at,
+    # The urgency reading, and the board's default since #395: *"eerst naar de datum en daarna
+    # naar de prioriteit"*, implemented literally. Two columns, because ``due_date`` alone leaves
+    # everything sharing a deadline in ``position`` order — the board's hand-dragged one — so the
+    # one task on Friday that cannot slip sat wherever it was last put. The priority part is
+    # ``invert``ed: a deadline reads soonest-first and a priority highest-first, and ``-due``
+    # then reverses the whole reading rather than only its first half.
+    "due": composite(
+        Task.due_date,
+        SortPart(_rank(Task.priority, _PRIORITY_ORDER), invert=True),
+    ),
 }
 
 
@@ -573,8 +583,11 @@ class TaskService:
 
         # Unsorted, the board keeps its hand-dragged order. A requested sort replaces `position`
         # but keeps `created_at` as the tiebreak, so paging stays deterministic either way. The
-        # web groups the rows by status afterwards; a sort therefore orders *within* a section
-        # and never reshuffles the sections themselves (#38, #41).
+        # web groups the rows afterwards — by deadline bucket since #395, by status when the
+        # reader switches — so a sort orders *within* a section and never reshuffles the sections
+        # themselves (#38, #41). The board asks for `sort=due` unless the URL says otherwise;
+        # the default here stays `position`, because the pickers, the impex export and the
+        # generated MCP surface all read this same endpoint (CLAUDE.md §9).
         sortable = {**SORTABLE, "status": _rank(Task.status, status_order(statuses))}
         stmt = (
             apply_sort(stmt, sort, sortable, default=Task.position.asc())

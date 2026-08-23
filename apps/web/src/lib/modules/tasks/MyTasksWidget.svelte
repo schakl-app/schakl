@@ -1,12 +1,20 @@
 <script lang="ts">
-  /** My Day widget: overdue / due-today / upcoming partitions of my open tasks. */
-  import { fmtDayMonth } from "$lib/core/format";
+  /**
+   * My Day widget: overdue / due-today / upcoming partitions of my open tasks.
+   *
+   * The partition comes from `lib/modules/tasks/due.ts` (#395), not from a comparison written
+   * here. It used to be written here, and it was subtly not the list's: three copies of "which
+   * bucket is this in" is how a tile and the board it links to come to disagree about what is
+   * urgent, on the one screen whose whole job is saying so.
+   */
   import { t } from "$lib/core/i18n";
   import { stateTextClass, type UiState } from "$lib/core/state";
   import { orgToday } from "$lib/core/today";
   import { stateIcon } from "$lib/core/ui/state-icons";
   import Card from "$lib/core/ui/Card.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
+  import { dueBucket, endOfWeek } from "$lib/modules/tasks/due";
+  import DueDate from "$lib/modules/tasks/DueDate.svelte";
 
   let { data }: { data: unknown } = $props();
 
@@ -29,13 +37,17 @@
   );
   const tasks = $derived(payload.items ?? []);
   const today = orgToday();
+  const weekEnd = endOfWeek(today);
+  const bucketOf = (task: MyTask) => dueBucket(task.due_date, today, weekEnd);
 
   // The rows are a page; the numbers beside the headings are the **whole** set (#407). Derived
   // in the browser off twenty fetched rows they were three wrong numbers rather than three
   // partial ones — and a wrong number reads as measured, which is worse than saying nothing.
-  const overdue = $derived(tasks.filter((task) => task.due_date != null && task.due_date < today));
-  const dueToday = $derived(tasks.filter((task) => task.due_date === today));
-  const upcoming = $derived(tasks.filter((task) => task.due_date == null || task.due_date > today));
+  const overdue = $derived(tasks.filter((task) => bucketOf(task) === "overdue"));
+  const dueToday = $derived(tasks.filter((task) => bucketOf(task) === "today"));
+  // *Binnenkort* is still one section here — splitting it into "deze week" and "later" is #397's
+  // question about this tile, and it reads the same four buckets when it lands.
+  const upcoming = $derived(tasks.filter((task) => ["week", "later"].includes(bucketOf(task))));
 </script>
 
 <!-- A partition heading is an aggregate, and an aggregate opens the list it totals (issue #15):
@@ -59,7 +71,10 @@
   </svelte:element>
 {/snippet}
 
-{#snippet taskList(rows: MyTask[], state: UiState, whole: number, href: string)}
+<!-- The row no longer takes the partition's state: since #395 the deadline resolves its own from
+     the date (`DueDate`), which is the same answer one helper away, and the two can therefore
+     never disagree about a row the partition happened to place. -->
+{#snippet taskList(rows: MyTask[], whole: number, href: string)}
   <PanelRows {rows} collapsed={5} total={whole} {href} alwaysLink={rows.length === 0}>
     {#snippet children(shown)}
       <ul class="divide-y divide-border">
@@ -75,17 +90,16 @@
                 <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
               {/if}
             </a>
-            <span
-              class="shrink-0 text-xs tabular-nums {state === 'late'
-                ? `font-semibold ${stateTextClass('late')}`
-                : 'text-text-muted'}"
-            >
-              {#if task.due_date}
-                {fmtDayMonth(task.due_date)}
-              {:else}
-                {t(`tasks.priority.${task.priority}`)}
-              {/if}
-            </span>
+            <!-- The tile is narrow, so the deadline prints without its relative half: a client
+                 name already sits under the title, and "24 aug · over 3 dagen" beside it wraps
+                 the row. The colour is the shared one either way (#395). -->
+            {#if task.due_date}
+              <DueDate due={task.due_date} {today} relative={false} class="shrink-0" />
+            {:else}
+              <span class="shrink-0 text-xs tabular-nums text-text-muted"
+                >{t(`tasks.priority.${task.priority}`)}</span
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -109,7 +123,7 @@
         "/tasks?due=overdue",
         payload.overdue,
       )}
-      {@render taskList(overdue, "late", payload.overdue, "/tasks?due=overdue")}
+      {@render taskList(overdue, payload.overdue, "/tasks?due=overdue")}
     {/if}
     {#if payload.due_today > 0}
       {@render partition(
@@ -118,11 +132,11 @@
         "/tasks?due=today",
         payload.due_today,
       )}
-      {@render taskList(dueToday, "today", payload.due_today, "/tasks?due=today")}
+      {@render taskList(dueToday, payload.due_today, "/tasks?due=today")}
     {/if}
     {#if payload.upcoming > 0}
       {@render partition("neutral", t("dashboard.my_day.upcoming"), null, payload.upcoming)}
-      {@render taskList(upcoming, "neutral", payload.upcoming, "/tasks")}
+      {@render taskList(upcoming, payload.upcoming, "/tasks")}
     {/if}
   {/if}
 </Card>
