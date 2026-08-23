@@ -1759,6 +1759,48 @@ contrast bug in dark mode rather than only an inconsistency.
   rather than a memory, beside `forms:check` and `today:check` for exactly the same reason.
   A cell that should genuinely wrap (the notification sentence *is* the content of that list)
   says `cells:wrap` in a comment, so the decision is on the page.
+- **A settings card's description is a sentence and ends like one** (#355). The Instellingen
+  index draws 47 cards; ten had lost their closing full stop and they were interleaved with the
+  rest, so the eye catches it going down the page. Nothing could notice — each subtitle is a
+  separate key in a 5,000-key catalogue, written months apart by whoever added the screen, and the
+  drift is only visible with the whole grid on screen at once. `settings-copy.test.ts` asserts it
+  now, in both locales, along with its inverse: a card **title** is a label and carries no stop.
+- **A counted noun needs both numbers** (#343). Paraglide here does not compile ICU
+  `{n, plural, …}`, so a plural is a **pair of keys** — `<key>` and `<key>_one` — read by
+  `tn(key, count)` on the web and `translate_count` on the API. The convention existed and was
+  applied one string at a time, which is how "1 contactmomenten", "1 taken" and a digest mail
+  subject reading *"1 nieuwe meldingen"* all shipped: the pair is invisible in a diff, and the
+  ternary had been re-typed in five files that each spelled it slightly differently. A bracketed
+  suffix — `{count} abonnement(en)` — is not the escape: it reads as machine output, `i18n:check`
+  now fails a counted message that carries one, and it also fails a `_one` with no plural beside
+  it.
+- **A control in the label slot of `← label →` is claiming to be the current view** (#352). The
+  interactions list drew `[←] Deze week [→]` over an *unfiltered* list: the middle position in
+  that triple is where every calendar in the world puts the range you are looking at, so the row
+  named a filter that was not on, and `←` from there landed on the week before *today* rather than
+  the week before what you were reading. The arrows are drawn only while a week actually is the
+  view; with no range set the middle control is one button that turns the filter on, which is what
+  it always was. Its sibling: **one empty state, not two.** The table's own empty snippet says
+  which of several empty things this is; the pager underneath said "Geen resultaten" as well, on
+  every list in the app. The pager's range slot is simply quiet at zero now — the frame and the
+  size selector stay, because a filter that matched nothing is still a view of a list.
+- **A separator's spacing lives in one place** (#362). `{#if company}{company} ·\n{/if}{status}`
+  rendered `ITIS ·Actief`: the space before `{/if}` is at a block boundary and the compiler drops
+  it, so the first dot glued itself to the word after it while the second one — four words along,
+  outside a block — kept its spaces. Join the parts (`[a, b].filter(Boolean).join(" · ")`) rather
+  than spelling the separator twice at two different indentation depths.
+- **A card with no heading reads as loose fields**, and a **disabled field explained by a sentence
+  that is repeated 130px lower is two mistakes at once** (#362). The contact detail page stacked
+  five cards of which only the second had no title; Mijn account opened with an e-mail input the
+  user cannot type in, under the same paragraph the *E-mailadres wijzigen* card prints above the
+  field that works. A fact about the record is a read-only line; the explanation belongs with the
+  control it describes, and nowhere else.
+- **A hand-maintained list of what a registry contains goes stale** (#362). Instellingen → Import
+  & export led with *"klanten, contactpersonen, projecten, taken, urenstaten, abonnementen,
+  domeinen, websites en hosting"* over a page offering thirteen entities: every module that
+  contributes an `ImpexDescriptor` has to remember to edit a sentence in two locale files. Describe
+  the page instead — "elke lijst die je hier ziet, kan als bestand in en uit".
+
 - **Expressing a semantic state in the tenant's brand colour** (#404). My Day drew its
   "vandaag" partition in `text-brand` beside a red "over tijd", and `core/burn.ts` drew a
   healthy budget in `bg-brand` beside an amber one — so on the tenant whose brand is **gold**

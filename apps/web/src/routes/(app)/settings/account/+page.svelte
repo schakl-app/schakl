@@ -230,21 +230,20 @@
           class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
         />
       </div>
+      <!-- A read-only line, not a disabled input (#362). The address is a fact about the account
+           and belongs on this card; the *control* that changes it is the card below, which
+           already carries the explanation. Printed as a field it was the first thing on the
+           screen a user could not type in, explained by a sentence repeated verbatim 130 px
+           lower. Under enforced SSO there is no card below, so the note that the IdP owns the
+           address stays here — the one case where this line is the whole answer. -->
       <div>
-        <label for="email" class="mb-1 block text-sm font-medium text-text">
-          {t("settings.account.email")}
-        </label>
-        <input
-          id="email"
-          value={account?.email ?? ""}
-          disabled
-          class="w-full cursor-not-allowed rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
-        />
-        <p class="mt-1 text-xs text-text-muted">
-          {data.localLogin
-            ? t("settings.account.email_change_help")
-            : t("settings.account.email_managed_by_sso")}
-        </p>
+        <p class="mb-1 text-sm font-medium text-text">{t("settings.account.email")}</p>
+        <p class="text-sm text-text">{account?.email ?? "—"}</p>
+        {#if !data.localLogin}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.account.email_managed_by_sso")}
+          </p>
+        {/if}
       </div>
       {#if form?.saved}
         <p class="text-sm text-green-600 dark:text-green-400">{t("settings.account.saved")}</p>
