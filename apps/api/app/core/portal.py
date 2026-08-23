@@ -127,6 +127,32 @@ class PortalSubject:
     user_id: uuid.UUID | None
 
 
+@dataclass(frozen=True)
+class PortalSubjectClient:
+    """A client the subject belongs to, in the only two fields a register prints.
+
+    Core learns a company's *name* here and nothing else about it: the row is read by whoever
+    owns the subject, which is the module that already knows how its people attach to clients
+    (``company_contacts`` for a contact, something else for the next kind).
+    """
+
+    id: uuid.UUID
+    name: str
+
+
+@dataclass(frozen=True)
+class PortalSubjectListing:
+    """One subject that **already carries a login**, and the clients it belongs to.
+
+    The register's row (#406). Deliberately not :class:`PortalSubject` with a field bolted on:
+    the clients are only ever resolved for the listing — every other caller works one subject
+    at a time and would pay for a join it does not read.
+    """
+
+    subject: PortalSubject
+    clients: tuple[PortalSubjectClient, ...] = ()
+
+
 class PortalSubjectProvider(Protocol):
     """What a module implements to offer its rows as portal subjects.
 
@@ -143,6 +169,25 @@ class PortalSubjectProvider(Protocol):
         """The subject, read **through the owner's own repository** — so a caller restricted to
         a company group can only reach the clients it may see, and anything else is ``None``
         (the portal module turns that into the same 404 every other surface gives)."""
+        ...
+
+    async def list_logins(self, ctx: RequestContext) -> list[PortalSubjectListing]:
+        """Every subject of this kind that already carries a login — the register (#406).
+
+        Three rules, and the first is why this is a **protocol method** rather than a query the
+        portal module writes for itself: enumerating subjects means reading the owner's table,
+        and §6 says a module names no other module's internals. The same reason
+        ``app/core/directory.py`` exists.
+
+        The second is that it reads **through the owner's own repository**, exactly as
+        :meth:`load` does — so a staff member restricted to a company group sees only the logins
+        of clients inside it, and the count above the list, being ``len()`` of these rows, is
+        narrowed by construction rather than by a second statement that could disagree.
+
+        The third is that it is **batched**: one statement for the subjects and one per lookup
+        they share, never a state call per row (docs/PERFORMANCE.md). A subject with no login is
+        not a row here — ``none`` is the absence of a login, not a kind of one.
+        """
         ...
 
     async def for_user(

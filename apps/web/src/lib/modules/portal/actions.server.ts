@@ -20,26 +20,38 @@ import { apiFor } from "$lib/core/session";
 /** How long a "sign in as this client" session lasts. The API clamps it to its own maximum. */
 const PORTAL_IMPERSONATION_MINUTES = 30;
 
-export interface PortalActionOptions {
-  /** The registered subject type this page is about — `contact` today. */
+/** Which login an action is about, and where stopping an impersonation of it should land. */
+export interface PortalSubjectRef {
+  /** The registered subject type — `contact` today. */
   entityType: string;
-  /** The subject id, from the route params. */
-  subjectId: (event: RequestEvent) => string;
+  subjectId: string;
   /** Where "Stoppen" should land the staff member when the impersonation ends. */
-  returnPath: (event: RequestEvent) => string;
+  returnPath: string;
+}
+
+export interface PortalActionOptions {
+  /**
+   * The subject this submit is about. One resolver rather than three fields, and it may be
+   * async, because the two hosts learn it two different ways: a record page reads its own route
+   * params, while the register (#406) lists many logins and reads the pressed row out of the
+   * form body — and a body may be read **once**, so resolving it three times over would throw
+   * on the second.
+   */
+  subject: (event: RequestEvent) => PortalSubjectRef | Promise<PortalSubjectRef>;
 }
 
 export function portalActions(options: PortalActionOptions): Actions {
-  const path = (event: RequestEvent) => ({
-    entity_type: options.entityType,
-    subject_id: options.subjectId(event),
+  const path = (ref: PortalSubjectRef) => ({
+    entity_type: ref.entityType,
+    subject_id: ref.subjectId,
   });
 
   return {
     portalEnable: async (event) => {
+      const ref = await options.subject(event);
       const { data, error: err } = await apiFor(event).POST(
         "/api/v1/portal/logins/{entity_type}/{subject_id}",
-        { params: { path: path(event) } },
+        { params: { path: path(ref) } },
       );
       if (err)
         return fail(400, { portalError: apiErrorKey(err).fields?.email ?? apiErrorKey(err).key });
@@ -47,18 +59,20 @@ export function portalActions(options: PortalActionOptions): Actions {
     },
 
     portalResend: async (event) => {
+      const ref = await options.subject(event);
       const { data, error: err } = await apiFor(event).POST(
         "/api/v1/portal/logins/{entity_type}/{subject_id}/resend",
-        { params: { path: path(event) } },
+        { params: { path: path(ref) } },
       );
       if (err) return fail(400, { portalError: apiErrorKey(err).key });
       return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
     },
 
     portalDisable: async (event) => {
+      const ref = await options.subject(event);
       const { error: err } = await apiFor(event).DELETE(
         "/api/v1/portal/logins/{entity_type}/{subject_id}",
-        { params: { path: path(event) } },
+        { params: { path: path(ref) } },
       );
       if (err) return fail(400, { portalError: apiErrorKey(err).key });
       return { portalSaved: true };
@@ -68,9 +82,10 @@ export function portalActions(options: PortalActionOptions): Actions {
     // swaps only the effective user, so stopping puts the staff member straight back. The return
     // path is stored with it so "Stoppen" lands on this record instead of the dashboard.
     portalImpersonate: async (event) => {
+      const ref = await options.subject(event);
       const { data, error: err } = await apiFor(event).POST(
         "/api/v1/portal/logins/{entity_type}/{subject_id}/impersonate",
-        { params: { path: path(event) }, body: { minutes: PORTAL_IMPERSONATION_MINUTES } },
+        { params: { path: path(ref) }, body: { minutes: PORTAL_IMPERSONATION_MINUTES } },
       );
       if (err || !data) {
         return fail(400, { portalError: err ? apiErrorKey(err).key : "errors.server" });
@@ -88,7 +103,7 @@ export function portalActions(options: PortalActionOptions): Actions {
         maxAge,
       } as const;
       event.cookies.set(IMPERSONATION_COOKIE, data.token, cookieOptions);
-      event.cookies.set(PORTAL_RETURN_COOKIE, options.returnPath(event), cookieOptions);
+      event.cookies.set(PORTAL_RETURN_COOKIE, ref.returnPath, cookieOptions);
       // Home, because that is the portal's own landing page — the point is to see what they see.
       throw redirect(303, "/");
     },
