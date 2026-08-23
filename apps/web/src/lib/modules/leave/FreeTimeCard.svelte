@@ -26,6 +26,7 @@
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
 
   import { fmtHours } from "./format";
@@ -147,57 +148,57 @@
     </dl>
 
     {#if freeTime.days.length > 0}
-      <ul class="mt-3 divide-y divide-border border-t border-border">
-        {#each freeTime.days.slice(0, 8) as day (day.request_id)}
-          <li class="flex items-center gap-3 py-2 text-sm">
-            <CalendarClock size={14} class="shrink-0 text-text-muted" />
-            <span class="min-w-0 flex-1">
-              <span class="text-text">
-                <span>{capitalizeFirst(fmtWeekdayShort(day.date))}</span>
-                {fmtNumericDate(day.date)}
-              </span>
-              <span class="ml-1 text-xs text-text-muted">
-                {#if windowText(day)}{windowText(day)} ·
+      <!-- The rest of the year is already on the page, so it expands in place rather than
+           announcing itself and going nowhere (#407): the old line counted what it withheld
+           and offered no way to see it. -->
+      <PanelRows rows={freeTime.days} collapsed={8}>
+        {#snippet children(shown)}
+          <ul class="mt-3 divide-y divide-border border-t border-border">
+            {#each shown as day (day.request_id)}
+              <li class="flex items-center gap-3 py-2 text-sm">
+                <CalendarClock size={14} class="shrink-0 text-text-muted" />
+                <span class="min-w-0 flex-1">
+                  <span class="text-text">
+                    <span>{capitalizeFirst(fmtWeekdayShort(day.date))}</span>
+                    {fmtNumericDate(day.date)}
+                  </span>
+                  <span class="ml-1 text-xs text-text-muted">
+                    {#if windowText(day)}{windowText(day)} ·
+                    {/if}
+                    {t("leave.free_time.day_hours", { days: days(day.hours) })}
+                  </span>
+                </span>
+                {#if canWrite && (onmove || oncancel)}
+                  <ActionsMenu
+                    compact
+                    items={[
+                      ...(onmove
+                        ? [
+                            {
+                              label: t("leave.free_time.move"),
+                              icon: Pencil,
+                              onclick: () => onmove(day.request_id),
+                            },
+                          ]
+                        : []),
+                      ...(oncancel
+                        ? [
+                            {
+                              label: t("leave.requests.cancel"),
+                              icon: Ban,
+                              danger: true,
+                              onclick: () => oncancel(day.request_id),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
                 {/if}
-                {t("leave.free_time.day_hours", { days: days(day.hours) })}
-              </span>
-            </span>
-            {#if canWrite && (onmove || oncancel)}
-              <ActionsMenu
-                compact
-                items={[
-                  ...(onmove
-                    ? [
-                        {
-                          label: t("leave.free_time.move"),
-                          icon: Pencil,
-                          onclick: () => onmove(day.request_id),
-                        },
-                      ]
-                    : []),
-                  ...(oncancel
-                    ? [
-                        {
-                          label: t("leave.requests.cancel"),
-                          icon: Ban,
-                          danger: true,
-                          onclick: () => oncancel(day.request_id),
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            {/if}
-          </li>
-        {/each}
-      </ul>
-      {#if freeTime.days.length > 8}
-        <!-- Never silent truncation: a cut list that says nothing reads as "that's all of them"
-             (docs/UX.md / docs/PERFORMANCE.md). -->
-        <p class="mt-2 text-xs text-text-muted">
-          {t("leave.free_time.more", { count: freeTime.days.length - 8 })}
-        </p>
-      {/if}
+              </li>
+            {/each}
+          </ul>
+        {/snippet}
+      </PanelRows>
     {/if}
   </section>
 {/if}

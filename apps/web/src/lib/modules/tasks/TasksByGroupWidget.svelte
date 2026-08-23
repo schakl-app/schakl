@@ -3,6 +3,7 @@
   import { t } from "$lib/core/i18n";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data }: { data: unknown } = $props();
@@ -17,7 +18,11 @@
     count: number;
     overdue: number;
   }
-  const groups = $derived((data ?? []) as Group[]);
+  const payload = $derived((data ?? { items: [], total: 0 }) as { items: Group[]; total: number });
+  const groups = $derived(payload.items ?? []);
+  // The GROUP BY had no LIMIT and this tile rendered every row it produced (#407): an agency
+  // running eighty live projects got eighty rows on their My Day.
+  const total = $derived(payload.total ?? groups.length);
 
   // Every row on this tile opens something. The name is the record it names; the count is that
   // record's own filtered task list (issue #15). The bucket of tasks hanging off neither a client
@@ -56,38 +61,48 @@
   {#if groups.length === 0}
     <p class="text-sm text-text-muted">{t("dashboard.open_by_group.empty")}</p>
   {:else}
-    <ul class="divide-y divide-border">
-      {#each groups as group (`${group.entity_type}:${group.entity_id}`)}
-        <li class="flex items-center justify-between gap-2 py-2">
-          <a href={entityHref(group)} class="group min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium text-text group-hover:text-brand"
-              >{groupName(group)}</span
-            >
-            {#if group.entity_type === "project" && group.company_name}
-              <!-- Two clients may each run a project called "Website": without the client the
+    <PanelRows
+      rows={groups}
+      collapsed={5}
+      {total}
+      href="/tasks?assignee_user_id={ALL_ASSIGNEES}"
+      linkLabel={t("dashboard.open_by_group.view_all", { count: total })}
+    >
+      {#snippet children(shown)}
+        <ul class="divide-y divide-border">
+          {#each shown as group (`${group.entity_type}:${group.entity_id}`)}
+            <li class="flex items-center justify-between gap-2 py-2">
+              <a href={entityHref(group)} class="group min-w-0 flex-1">
+                <span class="block truncate text-sm font-medium text-text group-hover:text-brand"
+                  >{groupName(group)}</span
+                >
+                {#if group.entity_type === "project" && group.company_name}
+                  <!-- Two clients may each run a project called "Website": without the client the
                    rows are indistinguishable and only opening one tells them apart. -->
-              <span class="block truncate text-xs text-text-muted">{group.company_name}</span>
-            {/if}
-          </a>
-          {#if group.overdue > 0}
-            <!-- One shade of one claim (#404): the chip and the figure it sits beside read the
+                  <span class="block truncate text-xs text-text-muted">{group.company_name}</span>
+                {/if}
+              </a>
+              {#if group.overdue > 0}
+                <!-- One shade of one claim (#404): the chip and the figure it sits beside read the
                  same red everywhere, and the glyph is what carries it in greyscale. -->
-            <a href="{listHref(group)}&due=overdue" class="shrink-0 hover:underline">
-              <StateMark
-                state="late"
-                variant="chip"
-                label={t("tasks.overdue_count", { count: group.overdue })}
-              />
-            </a>
-          {/if}
-          <a
-            href={listHref(group)}
-            class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
-          >
-            {group.count}
-          </a>
-        </li>
-      {/each}
-    </ul>
+                <a href="{listHref(group)}&due=overdue" class="shrink-0 hover:underline">
+                  <StateMark
+                    state="late"
+                    variant="chip"
+                    label={t("tasks.overdue_count", { count: group.overdue })}
+                  />
+                </a>
+              {/if}
+              <a
+                href={listHref(group)}
+                class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
+              >
+                {group.count}
+              </a>
+            </li>
+          {/each}
+        </ul>
+      {/snippet}
+    </PanelRows>
   {/if}
 </Card>

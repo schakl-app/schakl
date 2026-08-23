@@ -106,9 +106,9 @@ async def test_time_panel_is_bounded_however_long_the_history(client_for, count_
             res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
         assert res.status_code == 200, res.text
         panel = next(p for p in res.json() if p["key"] == "time.company")
-        # The total counts all twelve entries; the list carries ten.
+        # The total counts all twelve entries; the list carries the feed default (#407).
         assert panel["data"]["total_minutes"] == 360
-        assert len(panel["data"]["recent"]) == 10
+        assert len(panel["data"]["recent"]) == 8
         # …and the panel knows how many it is *not* showing, so it can say so (#400).
         assert panel["data"]["total_entries"] == 12
         # Two statements: the aggregate and the bounded page. Neither grows with the history.
@@ -203,20 +203,64 @@ async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
 async def test_tasks_panel_open_count_is_counted_not_measured(client_for) -> None:
     """``len(items)`` capped at the page size, so a busy client's header read "50" at 300.
 
-    Fifty-one tasks is the smallest number that tells the truth apart from the lie.
+    The page is five since #407 — fifty was never a considered number, it predates the panel
+    having a footer link at all — and the count is still counted rather than measured, which is
+    the property this test exists for.
     """
     t = await make_tenant("perf-tasks-panel")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         company = await _company(c, headers)
-        for i in range(51):
+        for i in range(12):
             await _task(c, headers, company_id=company, title=f"T{i}")
 
         res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
         assert res.status_code == 200, res.text
         panel = next(p for p in res.json() if p["key"] == "tasks.company")
-        assert panel["data"]["open_count"] == 51
-        assert len(panel["data"]["tasks"]) == 50
+        assert panel["data"]["open_count"] == 12
+        assert len(panel["data"]["tasks"]) == 5
+
+
+# --- the whole hub: a total per panel is not a query per row ------------------------------- #
+async def test_company_hub_totals_do_not_scale_with_the_client(client_for, count_queries) -> None:
+    """Every panel that caps its rows now returns the whole count beside them (#407).
+
+    That is a *second* statement per panel where there used to be one, and the temptation it
+    creates is the one this file exists for: counting in Python off an uncapped read, or asking
+    per row. Both are invisible in the JSON — the panels answer identically either way — so the
+    property is pinned as a shape: **the hub costs the same at twelve rows per module as at
+    two**, and the count each panel reports is the whole client's, not the page's.
+    """
+    t = await make_tenant("perf-hub-totals")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        small = await _company(c, headers, name="Klein")
+        for i in range(2):
+            await _task(c, headers, company_id=small, title=f"S{i}")
+            await _entry(c, headers, company_id=small, minutes=30, day=i)
+        with count_queries() as small_counter:
+            res = await c.get(f"/api/v1/companies/{small}/panels", headers=headers)
+        assert res.status_code == 200, res.text
+
+        big = await _company(c, headers, name="Groot")
+        for i in range(12):
+            await _task(c, headers, company_id=big, title=f"B{i}")
+            await _entry(c, headers, company_id=big, minutes=30, day=i)
+        with count_queries() as big_counter:
+            res = await c.get(f"/api/v1/companies/{big}/panels", headers=headers)
+        assert res.status_code == 200, res.text
+
+        assert len(big_counter) == len(small_counter), (
+            f"the hub grew from {len(small_counter)} to {len(big_counter)} statements "
+            "between a 2-row client and a 12-row one"
+        )
+
+        panels = {p["key"]: p["data"] for p in res.json()}
+        # The count is the client's, the list is a page — the pair the notice is built on.
+        assert panels["tasks.company"]["open_count"] == 12
+        assert len(panels["tasks.company"]["tasks"]) == 5
+        assert panels["time.company"]["total_entries"] == 12
+        assert len(panels["time.company"]["recent"]) == 8
 
 
 # --- the websites list: a filter that crosses a module boundary, not a prefetch ------------- #
@@ -343,7 +387,13 @@ _MEMBER_REQUEST_BUDGET = 8
 # panel took one query back for the connections row it absorbed. The saving is small *here*
 # because this fixture's client has no Ads account, no container and no Timeon pairing, so
 # all three providers short-circuited — on a populated client it is four statements more.
-_PANELS_BUDGET = 48
+# 48 → 54 (#407): every panel that caps its rows now returns the whole count beside them, which
+# is a second statement for contacts, subscriptions, invoices, quotes, reports and the activity
+# trail. Deliberately paid: a cap without a total is worse than no cap, because the reader
+# cannot tell five-of-five from five-of-twenty-three. What must *not* happen is a count that
+# tracks the client's size — pinned separately by
+# ``test_company_hub_totals_do_not_scale_with_the_client``.
+_PANELS_BUDGET = 54
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.
@@ -753,9 +803,11 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         with count_queries() as counter:
             res = await c.get("/api/v1/projects/dashboard-budgets?limit=2", headers=headers)
         assert res.status_code == 200, res.text
-        rows = res.json()
+        rows = res.json()["items"]
         # Hottest first, cut to the asked-for length, and a project with no budget is absent.
         assert [r["name"] for r in rows] == ["Heet", "Warm"]
+        # …and how many budgeted projects are burning behind the two shown (#407).
+        assert res.json()["total"] == 3
         assert rows[0]["hours"]["spent_hours"] == 6.0
         assert rows[0]["hours"]["budget_hours"] == 8.0
         # Whose budget it is — four rows called "Onderhoud" are one row without it.

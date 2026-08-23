@@ -11,6 +11,13 @@
    *
    * A widget still composes this rather than re-typing the classes (docs/UX.md, the widget
    * convention) — five of the seventeen widgets were drawing their own chrome and are now here.
+   *
+   * **`linkLabel` is not where a total goes** (#407). This card offered a header link and no
+   * slot for a truncation notice, so the two widgets that were honest about their cut smuggled
+   * the number into the link's own text — "Alle 23 beoordelen" — while five others said nothing
+   * at all. A widget that draws rows wraps them in `PanelRows`, which owns the expander, the
+   * hand-over and the count, and puts all three under the rows they are about. The header link
+   * stays what it always was: "this tile's module", not "this tile's remainder".
    */
   import type { Snippet } from "svelte";
 

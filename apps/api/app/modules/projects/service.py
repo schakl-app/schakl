@@ -34,6 +34,7 @@ from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
 from app.modules.projects.schemas import (
     DashboardBudgetProject,
+    DashboardBudgets,
     ProjectCreate,
     ProjectUpdate,
 )
@@ -333,7 +334,7 @@ class ProjectService:
             await self._attach_hours(items)
         return items, total
 
-    async def dashboard_budgets(self, *, limit: int = 4) -> list[DashboardBudgetProject]:
+    async def dashboard_budgets(self, *, limit: int = 4) -> DashboardBudgets:
         """The budgeted active projects burning hottest — what the My Day tile draws (#290).
 
         The widget used to fetch 200 active projects with the full budget enrichment, every
@@ -360,15 +361,20 @@ class ProjectService:
         # query over at most four clients rather than over every active project in the org.
         rows = budgeted[:limit]
         await self._attach_company_names(rows)
-        return [
-            DashboardBudgetProject(
-                id=p.id,
-                name=p.name,
-                company_name=p.company_name,  # type: ignore[attr-defined]
-                hours=p.hours,  # type: ignore[attr-defined]
-            )
-            for p in rows
-        ]
+        return DashboardBudgets(
+            items=[
+                DashboardBudgetProject(
+                    id=p.id,
+                    name=p.name,
+                    company_name=p.company_name,  # type: ignore[attr-defined]
+                    hours=p.hours,  # type: ignore[attr-defined]
+                )
+                for p in rows
+            ],
+            # Free: the sort above already has every budgeted active project in hand, so the
+            # tile can say "4 van 17" without a second statement (#407).
+            total=len(budgeted),
+        )
 
     async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:
         project = await self.repo.get_or_404(project_id)

@@ -8,11 +8,17 @@
    *
    * The actor is named from the snapshot the API resolved (issue #64): a live account shows its
    * current name, a departed one reads "Naam (verwijderd)", and a genuinely absent actor is the
-   * system. If the feed truncates, it says so — silent truncation reads as "that's all of them"
-   * (docs/PERFORMANCE.md).
+   * system.
+   *
+   * Collapse, expand and the truncation notice are `PanelRows`' now (#407) — this file and
+   * `InteractionsPanelBody` had written the same `COLLAPSED = 3` out twice, and the sentence
+   * about what is hidden existed in four shapes that meant one thing. What the feed *kept* is
+   * the honest count: the API sends `total`, so "de 10 meest recente worden getoond" no longer
+   * reads the same for a record with eleven changes and one with eleven hundred.
    */
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import { activityText, type ActivityLike } from "./format";
 
@@ -25,14 +31,24 @@
     created_at: string;
   }
 
-  let { items, limit }: { items: ActivityItem[]; limit: number } = $props();
+  let {
+    items,
+    total,
+    hasMore = false,
+  }: {
+    items: ActivityItem[];
+    /**
+     * The whole trail's length. The company hub's API panel counts it; the typed entity load
+     * cannot (its endpoint answers a bare list), so that one asks for one row more than it
+     * keeps and passes `hasMore` instead (#407).
+     */
+    total?: number;
+    hasMore?: boolean;
+  } = $props();
 
   // A busy record's trail grows without bound: show the most recent few, expand the rest in
   // place. Items arrive newest-first, so the head is the newest.
   const COLLAPSED = 3;
-  let expanded = $state(false);
-  const collapsible = $derived(items.length > COLLAPSED);
-  const shown = $derived(collapsible && !expanded ? items.slice(0, COLLAPSED) : items);
 
   function actorLabel(item: ActivityItem): string {
     if (!item.actor_name) return t("activity.system");
@@ -45,42 +61,36 @@
 {#if items.length === 0}
   <p class="text-sm text-text-muted">{t("activity.empty")}</p>
 {:else}
-  <ol class="space-y-3">
-    {#each shown as item (item.id)}
-      <li class="flex gap-3 text-sm">
-        <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border" aria-hidden="true"></span>
-        <span class="min-w-0 flex-1">
-          <span class="text-text">
-            <span class="font-medium">{actorLabel(item)}</span>
-            <!-- Someone was signed in as them (#296). Named right beside the actor, because
-                 "the client changed this" and "one of us changed this as the client" are
-                 different facts and only the second one is true here. -->
-            {#if item.impersonator_name}
-              <span
-                class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                title={t("activity.impersonated_title", { actor: item.impersonator_name })}
-              >
-                {t("activity.via_impersonator", { actor: item.impersonator_name })}
+  <PanelRows rows={items} collapsed={COLLAPSED} {total} {hasMore}>
+    {#snippet children(shown)}
+      <ol class="space-y-3">
+        {#each shown as item (item.id)}
+          <li class="flex gap-3 text-sm">
+            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border" aria-hidden="true"
+            ></span>
+            <span class="min-w-0 flex-1">
+              <span class="text-text">
+                <span class="font-medium">{actorLabel(item)}</span>
+                <!-- Someone was signed in as them (#296). Named right beside the actor, because
+                     "the client changed this" and "one of us changed this as the client" are
+                     different facts and only the second one is true here. -->
+                {#if item.impersonator_name}
+                  <span
+                    class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                    title={t("activity.impersonated_title", { actor: item.impersonator_name })}
+                  >
+                    {t("activity.via_impersonator", { actor: item.impersonator_name })}
+                  </span>
+                {/if}
+                {activityText(item)}
               </span>
-            {/if}
-            {activityText(item)}
-          </span>
-          <span class="mt-0.5 block text-xs text-text-muted">{fmtDateTime(item.created_at)}</span>
-        </span>
-      </li>
-    {/each}
-  </ol>
-  {#if collapsible}
-    <button
-      type="button"
-      class="mt-3 text-xs font-medium text-brand hover:underline"
-      onclick={() => (expanded = !expanded)}
-    >
-      {expanded ? t("common.show_less") : t("common.show_all", { count: items.length })}
-    </button>
-  {/if}
-  <!-- Only claim "these are all of them" once they are all on screen. -->
-  {#if (!collapsible || expanded) && items.length >= limit}
-    <p class="mt-3 text-xs text-text-muted">{t("activity.truncated", { limit })}</p>
-  {/if}
+              <span class="mt-0.5 block text-xs text-text-muted"
+                >{fmtDateTime(item.created_at)}</span
+              >
+            </span>
+          </li>
+        {/each}
+      </ol>
+    {/snippet}
+  </PanelRows>
 {/if}

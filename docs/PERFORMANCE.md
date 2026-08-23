@@ -285,6 +285,23 @@ with the picker searching the API as you type).
 "50 open" for a client with 300 — a wrong number, not a rounded one. Use
 `scoped_count_select()`.
 
+**And the cap itself is one of two numbers, not seven** (#407). Before this, the client hub
+carried caps of 5, 5, 5, 6, 8, 10 and 50, plus five panels with no cap at all — so a card's
+length was decided by whichever module was written that week, and the panel with the biggest
+number was the one whose footer link was added last. `app/registry.py` states two:
+`PANEL_ROWS = 5` for a register (things that exist and are looked up) and `PANEL_FEED = 8` for a
+chronological feed (things that happened). A provider wanting a different one says why in a
+comment beside it.
+
+**A total is part of a row-returning provider's contract**, because a cap without one is worse
+than no cap: the reader cannot tell five-of-five from five-of-twenty-three. Ask for it with
+`scoped_count_select()` (the repository's own, so the horizon and the portal rule narrow it
+exactly as they narrow the page), skip it when the page came back short — the count would equal
+`len(items)` — and, where an endpoint answers a bare list and cannot cheaply produce one, have
+the *browser* ask for one row more than it keeps. The extra statement per panel is a real cost
+and it is knowingly paid; what must never happen is a count that tracks the client's size, which
+`test_company_hub_totals_do_not_scale_with_the_client` pins as a shape.
+
 ## A list screen pages; a panel caps and says so
 
 The two rules above are about *panels* — a section of somebody else's page, where the honest

@@ -227,9 +227,16 @@ class ContactService:
         return contact
 
     async def contacts_for_company(
-        self, company_id: uuid.UUID
-    ) -> list[tuple[Contact, bool]]:
-        """Contacts linked to a company, primary-first then by creation time (panel order)."""
+        self, company_id: uuid.UUID, *, limit: int | None = None
+    ) -> tuple[list[tuple[Contact, bool]], int]:
+        """Contacts linked to a company, primary-first then by creation time (panel order).
+
+        Bounded and counted (#407). The panel that draws these is a chip field rather than a
+        list, so the cap is generous — nobody wants the sixth of six contacts folded away —
+        but "generous" and "absent" are different things, and it was absent: the read's size
+        was the client's, which is the one thing docs/PERFORMANCE.md calls a build break
+        everywhere else.
+        """
         # The company hub reached this having already loaded the company through the horizon,
         # but the `contacts.for_company` AI/MCP tool hands the id straight in — so the check
         # belongs here, on the query, not on the one caller that happens to be safe. Free: the
@@ -246,9 +253,23 @@ class ContactService:
                     CompanyContact.company_id == company_id,
                 )
                 .order_by(CompanyContact.is_primary.desc(), Contact.created_at)
+                .limit(limit)
             )
         ).all()
-        return [(row[0], row[1]) for row in rows]
+        if limit is None:
+            return [(row[0], row[1]) for row in rows], len(rows)
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(CompanyContact)
+                .where(
+                    CompanyContact.org_id == self._org_id,
+                    CompanyContact.company_id == company_id,
+                )
+            )
+            or 0
+        )
+        return [(row[0], row[1]) for row in rows], total
 
     async def candidates_for_company(
         self, company_id: uuid.UUID, *, limit: int = 20

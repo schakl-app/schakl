@@ -26,7 +26,7 @@ registerWebModule({
       load: (api) =>
         api
           .GET("/api/v1/projects/dashboard-budgets", { params: { query: { limit: 4 } } })
-          .then((r) => r.data ?? []),
+          .then((r) => r.data ?? { items: [], total: 0 }),
       component: ProjectBudgetsWidget,
     },
   ],

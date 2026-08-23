@@ -178,6 +178,26 @@ PROMINENCE_REGISTER = "register"
 SIZE_FULL = "full"
 SIZE_HALF = "half"
 
+#: How many rows a panel provider reads before it hands over to the list it is a window onto
+#: (#407).
+#:
+#: There were **seven** hand-picked numbers on the client hub — 5, 5, 5, 6, 8, 10 and 50 — and
+#: five panels with none at all, so a card's length was decided by whichever module was written
+#: that week. Two numbers, stated once, and a panel that wants a different one says why in a
+#: comment beside it:
+#:
+#: * ``PANEL_ROWS`` — a **register**: things that exist and are looked up (domains, websites,
+#:   projects, subscriptions, open tasks). Five is enough to recognise the client's shape.
+#: * ``PANEL_FEED`` — a **chronological feed**: things that happened (hours, invoices, contact
+#:   moments, the activity trail). Eight, because a feed's value is the run of recent days, and
+#:   the browser collapses it to three until the reader asks for the rest.
+#:
+#: Whatever the number, the provider **also returns the whole count**: a cap without a total is
+#: worse than no cap, because the reader cannot tell five-of-five from five-of-twenty-three
+#: (``docs/UX.md`` — a panel is the first page of the list it links to).
+PANEL_ROWS = 5
+PANEL_FEED = 8
+
 #: Does this panel's payload amount to "nothing has happened yet"? (#364)
 #:
 #: A module with nothing to show does not earn a heading, a border and 100 px — it earns a chip in
