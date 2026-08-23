@@ -1485,6 +1485,25 @@ contrast bug in dark mode rather than only an inconsistency.
   reference. Plain links, no Tabs primitive; a viewer whose permissions leave only one tab
   gets no tab row at all. Every tab that lists rows is a full `DataTable` (filters, sort,
   personal columns), not a card list.
+- **A nav item is named after the page it opens, and no two of them share a name** (#351,
+  `nav-labels.test.ts`). The sidebar had two items reading *Overzicht* — one opening `/marketing`,
+  headed **Marketing**, and one opening `/overview`, headed **Urenoverzicht**. Neither named its
+  page, both breadcrumbs read *Overzicht* as well, and the two rows measured identically, so
+  nothing on the screen could tell a reader which was which. The pages had perfectly good names;
+  the nav had thrown them away. Nothing in the build could notice either: a label is a lookup of a
+  key that exists, and two keys holding one word is not a type error, so it is a test now — over
+  the resolved strings, in both locales, because a collision can exist in one language and not the
+  other. Two things ride along. The `<h1>` on a renameable section already falls back to
+  `nav.<key>`, so the item's default label must be that same key or the heading and the sidebar
+  disagree by construction. And **a group of one is not a group**: membership is declared per item
+  and which members a tenant can see depends on their modules and permissions, so a group of three
+  collapses to a chevron, a heading and a single indented row repeating the heading's own subject
+  on any install that enabled one of them. A lone member renders as the plain top-level item it
+  would have been, and the group reappears the moment a second one is visible.
+- **A crumb names the section, not the tab it lands on.** `/overview` opens on Uren, so labelling
+  its crumb "Urenoverzicht" would read `Urenoverzicht › Omzet` two clicks later — a lie about where
+  revenue lives. The sidebar item is named for the page it opens; the breadcrumb literal is named
+  for the section that holds all four tabs.
 - **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
   screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
   to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
