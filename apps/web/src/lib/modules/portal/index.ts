@@ -11,4 +11,5 @@ import { registerWebModule } from "$lib/core/registry";
 registerWebModule({ name: "portal" });
 
 export { default as PortalCard } from "./PortalCard.svelte";
-export type { PortalCardData, PortalLoginState } from "./types";
+export { default as PortalLoginsSection } from "./PortalLoginsSection.svelte";
+export type { PortalCardData, PortalLoginRow, PortalLoginState, PortalRegisterData } from "./types";

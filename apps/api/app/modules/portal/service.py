@@ -42,12 +42,18 @@ from app.core.permissions.permset import PermissionSet
 from app.core.permissions.service import create_membership
 from app.core.portal import (
     PortalSubject,
+    PortalSubjectListing,
     portal_subject_provider,
     portal_subject_types,
 )
 from app.core.tenancy import RequestContext
 from app.errors import AppError
-from app.modules.portal.schemas import PortalLoginState, PortalStatus
+from app.modules.portal.schemas import (
+    PortalLoginClient,
+    PortalLoginRow,
+    PortalLoginState,
+    PortalStatus,
+)
 
 logger = logging.getLogger("schakl.portal")
 
@@ -122,6 +128,94 @@ class PortalService:
     ) -> PortalLoginState:
         subject = await self._subject_or_404(entity_type, subject_id)
         return self._state(subject, await self._linked_user(subject))
+
+    async def logins(self) -> list[PortalLoginRow]:
+        """Every client login in this org — the register behind Instellingen → Gebruikers (#406).
+
+        Until this existed a login was reachable from exactly one place, the contact it belongs
+        to, so "who at our clients can sign in, and is their access still live?" had no answer
+        anywhere: an invite nobody used and a contact who left their employer were both
+        invisible unless somebody opened that one page.
+
+        Four things it must not get wrong, three of them settled elsewhere and one here.
+
+        **The horizon** rides on the provider, which reads through the subject's own repository
+        — and the count is ``len()`` of what comes back, so a restricted admin can never be
+        shown a total the rows do not add up to (#285's failure mode (2)).
+
+        **A portal login never reads this.** Externality is its own axis (#274), not a
+        permission: the route's ``members.member.write`` is a key a tenant may grant to any role
+        it edits, including ``client``, and a register of who can sign in is staff's. 403, the
+        answer the API reference gives the same caller — this is a whole surface, not a panel
+        that can politely be empty.
+
+        **One batched call.** The providers answer in a fixed number of statements each, and the
+        accounts behind every subject are read here in one more — never a ``state`` call per
+        row, which is what the shape this replaces would have been on the web
+        (docs/PERFORMANCE.md, and ``tests/test_perf_query_budgets.py`` pins the number).
+
+        The one decided here is the **order**: by client, then by person. A register is read to
+        answer a question about a client ("do they still have access?"), so the rows a reader is
+        looking for sit together; a login attached to no client at all files last, where a blank
+        cell is obvious rather than scattered.
+        """
+        if self.ctx.is_portal:
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+
+        listings: list[PortalSubjectListing] = []
+        for entity_type in portal_subject_types():
+            provider = portal_subject_provider(entity_type)
+            if provider is None:  # pragma: no cover — the list comes from the registry
+                continue
+            listings.extend(await provider.list_logins(self.ctx))
+
+        user_ids = {
+            listing.subject.user_id
+            for listing in listings
+            if listing.subject.user_id is not None
+        }
+        if not user_ids:
+            return []
+        users = {
+            user.id: user
+            for user in (
+                await self.ctx.session.execute(select(User).where(User.id.in_(user_ids)))
+            ).scalars()
+        }
+
+        rows: list[PortalLoginRow] = []
+        for listing in listings:
+            subject = listing.subject
+            user = users.get(subject.user_id) if subject.user_id else None
+            if user is None:
+                # The account is gone (``contacts.user_id`` is ``ON DELETE SET NULL``, so this
+                # is a race rather than a state) — there is no login to report.
+                continue
+            status = self._status(user)
+            if status == "none":  # pragma: no cover — a user was found, so there is a login
+                continue
+            rows.append(
+                PortalLoginRow(
+                    entity_type=subject.entity_type,
+                    subject_id=subject.id,
+                    user_id=user.id,
+                    name=subject.display_name or user.full_name,
+                    email=user.email,
+                    status=status,
+                    clients=[
+                        PortalLoginClient(id=client.id, name=client.name)
+                        for client in listing.clients
+                    ],
+                )
+            )
+        rows.sort(
+            key=lambda row: (
+                not row.clients,
+                row.clients[0].name.lower() if row.clients else "",
+                (row.name or row.email).lower(),
+            )
+        )
+        return rows
 
     async def enable(
         self,

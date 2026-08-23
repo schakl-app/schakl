@@ -14,7 +14,8 @@
  * value means clear), `undefined` keys vanish in `JSON.stringify`, and the API updates with
  * `exclude_unset`. So a dialog that shows six fields writes six fields.
  *
- * **Host contract:** the panel posts to `?/updateEntry` and `?/deleteEntry`.
+ * **Host contract:** the panel posts to `?/updateEntry` and `?/deleteEntry`, and the
+ * log-hours dialog to `?/createEntry`.
  */
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
@@ -28,6 +29,43 @@ function text(form: FormData, field: string): string | null | undefined {
 }
 
 export const timeEntryActions = {
+  /**
+   * A whole registration, from a record's own page (#402).
+   *
+   * Unlike its two neighbours this one *does* read every field with `?? null`, and the
+   * difference is the form rather than an inconsistency: `LogTimeDialog` mounts the full
+   * `EntryForm`, which draws the client, project and task pickers, so an absent field really
+   * does mean "cleared" here. Mirrors `/time`'s own create so an hour logged from a client
+   * cannot come out different from one logged on the timesheet.
+   */
+  createEntry: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const date = String(form.get("date") ?? "").trim();
+    const start = String(form.get("start") ?? "").trim();
+    const end = String(form.get("end") ?? "").trim();
+    if (!date || !start || !end) return fail(400, { error: "errors.required" });
+
+    const { error: apiError } = await apiFor(event).POST("/api/v1/time/entries", {
+      body: {
+        // Wall clock, stored as UTC; the API rolls an end that is not after the start forward a
+        // day (an overnight span) rather than refusing it.
+        started_at: `${date}T${start}:00Z`,
+        ended_at: `${date}T${end}:00Z`,
+        break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
+        description: String(form.get("description") ?? "").trim() || null,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        project_id: String(form.get("project_id") ?? "").trim() || null,
+        task_id: String(form.get("task_id") ?? "").trim() || null,
+        // Stated by the form's toggle; omitted, the project's own default decides (#284) rather
+        // than a hardcoded "factureerbaar".
+        billable: form.has("billable") ? form.get("billable") !== "false" : undefined,
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
+      },
+    });
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { entryCreated: true };
+  },
+
   updateEntry: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

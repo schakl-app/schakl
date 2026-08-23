@@ -41,10 +41,17 @@ for (const entityType of ["project", "contact", "invoice", "quote", "domain", "w
     // detail page to say so.
     requiresPermission: "activity.read",
     load: async (api, { entityId }) => {
+      // One row more than the panel keeps (#407). `/api/v1/activity` answers a bare list, so
+      // this is how the feed learns there is a rest without a count endpoint — the same probe
+      // a task's comment list uses, and cheaper than a second query for a number the panel
+      // only needs to know is non-zero.
       const { data } = await api.GET("/api/v1/activity", {
-        params: { query: { entity_type: entityType, entity_id: entityId, limit: PANEL_LIMIT } },
+        params: {
+          query: { entity_type: entityType, entity_id: entityId, limit: PANEL_LIMIT + 1 },
+        },
       });
-      return { items: data ?? [], limit: PANEL_LIMIT };
+      const rows = data ?? [];
+      return { items: rows.slice(0, PANEL_LIMIT), hasMore: rows.length > PANEL_LIMIT };
     },
     component: ActivityEntityPanel,
   });

@@ -12,7 +12,7 @@
 
   import { applyAction, enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { editIntent } from "$lib/core/edit-intent";
+  import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -50,6 +50,7 @@
 
   import { entityPanelSpec } from "$lib/core/registry";
   import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import { PANEL_HEADING } from "$lib/core/ui/headings";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
@@ -76,9 +77,9 @@
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
-  // expand the rest in place. Rows are newest-first, so the head is the newest.
+  // expand the rest in place. Rows are newest-first, so the head is the newest. The third
+  // verbatim copy of this collapse until #407; `PanelRows` owns it now.
   const ACTIVITY_COLLAPSED = 3;
-  let activityExpanded = $state(false);
   // The task's own legacy trail plus the contact-moment milestones mirrored onto its core
   // activity log (#152) — merged newest-first, so "contactmoment gelogd" shows on the task page
   // like it already does on company/project/contact. Both rows share the same shape
@@ -88,11 +89,6 @@
       // Core rows type `payload` as optional; the renderers want it present. Normalise once.
       .map((a) => ({ ...a, payload: (a.payload ?? {}) as Record<string, unknown> }))
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
-  );
-  const visibleActivities = $derived(
-    activityExpanded || activities.length <= ACTIVITY_COLLAPSED
-      ? activities
-      : activities.slice(0, ACTIVITY_COLLAPSED),
   );
   const userId = $derived(page.data.user?.id ?? "");
   // A portal login (#193) works the task, not the office around it: uploads, the activity
@@ -936,6 +932,10 @@
                       // relation on a later edit session.
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
+                      // Opening only — the leaving half returned above. So this is no longer a
+                      // toggle, and the `clearEditIntent()` that used to ride on its false arm
+                      // (#402) is not dropped but relocated: the submit runs `use:enhance`, whose
+                      // handler already consumes the marker on the save that closes the mode.
                       editMode = true;
                     },
                   },
@@ -2051,8 +2051,10 @@
         {#if activities.length === 0}
           <p class="text-sm text-text-muted">—</p>
         {:else}
-          <ul class="space-y-2">
-            {#each visibleActivities as activity (activity.id)}
+          <PanelRows rows={activities} collapsed={ACTIVITY_COLLAPSED}>
+            {#snippet children(shown)}
+              <ul class="space-y-2">
+                {#each shown as activity (activity.id)}
               {@const href = activityHref(activity)}
               <li class="flex items-baseline gap-2 text-sm">
                 <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
@@ -2078,20 +2080,11 @@
                     {activityText(activity)}
                   {/if}
                 </span>
-              </li>
-            {/each}
-          </ul>
-          {#if activities.length > ACTIVITY_COLLAPSED}
-            <button
-              type="button"
-              class="mt-3 text-xs font-medium text-brand hover:underline"
-              onclick={() => (activityExpanded = !activityExpanded)}
-            >
-              {activityExpanded
-                ? t("common.show_less")
-                : t("common.show_all", { count: activities.length })}
-            </button>
-          {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/snippet}
+          </PanelRows>
         {/if}
       </Card>
     {/if}
@@ -2149,7 +2142,14 @@
         // keeps edit mode open: the user asked to plan, not to stop editing.
         const waiting = pendingSave;
         pendingSave = null;
-        if (result.type === "success") editMode = waiting !== null;
+        if (result.type === "success") {
+          editMode = waiting !== null;
+          // …and the marker that opened it goes with it (#402). A task created from a client
+          // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
+          // means the next visit — a reload, the back button off the client's page — reopens
+          // the form over a save that had already happened. An intent is consumed once.
+          if (!editMode) clearEditIntent();
+        }
         dueReason = "";
         await update();
         waiting?.(result.type === "success");
@@ -2161,7 +2161,10 @@
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (editMode = false)}
+        onclick={() => {
+          editMode = false;
+          clearEditIntent();
+        }}
       >
         {t("common.cancel")}
       </button>

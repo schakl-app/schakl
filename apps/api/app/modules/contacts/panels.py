@@ -18,14 +18,22 @@ from app.core.tenancy import RequestContext
 from app.modules.contacts.service import ContactService
 from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
+#: Every person linked to one client, in one chip field. See the note in the provider.
+_LINKED = 25
+
 
 async def _contacts_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     service = ContactService(ctx)
-    linked = await service.contacts_for_company(company_id)
+    # Bounded, with the whole count beside it (#407). A chip field is not a five-row list —
+    # folding away the sixth of six people you ring would be a worse screen than the one
+    # this fixes — so the cap is deliberately generous and only ever fires on a client
+    # nobody could read anyway. The candidates list beside it was already capped (#290).
+    linked, linked_total = await service.contacts_for_company(company_id, limit=_LINKED)
     candidates = await service.candidates_for_company(company_id)
     definitions = await CustomFieldsService(ctx).definitions("contact")
 
     return {
+        "total": linked_total,
         "contacts": [
             {
                 "id": str(contact.id),

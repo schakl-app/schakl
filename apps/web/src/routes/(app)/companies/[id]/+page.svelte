@@ -51,9 +51,11 @@
   import SummaryStrip from "$lib/core/ui/SummaryStrip.svelte";
   import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { arrangePanels, type HubRow } from "$lib/modules/companies/hub";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
+  import LogTimeDialog from "$lib/modules/time/LogTimeDialog.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   let { data, form } = $props();
@@ -131,43 +133,30 @@
   // A chip whose module has no screen of its own to send you to unfolds its card here instead
   // (see the strip below), so nothing an empty panel offered is lost by absorbing it.
   const unfolded = new SvelteSet<string>();
-  const drawn = $derived(data.panels.filter((p: Panel) => !p.empty || unfolded.has(p.key)));
-  const primary = $derived(drawn.filter((p: Panel) => p.prominence === "primary"));
-  const registers = $derived(drawn.filter((p: Panel) => p.prominence !== "primary"));
   const empties = $derived(data.panels.filter((p: Panel) => p.empty && !unfolded.has(p.key)));
 
-  /**
-   * How the cards fit together.
-   *
-   * `size` said how wide a panel wants to be and the page drew one two-column grid, which is a
-   * *row* layout: every row is as tall as its tallest card, so a short card leaves the gap under
-   * it empty, and a full-width panel after an odd number of halves leaves half a row empty beside
-   * the one before it. On a real client that came to a 271 px void under Abonnementen, a whole
-   * empty half-row beside Uren, and four ragged bottom edges — the page looked unfinished rather
-   * than composed, which is the same complaint #364 set out to fix, one layer down.
-   *
-   * A row layout cannot answer it, so the ordered panels are cut into **blocks** and each block
-   * gets the layout its own count deserves. Three kinds, and each one is hole-free by
-   * construction rather than by luck:
-   *
-   * - `solo` — a full-width panel, **or a half-width one with no half-width neighbour**. A card
-   *   alone on its row takes the row; the alternative is a bordered rectangle beside nothing.
-   * - `pair` — exactly two halves, in a two-column grid that *stretches*. With two cards there is
-   *   nothing to pack, so the tidy answer is a matched pair: bottoms level, one edge, no gap.
-   * - `stack` — three or more halves, packed by CSS multi-column. Each card keeps its natural
-   *   height and the browser balances the two lanes, which is real masonry with no measuring, no
-   *   layout jump after hydration, and no second opinion about a height the browser already knows.
-   *
-   * `items-start` is therefore gone, and so is stretching a two-row list to match a tall card
-   * beside it — the mistake the old comment here rightly warned about. What replaced it is not
-   * "stretch everything": a pair matches because a pair has nothing else to do, and a stack packs
-   * because packing is what three cards want.
-   *
-   * One constraint a contributing module should know: a `stack` is a fragmentation context, so a
-   * panel that opens a dropdown wants `prominence: primary` (where pairs and solos live) or a
-   * popover anchored to the viewport. No panel does that today.
-   */
-  type Block = { key: string; kind: "solo" | "pair" | "stack"; panels: Panel[] };
+  // How the cards fit together (#403) — the rules, and what they replaced, live beside the
+  // function in `$lib/modules/companies/hub.ts`, where they are unit-tested. In one sentence:
+  // a panel is drawn at the width it declared, into a lane it was dealt over the *full* ordered
+  // list, so a client with nothing in a panel sees the rest exactly where a client who has
+  // everything sees them.
+  //
+  // It replaced the run-of-blocks arrangement #404 drew (solo / pair / stack): each block was
+  // hole-free on its own and the *set* of blocks moved from client to client, because a run
+  // boundary depends on which neighbours this client happens to have nothing in. A lane is
+  // allowed to end lower than the one beside it; a panel is not allowed to change width.
+  const primaryRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence === "primary"),
+      unfolded,
+    ),
+  );
+  const registerRows = $derived(
+    arrangePanels(
+      data.panels.filter((p: Panel) => p.prominence !== "primary"),
+      unfolded,
+    ),
+  );
 
   /**
    * What a lane draws its cards as (#404). The pair is stated here rather than derived from the
@@ -178,22 +167,6 @@
   type LaneKind = { kind: "panel" | "register"; heading: 2 | 3 };
   const WORKING_LANE: LaneKind = { kind: "panel", heading: 2 };
   const REGISTER_LANE: LaneKind = { kind: "register", heading: 3 };
-
-  function blocksOf(panels: Panel[]): Block[] {
-    const runs: Panel[][] = [];
-    for (const panel of panels) {
-      const run = runs.at(-1);
-      // A full-width panel always starts (and ends) its own run; halves collect into one.
-      if (panel.size !== "half" || !run || run[0].size !== "half") runs.push([panel]);
-      else run.push(panel);
-    }
-    return runs.map((run) => ({
-      key: run[0].key,
-      kind:
-        run[0].size !== "half" || run.length === 1 ? "solo" : run.length === 2 ? "pair" : "stack",
-      panels: run,
-    }));
-  }
 
   // ---- tier 1: the status pill edits in place ---------------------------- //
   // Most real edits are one field, and none of them should cost a dialog, a scroll position and
@@ -224,6 +197,10 @@
   const mentionCandidates = $derived(
     data.members.map((m) => ({ id: m.user_id, name: memberLabel(m) })),
   );
+
+  // Uren boeken from the header (#402): the time module's own form in a dialog, hosted here the
+  // way the contactmoment form already is. Nothing is fetched until it opens.
+  let loggingTime = $state(false);
 
   // Nieuwe taak from the header (#391): the shared dialog, pre-linked to this client and opening
   // with yourself on the roster — the assignee this button always chose, now visible.
@@ -348,15 +325,17 @@
       </Button>
     {/if}
     {#if can(page.data.user, "time.entry.write")}
-      <!-- Carry the client through: a bare /time landed on the entry form with whatever
-             client was last used, so the one you were looking at was the one thing the trip
-             lost. Same deep link the time panel below already uses. -->
-      <a
-        href={`/time?company=${company.id}`}
+      <!-- The same act as the Uren panel's ＋ (#402), so it is the same control: the module's
+             own entry form in a dialog, this client preset, and this page still underneath it
+             when it closes. It used to be a link to `/time?company=…` — the client was carried
+             through and the way back was not. -->
+      <button
+        type="button"
+        onclick={() => (loggingTime = true)}
         class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.log_time")}
-      </a>
+      </button>
     {/if}
     {#if hasReporting}
       <CompanyAIActions companyId={company.id} companyName={company.name} />
@@ -437,27 +416,24 @@
   </Card>
 {/snippet}
 
-{#snippet lane(panels: Panel[], kind: LaneKind)}
-  <!-- A column of blocks; each block decides how its own cards sit beside each other. Every kind
-       collapses to one column below `lg`, so a phone gets one stack and the rule that fits the
-       cards together is a desktop rule only. -->
+{#snippet lane(rows: HubRow<Panel>[], kind: LaneKind)}
+  <!-- A column of rows: a full-width panel is its own row, a run of halves is two lanes. Both
+       collapse to one column below `lg` — the lane wrappers go `display: contents` and each card
+       carries its seat as a flex `order` — so a phone reads one stack in declared order and the
+       two-lane rule is a desktop rule only. -->
   <div class="flex flex-col gap-4">
-    {#each blocksOf(panels) as block (block.key)}
-      {#if block.kind === "solo"}
-        {@render card(block.panels[0], kind)}
-      {:else if block.kind === "pair"}
-        <div class="grid gap-4 lg:grid-cols-2">
-          {#each block.panels as panel (panel.key)}
-            {@render card(panel, kind)}
-          {/each}
-        </div>
+    {#each rows as row (row.key)}
+      {#if row.kind === "full"}
+        {@render card(row.panel, kind)}
       {:else}
-        <!-- `-mb-4` cancels the last card's own bottom margin, which is what a multi-column
-             container has instead of `gap` for the vertical direction. -->
-        <div class="-mb-4 lg:columns-2 lg:gap-4">
-          {#each block.panels as panel (panel.key)}
-            <div class="mb-4 break-inside-avoid">
-              {@render card(panel, kind)}
+        <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
+          {#each row.lanes as seats, index (index)}
+            <div class="contents lg:flex lg:flex-col lg:gap-4">
+              {#each seats as { panel, seat } (panel.key)}
+                <div style:order={seat}>
+                  {@render card(panel, kind)}
+                </div>
+              {/each}
             </div>
           {/each}
         </div>
@@ -466,11 +442,11 @@
   </div>
 {/snippet}
 
-{#if primary.length > 0}
-  {@render lane(primary, WORKING_LANE)}
+{#if primaryRows.length > 0}
+  {@render lane(primaryRows, WORKING_LANE)}
 {/if}
 
-{#if registers.length > 0}
+{#if registerRows.length > 0}
   <!-- Reference material: correct, occasionally consulted, never news. It keeps its own lane
        and its own heading so the working surfaces above are unmistakably the foreground.
        The heading is `BAND_HEADING` now (#404): it used to be 12 px uppercase muted over 14 px
@@ -479,7 +455,7 @@
   <h2 class="mb-3 mt-8 {BAND_HEADING}">
     {t("companies.section.registers")}
   </h2>
-  {@render lane(registers, REGISTER_LANE)}
+  {@render lane(registerRows, REGISTER_LANE)}
 {/if}
 
 {#if empties.length > 0}
@@ -581,6 +557,10 @@
     error={(page.form?.error as string | undefined) ?? null}
     pickerSlot="company_new_task"
   />
+{/if}
+
+{#if can(page.data.user, "time.entry.write")}
+  <LogTimeDialog bind:open={loggingTime} companyId={company.id} />
 {/if}
 
 <Modal bind:open={showLogInteraction} title={t("interactions.add")}>

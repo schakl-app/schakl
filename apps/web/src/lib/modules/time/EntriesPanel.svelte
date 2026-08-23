@@ -27,6 +27,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import EntryForm from "./EntryForm.svelte";
   import TimeEntryRow from "./TimeEntryRow.svelte";
@@ -67,8 +68,6 @@
   const panel = $derived(
     (data ?? { entries: [], total: 0, viewAllHref: "/overview" }) as PanelData,
   );
-  const truncated = $derived(panel.total > panel.entries.length);
-
   // Overzicht is gated on `time.report.read`: its layout redirects anyone else to the dashboard.
   // Offering a member a link that bounces them is worse than offering none — which is the whole
   // reason this panel exists (#43). They still get told when the list truncated.
@@ -110,59 +109,56 @@
 {#if panel.entries.length === 0}
   <p class="py-4 text-sm text-text-muted">{t("time.panel.empty")}</p>
 {:else}
-  <ul class="divide-y divide-border">
-    {#each panel.entries as entry (entry.id)}
-      <li class="flex items-center gap-2 py-2.5">
-        <div class="min-w-0 flex-1">
-          <TimeEntryRow {entry} label={entryLabel(entry)} employee={memberName(entry.user_id)} />
-        </div>
-        <!-- A list of records is never read-only because it sits on another page (docs/UX.md).
+  <!-- Overzicht is gated on `time.report.read`: its layout redirects anyone else to the
+       dashboard, and offering a member a link that bounces is worse than offering none (#43,
+       #253) — so the hand-over is theirs only. Everyone still gets the count (#407). -->
+  <PanelRows
+    rows={panel.entries}
+    total={panel.total}
+    href={canViewReport ? panel.viewAllHref : undefined}
+    linkLabel={t("time.panel.view_all_count", { count: panel.total })}
+    alwaysLink={canViewReport}
+  >
+    {#snippet children(shown)}
+      <ul class="divide-y divide-border">
+        {#each shown as entry (entry.id)}
+          <li class="flex items-center gap-2 py-2.5">
+            <div class="min-w-0 flex-1">
+              <TimeEntryRow
+                {entry}
+                label={entryLabel(entry)}
+                employee={memberName(entry.user_id)}
+              />
+            </div>
+            <!-- A list of records is never read-only because it sits on another page (docs/UX.md).
              The API still enforces the role and approval-lock rules behind these. -->
-        <ActionsMenu
-          compact
-          items={[
-            {
-              label: t("common.edit"),
-              icon: Pencil,
-              onclick: () => {
-                editingEntry = entry;
-                showEdit = true;
-              },
-            },
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => {
-                deleteId = entry.id;
-                confirmDelete = true;
-              },
-            },
-          ]}
-        />
-      </li>
-    {/each}
-  </ul>
-{/if}
-
-{#if truncated || canViewReport}
-  <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-    {#if truncated}
-      <!-- It truncated, so it says so. -->
-      <p class="text-xs text-text-muted">
-        {t("time.panel.truncated", { shown: panel.entries.length, total: panel.total })}
-      </p>
-    {:else}
-      <span></span>
-    {/if}
-    {#if canViewReport}
-      <a
-        href={panel.viewAllHref}
-        data-sveltekit-preload-data="hover"
-        class="text-sm font-medium text-brand hover:underline">{t("time.panel.view_all")}</a
-      >
-    {/if}
-  </div>
+            <ActionsMenu
+              compact
+              items={[
+                {
+                  label: t("common.edit"),
+                  icon: Pencil,
+                  onclick: () => {
+                    editingEntry = entry;
+                    showEdit = true;
+                  },
+                },
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => {
+                    deleteId = entry.id;
+                    confirmDelete = true;
+                  },
+                },
+              ]}
+            />
+          </li>
+        {/each}
+      </ul>
+    {/snippet}
+  </PanelRows>
 {/if}
 
 <Modal bind:open={showEdit} title={t("time.edit_entry")}>

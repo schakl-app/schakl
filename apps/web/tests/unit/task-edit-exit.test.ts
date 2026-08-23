@@ -55,9 +55,12 @@ describe("the task detail page's edit-mode exit", () => {
   test("discarding is still offered, and is still called Annuleren", () => {
     // The fix must not remove the honest exit: a user who wants their edits gone needs a control
     // that says so. It is the footer button, and it is the only place `editMode = false` lives.
-    const cancel = source.indexOf("onclick={() => (editMode = false)}");
+    // Anchored on the assignment, not on the handler's exact spelling: #402 gave this button a
+    // block body (it consumes the edit-intent marker too), and a test that pins the arrow form
+    // fails on a change that leaves the rule it exists to protect entirely intact.
+    const cancel = source.indexOf("editMode = false");
     assert.notEqual(cancel, -1, "the footer keeps a control that discards");
-    assert.match(source.slice(cancel, cancel + 200), /t\("common\.cancel"\)/);
+    assert.match(source.slice(cancel, cancel + 300), /t\("common\.cancel"\)/);
     assert.equal(source.split("editMode = false").length - 1, 1);
   });
 
@@ -65,6 +68,6 @@ describe("the task detail page's edit-mode exit", () => {
     // The whole fix rests on this handler: `pendingSave` is null for an ordinary save (including
     // this one), so success closes edit mode, and a `failure` result changes nothing — the user
     // stays in the form with the error rather than losing what they typed.
-    assert.match(source, /if \(result\.type === "success"\) editMode = waiting !== null;/);
+    assert.match(source, /if \(result\.type === "success"\) \{\s*editMode = waiting !== null;/);
   });
 });

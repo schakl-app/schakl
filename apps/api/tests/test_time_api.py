@@ -518,9 +518,9 @@ async def test_company_panel_names_the_day_and_the_colleague(client_for) -> None
         data = next(p for p in panels if p["key"] == "time.company")["data"]
 
         assert data["total_minutes"] == 10 * 30 + 90
-        # Eleven exist, ten are shown — the sentence the panel prints over the list.
+        # Eleven exist, the feed default is shown (#407) — the sentence the panel prints.
         assert data["total_entries"] == 11
-        assert len(data["recent"]) == 10
+        assert len(data["recent"]) == 8
 
         top = data["recent"][0]
         assert top["user_id"] == str(mate.user.id), "the colleague who logged it is unnamed"
@@ -530,6 +530,6 @@ async def test_company_panel_names_the_day_and_the_colleague(client_for) -> None
         # What the panel's own correct-this-row dialog posts back.
         assert top["ended_at"] is not None
         assert top["break_minutes"] == 0
-        # The other ten are this user's, and non-billable — the marker has both states to draw.
+        # The rest are this user's, and non-billable — the marker has both states to draw.
         assert {row["user_id"] for row in data["recent"][1:]} == {str(t.user.id)}
         assert all(row["billable"] is False for row in data["recent"][1:])

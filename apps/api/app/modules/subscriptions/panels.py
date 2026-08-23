@@ -6,14 +6,18 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.subscriptions.service import SubscriptionService
-from app.registry import SIZE_HALF, PanelSpec
+from app.registry import PANEL_ROWS, SIZE_HALF, PanelSpec
 
 
 async def _subscriptions_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     # The permission is declared on the spec (#365), so the composer never calls this without
     # it and the provider keeps no second copy of the same rule.
-    subs = await SubscriptionService(ctx).for_company(company_id)
+    # Bounded, and the whole count beside it (#407). This read had no limit at all, so the
+    # panel's length was the client's: an agency's largest client is exactly the page that
+    # becomes unusable, which is the failure a cap exists to prevent.
+    subs, total = await SubscriptionService(ctx).for_company(company_id, limit=PANEL_ROWS)
     return {
+        "total": total,
         "subscriptions": [
             {
                 "id": str(s.id),

@@ -13,7 +13,7 @@ from app.core.tenancy import RequestContext
 from app.integrations.google.drive.models import DriveLink
 from app.integrations.google.drive.service import DriveService
 from app.integrations.google.oauth import google_settings_row
-from app.registry import SIZE_HALF, PanelSpec
+from app.registry import PANEL_FEED, SIZE_HALF, PanelSpec
 
 
 def _present(link: DriveLink) -> dict:
@@ -35,7 +35,15 @@ async def _drive_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     row = await google_settings_row(ctx.session, ctx.org.id)
     if row is None or not row.drive_enabled:
         return {"links": [], "disabled": True}
-    links = await DriveService(ctx).links_for("company", company_id)
+    service = DriveService(ctx)
+    # Bounded, and the whole count beside it (#407): this read had no limit, so a client with
+    # two hundred attachments drew two hundred rows on the page somebody opens all day.
+    links = await service.links_for("company", company_id, limit=PANEL_FEED)
+    total = (
+        await service.count_links("company", company_id)
+        if len(links) >= PANEL_FEED
+        else len(links)
+    )
     # The client's folder is the one somebody decided on, never the first folder that happens
     # to be linked here — a subfolder linked as an attachment must not hijack the panel.
     folder = next((link for link in links if link.is_root), None)
@@ -44,6 +52,7 @@ async def _drive_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
 
     connection = await connection_for(ctx.session, ctx.org.id, ctx.user.id)
     return {
+        "total": total,
         "links": [_present(link) for link in links],
         "folder": _present(folder) if folder else None,
         # The browser can only list as a connected viewer; the panel says so instead of erroring.

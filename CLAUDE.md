@@ -168,7 +168,10 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   before its provider is *called* (`requires_permission`, or an `explicit_public` reason — a
   panel with neither is a build break, exactly as an undeclared route is); its `prominence`
   (a working surface, or a register: correct, occasionally consulted, never news); its `size`
-  (full or half, for the host's two-column grid); and `empty_when(data)`, which lets the host
+  (full or half, for the host's two-column grid — and since #403 that is what it is *drawn* at: a
+  half with no neighbour stays a half, and the arrangement is computed over the whole ordered list
+  so a panel's width and lane never depend on which of its neighbours this client happens to have
+  nothing in); and `empty_when(data)`, which lets the host
   fold "this client has nothing here yet" into one strip of ＋ chips instead of ten cards that
   are each a heading over a negative sentence. Optionally `summaries` too — the same seam one
   level up: one number, a label, a tone and a link, laid out as the record's vital signs under

@@ -68,6 +68,30 @@
    of them" (docs/PERFORMANCE.md). **A convenience like this is not a nice-to-have bolted onto
    one screen; it is what the screen was for.**
 
+8. **An action started from a record's page either finishes on that page, or ends with the way
+   back to it** (#402). A dialog is the default. A navigation must be a deliberate choice, and
+   where it is one, the record it came from must be *confirmable* on the other side — the crumb
+   row (`breadcrumb-trail.svelte.ts`), which draws an ancestor only when the new record's own
+   foreign key names it, never a `?from=` back button dressed as a hierarchy.
+
+   The client hub is what this rule was written from, because it was inconsistent with itself:
+   Contactmoment vastleggen, Bewerken, Sjabloon toepassen, the contactpersonen ＋, Marketing's
+   edit mode and Drive's browser all opened in place, while **Uren boeken** and the Uren panel's
+   ＋ both left for `/time?company=…` and never came back. Deep-linking the client was right and
+   made the trip one-way: the colleague who came off the phone, wrote down twenty minutes and
+   then wanted that client's domains had to go back through Klanten and find them again. Hours
+   are a dialog now (`LogTimeDialog`, the module's own `EntryForm` hosted by whatever page shows
+   the record), and the panel keeps its deliberate *Alles bekijken* for the full report.
+
+   Two corollaries worth stating, because both were live bugs. **An empty panel's chip is not an
+   excuse for the trip either** — a module whose ＋ works in place drops its `emptyHref` and lets
+   the chip unfold the card, rather than sending a client with no hours yet to the timesheet.
+   And **a departure that is deliberate still has to end**: create-then-edit (#230) lands a new
+   task on its own page in edit mode, which is the point, so what was missing was the finish —
+   the `?edit=1` marker is consumed on save, on cancel and on Klaar (`clearEditIntent`), or the
+   mode the user just left reopens on the next visit and the crumb back to the client never
+   reads as the obvious next move.
+
 ## The visual system
 
 > Four decisions taken once (#404), after the team said the CRM "voelt al snel voller en
@@ -896,6 +920,47 @@ contrast bug in dark mode rather than only an inconsistency.
   **default that answers the unfiltered page may not survive the scoped one**: `/interactions`
   lands you on your own moments (#263), which over a team-visible panel's link would have
   answered 12 under a notice that said 137.
+- **A rule applied by three panels out of twenty is a rule that lives in prose** (#407). The
+  entry above was right and had been written down twice, and the client hub still carried
+  **seven** hand-picked caps — 5, 5, 5, 6, 8, 10 and **50** — with five panels that read
+  unbounded, and one sentence about what was hidden written four different ways. The 50 was the
+  one the team felt: it predates that panel having a footer link at all, so a client's card was
+  fifty rows long above the client's own phone number. And the unbounded ones are worse than a
+  wrong number, because their length is the *client's* — an agency's largest client is exactly
+  the page that becomes unusable.
+  **Two affordances, and which one a panel gets is decided by where the rest of the rows are.**
+  They are not interchangeable, and picking the wrong one is most of why the hub was
+  inconsistent. The rest is **already on the page** (the API sent 8, we draw 3) → *expand in
+  place*: no navigation, no request, no losing the client's page. The rest is **not on the page**
+  (the API capped at 5 of 23) → *hand over*, under the four conditions above. A panel may need
+  both, and the honest sentence when both apply is **one row, not two**: "Nog 5 tonen   Alle 23
+  projecten bekijken →" — spaced rather than bulleted, because a `·` between flex items either
+  ends a wrapped line or begins one, and on a phone that row always wraps.
+  `core/ui/PanelRows.svelte` owns the whole decision — draw `collapsed`, offer the expander when
+  more rows are on hand, offer the hand-over when `total` exceeds them, draw **neither** when
+  neither holds, and take the panel's own `＋ nieuw` onto the same line rather than under it. The
+  two verbatim copies of `COLLAPSED = 3` (`ActivityFeed`, `InteractionsPanelBody`) are gone, and
+  so are the four sentences: one generic pair (`common.panel.show_more` / `common.show_less`) and
+  one generic hand-over (`common.panel.view_all`), with a module keeping its own label only where
+  it names a noun the generic cannot ("Alle 23 domeinen bekijken →").
+  **The numbers are stated once** (`app/registry.py`): `PANEL_ROWS = 5` for a register — things
+  that exist and are looked up — and `PANEL_FEED = 8` for a chronological feed, which the browser
+  collapses further until the reader asks. A panel wanting a different one says why in a comment
+  beside it. And **a total is part of the contract**: a cap without one is worse than no cap,
+  because the reader cannot tell five-of-five from five-of-twenty-three. Where an endpoint cannot
+  cheaply produce a count, ask it for **one row more than you keep** (the `comments_truncated`
+  probe) — "there are more" is a weaker claim than "23" and both beat silence. The extra count is
+  pinned as a shape, not as prose: `test_company_hub_totals_do_not_scale_with_the_client` asserts
+  the hub costs the same at twelve rows per module as at two, because "a total per panel" turning
+  into "a query per row" is invisible in the JSON.
+  **A dashboard widget is the same object.** `DashboardWidgetCard` offered a header link and no
+  slot for a notice, so the two widgets that were honest smuggled their total into the link's own
+  text — *"Alle 23 beoordelen"* — while five others said nothing. A widget that draws rows wraps
+  them in `PanelRows` too, and the header link goes back to meaning "this tile's module". The
+  sharpest case was `tasks.my_open`, which partitioned a page of twenty into *achterstallig /
+  vandaag / later* and printed a count per bucket: three numbers that were **wrong** rather than
+  partial for anyone with more open work, and a wrong number reads as measured. They are counted
+  in SQL over the whole assigned set now, in one statement beside the page.
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel
@@ -2165,12 +2230,58 @@ contrast bug in dark mode rather than only an inconsistency.
     belongs in the primary lane (pairs and solos) or wants a viewport-anchored popover.
 
   Every kind collapses to one column below `lg`, so this is a desktop rule and a phone still gets
-  one stack. The same complaint reached the vital-signs strip, where the *count* is what varies: a
-  fixed five-column grid fits five tiles and nothing else, so a client with no invoices contributed
-  four and the strip stopped 232 px short of the right edge, the empty slot reading as a tile that
-  had failed to load. "Nothing is a number" (above) is what makes the count variable in the first
-  place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
+  one stack. **The block rule itself did not survive**: the entry below replaces it, because a run
+  boundary that moves with this client's empty panels is a layout per client. What survives is the
+  reading of the two declarations, and the vital-signs half of the same complaint — where the
+  *count* is what varies: a fixed five-column grid fits five tiles and nothing else, so a client
+  with no invoices contributed four and the strip stopped 232 px short of the right edge, the empty
+  slot reading as a tile that had failed to load. "Nothing is a number" (above) is what makes the
+  count variable in the first place, so the tiles **share** the row (`flex-1`) instead of being dealt into slots sized for a
   count nobody promised — one row at `lg` and up, whole rows below it.
+
+- **A layout whose widths depend on which neighbours are empty is a layout per client** (#403,
+  the client hub again). The two mechanisms above are each defensible and jointly produced an
+  arrangement nobody chose: empty panels were filtered out *before* the ordered list was cut into
+  runs, so a run boundary moved whenever a client happened to have nothing in a panel. Measured on
+  one instance at one viewport, Contactpersonen was **488 px wide on two clients and 992 px on a
+  third**, and Uren — which declares itself half-width, and sits between two full-width panels, so
+  it is always alone on its run — was drawn 992 px wide and 509 px tall on **every** client that
+  has hours. That is the *"de volgorde lijkt per klant te verschillen"* and the *"grote blokken met
+  geboekte uren bovenaan"* the team reported, and neither was an impression. Three rules replace
+  the block rule, and none of them costs the composition:
+
+  - **A panel is drawn at the width it declared.** A half is half wide whether or not it has a
+    neighbour; the slot beside a lone half is filled by the next panel, or by nothing at all. "A
+    card alone on its row takes the row" was the right instinct about a *bordered rectangle beside
+    nothing* and the wrong conclusion — it is the one thing that cannot be done while a panel's
+    width is allowed to depend on its neighbours, which is the property the whole complaint is
+    about.
+  - **The arrangement is computed over the full ordered list, folded panels included**, and the
+    folded ones are omitted afterwards. Every panel is dealt a seat, so a client with nothing in
+    Projecten finds Contactpersonen in the lane a client who has everything finds it in — and a
+    folded *full-width* panel still ends the run of halves around it, because a run boundary that
+    moves is the bug one level down.
+  - **Two lanes, assigned in declared order, free to end at different heights.** A CSS multi-column
+    stack is column-major — you read down the left lane and then down the right — which is the
+    second reason two clients with the same panels looked reordered. Alternating seats read
+    top-to-bottom in both lanes on every client, and the lanes ending unevenly is honest rather
+    than ragged: they are two columns of cards, not a table.
+
+  The lanes are a desktop shape only, and keeping the phone unaffected is a real constraint on
+  how they are expressed: the lane wrappers are `display: contents` below `lg` and each card
+  carries its seat as a flex `order`, so one column still reads in declared order. The rule and
+  its arithmetic live in `$lib/modules/companies/hub.ts` rather than in the page, because this is
+  invisible on any one client — every card renders, every panel holds the right data, only the
+  widths differ, and only against a client whose empty set is not the developer's. It is asserted
+  across four clients at once in `tests/unit/company-hub-layout.test.ts`.
+
+  Its sibling is about the *other* axis, and it is the one panel #364 sorted by what it is called
+  rather than by what it is used for: `companies.details` — name, klantnummer, telefoon, website,
+  factuur-e-mailadres, adres, btw- en KvK-nummer — was filed as a **register**, under *VASTGELEGD*,
+  below every working surface, roughly 1.100 px down a well-filled client's page. A register is
+  something you occasionally consult; a client's telephone number is the single thing somebody
+  opens a client's page for when the phone rings. The register/working-surface split is right and
+  this panel was on the wrong side of it.
 
 - **One edit surface for every size of edit.** Everything about a client — thirty fields, its
   contact people and its logo — was changed in one 512 px `Modal` that rendered **1445 px tall**

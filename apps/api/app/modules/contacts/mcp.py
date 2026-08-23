@@ -53,7 +53,7 @@ async def _for_company(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
         company_id = uuid.UUID(str(args.get("company_id")))
     except (TypeError, ValueError):
         raise AppError("validation", "errors.validation", status_code=422) from None
-    rows = await ContactService(ctx).contacts_for_company(company_id)
+    rows, _ = await ContactService(ctx).contacts_for_company(company_id)
     return ToolResult(
         data={
             "contacts": [_contact_data(c, is_primary=is_primary) for c, is_primary in rows]

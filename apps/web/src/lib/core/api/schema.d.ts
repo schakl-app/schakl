@@ -9337,6 +9337,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Portal Logins
+         * @description The org's client logins — the register (#406).
+         *
+         *     ``members.member.write`` on purpose, not a ``portal.login.read`` of its own: it is the key
+         *     every route on this module already declares, and the one the card is gated on. A new key
+         *     would mean a ``DefaultsRevision`` and a section invisible in every existing org until
+         *     somebody edited a role (§15) — for a list whose actions are all this permission anyway.
+         */
+        get: operations["list_portal_logins_api_v1_portal_logins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/logins/{entity_type}/{subject_id}": {
         parameters: {
             query?: never;
@@ -10823,7 +10848,7 @@ export interface paths {
         };
         /**
          * Dashboard Groups
-         * @description Open-task counts grouped by project, then company, in one compact query.
+         * @description Open-task counts grouped by project, then company — the busiest few, and how many (#407).
          */
         get: operations["dashboard_groups_api_v1_tasks_dashboard_groups_get"];
         put?: never;
@@ -10843,7 +10868,7 @@ export interface paths {
         };
         /**
          * Dashboard Mine
-         * @description Compact personal task list for the dashboard tile.
+         * @description The personal task tile: a page of rows, plus the bucket counts of the whole set (#407).
          */
         get: operations["dashboard_mine_api_v1_tasks_dashboard_mine_get"];
         put?: never;
@@ -15938,6 +15963,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * DashboardBudgets
+         * @description The hottest few, and how many budgeted projects are burning behind them (#407).
+         *
+         *     Four rows with nothing to contradict them read as "these are the budgets"; four of
+         *     seventeen is a different sentence, and only the count can say which one the tile means.
+         */
+        DashboardBudgets: {
+            /** Items */
+            items: components["schemas"]["DashboardBudgetProject"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * DashboardMineSummary
+         * @description My open tasks: the page, and the bucket counts of the **whole** set (#407).
+         *
+         *     The widget partitions its rows into overdue / today / later and prints a count per bucket.
+         *     Counted off a truncated page those three numbers are wrong rather than partial — worse
+         *     than silence, because they read as measured. So the buckets are counted in SQL over every
+         *     open task assigned to the caller, and the rows below them are the page.
+         */
+        DashboardMineSummary: {
+            /** Due Today */
+            due_today: number;
+            /** Items */
+            items: components["schemas"]["DashboardTaskItem"][];
+            /** Overdue */
+            overdue: number;
+            /** Total */
+            total: number;
+            /** Upcoming */
+            upcoming: number;
+        };
         /** DashboardPrefs */
         DashboardPrefs: {
             /** Columns */
@@ -15982,6 +16041,20 @@ export interface components {
             label: string | null;
             /** Overdue */
             overdue: number;
+        };
+        /**
+         * DashboardTaskGroups
+         * @description The tile's page **and** how many groups exist behind it (#407).
+         *
+         *     The tile used to render every group a GROUP BY produced — an agency running eighty live
+         *     projects got eighty rows on their My Day. A page needs a size, and a size needs a number
+         *     beside it or the reader cannot tell the whole answer from the first screen of one.
+         */
+        DashboardTaskGroups: {
+            /** Items */
+            items: components["schemas"]["DashboardTaskGroup"][];
+            /** Total */
+            total: number;
         };
         /**
          * DashboardTaskItem
@@ -23359,6 +23432,55 @@ export interface components {
             target_name?: string | null;
             /** Token */
             token: string;
+        };
+        /**
+         * PortalLoginClient
+         * @description A client a login belongs to. Two fields, because a register prints a name and links it.
+         */
+        PortalLoginClient: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PortalLoginRow
+         * @description One client login on the register (#406) — *"who at our clients can sign in?"*
+         *
+         *     Never ``status: "none"``: a subject with no login is the absence of a row, not a row saying
+         *     so. And deliberately **not** an editor's payload — the person is edited on their own record,
+         *     which is what ``entity_type`` + ``subject_id`` link to; what lives here is the access.
+         *
+         *     No total beside it, on purpose. The list *is* the count, so the two cannot disagree — a
+         *     hand-built ``count()`` is exactly how a screen comes to say "2" over a list of one (#285).
+         */
+        PortalLoginRow: {
+            /** Clients */
+            clients?: components["schemas"]["PortalLoginClient"][];
+            /** Email */
+            email: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "invited" | "active" | "disabled";
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * PortalLoginState
@@ -38329,6 +38451,8 @@ export interface operations {
                 entity_type: string;
                 entity_id: string;
                 rollup?: boolean;
+                /** @description Cap the page a panel draws (#407); ask for one more than you keep to learn there are more. Absent means every link, which is what the roll-up view needs — a roll-up folds a project's tasks in after the query and cannot be cut before it. */
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -46913,6 +47037,8 @@ export interface operations {
                 date_from: string;
                 date_to: string;
                 user_id?: string | null;
+                /** @description Cap the rows returned (#407). Absent means every absence in the range, which is what a calendar needs; a dashboard tile passes its own ceiling. */
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -49625,6 +49751,26 @@ export interface operations {
             };
         };
     };
+    list_portal_logins_api_v1_portal_logins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginRow"][];
+                };
+            };
+        };
+    };
     portal_login_state_api_v1_portal_logins__entity_type___subject_id__get: {
         parameters: {
             query?: never;
@@ -49938,7 +50084,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardBudgetProject"][];
+                    "application/json": components["schemas"]["DashboardBudgets"];
                 };
             };
             /** @description Validation Error */
@@ -52959,7 +53105,9 @@ export interface operations {
     };
     dashboard_groups_api_v1_tasks_dashboard_groups_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -52972,7 +53120,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardTaskGroup"][];
+                    "application/json": components["schemas"]["DashboardTaskGroups"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -52994,7 +53151,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardTaskItem"][];
+                    "application/json": components["schemas"]["DashboardMineSummary"];
                 };
             };
             /** @description Validation Error */
