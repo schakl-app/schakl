@@ -129,16 +129,17 @@
 
 {#snippet upcomingCell(group: Group)}
   {#if (group.upcoming ?? []).length > 0}
-    <span class="text-text-muted">
-      {(group.upcoming ?? [])
-        .map((row) =>
-          t("domains.tld_prices.upcoming_on", {
-            amount: money(row.amount),
-            date: fmtNumericDate(row.valid_from),
-          }),
-        )
-        .join(" · ")}
-    </span>
+    {@const upcoming = (group.upcoming ?? [])
+      .map((row) =>
+        t("domains.tld_prices.upcoming_on", {
+          amount: money(row.amount),
+          date: fmtNumericDate(row.valid_from),
+        }),
+      )
+      .join(" · ")}
+    <!-- An unbounded " · "-joined run, so it ellipsizes rather than being cut mid-date (#370),
+         and the whole of it stays readable on hover. -->
+    <span class="block truncate text-text-muted" title={upcoming}>{upcoming}</span>
   {:else}
     <span class="text-text-muted">—</span>
   {/if}

@@ -1727,6 +1727,19 @@ contrast bug in dark mode rather than only an inconsistency.
 
 ## Known mistakes to not repeat
 
+- **A table cell either ellipsizes or says it wraps** (#370, `scripts/cells-check.mjs`).
+  `DataTable` lays out `table-fixed` and puts `overflow-hidden` on every `<td>`, so a column no
+  longer grows to its content — anything wider **is** clipped. For an ellipsis the content needs
+  `truncate` *and* a box `overflow` applies to: on a bare inline `<span>` or `<a>`, `overflow` and
+  `text-overflow` do not apply at all, so `truncate` sets `white-space: nowrap` and nothing else
+  and the name is cut mid-glyph. `block truncate`, `inline-block max-w-full truncate`, `block
+  w-full truncate` on a `<button>` (which shrinks to fit even as a block box), or being a flex
+  item all work. **Both mistakes are invisible in review** — `class="truncate"` reads as correct
+  whichever element it is on, the two spellings are indistinguishable until something renders,
+  `svelte-check` is happy either way, and a short name looks right on screen — so it is a lint
+  rather than a memory, beside `forms:check` and `today:check` for exactly the same reason.
+  A cell that should genuinely wrap (the notification sentence *is* the content of that list)
+  says `cells:wrap` in a comment, so the decision is on the page.
 - **Expressing a semantic state in the tenant's brand colour** (#404). My Day drew its
   "vandaag" partition in `text-brand` beside a red "over tijd", and `core/burn.ts` drew a
   healthy budget in `bg-brand` beside an amber one — so on the tenant whose brand is **gold**

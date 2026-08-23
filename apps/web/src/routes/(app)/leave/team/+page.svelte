@@ -528,7 +528,8 @@
 
 <!-- All requests this year -->
 {#snippet employeeCell(request: Request)}
-  <span class="font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
+  <!-- `block truncate` (#370): a person's name is free text and the fixed layout clips it. -->
+  <span class="block truncate font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
 {/snippet}
 
 {#snippet periodCell(request: Request)}
