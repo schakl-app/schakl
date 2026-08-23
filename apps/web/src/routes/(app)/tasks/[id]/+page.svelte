@@ -931,12 +931,31 @@
                     label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
                     icon: Pencil,
                     onclick: () => {
+                      // "Klaar" is an assertion that the work is done, so it commits it (#409).
+                      // Flipping the flag was a second Annuleren under the opposite word: the
+                      // page left edit mode, the header showed the stored title again, and
+                      // nothing said the save had not happened — the kebab sits at the top of a
+                      // whole-page edit surface whose one save is at the bottom, so reaching for
+                      // the control nearest the field you just changed is what lost the change.
+                      // `requestSubmit` rather than `submit` so the title's `required` is checked
+                      // and `use:enhance` runs; that handler closes edit mode on success and
+                      // keeps it open on a validation failure, with the error shown.
+                      if (editMode) {
+                        if (!busy.is("update")) editForm?.requestSubmit();
+                        return;
+                      }
                       // Re-arm the relation picks so a stale pick never overrides the stored
                       // relation on a later edit session.
                       fCompany = task.company_id ?? "";
                       fProject = task.project_id ?? "";
-                      if (editMode) leaveEdit();
-                      else editMode = true;
+                      // Opening only — the leaving half returned above. So this is no longer a
+                      // toggle, and neither of the two things that used to ride on its false arm
+                      // is dropped: the submit runs `use:enhance`, whose handler consumes the
+                      // `?edit=1` marker (#402) and returns to the detour's origin (#408) on the
+                      // save that closes the mode. "Klaar met bewerken" therefore now saves *and*
+                      // lands back on the client you opened the task from, which is both issues'
+                      // answer to the same gesture.
+                      editMode = true;
                     },
                   },
                 ]
