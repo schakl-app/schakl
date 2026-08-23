@@ -1,27 +1,33 @@
 /**
  * timeon web module (CLAUDE.md §6, §6a) — mirrors the API integration. Business-licensed.
  *
- * It contributes a **nav item**, which is the opposite of what `snelstart`, `mollie` and
- * `cloudflare` do, and the difference is worth stating. Those three are credentials: what you
- * *work on* is an invoice or a domain, and the connection itself only ever needs configuring. A
- * two-way sync is not like that — it produces a queue. Conflicts have to be settled by a person,
- * and "a surface that has to be found is one that is not kept up to date" (the availability rule,
- * CLAUDE.md §14). So the workspace is a place you go.
+ * It contributes **no nav item** (#389), and the argument it used to make for one is worth
+ * keeping because it was half right. A two-way sync produces a queue: conflicts have to be
+ * settled by a person, and "a surface that has to be found is one that is not kept up to date"
+ * (the availability rule, CLAUDE.md §14). That is a good argument for the *queue* being
+ * reachable. It is not one for a permanent top-level menu item, because of what this integration
+ * actually is: **a cutover, and a cutover ends.** `timeon` exists to carry one agency's hours
+ * across while two systems are both in use; the day Timeon is switched off the entry points at
+ * an empty screen, and until that day it is empty most days anyway, because most days there are
+ * no conflicts. A queue that shows nothing every day is exactly the queue people stop reading.
+ * It is also product-shaped wrong for a white-label platform: every other tenant of this codebase
+ * saw a vendor's name in their main menu for a product they have never heard of.
  *
- * It is gated on `timeon.sync.run`, which defaults to admin only, so an employee logging hours
- * never sees it — and it disappears entirely for a tenant who has not enabled the integration,
- * because the shell renders nav from the enabled set.
+ * So the workspace is reached the way every other integration's working surface is — from
+ * **Instellingen → Integraties → Timeon**, which links straight through — and it *finds* the
+ * person on the days it has something to say: `/time` draws an unsettled-conflict count beside
+ * the hours the conflicts are about, drawn when it is non-zero and absent when it is not. That is
+ * the honest version of "a surface that has to be found": it occupies no slot on the days it has
+ * nothing, and it is in front of somebody on the days it does.
+ *
+ * `nav.timeon` survives as the breadcrumb label for `/timeon` (`$lib/core/breadcrumb-labels`) —
+ * a page still needs a name.
  *
  * **No company panel** (#411), and the loss is deliberate rather than overlooked: the hub's card
  * carried this client's pairing count and their open conflicts, and nothing takes its place.
- * Timeon is a cutover integration whose home is `/timeon` — the screen somebody opens *because* a
- * sync is running — and a card on every client's page for a migration that ends is a card that
- * outlives its reason. The conflicts queue is where a decision is actually made; the hub only
- * ever said that one was waiting.
+ * The conflicts queue is where a decision is actually made; the hub only ever said one was
+ * waiting.
  */
-import { RefreshCw } from "@lucide/svelte";
-
-import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
 registerWebModule({
@@ -29,17 +35,4 @@ registerWebModule({
   // A conversation with somebody else's service (CLAUDE.md §6a) — and what
   // `tests/unit/settings-groups.test.ts` reads to decide which Instellingen group it lands in.
   kind: "integration",
-  nav: [
-    {
-      key: "timeon",
-      href: "/timeon",
-      label: () => t("nav.timeon"),
-      module: "timeon",
-      icon: RefreshCw,
-      // Directly after Uren (70): what it answers is a question about the hours on that screen.
-      position: 71,
-      // UX-only hide; the page load and the API both re-check (docs/UX.md).
-      requiresPermission: "timeon.sync.run",
-    },
-  ],
 });
