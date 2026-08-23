@@ -199,6 +199,48 @@ class SourceMetrics(BaseModel):
     hidden: bool = False
 
 
+class MarketingConnection(BaseModel):
+    """A client attachment that is **not** a metrics source (#411).
+
+    Tag Manager is the reason this shape exists, and the reason it is a *second* list rather
+    than a sixth ``MarketingSource``. The enum's own docstring already settled the question and
+    was right: a container has no marketeer-facing numbers of its own — no adapter, no daily
+    rows, no KPI row, no drill-down — and the conversions it fires arrive through GA4 already.
+    Making it a source to reuse one picker would have bought a value that
+    ``METRICS_BY_SOURCE``, ``SCOPE_BY_SOURCE``, ``primary_metric``, ``aggregate``, the overview
+    grid, the report sections and the nightly sync all have to be taught to say nothing about —
+    and would have put a row on a client's dashboard that draws no numbers, which is exactly
+    what reads as broken.
+
+    So the connect control offers two labelled lists and this is the second one. There is no
+    marketing row behind it: the ``gtm_containers`` row *is* the link, which is a stronger form
+    of #338's rule than mirroring — two rows that cannot disagree because there is only one.
+    """
+
+    #: Which integration this is. A string rather than an enum because the vocabulary belongs to
+    #: whoever contributes the connection, not to this module (§6).
+    kind: str = "gtm"
+    #: The contributing module's own row id — what its screens address the connection by.
+    id: uuid.UUID
+    #: What anybody quotes: ``GTM-XXXXXXX``.
+    external_id: str
+    name: str
+    #: The contributor's own health word, rendered by the same badge the sources use.
+    status: str = "ok"
+    last_error: str | None = None
+    #: Staged and never published — the number this row exists to carry onto the hub (#411).
+    #: A change staged weeks ago is how a client's tracking quietly stops being what they were
+    #: told it is, and nobody opens a container they have no reason to open.
+    pending_changes: int = 0
+    #: How much is live right now, so "12 tags, 3 staged" is one sentence.
+    live_count: int = 0
+    observed_at: datetime | None = None
+    #: Into the provider's own console.
+    deep_link: str = ""
+    #: The in-app screen that works on it.
+    href: str = ""
+
+
 class CompanyMarketing(BaseModel):
     """The payload behind the company panel (30d) and the marketing tab (any range)."""
 
@@ -215,6 +257,10 @@ class CompanyMarketing(BaseModel):
     #: ("Volg standaard (vorig jaar)") rather than being a blank the user has to go and look up.
     compare_default: ComparePeriod = ComparePeriod.YEAR
     sources: list[SourceMetrics] = Field(default_factory=list)
+    #: Attachments that carry no metrics (#411) — Tag Manager today. Filled only where a
+    #: screen draws them (the company panel), so the tab, `/marketing` and the client's
+    #: portal widget cost exactly what they cost before.
+    connections: list[MarketingConnection] = Field(default_factory=list)
     #: No Google connection anywhere in the org — the panel teaches how to connect.
     needs_connection: bool = False
     #: A connection exists but the caller may not manage links (a member) — name who can.

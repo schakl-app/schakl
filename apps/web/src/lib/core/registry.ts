@@ -413,6 +413,40 @@ export interface CalendarSourceSpec {
 }
 
 /**
+ * A connect surface an integration contributes to the marketing picker (#411).
+ *
+ * The panels pattern, one control over. Tag Manager is something an agency attaches to a client
+ * and it is **not** a metrics source (see `modules/marketing/types.ts`), so it cannot ride
+ * `ALL_SOURCES` — and the marketing module may not import an integration's component to mount
+ * it either (§6: that is the one import direction this tree does not have). So the integration
+ * registers its own connect surface here and the picker composes it, exactly as the company hub
+ * composes panels it knows nothing about.
+ *
+ * The permission is **the key the call makes**, never the one the picker is about (#310): this
+ * control posts to the contributing module's own route, so it declares that module's key.
+ */
+export interface MarketingConnectorSpec {
+  /** Matches `MarketingConnectionRow.kind` on the payload, e.g. `"gtm"`. */
+  kind: string;
+  module: string;
+  /** Names the group this control sits under. */
+  labelKey: string;
+  /** The permission the contributed control's own POST declares. */
+  requiresPermission: string;
+  /**
+   * The connect surface itself. `action` is the host page's form action (a panel's control posts
+   * to its host, docs/UX.md); `companyId` is empty where the route already names the client;
+   * `connectNext` is where an OAuth reconnect should land.
+   */
+  component: Component<{
+    action: string;
+    companyId: string;
+    connectNext: string;
+    error?: string | null;
+  }>;
+}
+
+/**
  * A capability schakl itself provides, versus a conversation with somebody else's service
  * (CLAUDE.md §6a). The API is the authority — `module_kinds` on `/meta/modules` — and this
  * mirrors it for the screens that classify a name while rendering, where a round trip would be
@@ -435,6 +469,8 @@ export interface WebModule {
   dashboardWidgets?: DashboardWidgetSpec[];
   /** Event feeds composed by the shared calendar — Google Calendar plugs in here later (P3). */
   calendarSources?: CalendarSourceSpec[];
+  /** Connect surfaces this integration contributes to the marketing picker (#411). */
+  marketingConnectors?: MarketingConnectorSpec[];
 }
 
 const _modules = new Map<string, WebModule>();
@@ -605,4 +641,21 @@ export function dashboardWidgetsFor(
 
 export function calendarSourcesFor(enabled: string[]): CalendarSourceSpec[] {
   return enabledWebModules(enabled).flatMap((m) => m.calendarSources ?? []);
+}
+
+/**
+ * The connect surfaces this tenant's enabled integrations contribute, filtered on the
+ * permission each one's own POST declares (#310/#411).
+ *
+ * Filtered *before* mounting rather than inside the component: a control that can only ever
+ * be refused should not be drawn (#253), and a contributed surface that has to remember its
+ * own gate is #365's hope rather than #365's rule.
+ */
+export function marketingConnectorsFor(
+  enabled: string[],
+  user: SessionUser | null | undefined,
+): MarketingConnectorSpec[] {
+  return enabledWebModules(enabled)
+    .flatMap((m) => m.marketingConnectors ?? [])
+    .filter((c) => can(user, c.requiresPermission));
 }

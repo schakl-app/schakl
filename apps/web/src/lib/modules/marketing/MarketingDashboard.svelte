@@ -41,6 +41,7 @@
     website,
     urlFor,
     manageHref,
+    onconnect = undefined,
   }: {
     companyId: string;
     metrics: CompanyMarketing | null;
@@ -53,6 +54,12 @@
     urlFor: (range: string, website: string) => string;
     /** Where the empty state sends the user to link accounts (the client page). */
     manageHref: string;
+    /**
+     * Open this host's connect dialog (#399). When a host can offer the gesture *here*, the
+     * empty state does, rather than sending the reader to another screen to find the ＋ behind
+     * ⋯ → Bewerken. Absent on a host that has no dialog, where `manageHref` remains the answer.
+     */
+    onconnect?: (() => void) | undefined;
   } = $props();
 
   const allSources = $derived(metrics?.sources ?? []);
@@ -353,30 +360,51 @@
   >
     {t("common.loading")}
   </div>
-{:else if metrics?.needs_connection}
-  <div
-    class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-sm text-text-muted"
-  >
-    {#if metrics.can_manage}
-      <p>{t("marketing.empty.needs_connection")}</p>
-      <!-- One consent for GA4 + Search Console + Ads, returning to this dashboard. -->
-      <a
-        href={connectHref(page.url.pathname + page.url.search)}
-        data-sveltekit-preload-data="off"
-        class="mt-2 inline-block font-medium text-brand hover:underline"
-      >
-        {t("marketing.connect_cta")}
-      </a>
-    {:else}
-      <p>{t("marketing.empty.ask_admin")}</p>
-    {/if}
-  </div>
 {:else if !metrics || sources.length === 0}
+  <!-- One empty state, not two, and `needs_connection` no longer owns a branch of its own.
+       It is a question about **Google**, and it used to short-circuit the whole screen: a client
+       with two websites and an org with no Google grant read *"Koppel een Google-account"* over
+       a dashboard that would happily have carried SE Ranking (an agency API key) and Rank Math (a
+       per-website WordPress password), with no way from here to attach either (#399). This is
+       CLAUDE.md's Cloudflare rule one module over — a health probe is evidence, never the gate.
+       So it decides a *sentence* now, and the connect control is offered either way. -->
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
-    <p class="text-sm text-text-muted">{t("marketing.empty.no_links")}</p>
-    <a href={manageHref} class="mt-2 inline-block text-sm font-medium text-brand hover:underline">
-      {t("marketing.manage_on_client")}
-    </a>
+    {#if !metrics?.can_manage}
+      <p class="text-sm text-text-muted">
+        {t(metrics?.needs_connection ? "marketing.empty.ask_admin" : "marketing.empty.no_links")}
+      </p>
+    {:else}
+      <p class="text-sm text-text-muted">{t("marketing.empty.no_links")}</p>
+      {#if onconnect}
+        <button
+          type="button"
+          class="mt-2 inline-block text-sm font-medium text-brand hover:underline"
+          onclick={onconnect}
+        >
+          {t("marketing.connect.open")}
+        </button>
+      {:else}
+        <a
+          href={manageHref}
+          class="mt-2 inline-block text-sm font-medium text-brand hover:underline"
+        >
+          {t("marketing.manage_on_client")}
+        </a>
+      {/if}
+      {#if metrics?.needs_connection}
+        <!-- One consent for GA4 + Search Console + Ads, returning to this dashboard. Below the
+             connect control rather than instead of it: three of the five sources need it and two
+             do not, and only the picker knows which the reader is after. -->
+        <p class="mt-4 text-sm text-text-muted">{t("marketing.empty.needs_connection")}</p>
+        <a
+          href={connectHref(page.url.pathname + page.url.search)}
+          data-sveltekit-preload-data="off"
+          class="mt-1 inline-block text-sm font-medium text-brand hover:underline"
+        >
+          {t("marketing.connect_cta")}
+        </a>
+      {/if}
+    {/if}
   </div>
 {:else}
   <div class="space-y-6">
