@@ -25,6 +25,18 @@
    "Klaar" is the tell — a button wearing a menu's coat, and two clicks plus a menu for the one
    act the user still wants. Both shapes live in `EditToggle` (`$lib/core/ui/`), which keeps
    drawing the menu for whatever *else* the screen put in it.
+   **And the control that ends an editing surface commits it** (#409). "Klaar" is an assertion
+   that the work is done, so a Klaar that only flips the flag is a second Annuleren wearing the
+   opposite word — and the failure is invisible at the moment it happens: the page leaves edit
+   mode, the header shows the stored title again, and nothing says a save did not occur. The user
+   finds out tomorrow, from a task that still says what it said yesterday. So an exit that
+   discards is called **Annuleren** and nothing else, and an exit that says it is finished
+   *submits* — through `requestSubmit()`, never `submit()`, so `required` is checked and the
+   surface's own `use:enhance` runs, which is what keeps a validation failure inside edit mode
+   with the error showing instead of dropping the work. It matters most where the edit surface is
+   the *whole page*: the task detail page joins title, status, dates, priority, relations,
+   visibility and planning to one `form="task-edit"` whose save is at the foot, and reaching for
+   the control nearest the field you just changed is exactly what lost the change.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -1129,7 +1141,9 @@ contrast bug in dark mode rather than only an inconsistency.
   (#337): a detail page keeps its Opslaan/Annuleren at the foot of the form *and* an
   `EditToggle` exit at the heading — a long record scrolls its own buttons out of view — but
   never a third one folded back into the ⋯. A panel that saves each act as it happens exits
-  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses.
+  with **Klaar**; a surface that posts exits with **Annuleren**, the same word its form uses,
+  or with a **Klaar** that submits that same form (#409) — what it may never be is a Klaar that
+  throws the edit away, because the word promises the opposite of what it does.
 - **Native controls inherit the huisstijl** via `accent-color: var(--brand-primary)` on
   `:root` (checkboxes, radios). But `<html lang>` does **not** control how they format:
   browsers render `<input type="date">` and `<input type="time">` after the *browser/OS*
