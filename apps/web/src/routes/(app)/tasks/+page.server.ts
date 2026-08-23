@@ -27,7 +27,7 @@ export const load: PageServerLoad = async (event) => {
     unlinked: q.get("unlinked") === "1" || undefined,
     assignee_user_id: q.get("assignee_user_id") || undefined,
     label_id: q.get("label_id") || undefined,
-    due: (q.get("due") as "overdue" | "today" | "week" | null) || undefined,
+    due: (q.get("due") as "overdue" | "today" | "week" | "later" | null) || undefined,
     q: q.get("q") || undefined,
     // "Show me the ones nobody named" (#350). A create-then-edit row that was never finished
     // reads as ordinary work, so without a filter there is no way to find — let alone clear —

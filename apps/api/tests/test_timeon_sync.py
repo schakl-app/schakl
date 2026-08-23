@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 
 from app.integrations.timeon import client as timeon_client
 from app.integrations.timeon.models import (
@@ -103,6 +104,24 @@ async def _sync(client, headers, account_id: str, **body) -> dict:
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+async def _set_last_auto_run(tenant: Tenant, when: datetime) -> None:
+    """Move a connection's schedule clock back, so a cadence can be asserted without waiting.
+
+    Written straight to the column because it is not settable through the API on purpose: it
+    records what the worker did, and a route that let a caller rewrite it would be a route that
+    lets a caller re-trigger a full sync at will.
+    """
+    from app.db import async_session_maker, set_current_org
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        await session.execute(
+            sa_text("UPDATE timeon_accounts SET last_auto_run_at = :when WHERE org_id = :org"),
+            {"when": when, "org": tenant.org.id},
+        )
+        await session.commit()
 
 
 async def _entries(tenant: Tenant) -> list[TimeEntry]:
@@ -1130,35 +1149,153 @@ async def test_a_connection_is_invisible_to_another_tenant(client_for, timeon) -
     ).status_code == 404
 
 
-async def test_the_nightly_job_only_touches_a_connection_that_asked_for_it(
+async def test_the_scheduled_job_only_touches_a_connection_that_asked_for_it(
     client_for, timeon
 ) -> None:
-    """``auto_sync`` is off until somebody has watched a dry run and a real one. A nightly job
+    """``auto_sync`` is off until somebody has watched a dry run and a real one. A scheduled job
     that started the moment a key was pasted would make connecting an irreversible act."""
-    from app.integrations.timeon.jobs import timeon_nightly
+    from app.integrations.timeon.jobs import timeon_tick
 
     tenant, headers, client = await _tenant(client_for)
     await _seed_remote(timeon, tenant)
     await _company(client, headers)
     account_id = await _connect(client, headers, timeon, hours_direction="pull")
-    # `org_today`, not `date.today()` (§8): the nightly window is derived on the org's calendar,
-    # and the two clocks disagree for the hours between local midnight and UTC midnight — which
-    # is every CI run, and no run on a machine in Europe/Amsterdam.
+    # `org_today`, not `date.today()` (§8): the window is derived on the org's calendar, and the
+    # two clocks disagree for the hours between local midnight and UTC midnight — which is every
+    # CI run, and no run on a machine in Europe/Amsterdam.
     timeon.add_hour(
         user_id=TIMEON_USER, day=org_today().isoformat(), seconds=3600, remark="Vandaag"
     )
 
-    await timeon_nightly({})
+    await timeon_tick({})
     assert await _entries(tenant) == []
 
     await client.patch(
         f"/api/v1/timeon/accounts/{account_id}", json={"auto_sync": True}, headers=headers
     )
-    await timeon_nightly({})
+    await timeon_tick({})
     assert len(await _entries(tenant)) == 1
 
     runs = (await client.get("/api/v1/timeon/runs", headers=headers)).json()
     assert runs[0]["actor_user_id"] is None, "a cron run says it was the cron"
+
+
+async def test_a_connection_runs_on_its_own_cadence_and_not_on_every_tick(
+    client_for, timeon
+) -> None:
+    """The ARQ cron is the tick; the *account* is the schedule (#388).
+
+    The tick fires four times an hour, so "auto-sync is on" must not mean "sync ninety-six times
+    a day". A daily connection that has just run is not due again until tomorrow's local 04:20;
+    an hourly one is due an hour after its last run — and both facts are read off the same
+    ``last_auto_run_at`` the workspace prints.
+    """
+    from app.integrations.timeon.jobs import timeon_tick
+
+    tenant, headers, client = await _tenant(client_for)
+    await _seed_remote(timeon, tenant)
+    await _company(client, headers)
+    account_id = await _connect(client, headers, timeon, hours_direction="pull", auto_sync=True)
+    timeon.add_hour(
+        user_id=TIMEON_USER, day=org_today().isoformat(), seconds=3600, remark="Vandaag"
+    )
+
+    # First tick: never run before, so due — and it stamps the clock the next one reads.
+    await timeon_tick({})
+    assert len(await _entries(tenant)) == 1
+    first = (await client.get("/api/v1/timeon/runs", headers=headers)).json()
+    assert len(first) == 1
+
+    # Second tick, seconds later: a daily connection is not due again.
+    await timeon_tick({})
+    assert len((await client.get("/api/v1/timeon/runs", headers=headers)).json()) == 1
+
+    # Move the stamp back an hour and switch to hourly: now it is.
+    await _set_last_auto_run(tenant, datetime.now(UTC) - timedelta(hours=1, minutes=5))
+    await client.patch(
+        f"/api/v1/timeon/accounts/{account_id}",
+        json={"auto_frequency": "hourly"},
+        headers=headers,
+    )
+    await timeon_tick({})
+    assert len((await client.get("/api/v1/timeon/runs", headers=headers)).json()) == 2
+
+
+async def test_the_schedule_is_readable_and_says_when_it_runs_next(client_for, timeon) -> None:
+    """A schedule you cannot see is one you cannot trust, which is how a broken one survived
+    five nights (#387/#388). The account states its cadence, the zone it is read in, when it
+    last fired and when it fires next."""
+    tenant, headers, client = await _tenant(client_for)
+    await _seed_remote(timeon, tenant)
+    account_id = await _connect(client, headers, timeon, hours_direction="pull")
+
+    row = (await client.get("/api/v1/timeon/accounts", headers=headers)).json()[0]
+    assert row["auto_frequency"] == "daily", "an upgraded connection keeps the nightly it had"
+    assert row["auto_time"].startswith("04:20")
+    assert row["last_auto_run_at"] is None
+    assert row["next_auto_run_at"] is None, "auto-sync is off; there is no next run to promise"
+
+    patched = (
+        await client.patch(
+            f"/api/v1/timeon/accounts/{account_id}",
+            json={"auto_sync": True, "auto_frequency": "weekdays", "auto_time": "09:30"},
+            headers=headers,
+        )
+    ).json()
+    assert patched["auto_frequency"] == "weekdays"
+    assert patched["auto_time"].startswith("09:30")
+    assert patched["next_auto_run_at"] is not None
+    assert patched["timezone"], "the schedule names the clock it is read in"
+
+
+async def test_the_scheduled_job_runs_on_cloud_where_no_instance_licence_exists(
+    client_for, timeon, monkeypatch
+) -> None:
+    """#387, and the only test that could have caught it.
+
+    The job asked ``sku_writable("timeon")`` with no org and no host, which on cloud reaches the
+    *instance* licence — the one authority a cloud tenant does not have, because the operator
+    runs the installation and the tenant buys a plan. An org on ``unlimited`` was therefore
+    refused by a gate that never got to ask about it, and the nightly returned in twenty
+    milliseconds every night without leaving a trace.
+    """
+    from sqlalchemy import text as sql_text
+
+    from app.config import settings
+    from app.core.entitlements.service import invalidate_plan_cache
+    from app.db import async_session_maker
+    from app.integrations.timeon.jobs import timeon_tick
+    from tests.test_entitlements import _reset_instance_license
+
+    tenant, headers, client = await _tenant(client_for, "timeoncloud")
+    await _seed_remote(timeon, tenant)
+    await _company(client, headers)
+    await _connect(client, headers, timeon, hours_direction="pull", auto_sync=True)
+    timeon.add_hour(
+        user_id=TIMEON_USER, day=org_today().isoformat(), seconds=3600, remark="Vandaag"
+    )
+
+    try:
+        # No licence and an expired bootstrap window — an instance the operator holds no key for
+        # — plus a live plan. The exact production shape, and the state in which the old gate
+        # answered False.
+        await _reset_instance_license(grace_started_days_ago=999)
+        async with async_session_maker() as session:
+            await session.execute(
+                sql_text("UPDATE orgs SET plan = 'unlimited' WHERE id = :id"),
+                {"id": tenant.org.id},
+            )
+            await session.commit()
+        invalidate_plan_cache()
+        monkeypatch.setattr(settings, "deployment", "cloud")
+
+        await timeon_tick({})
+        assert len(await _entries(tenant)) == 1, "a live plan is an entitlement; the cron must run"
+    finally:
+        # The licence state is cached in-process for a minute, so a test that empties it and
+        # walks away turns the *next* file's writes into 402s for as long as the TTL lasts —
+        # which reads as a flake in somebody else's test. Restore the bootstrap window.
+        await _reset_instance_license()
 
 
 async def test_the_window_is_recorded_so_a_narrow_run_cannot_look_complete(

@@ -64,7 +64,10 @@ async def test_my_open_tasks(client_for) -> None:
         assert compact.json()["total"] == 1
         assert compact.json()["overdue"] == 0
         assert compact.json()["due_today"] == 0
-        assert compact.json()["upcoming"] == 1
+        # Four buckets since #397: this one is due in 2099, which is neither this week nor an
+        # "upcoming" that meant the week and the rest at once.
+        assert compact.json()["due_week"] == 0
+        assert compact.json()["later"] == 1
         assert list(compact.json()["items"][0]) == [
             "id",
             "title",

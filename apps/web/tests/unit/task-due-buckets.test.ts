@@ -1,12 +1,14 @@
 /**
- * The urgency vocabulary (`$lib/modules/tasks/due.ts`, #395).
+ * The urgency vocabulary (`$lib/modules/tasks/due.ts`, #395) — the board's half. The tile's half
+ * is `task-due.test.ts` (#397); they read one module, which is the point of both.
  *
  * Three things here are invisible in review and in a screenshot, which is why they are pinned.
  *
- * **"Deze week" is a calendar week, not seven days.** A rolling window tells a Friday reader
- * that next Thursday is this week — a bucket that says that is worse than no bucket, because it
- * looks like it is working. Only a test taken *on each weekday* can tell the two rules apart:
- * on a Monday they agree almost exactly, which is when a developer is most likely to be looking.
+ * **"Deze week" is the next seven days, and the boundary is asserted on every weekday.** It is
+ * the window the API's `?due=week` has always meant, so a heading and the filter chip beside it
+ * count the same rows. A calendar week ending on Sunday reads better on a Monday and collapses
+ * to nothing on a Friday afternoon; a test taken on one weekday cannot tell the two rules apart,
+ * which is why every assertion below is run against a whole week of "today"s.
  *
  * **The board and the tiles agree by construction.** They used to hold three private copies of
  * `due_date < today`, and the tile's was subtly not the list's. The last block asserts that one
@@ -19,6 +21,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { isoAddDays } from "../../src/lib/core/isodate.ts";
 import {
   DUE_BUCKETS,
   DUE_SECTIONS,
@@ -26,7 +29,7 @@ import {
   dueBucket,
   dueDistance,
   dueSection,
-  endOfWeek,
+  weekEnd,
 } from "../../src/lib/modules/tasks/due.ts";
 
 // A whole week of "today"s, so no rule below is asserted only on the weekday it happens to be
@@ -42,29 +45,28 @@ const WEEK = {
   sunday: "2026-08-23",
 };
 
-describe("the week ends on Sunday, not seven days from now", () => {
-  test("every day of one week resolves to the same Sunday", () => {
+describe("the week is the next seven days, on whatever day you are reading", () => {
+  test("the horizon is seven days out from today, every day of the week", () => {
     for (const [name, day] of Object.entries(WEEK)) {
-      assert.equal(endOfWeek(day), WEEK.sunday, name);
+      assert.equal(weekEnd(day), isoAddDays(day, 7), name);
+      // The seventh day is inside the bucket and the eighth is not — the boundary itself, which
+      // an off-by-one in either direction moves silently.
+      assert.equal(dueBucket(isoAddDays(day, 7), day), "week", name);
+      assert.equal(dueBucket(isoAddDays(day, 8), day), "later", name);
     }
   });
 
-  test("on Sunday the week ends today, so there is no 'rest of this week'", () => {
-    assert.equal(endOfWeek(WEEK.sunday), WEEK.sunday);
-    assert.equal(dueBucket("2026-08-24", WEEK.sunday), "later"); // the Monday after
-  });
-
-  test("on Friday, next Thursday is emphatically not 'this week'", () => {
-    // Six days out — inside a rolling seven-day window, and the thing that makes one useless.
-    assert.equal(dueBucket("2026-08-27", WEEK.friday), "later");
-    // …while the two days that really are left of the week still are.
+  test("a Friday reader still has a week left, which a calendar week would not give them", () => {
+    // The day people plan is the day a Monday–Sunday bucket is emptiest; this one is not.
     assert.equal(dueBucket(WEEK.saturday, WEEK.friday), "week");
     assert.equal(dueBucket(WEEK.sunday, WEEK.friday), "week");
+    assert.equal(dueBucket("2026-08-27", WEEK.friday), "week"); // the Thursday after
   });
 
-  test("the week rolls over a month and a year boundary", () => {
-    assert.equal(endOfWeek("2026-12-30"), "2027-01-03"); // Wednesday → the Sunday in January
+  test("the horizon rolls over a month and a year boundary", () => {
+    assert.equal(weekEnd("2026-12-30"), "2027-01-06");
     assert.equal(dueBucket("2027-01-02", "2026-12-30"), "week");
+    assert.equal(dueBucket("2027-01-07", "2026-12-30"), "later");
   });
 });
 

@@ -33,7 +33,13 @@
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
-  import { DUE_SECTIONS, DUE_STATE, dueSection, endOfWeek } from "$lib/modules/tasks/due";
+  import {
+    DUE_BUCKETS,
+    DUE_SECTIONS,
+    DUE_STATE,
+    dueSection,
+    weekEnd,
+  } from "$lib/modules/tasks/due";
   import DueDate from "$lib/modules/tasks/DueDate.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { TASK_GROUPINGS } from "$lib/modules/tasks/grouping";
@@ -86,7 +92,10 @@
   );
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
 
-  const dueOptions = ["overdue", "today", "week"] as const;
+  // The four urgency buckets the dashboard tile and the board draw their sections from
+  // (`$lib/modules/tasks/due`) — a partition, so picking one narrows to exactly the rows that
+  // section counted, and the four together are the whole list.
+  const dueOptions = DUE_BUCKETS;
 
   const today = orgToday();
 
@@ -103,10 +112,10 @@
   // been. The token lives in the URL, so the view is linkable and the back button undoes a
   // switch (`lib/modules/tasks/grouping.ts`).
   const byDue = $derived(data.grouping === "due");
-  // Computed once for the page rather than per row: `endOfWeek` is calendar arithmetic, and a
-  // list of 200 rows would run it 200 times for one answer that cannot change between them.
-  const weekEnd = $derived(endOfWeek(today));
-  const sectionOf = (task: Task) => dueSection(task.due_date, today, isDone(task), weekEnd);
+  // Computed once for the page rather than per row: a list of 200 rows would run the same day
+  // arithmetic 200 times for one answer that cannot change between them.
+  const dueEnd = $derived(weekEnd(today));
+  const sectionOf = (task: Task) => dueSection(task.due_date, today, isDone(task), dueEnd);
 
   // Sections are declared in reading order and the table never reorders them — a sort orders
   // rows *within* a section (#38). An empty section is dropped rather than drawn as "Later (0)":

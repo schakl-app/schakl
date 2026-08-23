@@ -257,8 +257,8 @@ is the same honesty a sectioned list has always owed.
 Two things follow for any grouped list. **A grouping that needs a number the page cannot see is a
 `groupSummary` fed by the API's own aggregate** — never a second fetch per section, and never a
 sum over `rows`. And **the bucket rule is computed once per page, not once per row**: resolving
-"which Sunday ends this week" is calendar arithmetic, and doing it 200 times for one answer that
-cannot change between the rows is the cheap version of the same mistake.
+"where does this week stop" is day arithmetic, and doing it 200 times for one answer that cannot
+change between the rows is the cheap version of the same mistake.
 
 Pinned by `test_the_boards_urgency_sort_costs_no_statement_at_all` — three rows and thirty, the
 same statement count as the unsorted default.
