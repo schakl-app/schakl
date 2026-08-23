@@ -489,6 +489,32 @@ contrast bug in dark mode rather than only an inconsistency.
   `tasks.filter.unlinked` now — the same words as the chip on the list it opens, so the
   destination confirms where you landed. The only text left unlinked is empty-state copy and a
   restatement of a figure already linked beside it.
+- **A tile about *when* needs a section per urgency, and the section it exists for is drawn even
+  when it is empty** (#397, `$lib/modules/tasks/due.ts`). "Mijn openstaande taken" partitioned
+  into three — over tijd, vandaag, and *Binnenkort*, which was everything else — so this
+  afternoon's week, next month and every undated task were one list of identically weighted rows
+  with an 11 px grey date, and the difference between "in three days" and "in eight days" was
+  arithmetic left to the reader. Five rules generalise past this tile. **The buckets are declared
+  once and shared**: the sibling task board reads the same helper and the API's `?due=` filter
+  uses the same four names with the same edges, or the two screens file one task under two
+  headings and neither can explain why. Making that true meant narrowing `?due=week` to start
+  *after* today — as a lone filter chip a superset of `today` is harmless, and as a section
+  heading counting 2 above a list of 3 it is not — and adding `?due=later`, which carries the
+  undated rows, because four values that do not cover the list let a tile drop rows in silence.
+  **The heading the tile exists for renders at zero**, with its own sentence ("Niets voor
+  vandaag"): an absent heading and a zero are different claims, and a colleague could not tell
+  "nothing due today" from "this tile does not do today". Every *other* section still hides when
+  empty — they are not the question being asked. **A date is printed with its distance** (`24 aug
+  · over 3 dagen`, `6 dagen te laat`): absolute alone is arithmetic, relative alone cannot be
+  checked against a calendar, and overdue gets its own words because `Intl.RelativeTimeFormat`
+  would say "3 dagen geleden", which is true of the date and says nothing about the task. **The
+  weight goes on the sections, not the rows** — a tinted heading and a count per bucket, from the
+  state palette (#404), because colouring four rows in a five-row tile is noise and colouring four
+  headings is hierarchy. And **the far section starts folded**, since the tile is a working
+  surface for the next few days and a scroll of November is what made it read as uniform; the
+  fold and the sentence about what is not on the page are `PanelRows`' (#407), and the counts
+  beside the headings are the API's own over the whole set, so a bucket the page never reached is
+  still a heading with a number and a way through.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone

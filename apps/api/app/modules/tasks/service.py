@@ -534,6 +534,14 @@ class TaskService:
         # ``task_statuses`` rather than a hardcoded open/done tuple.
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         today = await org_today(self.ctx.session, self.ctx.org.id)
+        # The four values are a **partition** (#397): every task is in exactly one of them, and
+        # the boundaries are the ones the dashboard tile and the task board draw their sections
+        # from (`apps/web/src/lib/modules/tasks/due.ts`). ``week`` used to start *at* today, which
+        # made it a superset of ``today`` — fine as a filter chip on its own, and wrong the moment
+        # a tile section headed "Deze week (2)" opened a list of three. A task with no deadline is
+        # ``later``: it has to be somewhere or the four do not cover the list, and least urgent is
+        # the honest place for work nobody has committed to a day (``?undated=1``, #392, is how
+        # you go looking for them on purpose).
         if due == "overdue":
             stmt = stmt.where(
                 Task.due_date < today, Task.status.in_(non_terminal_keys(statuses))
@@ -541,7 +549,11 @@ class TaskService:
         elif due == "today":
             stmt = stmt.where(Task.due_date == today)
         elif due == "week":
-            stmt = stmt.where(Task.due_date >= today, Task.due_date <= today + timedelta(days=7))
+            stmt = stmt.where(Task.due_date > today, Task.due_date <= today + timedelta(days=7))
+        elif due == "later":
+            stmt = stmt.where(
+                or_(Task.due_date > today + timedelta(days=7), Task.due_date.is_(None))
+            )
         # An explicit deadline window (#188): the Agenda's deadline feed asks for the visible
         # range's due dates. Independent of the ``due`` shortcuts above.
         if due_from is not None:
@@ -649,7 +661,17 @@ class TaskService:
             # disagreed with "mijn taken" about which tasks are mine would be worse than none.
             .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
             .where(visible.c.status.in_(non_terminal_keys(statuses)))
-            .order_by(visible.c.due_date.asc().nulls_last(), visible.c.created_at.desc())
+            # Date first, then priority — the order the team asked for and the one the board
+            # already sorts by, so the tile and the list agree about which of two tasks due on
+            # the same day comes first. Without the tiebreak that was ``created_at``, i.e. the
+            # order they happened to be typed in — which also decided, on a capped page, *which*
+            # of a day's tasks the tile showed at all. ``created_at`` stays last so the page is
+            # deterministic.
+            .order_by(
+                visible.c.due_date.asc().nulls_last(),
+                _rank(visible.c.priority, _PRIORITY_ORDER).desc(),
+                visible.c.created_at.desc(),
+            )
             .limit(limit)
         )
         rows = (await self.ctx.session.execute(stmt)).all()
@@ -657,6 +679,11 @@ class TaskService:
         # One statement, three ``count(*) FILTER`` columns: the tile's honesty costs one query,
         # not one per bucket (``docs/PERFORMANCE.md``).
         today = await org_today(self.ctx.session, self.ctx.org.id)
+        # Four buckets, not three (#397): "everything that is not overdue and not today" put this
+        # afternoon's week, next month and every undated task under one heading. The boundaries
+        # are the ``?due=`` filter's own, a few lines up, so a section heading and the list it
+        # opens count the same rows.
+        week_end = today + timedelta(days=7)
         counts = (
             await self.ctx.session.execute(
                 select(
@@ -664,7 +691,10 @@ class TaskService:
                     func.count().filter(visible.c.due_date < today),
                     func.count().filter(visible.c.due_date == today),
                     func.count().filter(
-                        or_(visible.c.due_date.is_(None), visible.c.due_date > today)
+                        and_(visible.c.due_date > today, visible.c.due_date <= week_end)
+                    ),
+                    func.count().filter(
+                        or_(visible.c.due_date.is_(None), visible.c.due_date > week_end)
                     ),
                 )
                 .select_from(visible)
@@ -677,7 +707,8 @@ class TaskService:
             total=int(counts[0]),
             overdue=int(counts[1]),
             due_today=int(counts[2]),
-            upcoming=int(counts[3]),
+            due_week=int(counts[3]),
+            later=int(counts[4]),
         )
 
     async def dashboard_groups(self, *, limit: int = 8) -> DashboardTaskGroups:
