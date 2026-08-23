@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pre-commit hook — run the repo's cheap lint gates locally so drift never reaches CI.
 #
-# Three gates, each mirroring its CI step exactly and each scoped to what the commit stages:
+# Five gates, each mirroring its CI step exactly and each scoped to what the commit stages:
 #
 #   apps/api/**.py   → ruff  (.github/workflows/ci.yml → API job → "Ruff")
 #                        cd apps/api && uv run ruff check app tests
@@ -18,6 +18,12 @@
 #                      Catches a form that would blank what the user just saved. Plain node,
 #                      whole-tree and instant, so it also catches a form your commit didn't
 #                      touch — which is the point: it has shipped three times.
+#
+#   apps/web/**.svelte → cells:check  (→ Web job → "Table cell clipping check")
+#                        node scripts/cells-check.mjs
+#                      Catches a table cell that clips a name with no ellipsis. Same class of
+#                      bug as the two above: `class="truncate"` reads as correct whichever
+#                      element it is on, and the two spellings only differ once rendered (#370).
 #
 #   LICENSE · a module __init__ → license:check  (→ Commercial license markers job)
 #                        node scripts/license-check.mjs
@@ -66,6 +72,17 @@ if [ -n "$staged_svelte" ]; then
     echo >&2
     echo "pre-commit: a form would blank what the user just saved — this would go red in CI." >&2
     echo "            Read:   docs/UX.md, \"Saving must never blank the form\"" >&2
+    echo "            Bypass (not recommended): git commit --no-verify" >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$staged_svelte" ]; then
+  echo "pre-commit: cells:check (apps/web)…"
+  if ! node scripts/cells-check.mjs; then
+    echo >&2
+    echo "pre-commit: a table cell clips a name with no ellipsis — this would go red in CI." >&2
+    echo "            Read:   docs/UX.md, \"A table cell either ellipsizes or says it wraps\"" >&2
     echo "            Bypass (not recommended): git commit --no-verify" >&2
     exit 1
   fi

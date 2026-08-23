@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
@@ -12,16 +13,20 @@ import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { HOURS_COLUMN, PROJECT_COLUMNS, PROJECTS_TABLE_ID } from "$lib/modules/projects/columns";
 import { PROJECT_STATUS_ALL, PROJECT_WORKING_SET } from "$lib/modules/projects/status";
+import { PROJECT_FILTERS } from "$lib/modules/projects/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const q = event.url.searchParams.get("q") || undefined;
+  // The bar and this load read the same keys from the same place, so what the controls show and
+  // what the API was asked for cannot disagree (core/filters/types.ts).
+  const filters = readFilters(event.url, [...PROJECT_FILTERS]);
+  const q = filters.q;
   // "My projects" is filtered by the API (any assignee, not just the primary).
-  const mine = event.url.searchParams.get("mine") === "1";
+  const mine = filters.mine === "1";
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
-  const company_id = event.url.searchParams.get("company") || undefined;
+  const company_id = filters.company;
   // Projecten opens on the work that is still open — every status except archived — so the URL
   // token and the wire value are not the same string. Absent means the working set; `all` is how
   // "everything, archive included" says so in a URL you can link to; anything else is that one
@@ -29,10 +34,10 @@ export const load: PageServerLoad = async (event) => {
   // screen and its export cannot end up with two ideas of what is archived. Applied by the API,
   // never in the browser — filtering the fifty rows this page happens to hold would report a
   // total counted over all of them (§9).
-  const statusFilter = event.url.searchParams.get("status") || "";
+  const statusFilter = filters.status ?? "";
   // "Show me the ones nobody named" (#350) — the abandoned create-then-edit rows, which read
   // as ordinary projects and are otherwise ungatherable.
-  const unnamed = event.url.searchParams.get("unnamed") === "1" || undefined;
+  const unnamed = filters.unnamed === "1" || undefined;
   const status =
     statusFilter === PROJECT_STATUS_ALL ? undefined : statusFilter || PROJECT_WORKING_SET;
 

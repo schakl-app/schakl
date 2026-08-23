@@ -70,3 +70,21 @@ def translate(key: str, locale: str | None = None, /, **params: object) -> str:
     if params:
         return _PARAM_RE.sub(lambda m: str(params.get(m.group(1), m.group(0))), template)
     return template
+
+
+def translate_count(
+    key: str, locale: str | None = None, /, count: int = 0, **params: object
+) -> str:
+    """Translate a **counted** message: ``<key>_one`` at exactly one, ``<key>`` otherwise.
+
+    Paraglide here does not compile ICU plurals, so a plural in this product is a pair of keys and
+    the *reader* picks (CLAUDE.md §8, web `tn()`). The API reads the same catalogs, so it needs the
+    same rule — a digest subject reading "1 nieuwe meldingen" leaves the building (#343).
+
+    A missing ``_one`` falls back to the plural rather than rendering the raw key at the user;
+    ``scripts/i18n-check.mjs`` is what makes sure that fallback never ships.
+    """
+    if count != 1:
+        return translate(key, locale, count=count, **params)
+    singular = translate(f"{key}_one", locale, count=count, **params)
+    return translate(key, locale, count=count, **params) if singular == f"{key}_one" else singular

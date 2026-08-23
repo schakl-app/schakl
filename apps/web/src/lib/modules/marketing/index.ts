@@ -49,14 +49,19 @@ registerWebModule({
   ],
   // A submenu like Domeinen & websites and Facturatie (#277): the cross-source dashboard and
   // Google Ads are two surfaces of one Marketing group. The key stays `marketing` so tenant nav
-  // renames and saved orderings survive the regrouping, and the label moves to its own key —
-  // `nav.overview` belongs to the org-wide /overview section and the two must stay independently
-  // renameable. The group header borrows `items[0].icon`, so LineChart stays on this one.
+  // renames and saved orderings survive the regrouping.
+  //
+  // The label is `nav.marketing` — the name of the page it opens, and the same key the screen's
+  // own `<h1>` already falls back to, so a tenant renaming the item renames the heading with it.
+  // It used to be a second key reading "Overzicht", which named neither the page nor anything
+  // else: the sidebar had two items called Overzicht, the other one opened "Urenoverzicht", and
+  // both breadcrumbs read "Overzicht" too, so nothing on screen could tell them apart (#351).
+  // The group header borrows `items[0].icon`, so LineChart stays on this one.
   nav: [
     {
       key: "marketing",
       href: "/marketing",
-      label: () => t("nav.marketing_overview"),
+      label: () => t("nav.marketing"),
       module: "marketing",
       icon: LineChart,
       position: 45,

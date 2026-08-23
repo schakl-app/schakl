@@ -40969,9 +40969,12 @@ export interface operations {
     impex_export_subscription_api_v1_impex_subscription_export_get: {
         parameters: {
             query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
                 /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
+                subscription_type_id?: string | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -52415,6 +52418,8 @@ export interface operations {
                 company_id?: string | null;
                 status?: string | null;
                 subscription_type_id?: string | null;
+                /** @description Matches the agreement's name */
+                q?: string | null;
                 /** @description name | status | next_invoice_date | start_date | company | type | amount | included_hours */
                 sort?: string | null;
                 /** @description with entity_id: linked-entity filter */

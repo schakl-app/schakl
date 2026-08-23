@@ -277,6 +277,7 @@ class SubscriptionService:
         company_id: uuid.UUID | None = None,
         status: str | None = None,
         subscription_type_id: uuid.UUID | None = None,
+        q: str | None = None,
         sort: str | None = None,
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
@@ -289,6 +290,10 @@ class SubscriptionService:
             conditions.append(Subscription.status == status)
         if subscription_type_id is not None:
             conditions.append(Subscription.subscription_type_id == subscription_type_id)
+        if q and q.strip():
+            # The name is the only free text on the row a reader would search by; the client is
+            # already its own filter, and the type is a closed vocabulary with its own control.
+            conditions.append(Subscription.name.ilike(f"%{q.strip()}%"))
         if entity_type and entity_id:
             # "Which agreements cover this project/task?" — the project panel's question.
             conditions.append(

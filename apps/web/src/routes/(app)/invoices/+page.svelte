@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { CircleMinus, Download, Pencil, Trash2 } from "@lucide/svelte";
 
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
@@ -10,15 +10,15 @@
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import { filterUrl, type FilterDef } from "$lib/core/filters/types";
+  import type { InvoiceFilterKey } from "$lib/modules/invoicing/filters";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
   import { docMoney, docStatus, MAX_ARCHIVE_DOCUMENTS } from "$lib/modules/invoicing/types";
@@ -77,13 +77,6 @@
     deleteMessage: t("invoicing.bulk.delete_message", { count: bulkSelected.length }),
   });
 
-  function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
-
   // "Facturatie" is the agency's word for its own section; a client is looking at their own
   // copies, so the same screen names itself for whoever opened it (#266). The tenant's nav
   // rename still wins for staff — `navLabel` is what carries it.
@@ -97,6 +90,47 @@
     splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
   );
   const companyItems = $derived(companyPicker.live);
+
+  /** The list's filters, rendered by the shared bar (#354) — same three, same order, as quotes. */
+  const filterDefs: FilterDef<InvoiceFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("invoicing.search") },
+    {
+      kind: "select",
+      key: "company",
+      // A client is looking at their own documents, so a control for choosing *whose* has
+      // nothing to offer them (#266).
+      hidden: !data.canReadRegister,
+      placeholder: t("invoicing.field.company"),
+      options: companyItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    {
+      kind: "pills",
+      key: "status",
+      options: STATUSES.map((status) => ({
+        value: status,
+        label: t(`invoicing.status.${status}`),
+      })),
+    },
+    {
+      kind: "pills",
+      key: "overdue",
+      options: [{ value: "1", label: t("invoicing.filter.overdue") }],
+    },
+  ]);
+
+  /**
+   * The summary tiles narrow the list to exactly what they count (UX §7).
+   *
+   * They live above the bar rather than in it, so they go through `filterUrl` — the one place
+   * that drops the page along with the filter. Building the URL by hand here is how a tile ends
+   * up serving page 7 of the old list as page 7 of the new one.
+   */
+  function setFilter(key: InvoiceFilterKey, value: string) {
+    void goto(filterUrl(page.url, key, value), { keepFocus: true, noScroll: true });
+  }
+
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
 
@@ -189,36 +223,8 @@
   </div>
 {/if}
 
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput placeholder={t("invoicing.search")} />
-  {#if data.canReadRegister}
-    <div class="w-44">
-      <Combobox
-        items={companyItems}
-        archived={companyPicker.retired}
-        archivedLabel={companyArchivedLabel()}
-        name="_filter_company"
-        value={data.companyFilter}
-        placeholder={t("invoicing.filter.company")}
-        onselect={(v) => setFilter("company", v)}
-        id="filter-company"
-      />
-    </div>
-  {/if}
-  {#each STATUSES as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setFilter("status", data.statusFilter === status ? "" : status)}
-      >{t(`invoicing.status.${status}`)}</button
-    >
-  {/each}
-  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
-       with the list sits at the far end, and that is the same on every list here. -->
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="invoice-filter">
+  {#snippet actions()}
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -230,8 +236,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 {#snippet numberCell(invoice: Invoice)}
   <a

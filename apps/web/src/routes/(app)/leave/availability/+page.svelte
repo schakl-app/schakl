@@ -199,7 +199,8 @@
 {/snippet}
 
 {#snippet personCell(row: Row)}
-  <span class="text-text">{row.primary.user_name ?? ""}</span>
+  <!-- `block truncate` (#370): a name is free text and the fixed layout clips this cell. -->
+  <span class="block truncate text-text">{row.primary.user_name ?? ""}</span>
 {/snippet}
 
 {#snippet kindCell(row: Row)}
@@ -225,7 +226,10 @@
 {/snippet}
 
 {#snippet noteCell(row: Row)}
-  <span class="text-text-muted">{row.primary.note ?? ""}</span>
+  <!-- The note is whatever the freelancer typed, so it truncates and stays readable on hover. -->
+  <span class="block truncate text-text-muted" title={row.primary.note ?? ""}
+    >{row.primary.note ?? ""}</span
+  >
 {/snippet}
 
 {#snippet rowActions(row: Row)}

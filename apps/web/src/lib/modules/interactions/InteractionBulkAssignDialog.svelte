@@ -18,7 +18,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -278,7 +278,7 @@
   <input type="hidden" name="approve_ids" value={approvableIds.join(",")} />
 
   <p class="text-sm text-text-muted">
-    {t("interactions.bulk.assign_hint", { count: ids.length })}
+    {tn("interactions.bulk.assign_hint", ids.length)}
   </p>
 
   {#if loading}

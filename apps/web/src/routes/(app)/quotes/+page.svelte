@@ -1,21 +1,20 @@
 <script lang="ts">
   import { Pencil, Trash2 } from "@lucide/svelte";
 
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { resetPage } from "$lib/core/table/paging";
   import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
+  import type { DocumentFilterKey } from "$lib/modules/invoicing/filters";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { QUOTE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
@@ -29,18 +28,33 @@
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
-  function setFilter(key: string, value: string) {
-    const url = resetPage(new URL(page.url));
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-    void goto(url, { keepFocus: true, noScroll: true });
-  }
   // Archived clients sit behind the search instead of among the live ones, and the one
   // already picked is always offered (`companies/picker.ts`).
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
   );
   const companyItems = $derived(companyPicker.live);
+
+  /** The list's filters, rendered by the shared bar (#354) — the same three invoices has. */
+  const filterDefs: FilterDef<DocumentFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("invoicing.search") },
+    {
+      kind: "select",
+      key: "company",
+      placeholder: t("invoicing.field.company"),
+      options: companyItems,
+      archived: companyPicker.retired,
+      archivedLabel: companyArchivedLabel(),
+    },
+    {
+      kind: "pills",
+      key: "status",
+      options: STATUSES.map((status) => ({
+        value: status,
+        label: t(`invoicing.quote_status.${status}`),
+      })),
+    },
+  ]);
 
   const table = createTableLayout<Quote>({
     all: () => QUOTE_COLUMNS,
@@ -78,51 +92,33 @@
   <DocTabs />
 {/if}
 
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput placeholder={t("invoicing.search")} />
-  <div class="w-44">
-    <Combobox
-      items={companyItems}
-      archived={companyPicker.retired}
-      archivedLabel={companyArchivedLabel()}
-      name="_filter_company"
-      value={data.companyFilter}
-      placeholder={t("invoicing.filter.company")}
-      onselect={(v) => setFilter("company", v)}
-      id="filter-company"
+<FilterBar filters={filterDefs} idPrefix="quote-filter">
+  {#snippet actions()}
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
     />
-  </div>
-  {#each STATUSES as status (status)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.statusFilter === status
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.statusFilter === status}
-      onclick={() => setFilter("status", data.statusFilter === status ? "" : status)}
-      >{t(`invoicing.quote_status.${status}`)}</button
-    >
-  {/each}
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-</div>
+  {/snippet}
+</FilterBar>
 
+<!-- The same cells as `/invoices`, which already carried the fix (#370): `DataTable` is
+     `table-fixed` with `overflow-hidden` on every `<td>`, so a cell that says nothing is cut
+     mid-glyph. `truncate` only ellipsizes on a block box or a flex item — on a bare inline
+     `<a>` it sets `nowrap` and nothing else, which reads as correct in the diff. -->
 {#snippet numberCell(quote: Quote)}
   <a
     href="/quotes/{quote.id}"
     data-sveltekit-preload-data="hover"
-    class="font-medium text-text hover:text-brand"
+    class="block truncate font-medium text-text hover:text-brand"
     >{quote.number ?? t("invoicing.quote_status.draft")}</a
   >
 {/snippet}
 
 {#snippet companyCell(quote: Quote)}
-  <a href="/companies/{quote.company_id}" class="text-text-muted hover:text-brand"
+  <a href="/companies/{quote.company_id}" class="block truncate text-text-muted hover:text-brand"
     >{quote.company_name}</a
   >
 {/snippet}
@@ -152,7 +148,7 @@
 {/snippet}
 
 {#snippet referenceCell(quote: Quote)}
-  <span class="text-text-muted">{quote.reference ?? "—"}</span>
+  <span class="block truncate text-text-muted">{quote.reference ?? "—"}</span>
 {/snippet}
 
 {#snippet rowActions(quote: Quote)}

@@ -285,6 +285,10 @@
 {:else}
   <div class="grid gap-4">
     <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <!-- Headed like every other card on this page (#362). It was the only one without a title,
+           so it read as loose fields between two labelled boxes; the same card on a client's page
+           has always been "Gegevens". -->
+      <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.panel.details")}</h2>
       <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">

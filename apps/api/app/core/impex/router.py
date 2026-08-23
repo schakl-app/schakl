@@ -61,6 +61,7 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     # make those two indistinguishable and quietly export the lot.
     "invoiceable": (bool | None, Query(None)),
     "uptime_enabled": (bool | None, Query(None)),
+    "subscription_type_id": (uuid.UUID | None, Query(None)),
     "sort": (str | None, Query(None, max_length=50, description="List sort key, '-' desc")),
 }
 

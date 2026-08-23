@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
@@ -162,7 +162,7 @@
         </datalist>
         {#if models.length > 0}
           <p class="mt-1 text-xs text-text-muted">
-            {t("settings.ai.models_count", { count: String(models.length) })}
+            {tn("settings.ai.models_count", models.length)}
           </p>
         {:else if modelsError}
           <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">

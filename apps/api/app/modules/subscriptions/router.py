@@ -157,6 +157,7 @@ async def list_subscriptions(
     company_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None),
     subscription_type_id: uuid.UUID | None = Query(None),
+    q: str | None = Query(None, max_length=200, description="Matches the agreement's name"),
     sort: str | None = Query(
         None,
         description="name | status | next_invoice_date | start_date | company | type"
@@ -173,6 +174,7 @@ async def list_subscriptions(
         company_id=company_id,
         status=status,
         subscription_type_id=subscription_type_id,
+        q=q,
         sort=sort,
         entity_type=entity_type,
         entity_id=entity_id,

@@ -208,8 +208,12 @@
   <div>
     <h1 class="mt-1 text-xl font-semibold text-text">{project.name}</h1>
     <p class="mt-1 text-sm text-text-muted">
-      {#if companyName}{companyName} ·
-      {/if}{t(`projects.status.${project.status}`)}
+      <!-- One separator, spelled once (#362). Written as two `{#if}`s it rendered `ITIS ·Actief`:
+           the space before `{/if}` is at a block boundary and the compiler drops it, so the first
+           dot glued itself to the word after it while the second — four words along, outside a
+           block — kept its spaces. Joining the parts puts the spacing in one place that cannot
+           depend on where a block happens to end. -->
+      {[companyName, t(`projects.status.${project.status}`)].filter(Boolean).join(" · ")}
       {#if assignees.length > 0}
         · {t("projects.field.responsible")}:
         <Assignees {assignees} members={data.members} max={6} />

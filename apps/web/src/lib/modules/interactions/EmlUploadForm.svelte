@@ -33,7 +33,7 @@
   import { aiEnabled } from "$lib/core/ai";
   import type { components } from "$lib/core/api/schema";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -679,7 +679,7 @@
 
   {#if skipped}
     <p class="text-sm text-amber-700 dark:text-amber-400">
-      {t("interactions.eml.attachments_skipped", { count: skipped })}
+      {tn("interactions.eml.attachments_skipped", skipped)}
     </p>
   {/if}
   {#if duplicate}
