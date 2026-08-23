@@ -56,6 +56,30 @@
    of them" (docs/PERFORMANCE.md). **A convenience like this is not a nice-to-have bolted onto
    one screen; it is what the screen was for.**
 
+8. **An action started from a record's page either finishes on that page, or ends with the way
+   back to it** (#402). A dialog is the default. A navigation must be a deliberate choice, and
+   where it is one, the record it came from must be *confirmable* on the other side — the crumb
+   row (`breadcrumb-trail.svelte.ts`), which draws an ancestor only when the new record's own
+   foreign key names it, never a `?from=` back button dressed as a hierarchy.
+
+   The client hub is what this rule was written from, because it was inconsistent with itself:
+   Contactmoment vastleggen, Bewerken, Sjabloon toepassen, the contactpersonen ＋, Marketing's
+   edit mode and Drive's browser all opened in place, while **Uren boeken** and the Uren panel's
+   ＋ both left for `/time?company=…` and never came back. Deep-linking the client was right and
+   made the trip one-way: the colleague who came off the phone, wrote down twenty minutes and
+   then wanted that client's domains had to go back through Klanten and find them again. Hours
+   are a dialog now (`LogTimeDialog`, the module's own `EntryForm` hosted by whatever page shows
+   the record), and the panel keeps its deliberate *Alles bekijken* for the full report.
+
+   Two corollaries worth stating, because both were live bugs. **An empty panel's chip is not an
+   excuse for the trip either** — a module whose ＋ works in place drops its `emptyHref` and lets
+   the chip unfold the card, rather than sending a client with no hours yet to the timesheet.
+   And **a departure that is deliberate still has to end**: create-then-edit (#230) lands a new
+   task on its own page in edit mode, which is the point, so what was missing was the finish —
+   the `?edit=1` marker is consumed on save, on cancel and on Klaar (`clearEditIntent`), or the
+   mode the user just left reopens on the next visit and the crumb back to the client never
+   reads as the obvious next move.
+
 ## The visual system
 
 > Four decisions taken once (#404), after the team said the CRM "voelt al snel voller en

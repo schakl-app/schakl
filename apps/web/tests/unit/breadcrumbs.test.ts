@@ -156,6 +156,19 @@ describe("a trail is drawn only over a link the record confirms", () => {
     assert.equal(isParentOf(site, task), true);
   });
 
+  test("a task created from a client keeps the client", () => {
+    // The return trip out of create-then-edit (#402). A task made from the client hub carries
+    // `company_id` and usually no project at all, so the crumb row is the *only* thing that
+    // brings the user back — and it is one `PARENT_FK` entry away from silently going away.
+    const task = pageRecord({ task: { id: "t1", title: "Bellen", company_id: "c1" } }, echo)!;
+    assert.equal(isParentOf(acme, task), true);
+  });
+
+  test("a task made from someone else's client does not draw this one", () => {
+    const task = pageRecord({ task: { id: "t1", title: "Bellen", company_id: "c9" } }, echo)!;
+    assert.equal(isParentOf(acme, task), false);
+  });
+
   test("a record is never its own ancestor", () => {
     // `/companies/<id>/reporting` is still that company. Without this the row named it twice.
     const company = pageRecord({ company: { id: "c1", name: "Acme", company_id: "c1" } }, echo)!;

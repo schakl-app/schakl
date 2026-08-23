@@ -133,7 +133,9 @@
     /** When the restored draft was last saved (ISO), for the quiet status line. */
     draftSavedAt?: string | null;
     oncancel?: () => void;
-    ondone?: () => void;
+    /** Fired after every submit, with whether it landed — a host that closes on a refusal would
+     *  take the user's typing with it (#402). Callers that close either way ignore the flag. */
+    ondone?: (saved: boolean) => void;
     /** When provided, typing an unknown client/project name offers to create it inline. */
     oncreatecompany?: (name: string) => void;
     /** The form's currently-picked client rides along (#247), so the project quick-create
@@ -510,7 +512,7 @@
       conceptSavedAt = null;
       sawFirstRun = false;
     }
-    ondone?.();
+    ondone?.(result.type === "success");
     // Never a DOM reset — see `clearForNextEntry`. Ordered after the draft branch above, so the
     // clear rides the same `sawFirstRun = false` and does not autosave a draft of itself.
     if (result.type === "success" && !entry) clearForNextEntry();
