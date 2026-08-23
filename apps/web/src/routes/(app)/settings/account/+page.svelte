@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { enhance } from "$app/forms";
-  import { localeLabel, t } from "$lib/core/i18n";
+  import { localeLabel, t, tn } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { InFlight } from "$lib/core/submit.svelte";
   import { THEME_MODES, themeModeLabel } from "$lib/core/theme-mode";
@@ -481,9 +481,10 @@
           {t("settings.account.two_factor_on")}
         </p>
         <p class="mt-1 text-sm text-text-muted">
-          {t("settings.account.two_factor_backup_remaining", {
-            count: data.twoFactor.backup_codes_remaining,
-          })}
+          {tn(
+            "settings.account.two_factor_backup_remaining",
+            data.twoFactor.backup_codes_remaining,
+          )}
         </p>
 
         {#if form?.twoFactorError}

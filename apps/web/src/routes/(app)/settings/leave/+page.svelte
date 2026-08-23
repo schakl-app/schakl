@@ -5,7 +5,7 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -536,7 +536,7 @@
   </div>
   {#if form?.generated !== undefined}
     <p class="mb-3 text-sm text-green-600">
-      {t("settings.leave.generated", { count: form.generated })}
+      {tn("settings.leave.generated", form.generated)}
     </p>
   {/if}
   <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">

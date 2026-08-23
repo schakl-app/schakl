@@ -2,7 +2,7 @@
   /** The client's websites on the company detail page (owner feedback: replaces the hosting
    *  panel there — hosting is shared infrastructure, the websites are the client's). */
   import { page } from "$app/state";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
   import { can } from "$lib/core/permissions";
@@ -30,7 +30,7 @@
   rows={websites}
   {total}
   href={`/websites?company=${companyId}`}
-  linkLabel={t("websites.panel.view_all", { count: total })}
+  linkLabel={tn("websites.panel.view_all", total)}
 >
   {#snippet children(shown)}
     {#if shown.length === 0}

@@ -7,10 +7,9 @@
   import { Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtMoney } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -166,51 +165,28 @@
   >
 </div>
 
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput />
-  {#each activeTypes as st (st.id)}
-    <button
-      class="rounded-full px-3 py-1 text-xs font-medium
-        {data.typeFilter === st.id
-        ? 'bg-brand/10 text-brand ring-2 ring-brand'
-        : 'bg-surface text-text-muted hover:text-text'}"
-      aria-pressed={data.typeFilter === st.id}
-      onclick={() => setFilter("type", data.typeFilter === st.id ? "" : st.id)}
-      >{subscriptionTypeLabel(st, data.locale)}</button
-    >
-  {/each}
-  {#if data.typeFilter || data.q}
-    <button
-      class="text-xs text-text-muted underline hover:text-text"
-      onclick={() => {
-        const url = new URL(page.url);
-        url.searchParams.delete("type");
-        url.searchParams.delete("q");
-        void goto(url, { keepFocus: true, noScroll: true });
-      }}
-    >
-      {t("tasks.filter.clear")}
-    </button>
-  {/if}
-  <ImpexBar
-    entity="subscription_template"
-    readPermission="subscriptions.subscription.read"
-    writePermission="subscriptions.template.manage"
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-</div>
+<FilterBar filters={filterDefs} idPrefix="template-filter">
+  {#snippet actions()}
+    <ImpexBar
+      entity="subscription_template"
+      readPermission="subscriptions.subscription.read"
+      writePermission="subscriptions.template.manage"
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+  {/snippet}
+</FilterBar>
 
 {#if form?.renamed}
   <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
-    {t("settings.subscriptions.renamed_subscriptions", { count: form.renamed })}
+    {tn("settings.subscriptions.renamed_subscriptions", form.renamed)}
   </p>
 {/if}
 

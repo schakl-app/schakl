@@ -31,7 +31,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { fmtDateTime } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -232,7 +232,7 @@
 </script>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-  <p class="text-sm text-text-muted">{t("interactions.panel.count", { count: total })}</p>
+  <p class="text-sm text-text-muted">{tn("interactions.panel.count", total)}</p>
   {#if canWrite}
     <div class="flex flex-wrap items-center gap-3">
       <!-- An email nobody's connected mailbox saw is logged from its export (#262) — the same
@@ -298,17 +298,13 @@
                   {#if (item.conversation_count ?? 1) > 1}
                     <!-- The email folds a conversation (#272): show how many messages it holds. -->
                     <span
-                      title={t("interactions.conversation_count", {
-                        count: item.conversation_count,
-                      })}
+                      title={tn("interactions.conversation_count", item.conversation_count ?? 1)}
                       class="inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
                     >
                       <Mail size={10} aria-hidden="true" />
                       {item.conversation_count}
                       <span class="sr-only"
-                        >{t("interactions.conversation_count", {
-                          count: item.conversation_count,
-                        })}</span
+                        >{tn("interactions.conversation_count", item.conversation_count ?? 1)}</span
                       >
                     </span>
                   {/if}

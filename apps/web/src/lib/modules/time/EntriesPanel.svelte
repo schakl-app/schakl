@@ -21,7 +21,7 @@
 
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import type { EntityPanelContext, EntityPanelLookups } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -102,7 +102,7 @@
   <!-- The count, not a total: the hours live in the bar above, and a total summed from the rows
        this panel happens to hold would be the total of the page, quietly disagreeing with it. -->
   <p class="text-sm font-medium tabular-nums text-text">
-    {t("time.panel.entry_count", { count: panel.total })}
+    {tn("time.panel.entry_count", panel.total)}
   </p>
 </div>
 

@@ -30,7 +30,7 @@
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { memberLabel, type PickerMember } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -766,13 +766,13 @@
       {#if (item.conversation_count ?? 1) > 1}
         <!-- The email folds a conversation (#272): a small message-count badge. -->
         <span
-          title={t("interactions.conversation_count", { count: item.conversation_count })}
+          title={tn("interactions.conversation_count", item.conversation_count ?? 1)}
           class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
         >
           <Mail size={10} aria-hidden="true" />
           {item.conversation_count}
           <span class="sr-only"
-            >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+            >{tn("interactions.conversation_count", item.conversation_count ?? 1)}</span
           >
         </span>
       {/if}
@@ -878,13 +878,13 @@
         </span>
         {#if (item.conversation_count ?? 1) > 1}
           <span
-            title={t("interactions.conversation_count", { count: item.conversation_count })}
+            title={tn("interactions.conversation_count", item.conversation_count ?? 1)}
             class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
           >
             <Mail size={10} aria-hidden="true" />
             {item.conversation_count}
             <span class="sr-only"
-              >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+              >{tn("interactions.conversation_count", item.conversation_count ?? 1)}</span
             >
           </span>
         {/if}
@@ -1063,7 +1063,7 @@
   bind:open={confirmDelete}
   title={t("interactions.delete_title")}
   message={deleteCount > 1
-    ? t("interactions.delete_conversation_message", { count: deleteCount })
+    ? tn("interactions.delete_conversation_message", deleteCount)
     : t("interactions.delete_message")}
   action="?/deleteInteraction"
   fields={{ id: deleteId }}

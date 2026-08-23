@@ -4,7 +4,7 @@
 
   import { enhance } from "$app/forms";
   import { fmtDayMonthYear, fmtMoney } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
@@ -388,7 +388,7 @@
     >
       {effective.includes(WILDCARD)
         ? t("settings.users.effective_all")
-        : t("settings.users.effective_count", { count: effective.length })}
+        : tn("settings.users.effective_count", effective.length)}
     </button>
 
     {#if memberActions(member).length > 0}

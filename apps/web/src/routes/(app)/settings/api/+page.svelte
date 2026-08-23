@@ -11,7 +11,7 @@
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
@@ -532,7 +532,7 @@
               {/if}
               <span class="block truncate font-mono text-xs text-text-muted">{key.redacted}</span>
               <span class="block text-xs text-text-muted">
-                {t("settings.api.key_scopes", { count: key.scopes.length })} ·
+                {tn("settings.api.key_scopes", key.scopes.length)} ·
                 {key.expires_at
                   ? t("settings.api.key_expires", {
                       // Stored as end-of-day UTC (the create action), so the UTC date part is

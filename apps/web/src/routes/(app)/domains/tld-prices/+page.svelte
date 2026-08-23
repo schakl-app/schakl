@@ -11,7 +11,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -198,7 +198,7 @@
 
 {#if form?.priceApplied != null}
   <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
-    {t("domains.price_increase.applied", { count: form.priceApplied })}
+    {tn("domains.price_increase.applied", form.priceApplied)}
   </p>
 {/if}
 
