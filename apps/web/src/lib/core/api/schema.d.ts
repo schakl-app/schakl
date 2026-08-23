@@ -10848,7 +10848,7 @@ export interface paths {
         };
         /**
          * Dashboard Groups
-         * @description Open-task counts grouped by project, then company, ranked by urgency (#398).
+         * @description Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
          *
          *     Capped, and the envelope says by how much: a dashboard tile listing every project an
          *     agency runs is a scroll rather than a summary.
@@ -10871,7 +10871,7 @@ export interface paths {
         };
         /**
          * Dashboard Mine
-         * @description Compact personal task list for the dashboard tile.
+         * @description The personal task tile: a page of rows, plus the bucket counts of the whole set (#407).
          */
         get: operations["dashboard_mine_api_v1_tasks_dashboard_mine_get"];
         put?: never;
@@ -15966,6 +15966,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * DashboardBudgets
+         * @description The hottest few, and how many budgeted projects are burning behind them (#407).
+         *
+         *     Four rows with nothing to contradict them read as "these are the budgets"; four of
+         *     seventeen is a different sentence, and only the count can say which one the tile means.
+         */
+        DashboardBudgets: {
+            /** Items */
+            items: components["schemas"]["DashboardBudgetProject"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * DashboardMineSummary
+         * @description My open tasks: the page, and the bucket counts of the **whole** set (#407).
+         *
+         *     The widget partitions its rows into overdue / today / later and prints a count per bucket.
+         *     Counted off a truncated page those three numbers are wrong rather than partial — worse
+         *     than silence, because they read as measured. So the buckets are counted in SQL over every
+         *     open task assigned to the caller, and the rows below them are the page.
+         */
+        DashboardMineSummary: {
+            /** Due Today */
+            due_today: number;
+            /** Items */
+            items: components["schemas"]["DashboardTaskItem"][];
+            /** Overdue */
+            overdue: number;
+            /** Total */
+            total: number;
+            /** Upcoming */
+            upcoming: number;
+        };
         /** DashboardPrefs */
         DashboardPrefs: {
             /** Columns */
@@ -16023,16 +16057,21 @@ export interface components {
         };
         /**
          * DashboardTaskGroups
-         * @description The tile's rows plus how many groups there are (#398).
+         * @description The tile's page **and** how many groups exist behind it (#407, #398).
          *
-         *     An envelope rather than a bare list, for one reason: the tile is capped now, and a short
-         *     list that looks complete reads as "that is all of them" (CLAUDE.md §17). ``total`` counts
-         *     the groups, not the tasks - it is what "en nog 7" is drawn from - and it rides on the same
-         *     grouped query as the rows.
+         *     The tile used to render every group a GROUP BY produced — an agency running eighty live
+         *     projects got eighty rows on their My Day. A page needs a size, and a size needs a number
+         *     beside it or the reader cannot tell the whole answer from the first screen of one.
+         *
+         *     ``total`` counts the **groups**, not the tasks — it is what "en nog 7" is drawn from — and
+         *     it rides on the same grouped query as the rows, so saying what is not shown costs no second
+         *     read. ``items`` rather than ``groups`` because every capped dashboard read answers the same
+         *     shape (:class:`DashboardMineSummary`, the project budgets tile); one envelope the widgets
+         *     share is what keeps a reader from having to remember which key this particular tile used.
          */
         DashboardTaskGroups: {
-            /** Groups */
-            groups: components["schemas"]["DashboardTaskGroup"][];
+            /** Items */
+            items: components["schemas"]["DashboardTaskGroup"][];
             /** Total */
             total: number;
         };
@@ -38431,6 +38470,8 @@ export interface operations {
                 entity_type: string;
                 entity_id: string;
                 rollup?: boolean;
+                /** @description Cap the page a panel draws (#407); ask for one more than you keep to learn there are more. Absent means every link, which is what the roll-up view needs — a roll-up folds a project's tasks in after the query and cannot be cut before it. */
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -47015,6 +47056,8 @@ export interface operations {
                 date_from: string;
                 date_to: string;
                 user_id?: string | null;
+                /** @description Cap the rows returned (#407). Absent means every absence in the range, which is what a calendar needs; a dashboard tile passes its own ceiling. */
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -50060,7 +50103,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardBudgetProject"][];
+                    "application/json": components["schemas"]["DashboardBudgets"];
                 };
             };
             /** @description Validation Error */
@@ -53127,7 +53170,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DashboardTaskItem"][];
+                    "application/json": components["schemas"]["DashboardMineSummary"];
                 };
             };
             /** @description Validation Error */

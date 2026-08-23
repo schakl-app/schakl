@@ -115,6 +115,7 @@ from app.modules.invoicing.schemas import (
     TemplateUpdate,
 )
 from app.modules.invoicing.taxseeds import seeds_for
+from app.registry import PANEL_FEED, PANEL_ROWS
 
 ENTITY_INVOICE = "invoice"
 ENTITY_QUOTE = "quote"
@@ -1423,7 +1424,16 @@ class InvoiceService(_DocumentService):
         await self._attach(items)
         return items
 
-    async def for_company(self, company_id: uuid.UUID, *, limit: int = 8) -> Sequence[Invoice]:
+    async def for_company(
+        self, company_id: uuid.UUID, *, limit: int = PANEL_FEED
+    ) -> tuple[Sequence[Invoice], int]:
+        """The client's most recent documents, and how many there are in total (#407).
+
+        The count travels with the page because the panel cannot say what it is hiding
+        otherwise — and eight invoices under a client with sixty read as the whole ledger.
+        It is the repository's own count, so the portal's draft rule and a restricted
+        member's company horizon narrow it exactly as they narrow the page.
+        """
         stmt = (
             self.repo.scoped_select()
             .where(Invoice.company_id == company_id)
@@ -1431,9 +1441,15 @@ class InvoiceService(_DocumentService):
             .limit(limit)
         )
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
+        total = int(
+            await self.ctx.session.scalar(
+                self.repo.scoped_count_select().where(Invoice.company_id == company_id)
+            )
+            or 0
+        )
         # The company panel lists number/date/status/total, never a line (#290).
         await self._attach(items, lines=False)
-        return items
+        return items, total
 
     async def _attach(
         self, invoices: Sequence[Invoice], *, payments: bool = False, lines: bool = True
@@ -3196,7 +3212,10 @@ class QuoteService(_DocumentService):
         await self._attach([quote])
         return quote
 
-    async def for_company(self, company_id: uuid.UUID, *, limit: int = 5) -> Sequence[Quote]:
+    async def for_company(
+        self, company_id: uuid.UUID, *, limit: int = PANEL_ROWS
+    ) -> tuple[Sequence[Quote], int]:
+        """This client's recent quotes plus the whole count — see ``InvoiceService`` (#407)."""
         stmt = (
             self.repo.scoped_select()
             .where(Quote.company_id == company_id)
@@ -3204,9 +3223,15 @@ class QuoteService(_DocumentService):
             .limit(limit)
         )
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
+        total = int(
+            await self.ctx.session.scalar(
+                self.repo.scoped_count_select().where(Quote.company_id == company_id)
+            )
+            or 0
+        )
         # The company panel lists number/date/status/total, never a line (#290).
         await self._attach(items, lines=False)
-        return items
+        return items, total
 
     async def _attach(self, quotes: Sequence[Quote], *, lines: bool = True) -> None:
         """``lines=False`` is the list's opt-out — see ``InvoiceService._attach`` (#290)."""

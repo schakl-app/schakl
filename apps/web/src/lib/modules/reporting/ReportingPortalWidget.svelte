@@ -15,6 +15,7 @@
   import { getLocale } from "$lib/paraglide/runtime";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import { fmtDate, periodLabel } from "./format";
   import type { ReportDetail, ReportRow } from "./types";
@@ -24,8 +25,15 @@
   interface WidgetData {
     latest: ReportDetail | null;
     previous: ReportRow[];
+    /** Every report this client may read, not the four listed (#407). */
+    total?: number;
   }
   const payload = $derived((data ?? { latest: null, previous: [] }) as WidgetData);
+  // The earlier-reports list is the tail of a page of four; a fifth existed and nothing
+  // said so, because the load asked for `count: false`.
+  const earlierTotal = $derived(
+    payload.total != null ? Math.max(0, payload.total - 1) : payload.previous.length,
+  );
   const latest = $derived(payload.latest);
   const locale = $derived(getLocale());
   const summary = $derived(String((latest?.narrative as Record<string, string>)?.summary ?? ""));
@@ -70,19 +78,23 @@
           <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("reporting.widget.earlier")}
           </p>
-          <ul class="space-y-1">
-            {#each payload.previous as report (report.id)}
-              <li>
-                <a
-                  href={`/reports/${report.id}`}
-                  class="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text hover:underline"
-                >
-                  <FileText size={13} />
-                  {periodLabel(report, locale)}
-                </a>
-              </li>
-            {/each}
-          </ul>
+          <PanelRows rows={payload.previous} total={earlierTotal}>
+            {#snippet children(shown)}
+              <ul class="space-y-1">
+                {#each shown as report (report.id)}
+                  <li>
+                    <a
+                      href={`/reports/${report.id}`}
+                      class="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text hover:underline"
+                    >
+                      <FileText size={13} />
+                      {periodLabel(report, locale)}
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            {/snippet}
+          </PanelRows>
         </div>
       {/if}
     </div>

@@ -4,6 +4,7 @@
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { urgencyCounters } from "$lib/modules/tasks/urgency";
   import Card from "$lib/core/ui/Card.svelte";
+  import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import StateMark from "$lib/core/ui/StateMark.svelte";
 
   let { data }: { data: unknown } = $props();
@@ -22,13 +23,16 @@
     due_week: number;
   }
   interface Payload {
-    groups: Group[];
+    items: Group[];
     /** How many groups there are, so a capped tile can say what it is not showing. */
     total: number;
   }
-  const payload = $derived((data ?? { groups: [], total: 0 }) as Payload);
-  const groups = $derived(payload.groups ?? []);
-  const notShown = $derived(Math.max(0, (payload.total ?? 0) - groups.length));
+  const payload = $derived((data ?? { items: [], total: 0 }) as Payload);
+  const groups = $derived(payload.items ?? []);
+  // The GROUP BY had no LIMIT and this tile rendered every row it produced (#407): an agency
+  // running eighty live projects got eighty rows on their My Day. The endpoint caps at
+  // DASHBOARD_GROUP_ROWS and states the whole count, which is what PanelRows hands over with.
+  const total = $derived(payload.total ?? groups.length);
 
   // Every row on this tile opens something. The name is the record it names; the count is that
   // record's own filtered task list (issue #15). The bucket of tasks hanging off neither a client
@@ -72,54 +76,54 @@
   {#if groups.length === 0}
     <p class="text-sm text-text-muted">{t("dashboard.open_by_group.empty")}</p>
   {:else}
-    <ul class="divide-y divide-border">
-      {#each groups as group (`${group.entity_type}:${group.entity_id}`)}
-        <li class="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
-          <!-- A floor under the name, not `min-w-0`: on a phone two counters and a total left
-               "Projecte…" over "Bouwbedr…", which is a row that can be seen and not read. With
-               a floor the counters wrap onto their own line instead, and a quiet row (one
-               figure, no counters) still fits on one. -->
-          <a href={entityHref(group)} class="group min-w-[7rem] flex-1">
-            <span class="block truncate text-sm font-medium text-text group-hover:text-brand"
-              >{groupName(group)}</span
-            >
-            {#if group.entity_type === "project" && group.company_name}
-              <!-- Two clients may each run a project called "Website": without the client the
-                   rows are indistinguishable and only opening one tells them apart. -->
-              <span class="block truncate text-xs text-text-muted">{group.company_name}</span>
-            {/if}
-          </a>
-          {#each urgencyCounters(group) as counter (counter.due)}
-            <!-- One shade of one claim (#404): the chip and the figure it sits beside read the
-                 same colour everywhere, and the glyph is what carries it in greyscale. -->
-            <a href="{listHref(group)}&due={counter.due}" class="shrink-0 hover:underline">
-              <StateMark
-                state={counter.state}
-                variant="chip"
-                label={t(counter.key, { count: counter.count })}
-              />
-            </a>
+    <PanelRows
+      rows={groups}
+      collapsed={5}
+      {total}
+      href="/tasks?assignee_user_id={ALL_ASSIGNEES}"
+      linkLabel={t("dashboard.open_by_group.view_all", { count: total })}
+    >
+      {#snippet children(shown)}
+        <ul class="divide-y divide-border">
+          {#each shown as group (`${group.entity_type}:${group.entity_id}`)}
+            <li class="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+              <!-- A floor under the name, not `min-w-0`: on a phone two counters and a total left
+                   "Projecte…" over "Bouwbedr…", which is a row that can be seen and not read. With
+                   a floor the counters wrap onto their own line instead, and a quiet row (one
+                   figure, no counters) still fits on one. -->
+              <a href={entityHref(group)} class="group min-w-[7rem] flex-1">
+                <span class="block truncate text-sm font-medium text-text group-hover:text-brand"
+                  >{groupName(group)}</span
+                >
+                {#if group.entity_type === "project" && group.company_name}
+                  <!-- Two clients may each run a project called "Website": without the client the
+                       rows are indistinguishable and only opening one tells them apart. -->
+                  <span class="block truncate text-xs text-text-muted">{group.company_name}</span>
+                {/if}
+              </a>
+              {#each urgencyCounters(group) as counter (counter.due)}
+                <!-- One shade of one claim (#404): the chip and the figure it sits beside read the
+                     same colour everywhere, and the glyph is what carries it in greyscale. -->
+                <a href="{listHref(group)}&due={counter.due}" class="shrink-0 hover:underline">
+                  <StateMark
+                    state={counter.state}
+                    variant="chip"
+                    label={t(counter.key, { count: counter.count })}
+                  />
+                </a>
+              {/each}
+              <!-- The total stays last and stays muted: "how much is there" is still a question,
+                   just no longer the first one. -->
+              <a
+                href={listHref(group)}
+                class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
+              >
+                {group.count}
+              </a>
+            </li>
           {/each}
-          <!-- The total stays last and stays muted: "how much is there" is still a question,
-               just no longer the first one. -->
-          <a
-            href={listHref(group)}
-            class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
-          >
-            {group.count}
-          </a>
-        </li>
-      {/each}
-    </ul>
-    {#if notShown > 0}
-      <!-- A short list that looks complete reads as "that is all of them" (CLAUDE.md §17), and
-           this one grows with the client book. The remainder is named, and it opens the list. -->
-      <a
-        href="/tasks?assignee_user_id={ALL_ASSIGNEES}"
-        class="mt-2 block text-xs text-text-muted hover:text-brand hover:underline"
-      >
-        {t("dashboard.open_by_group.more", { count: notShown })}
-      </a>
-    {/if}
+        </ul>
+      {/snippet}
+    </PanelRows>
   {/if}
 </Card>

@@ -387,19 +387,6 @@ class DashboardTaskGroup(BaseModel):
     due_week: int = 0
 
 
-class DashboardTaskGroups(BaseModel):
-    """The tile's rows plus how many groups there are (#398).
-
-    An envelope rather than a bare list, for one reason: the tile is capped now, and a short
-    list that looks complete reads as "that is all of them" (CLAUDE.md §17). ``total`` counts
-    the groups, not the tasks - it is what "en nog 7" is drawn from - and it rides on the same
-    grouped query as the rows.
-    """
-
-    groups: list[DashboardTaskGroup]
-    total: int
-
-
 class DashboardTaskItem(BaseModel):
     """Only the fields rendered by the personal dashboard task tile."""
 
@@ -415,6 +402,40 @@ class DashboardTaskItem(BaseModel):
     # items, which belong to no client and must not be labelled as if they did.
     company_id: uuid.UUID | None = None
     company_name: str | None = None
+
+
+class DashboardTaskGroups(BaseModel):
+    """The tile's page **and** how many groups exist behind it (#407, #398).
+
+    The tile used to render every group a GROUP BY produced — an agency running eighty live
+    projects got eighty rows on their My Day. A page needs a size, and a size needs a number
+    beside it or the reader cannot tell the whole answer from the first screen of one.
+
+    ``total`` counts the **groups**, not the tasks — it is what "en nog 7" is drawn from — and
+    it rides on the same grouped query as the rows, so saying what is not shown costs no second
+    read. ``items`` rather than ``groups`` because every capped dashboard read answers the same
+    shape (:class:`DashboardMineSummary`, the project budgets tile); one envelope the widgets
+    share is what keeps a reader from having to remember which key this particular tile used.
+    """
+
+    items: list[DashboardTaskGroup]
+    total: int
+
+
+class DashboardMineSummary(BaseModel):
+    """My open tasks: the page, and the bucket counts of the **whole** set (#407).
+
+    The widget partitions its rows into overdue / today / later and prints a count per bucket.
+    Counted off a truncated page those three numbers are wrong rather than partial — worse
+    than silence, because they read as measured. So the buckets are counted in SQL over every
+    open task assigned to the caller, and the rows below them are the page.
+    """
+
+    items: list[DashboardTaskItem]
+    total: int
+    overdue: int
+    due_today: int
+    upcoming: int
 
 
 # --------------------------------------------------------------------------- #

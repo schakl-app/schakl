@@ -43,7 +43,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
@@ -279,8 +279,28 @@ class DriveService:
         return listing
 
     # --- links ------------------------------------------------------------------- #
+    async def count_links(self, entity_type: str, entity_id: uuid.UUID) -> int:
+        """How many files are attached here in total — what a capped panel is hiding (#407)."""
+        return int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(DriveLink)
+                .where(
+                    DriveLink.org_id == self._org_id,
+                    DriveLink.entity_type == entity_type,
+                    DriveLink.entity_id == entity_id,
+                )
+            )
+            or 0
+        )
+
     async def links_for(
-        self, entity_type: str, entity_id: uuid.UUID, *, rollup: bool = False
+        self,
+        entity_type: str,
+        entity_id: uuid.UUID,
+        *,
+        rollup: bool = False,
+        limit: int | None = None,
     ) -> list[DriveLink]:
         await self._require_visible(entity_type, entity_id)
         conditions = [
@@ -293,6 +313,10 @@ class DriveService:
         stmt = select(DriveLink).where(*conditions).order_by(
             DriveLink.is_root.desc(), DriveLink.created_at, DriveLink.id
         )
+        # A panel asks for a page and gets one (#407). The ordering already leads with the
+        # record's own folder, so a cap never costs the caller the row it reads off the head.
+        if limit is not None and not rollup:
+            stmt = stmt.limit(limit)
         rows = list((await self.ctx.session.execute(stmt)).scalars().all())
         if rollup and entity_type == "project":
             # Issue #21: a file linked to a task surfaces on its project too — query-time

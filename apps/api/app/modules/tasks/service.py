@@ -70,6 +70,7 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
+    DashboardMineSummary,
     DashboardTaskGroup,
     DashboardTaskGroups,
     DashboardTaskItem,
@@ -612,8 +613,15 @@ class TaskService:
         """Unfinished tasks assigned to the current user (My Day)."""
         return await self._list_items(await self._my_open_rows(limit))
 
-    async def dashboard_mine(self, *, limit: int = 20) -> list[DashboardTaskItem]:
-        """Personal tile rows — the client joined in, no full-card enrichment, one query."""
+    async def dashboard_mine(self, *, limit: int = 20) -> DashboardMineSummary:
+        """Personal tile rows, plus the bucket counts of the whole set (#407).
+
+        The tile prints "3 achterstallig · 5 vandaag" over its rows. Derived in the browser from
+        a page of twenty those are three wrong numbers for anyone with more than twenty open
+        tasks — and a wrong number reads as measured where a missing one reads as missing. So
+        they are counted here, in one grouped statement over the same visible relation, and the
+        rows underneath stay a page.
+        """
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         # Same starting point as ``dashboard_groups``: the repository-scoped relation, so the
         # portal rule and a manager's company horizon hold on the tile as well as on the list.
@@ -662,12 +670,37 @@ class TaskService:
             .limit(limit)
         )
         rows = (await self.ctx.session.execute(stmt)).all()
-        return [DashboardTaskItem.model_validate(row) for row in rows]
+        # The buckets, over every open task assigned to this person — not over the page above.
+        # One statement, three ``count(*) FILTER`` columns: the tile's honesty costs one query,
+        # not one per bucket (``docs/PERFORMANCE.md``).
+        today = await org_today(self.ctx.session, self.ctx.org.id)
+        counts = (
+            await self.ctx.session.execute(
+                select(
+                    func.count(),
+                    func.count().filter(visible.c.due_date < today),
+                    func.count().filter(visible.c.due_date == today),
+                    func.count().filter(
+                        or_(visible.c.due_date.is_(None), visible.c.due_date > today)
+                    ),
+                )
+                .select_from(visible)
+                .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+                .where(visible.c.status.in_(non_terminal_keys(statuses)))
+            )
+        ).one()
+        return DashboardMineSummary(
+            items=[DashboardTaskItem.model_validate(row) for row in rows],
+            total=int(counts[0]),
+            overdue=int(counts[1]),
+            due_today=int(counts[2]),
+            upcoming=int(counts[3]),
+        )
 
     async def dashboard_groups(
         self, *, limit: int = DASHBOARD_GROUP_ROWS
     ) -> DashboardTaskGroups:
-        """Open task counts by project/company, ranked by urgency (#398).
+        """Open task counts by project/company, ranked by urgency (#398, #407).
 
         Four figures, not one. A count says how much work a client is carrying and says
         nothing at all about whether any of it is late, so a tile ranked on it put a client
@@ -678,6 +711,10 @@ class TaskService:
 
         The buckets are a partition, and each one is exactly what its ``?due=`` chip shows, so
         every figure on the tile opens the list it counted (docs/UX.md, principle 7).
+
+        Busiest first and then cut (#407), never cut and then sorted: an agency with eighty
+        live projects got eighty rows on a My Day tile, and taking an arbitrary eight of them
+        would lose the ones the ordering exists to lead with.
         """
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         open_keys = non_terminal_keys(statuses)
@@ -764,7 +801,7 @@ class TaskService:
         )
         rows = (await self.ctx.session.execute(stmt)).all()
         return DashboardTaskGroups(
-            groups=[
+            items=[
                 DashboardTaskGroup(
                     entity_type=row.entity_type,
                     entity_id=row.entity_id,

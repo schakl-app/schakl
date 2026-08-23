@@ -58,7 +58,14 @@ async def test_my_open_tasks(client_for) -> None:
         assert titles == ["Mine"]
         compact = await c.get("/api/v1/tasks/dashboard-mine", headers=headers)
         assert compact.status_code == 200
-        assert list(compact.json()[0]) == [
+        # A page of rows plus the bucket counts of the whole set (#407) — the tile prints those
+        # counts over its partitions, and derived from the page they would be wrong rather than
+        # partial for anyone with more open work than the page holds.
+        assert compact.json()["total"] == 1
+        assert compact.json()["overdue"] == 0
+        assert compact.json()["due_today"] == 0
+        assert compact.json()["upcoming"] == 1
+        assert list(compact.json()["items"][0]) == [
             "id",
             "title",
             "priority",
@@ -66,9 +73,9 @@ async def test_my_open_tasks(client_for) -> None:
             "company_id",
             "company_name",
         ]
-        assert compact.json()[0]["title"] == "Mine"
+        assert compact.json()["items"][0]["title"] == "Mine"
         # The agency's own to-do items belong to no client and are labelled as none.
-        assert compact.json()[0]["company_name"] is None
+        assert compact.json()["items"][0]["company_name"] is None
 
 
 async def test_dashboard_mine_names_the_client(client_for, count_queries) -> None:
@@ -110,14 +117,17 @@ async def test_dashboard_mine_names_the_client(client_for, count_queries) -> Non
             headers=headers,
         )
 
-        # One query for the rows however many clients they span (docs/PERFORMANCE.md).
+        # One query for the rows however many clients they span (docs/PERFORMANCE.md); the
+        # bucket counts ride a second, grouped statement, never one per bucket (#407).
         with count_queries() as counted:
             res = await c.get("/api/v1/tasks/dashboard-mine", headers=headers)
         assert res.status_code == 200
-        named = {row["title"]: (row["company_id"], row["company_name"]) for row in res.json()}
+        named = {
+            row["title"]: (row["company_id"], row["company_name"]) for row in res.json()["items"]
+        }
         assert named["Op de klant"] == (direct["id"], "Bakkerij Jansen")
         assert named["Op het project"] == (via["id"], "Garage Peters")
-        assert len(counted.matching("from tasks")) == 1
+        assert len(counted.matching("from tasks")) == 2
 
 
 async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_for) -> None:
@@ -155,8 +165,10 @@ async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_fo
 
         response = await c.get("/api/v1/tasks/dashboard-groups", headers=headers)
         assert response.status_code == 200
+        # A page of groups plus how many exist (#407): this GROUP BY had no LIMIT, and the tile
+        # rendered every row it produced. The four figures are #398's urgency partition.
         assert response.json() == {
-            "groups": [
+            "items": [
                 {
                     "entity_type": "project",
                     "entity_id": project["id"],
@@ -194,7 +206,7 @@ async def test_dashboard_group_without_client_or_project_is_addressable(client_f
             headers=headers,
         )
 
-        groups = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["groups"]
+        groups = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["items"]
         loose = [g for g in groups if g["entity_type"] == "none"]
         assert len(loose) == 1
         assert loose[0]["entity_id"] is None
@@ -656,7 +668,7 @@ async def test_dashboard_groups_rank_by_urgency_and_count_each_bucket(
         assert len(counted.matching("from tasks")) == 1
 
         body = res.json()
-        rows = body["groups"]
+        rows = body["items"]
         assert [row["label"] for row in rows] == ["Achterstand BV", "Vandaag BV", "Bulk BV"]
         assert body["total"] == 3
 
@@ -697,7 +709,7 @@ async def test_every_dashboard_counter_opens_exactly_what_it_counted(client_for)
                 c, headers, title=title, company_id=company["id"], due=due.isoformat()
             )
 
-        row = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["groups"][0]
+        row = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["items"][0]
         assert (row["overdue"], row["due_today"], row["due_week"], row["count"]) == (1, 1, 2, 5)
 
         base = f"/api/v1/tasks?company_id={company['id']}"
@@ -731,7 +743,7 @@ async def test_dashboard_groups_are_capped_and_say_how_many_are_not_shown(client
             )
 
         body = (await c.get("/api/v1/tasks/dashboard-groups?limit=5", headers=headers)).json()
-        assert len(body["groups"]) == 5
+        assert len(body["items"]) == 5
         # Not "5": the remainder is what the tile has to be able to say out loud, and a short
         # list that cannot is one that reads as complete.
         assert body["total"] == 12

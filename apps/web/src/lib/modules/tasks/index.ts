@@ -48,7 +48,12 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.tasks.my_open",
       category: "dashboard.category.tasks",
       size: "md",
-      load: (api) => api.GET("/api/v1/tasks/dashboard-mine").then((r) => r.data ?? []),
+      load: (api) =>
+        api
+          .GET("/api/v1/tasks/dashboard-mine")
+          // The bucket counts come from the API now (#407): derived in the browser off a
+          // page of twenty they were three wrong numbers for anyone with more open work.
+          .then((r) => r.data ?? { items: [], total: 0, overdue: 0, due_today: 0, upcoming: 0 }),
       component: MyTasksWidget,
     },
     {
@@ -60,7 +65,7 @@ registerWebModule({
       category: "dashboard.category.tasks",
       size: "md",
       load: (api) =>
-        api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? { groups: [], total: 0 }),
+        api.GET("/api/v1/tasks/dashboard-groups").then((r) => r.data ?? { items: [], total: 0 }),
       component: TasksByGroupWidget,
     },
   ],

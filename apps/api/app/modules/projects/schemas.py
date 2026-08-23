@@ -122,3 +122,14 @@ class DashboardBudgetProject(BaseModel):
     # clients, and only opening one told them apart — the same fix the task widgets already carry.
     company_name: str | None = None
     hours: BudgetHours
+
+
+class DashboardBudgets(BaseModel):
+    """The hottest few, and how many budgeted projects are burning behind them (#407).
+
+    Four rows with nothing to contradict them read as "these are the budgets"; four of
+    seventeen is a different sentence, and only the count can say which one the tile means.
+    """
+
+    items: list[DashboardBudgetProject]
+    total: int

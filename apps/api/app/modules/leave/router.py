@@ -791,9 +791,20 @@ async def team(
     date_from: date = Query(...),
     date_to: date = Query(...),
     user_id: uuid.UUID | None = Query(None),
+    limit: int | None = Query(
+        None,
+        ge=1,
+        le=500,
+        description=(
+            "Cap the rows returned (#407). Absent means every absence in the range, which is "
+            "what a calendar needs; a dashboard tile passes its own ceiling."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[TeamLeaveItem]:
-    return await LeaveService(ctx).team(date_from=date_from, date_to=date_to, user_id=user_id)
+    return await LeaveService(ctx).team(
+        date_from=date_from, date_to=date_to, user_id=user_id, limit=limit
+    )
 
 
 # --- requests -------------------------------------------------------------------------- #

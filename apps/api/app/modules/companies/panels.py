@@ -11,7 +11,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.companies.models import Company
-from app.registry import PROMINENCE_REGISTER, SIZE_HALF, PanelSpec
+from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
 
 async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
@@ -51,8 +51,14 @@ company_details_panel = PanelSpec(
     # *is*. Declared rather than omitted (#365): the hub's own panel is the one every later
     # module copies, so it has to show the shape.
     requires_permission="companies.company.read",
-    # A register, not a working surface (#364): correct, occasionally consulted, never news.
-    # Half width — an address and six labelled values do not want 1150 px.
-    prominence=PROMINENCE_REGISTER,
+    # A working surface (#403). #364 sorted every panel into two lanes and filed this one under
+    # *VASTGELEGD* — a register is something you occasionally consult, and a client's telephone
+    # number, e-mail address and adres are the single thing somebody opens a client's page for
+    # when the phone rings. Sorted by what the panel is *called* rather than by what it is used
+    # for, it sat roughly 1.100 px down the page, under every working surface on it.
+    #
+    # Half width — an address and six labelled values do not want 1150 px — and since #403 that
+    # is what it is drawn at, whether or not it has a neighbour.
+    prominence=PROMINENCE_PRIMARY,
     size=SIZE_HALF,
 )

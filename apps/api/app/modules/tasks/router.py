@@ -32,8 +32,8 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
+    DashboardMineSummary,
     DashboardTaskGroups,
-    DashboardTaskItem,
     LabelCreate,
     LabelRead,
     LabelUpdate,
@@ -147,7 +147,7 @@ async def dashboard_groups(
     limit: int = Query(DASHBOARD_GROUP_ROWS, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
 ) -> DashboardTaskGroups:
-    """Open-task counts grouped by project, then company, ranked by urgency (#398).
+    """Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
 
     Capped, and the envelope says by how much: a dashboard tile listing every project an
     agency runs is a scroll rather than a summary.
@@ -157,14 +157,14 @@ async def dashboard_groups(
 
 @router.get(
     "/dashboard-mine",
-    response_model=list[DashboardTaskItem],
+    response_model=DashboardMineSummary,
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_mine(
     limit: int = Query(20, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
-) -> list[DashboardTaskItem]:
-    """Compact personal task list for the dashboard tile."""
+) -> DashboardMineSummary:
+    """The personal task tile: a page of rows, plus the bucket counts of the whole set (#407)."""
     return await TaskService(ctx).dashboard_mine(limit=limit)
 
 
