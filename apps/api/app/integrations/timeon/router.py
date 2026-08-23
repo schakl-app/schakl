@@ -101,7 +101,7 @@ async def create_account(
     """Store a credential. Both directions start at ``off``: a connection that began syncing the
     moment a key was pasted would be an irreversible act performed by a form."""
     service = TimeonAccountService(ctx)
-    return TimeonAccountRead(**service.serialize(await service.create_account(payload)))
+    return TimeonAccountRead(**await service.read(await service.create_account(payload)))
 
 
 @router.patch(
@@ -116,9 +116,8 @@ async def update_account(
 ) -> TimeonAccountRead:
     """Rename, rotate the key, or change what the sync does. An omitted key keeps the stored one."""
     service = TimeonAccountService(ctx)
-    return TimeonAccountRead(
-        **service.serialize(await service.update_account(account_id, payload))
-    )
+    account = await service.update_account(account_id, payload)
+    return TimeonAccountRead(**await service.read(account))
 
 
 @router.post(

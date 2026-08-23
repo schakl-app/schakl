@@ -1239,6 +1239,38 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   #318's "a queue nobody reads", one level below the queue. Nothing is lost by staying quiet: the
   moment the pairing appears the sentinel becomes a real id, the fingerprint moves, and that side
   reads as changed on the very next run.
+- **A schedule is the tenant's, a gate must ask the authority that exists, and a job that decides
+  not to run has to say so** (#387/#388/#389, `docs/TIMEON.md` §6a/§9b). Three faults on one
+  integration, and each generalises past it. **A cron guard with no org is an org-blind guard**:
+  `timeon`'s nightly called `sku_writable("timeon")` with neither `plan` nor `host`, which on the
+  cloud posture reads the *instance* licence — the one authority a cloud tenant does not have,
+  since the operator runs the installation and the tenant buys a plan. An org on `unlimited` was
+  refused by a gate that never got to ask about it, and this was the only cron in the codebase with
+  that shape: every other one calls `sku_cron_enabled`, which answers from the licence self-hosted
+  and defers to `run_per_org`'s per-org plan filter on cloud. The lesson is not "pass the plan" but
+  **prefer the helper that already encodes the posture split** — a call site holding no org cannot
+  be made correct by argument, only by deferring to the layer that has one. **A constant in our
+  source is not a schedule**: `cron(hour=4, minute=20)` was 04:20 *UTC* for every account on every
+  instance, so the "nightly" drifted an hour twice a year on the org's own clock (§8) and could not
+  say "hourly for this connection, nightly for that one" — which is the actual question during a
+  cutover, where both systems are written to all day. The ARQ cron becomes the **tick** and the
+  account becomes the schedule, resolved by one function the worker and the screen both call, since
+  two copies of a schedule rule is how a page comes to promise a run the worker does not make; a
+  sub-daily cadence **shortens its window** rather than re-reading the same six weeks twenty-four
+  times a day. And **silence is the reason a broken schedule survives**: five nights of a nightly
+  that never fired looked exactly like five nights of nothing having changed in Timeon, so
+  `last_auto_run_at` and the computed next run are stored and printed, and a refusal at the gate
+  names the sku in the log. Its sibling on the *screen* is #389: `timeon` was the only integration
+  in the main navigation, on the argument that a two-way sync produces a queue somebody must
+  settle. True, and an argument for the queue being **reachable** rather than for a permanent slot
+  — **a cutover ends**, the queue is empty most days before it does, and a queue that shows nothing
+  every day is the one people stop reading (§14's own "a surface that has to be found" rule, whose
+  honest form is *it finds you*: an unsettled-conflict count beside the hours it is about, drawn
+  only when non-zero). A vendor's name in a white-label product's main menu is the smell that
+  should have been caught first. Its last sibling is the ordinary one, found while fixing the
+  gate: the per-account loop's `rollback` — which existed so one connection's failure would not
+  stop the next — also **discarded the hours the previous connection had just synced**, so the
+  loop commits per account and re-binds the transaction-local RLS GUC after each one.
 - **A notification that names something inside a record has to open *that*, and the record has to
   be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
   three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`

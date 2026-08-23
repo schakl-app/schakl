@@ -28,7 +28,7 @@
     ShieldCheck,
   } from "@lucide/svelte";
 
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtClockTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
   import type { TimeonAccount } from "./types";
@@ -72,13 +72,34 @@
 
   const idle = $derived(account.hours_direction === "off" && account.projects_direction === "off");
 
+  /**
+   * The schedule as a sentence, resolved from what the form currently says (#388).
+   *
+   * It used to be one constant string — *"Elke nacht rond 04:20"* — which was the only place the
+   * hardcoded cron was ever stated to a user, and which stayed true-looking after that cron
+   * stopped firing (#387). Naming the **zone** is half the fix: 04:20 was UTC, so the sentence
+   * was wrong by an hour or two for every tenant that read it, and differently in summer.
+   */
+  const whenAuto = $derived.by(() => {
+    const at = fmtClockTime((account.auto_time ?? "04:20").slice(0, 5));
+    const zone = account.timezone ?? "UTC";
+    if (account.auto_frequency === "hourly") return t("timeon.plan.when_hourly");
+    if (account.auto_frequency === "every_n_hours") {
+      return t("timeon.plan.when_every_n_hours", { hours: account.auto_interval_hours ?? 4 });
+    }
+    if (account.auto_frequency === "weekdays") {
+      return t("timeon.plan.when_weekdays", { time: at, zone });
+    }
+    return t("timeon.plan.when_daily", { time: at, zone });
+  });
+
   const lines = $derived.by((): Line[] => {
     if (idle) return [];
     const out: Line[] = [];
 
     out.push({
       icon: Clock,
-      text: account.auto_sync ? t("timeon.plan.when_auto") : t("timeon.plan.when_manual"),
+      text: account.auto_sync ? whenAuto : t("timeon.plan.when_manual"),
     });
 
     if (account.hours_direction !== "off") {

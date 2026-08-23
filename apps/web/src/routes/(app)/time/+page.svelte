@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleCheck, Plus, Sparkles } from "@lucide/svelte";
+  import { AlertTriangle, CircleCheck, Plus, Sparkles } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -631,6 +631,27 @@
     {/if}
   </div>
 </div>
+
+<!-- Timeon's queue, where the hours it is about live (#389). Drawn only when it is non-zero:
+     the sync workspace left the main menu because a queue that shows nothing every day is the
+     queue people stop reading, and a strip that appears only when there is something to settle
+     is the honest version of "a surface that has to be found". -->
+{#if data.timeonConflicts > 0}
+  <a
+    href="/timeon"
+    class="mb-4 flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20"
+  >
+    <AlertTriangle size={16} class="shrink-0" aria-hidden="true" />
+    <span>
+      <!-- `_one` + a ternary, never an ICU `plural`: Paraglide does not parse those here and
+           compiles them to the literal source string. -->
+      {data.timeonConflicts === 1
+        ? t("time.timeon.conflicts_one")
+        : t("time.timeon.conflicts", { count: data.timeonConflicts })}
+    </span>
+    <span class="ml-auto shrink-0 font-medium underline">{t("time.timeon.settle")}</span>
+  </a>
+{/if}
 
 <!-- Day tabs -->
 {#if week}
