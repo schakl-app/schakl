@@ -10848,7 +10848,10 @@ export interface paths {
         };
         /**
          * Dashboard Groups
-         * @description Open-task counts grouped by project, then company — the busiest few, and how many (#407).
+         * @description Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
+         *
+         *     Capped, and the envelope says by how much: a dashboard tile listing every project an
+         *     agency runs is a scroll rather than a summary.
          */
         get: operations["dashboard_groups_api_v1_tasks_dashboard_groups_get"];
         put?: never;
@@ -16033,6 +16036,16 @@ export interface components {
             company_name?: string | null;
             /** Count */
             count: number;
+            /**
+             * Due Today
+             * @default 0
+             */
+            due_today: number;
+            /**
+             * Due Week
+             * @default 0
+             */
+            due_week: number;
             /** Entity Id */
             entity_id: string | null;
             /** Entity Type */
@@ -16044,11 +16057,17 @@ export interface components {
         };
         /**
          * DashboardTaskGroups
-         * @description The tile's page **and** how many groups exist behind it (#407).
+         * @description The tile's page **and** how many groups exist behind it (#407, #398).
          *
          *     The tile used to render every group a GROUP BY produced — an agency running eighty live
          *     projects got eighty rows on their My Day. A page needs a size, and a size needs a number
          *     beside it or the reader cannot tell the whole answer from the first screen of one.
+         *
+         *     ``total`` counts the **groups**, not the tasks — it is what "en nog 7" is drawn from — and
+         *     it rides on the same grouped query as the rows, so saying what is not shown costs no second
+         *     read. ``items`` rather than ``groups`` because every capped dashboard read answers the same
+         *     shape (:class:`DashboardMineSummary`, the project budgets tile); one envelope the widgets
+         *     share is what keeps a reader from having to remember which key this particular tile used.
          */
         DashboardTaskGroups: {
             /** Items */

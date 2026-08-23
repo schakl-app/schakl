@@ -137,6 +137,15 @@ _PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriori
 # the discussion had no bound at all, so a task people talk on for a year grew its detail
 # response without limit (docs/PERFORMANCE.md — bound every read).
 _COMMENT_CAP = 200
+#: How far ahead "deze week" reaches, counted from the org's own today. One constant, read by
+#: the ``?due=week`` filter and by the dashboard tile's third bucket (#398): a counter that
+#: opens a list must count the same days the list will show, and two literal sevens in two
+#: files is how that stops being true.
+TASK_WEEK_DAYS = 7
+#: Rows the "openstaande taken per project / klant" tile draws before it says how many more
+#: there are. A dashboard tile listing every project an agency runs is a scroll, not a summary
+#: (CLAUDE.md §17 - a short list that looks complete reads as "that is all of them").
+DASHBOARD_GROUP_ROWS = 8
 _dashboard_projects = table(
     "projects",
     column("id"),
@@ -541,7 +550,15 @@ class TaskService:
         elif due == "today":
             stmt = stmt.where(Task.due_date == today)
         elif due == "week":
-            stmt = stmt.where(Task.due_date >= today, Task.due_date <= today + timedelta(days=7))
+            # The three ``due`` chips are one exclusive control, so they are one *partition*:
+            # "Deze week" is the seven days **after** today, because "Vandaag" is the chip
+            # beside it and a filter that answers a superset of its neighbour cannot be the
+            # thing a counter opens. Same boundary as the dashboard tile's third bucket (#398)
+            # — one week is `TASK_WEEK_DAYS` here and nowhere else, so the tile's figure and
+            # the list it links to can never disagree.
+            stmt = stmt.where(
+                Task.due_date > today, Task.due_date <= today + timedelta(days=TASK_WEEK_DAYS)
+            )
         # An explicit deadline window (#188): the Agenda's deadline feed asks for the visible
         # range's due dates. Independent of the ``due`` shortcuts above.
         if due_from is not None:
@@ -680,11 +697,29 @@ class TaskService:
             upcoming=int(counts[3]),
         )
 
-    async def dashboard_groups(self, *, limit: int = 8) -> DashboardTaskGroups:
-        """Open task counts by project/company without shipping all source rows to the web."""
+    async def dashboard_groups(
+        self, *, limit: int = DASHBOARD_GROUP_ROWS
+    ) -> DashboardTaskGroups:
+        """Open task counts by project/company, ranked by urgency (#398, #407).
+
+        Four figures, not one. A count says how much work a client is carrying and says
+        nothing at all about whether any of it is late, so a tile ranked on it put a client
+        with five comfortable tasks above a client with one that was due last Tuesday. The
+        three extra aggregates are ``filter``-ed counts over the *same* grouped query - no
+        second round trip, no join - and the ordering leads on them, which is the whole reason
+        this is four lines rather than a redesign.
+
+        The buckets are a partition, and each one is exactly what its ``?due=`` chip shows, so
+        every figure on the tile opens the list it counted (docs/UX.md, principle 7).
+
+        Busiest first and then cut (#407), never cut and then sorted: an agency with eighty
+        live projects got eighty rows on a My Day tile, and taking an arbitrary eight of them
+        would lose the ones the ordering exists to lead with.
+        """
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         open_keys = non_terminal_keys(statuses)
         today = await org_today(self.ctx.session, self.ctx.org.id)
+        week_end = today + timedelta(days=TASK_WEEK_DAYS)
         # Start from the repository-scoped relation, not the bare tasks table: portal visibility
         # and a manager's company horizon remain API-boundary guarantees even on an aggregate.
         visible = self.repo.scoped_select().subquery()
@@ -708,6 +743,14 @@ class TaskService:
         )
         count = func.count()
         overdue = func.count().filter(visible.c.due_date < today)
+        due_today = func.count().filter(visible.c.due_date == today)
+        due_week = func.count().filter(
+            and_(visible.c.due_date > today, visible.c.due_date <= week_end)
+        )
+        # How many groups there are, in the same statement as the page of them: a window
+        # function is evaluated after GROUP BY and before LIMIT, so the tile can say what it is
+        # not showing without a second query (docs/PERFORMANCE.md).
+        total = func.count().over()
         stmt = (
             select(
                 entity_type.label("entity_type"),
@@ -717,6 +760,9 @@ class TaskService:
                 group_company_name.label("company_name"),
                 count.label("count"),
                 overdue.label("overdue"),
+                due_today.label("due_today"),
+                due_week.label("due_week"),
+                total.label("total"),
             )
             .select_from(visible)
             .outerjoin(
@@ -742,22 +788,18 @@ class TaskService:
             )
             .where(visible.c.status.in_(open_keys))
             .group_by(entity_type, entity_id, label, group_company_id, group_company_name)
-            .order_by(count.desc(), label.asc().nulls_last())
-        )
-        # Busiest first and then cut (#407), never cut and then sorted: an agency with eighty
-        # live projects got eighty rows on a My Day tile, and taking an arbitrary eight of them
-        # would lose the ones the ordering exists to lead with.
-        rows = (await self.ctx.session.execute(stmt.limit(limit))).all()
-        total = (
-            int(
-                await self.ctx.session.scalar(
-                    select(func.count()).select_from(stmt.subquery())
-                )
-                or 0
+            # Urgency first, volume as the tiebreak it should always have been: a group with
+            # something late sits above every group without one.
+            .order_by(
+                overdue.desc(),
+                due_today.desc(),
+                due_week.desc(),
+                count.desc(),
+                label.asc().nulls_last(),
             )
-            if len(rows) >= limit
-            else len(rows)
+            .limit(limit)
         )
+        rows = (await self.ctx.session.execute(stmt)).all()
         return DashboardTaskGroups(
             items=[
                 DashboardTaskGroup(
@@ -768,10 +810,12 @@ class TaskService:
                     company_name=row.company_name,
                     count=int(row.count),
                     overdue=int(row.overdue),
+                    due_today=int(row.due_today),
+                    due_week=int(row.due_week),
                 )
                 for row in rows
             ],
-            total=total,
+            total=int(rows[0].total) if rows else 0,
         )
 
     # ------------------------------------------------------------------ #

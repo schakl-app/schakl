@@ -501,6 +501,28 @@ contrast bug in dark mode rather than only an inconsistency.
   `tasks.filter.unlinked` now — the same words as the chip on the list it opens, so the
   destination confirms where you landed. The only text left unlinked is empty-state copy and a
   restatement of a figure already linked beside it.
+- **A count is not an urgency, and a tile ranked on one is ranked on the wrong thing** (#398).
+  "Openstaande taken per project / klant" drew a name and a grey number, ordered by that number
+  — so a client with five comfortable tasks sat above a client with one that was due last
+  Tuesday, and on a real instance the two rows carrying something overdue landed at positions
+  **3 and 11**, the second one below six rows with nothing late on them at all. The loudest
+  thing in each row was the one figure that says nothing about whether anything is wrong. Four
+  rules, and none of them is about tasks. **A row about work says how much of it is late, due
+  today and due this week** — three `filter`\ ed counts on the query that was already grouped,
+  so it costs no round trip, which is precisely why the omission was an omission rather than a
+  trade-off. **The ordering leads on urgency and keeps volume as the tiebreak** it should always
+  have been. **The buckets are a partition, so each one opens exactly the list it counted**: the
+  three `?due=` chips are one exclusive control, and that made "Deze week" the seven days
+  *after* today rather than a superset of the "Vandaag" chip beside it — a counter whose list
+  quietly includes its neighbour's rows is a figure the reader cannot take apart (Principle 7),
+  and one constant (`TASK_WEEK_DAYS`) is what stops the tile and the list disagreeing about
+  where the week ends. **A zero draws nothing**: four zeros on a row is four facts nobody asked
+  for, and the row exists to be scanned. The states come from the palette's urgency ramp
+  (`late` / `today` / `soon`, #404), never from the tenant's brand, and the total stays last and
+  stays muted — "how much is there" is still a question, just no longer the first one. The tile
+  is **capped and says so**, because this list grows with the client book and a short list that
+  looks complete reads as "that is all of them" (CLAUDE.md §17); the group total rides in on the
+  same grouped query as a window count, so saying what is not shown costs nothing either.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone

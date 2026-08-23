@@ -56,7 +56,7 @@ from app.modules.tasks.schemas import (
     TemplateRead,
     TemplateUpdate,
 )
-from app.modules.tasks.service import TaskService
+from app.modules.tasks.service import DASHBOARD_GROUP_ROWS, TaskService
 from app.modules.tasks.templates import TemplateService
 from app.schemas import Page
 
@@ -144,10 +144,14 @@ async def list_tasks(
     dependencies=[require_permission("tasks.task.read")],
 )
 async def dashboard_groups(
-    limit: int = Query(8, ge=1, le=100),
+    limit: int = Query(DASHBOARD_GROUP_ROWS, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
 ) -> DashboardTaskGroups:
-    """Open-task counts grouped by project, then company — the busiest few, and how many (#407)."""
+    """Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
+
+    Capped, and the envelope says by how much: a dashboard tile listing every project an
+    agency runs is a scroll rather than a summary.
+    """
     return await TaskService(ctx).dashboard_groups(limit=limit)
 
 
