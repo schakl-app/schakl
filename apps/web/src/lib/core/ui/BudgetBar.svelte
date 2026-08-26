@@ -27,6 +27,7 @@
     titleText,
     label,
     noteText,
+    href,
     variant = "block",
   }: {
     /** Consumed, in whatever unit the caller formats. Drives the colour, never the text. */
@@ -47,6 +48,11 @@
     label?: string;
     /** Trailing note in the block variant's footer (e.g. which agreement the budget came from). */
     noteText?: string;
+    /**
+     * Where the figure opens (UX Principle 7: every number opens). Block variant only — it
+     * turns the spend line into a link to the records behind it (the filtered hours report).
+     */
+    href?: string;
     variant?: "block" | "inline";
   } = $props();
 
@@ -91,7 +97,13 @@
       </div>
     {/if}
     <div class="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-      <span class="text-xs tabular-nums text-text-muted">{spentText}</span>
+      {#if href}
+        <a {href} class="text-xs tabular-nums text-text-muted underline-offset-2 hover:text-brand hover:underline"
+          >{spentText}</a
+        >
+      {:else}
+        <span class="text-xs tabular-nums text-text-muted">{spentText}</span>
+      {/if}
       {#if noteText}
         <span class="min-w-0 truncate text-xs text-text-muted">{noteText}</span>
       {/if}

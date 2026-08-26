@@ -25,6 +25,7 @@
   import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
   import TimeEntryRow from "$lib/modules/time/TimeEntryRow.svelte";
   import { entryTypeLabel, entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
+  import { splitTaskOptions } from "$lib/modules/time/task-picker";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
@@ -72,6 +73,23 @@
     splitProjectOptions(data.projects, { selectedId: data.filters.project_id }),
   );
   const taskTitle = (id?: string | null) => data.tasks.find((tk) => tk.id === id)?.title ?? "";
+  // The task filter (#443): open tasks in the dropdown, finished ones behind the search
+  // (`task-picker.ts` holds the rule). The task the URL names is always offered — the load
+  // fetched it by id, because the 200-row lookup is a page of a longer set and a filter the
+  // picker cannot name reads as a screen that lies about what it shows.
+  const taskPicker = $derived.by(() => {
+    const named = data.taskFilter;
+    const tasks =
+      named && !data.tasks.some((tk) => tk.id === named.id) ? [named, ...data.tasks] : data.tasks;
+    return splitTaskOptions(tasks, {
+      selectedId: data.filters.task_id,
+      statuses: data.taskStatuses,
+      labels: {
+        due: (iso) => t("time.field.task_due", { date: fmtNumericDate(iso) }),
+        allocated: formatMinutes,
+      },
+    });
+  });
   const entryTypeName = (key?: string | null) => {
     const def = data.entryTypes.find((et) => et.key === key);
     return def ? entryTypeLabel(def, data.locale ?? "nl") : (key ?? "");
@@ -232,6 +250,18 @@
       value={data.filters.project_id}
       placeholder={t("time.field.project")}
       onselect={(v) => setFilter("project_id", v)}
+    />
+  </div>
+  <div class="w-44">
+    <Combobox
+      items={taskPicker.open}
+      archived={taskPicker.closed}
+      archivedLabel={t("time.field.task_closed")}
+      name="_f_task"
+      id="f-task"
+      value={data.filters.task_id}
+      placeholder={t("time.field.task")}
+      onselect={(v) => setFilter("task_id", v)}
     />
   </div>
   <div class="w-36">

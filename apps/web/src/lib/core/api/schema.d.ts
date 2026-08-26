@@ -56483,6 +56483,7 @@ export interface operations {
                 user_id?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;
+                task_id?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
                 billable?: boolean | null;

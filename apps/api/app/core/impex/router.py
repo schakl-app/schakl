@@ -50,6 +50,7 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     "mine": (bool, Query(False, description="Only rows assigned to me")),
     "company_id": (uuid.UUID | None, Query(None)),
     "project_id": (uuid.UUID | None, Query(None)),
+    "task_id": (uuid.UUID | None, Query(None)),
     "user_id": (uuid.UUID | None, Query(None)),
     "date_from": (dt.date | None, Query(None, description="Rows on/after this day")),
     "date_to": (dt.date | None, Query(None, description="Rows on/before this day")),

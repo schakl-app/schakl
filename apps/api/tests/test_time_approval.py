@@ -145,6 +145,25 @@ async def test_report_filters_and_totals(client_for) -> None:
         ).json()
         assert by_user["totals"]["minutes"] == 30
 
+        # By task (#443): "all hours booked on this task" is expressible in a URL, so the
+        # client hub's hour rows and the task page's burn figure can deep-link the report.
+        task = await c.post(
+            "/api/v1/tasks",
+            json={"title": "Rapport taak", "due_date": "2099-01-01"},
+            headers=owner_headers,
+        )
+        assert task.status_code == 201, task.text
+        on_task = await _entry(c, owner_headers, minutes=45, task_id=task.json()["id"])
+        by_task = (
+            await c.get(
+                "/api/v1/time/report",
+                params={"task_id": task.json()["id"]},
+                headers=owner_headers,
+            )
+        ).json()
+        assert by_task["totals"]["count"] == 1
+        assert [e["id"] for e in by_task["items"]] == [on_task["id"]]
+
 
 async def test_approval_tenant_isolation(client_for) -> None:
     a = await make_tenant("appr-iso-a")

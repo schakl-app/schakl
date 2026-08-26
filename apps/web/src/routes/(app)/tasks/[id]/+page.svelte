@@ -1190,12 +1190,17 @@
               class={inputClass}
             />
           {:else if burn}
+            <!-- The figure opens the hours behind it (#443, Principle 7) — only for a viewer
+                 /overview will let in, never a link that bounces (#253). -->
             <BudgetBar
               spent={burn.spent}
               budget={burn.budget}
               label={t("tasks.field.allocated")}
               remainingText={burn.remainingText}
               spentText={burn.spentText}
+              href={can(page.data.user, "time.report.read")
+                ? `/overview?task_id=${task.id}`
+                : undefined}
             />
           {:else}
             <span class="mb-1 block text-xs font-medium text-text-muted"

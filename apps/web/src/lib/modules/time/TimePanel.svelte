@@ -198,9 +198,11 @@
                   </span>
                 {/if}
               </span>
-              <!-- Where the hour belongs (docs/UX.md principle 7): the project opens the report
-                   filtered to exactly these rows — for a viewer /overview lets in — and the task
-                   opens its own page. Plain text otherwise, never a link that bounces (#253). -->
+              <!-- Where the hour belongs (docs/UX.md principle 7): for a viewer /overview lets
+                   in, the project *and* the task each open the report filtered to exactly the
+                   rows they count (#443 — "all hours on this task" is a URL now). Anyone else
+                   keeps the task's own page, a destination they may actually open; plain text
+                   otherwise, never a link that bounces (#253). -->
               {#if entry.project_name || entry.task_title}
                 <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
                   {#if entry.project_name}
@@ -217,7 +219,12 @@
                     <span aria-hidden="true">·</span>
                   {/if}
                   {#if entry.task_title}
-                    {#if entry.task_id}
+                    {#if canViewReport && entry.task_id}
+                      <a
+                        href={`/overview?company_id=${companyId}&task_id=${entry.task_id}`}
+                        class="truncate hover:text-brand hover:underline">{entry.task_title}</a
+                      >
+                    {:else if entry.task_id}
                       <a
                         href={`/tasks/${entry.task_id}`}
                         class="truncate hover:text-brand hover:underline">{entry.task_title}</a
