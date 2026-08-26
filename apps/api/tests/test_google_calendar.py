@@ -972,6 +972,41 @@ async def test_deleting_the_task_deletes_its_pushed_blocks(client_for, monkeypat
         assert (await session.execute(select(CalendarEventLink))).first() is None
 
 
+async def test_renaming_the_task_refreshes_its_pushed_blocks(client_for, monkeypatch) -> None:
+    """The mirror pushes a *snapshot* and never re-reads a task, so a rename has to re-announce
+    every scheduled block — without the re-emit the person's Google event keeps saying the old
+    title forever, on exactly the surface they plan their day from.
+    """
+    from sqlalchemy import select
+
+    t = await make_tenant("gcal-task-rename")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task_id, _ = await _schedule_a_task(c, headers, assignee=t.user.id)
+        await _push_the_block(t, monkeypatch, "gev-rename")
+
+        patched = await c.patch(
+            f"/api/v1/tasks/{task_id}",
+            json={"title": "Redesign homepage v2"},
+            headers=headers,
+        )
+        assert patched.status_code == 200, patched.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        # Requeued with the new words: the payload is exactly what the worker will PUT.
+        assert link.status == "pending"
+        assert "Redesign homepage v2" in link.payload["summary"]
+
+
 async def test_reassigning_a_block_to_an_unconnected_colleague_clears_the_old_event(
     client_for, monkeypatch
 ) -> None:

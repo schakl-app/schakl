@@ -277,6 +277,31 @@ class TaskScheduleService:
         for block in blocks:
             await self._emit_removed(block)
 
+    async def refresh_for_task(self, task: Task) -> None:
+        """Re-announce every block of a task whose words changed (a rename, a rewritten
+        description).
+
+        The Google mirror pushes a *snapshot* and deliberately never re-reads a task
+        (``google/calendar/push.py``), so an edit that changes what the event says has to
+        re-emit — otherwise every mirrored block keeps the old title forever. Same emit site
+        as create/update (#188), so the mirror is never reached into from the task service.
+
+        Deliberately unscoped, like ``remove_for_task``: the caller was allowed to edit the
+        task, and the blocks follow it whoever they belong to — recording a consequence is not
+        its own grant (§16).
+        """
+        blocks = (
+            (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(TaskSchedule.task_id == task.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for block in blocks:
+            await self._emit_saved(block, task)
+
     async def log_time(self, schedule_id: uuid.UUID, data: ScheduleLogTime) -> TaskSchedule:
         """Confirm a passed block as a real time entry (#188). The entry is always the *caller's*
         own worked time (``TimeService.create`` fixes ``user_id`` to them), so only the person the
