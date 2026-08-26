@@ -188,4 +188,20 @@ export const actions: Actions = {
     if (failure) return fail(400, { error: apiErrorKey(failure).key });
     return { verified: true };
   },
+
+  // The tenant's prose about this container (#442): a summary and a goal, the Ads policy
+  // pair one integration over. Whole-field writes — the form always carries both boxes, so
+  // an emptied one really means "cleared" here, never "left alone".
+  details: async (event) => {
+    const form = await event.request.formData();
+    const { error: failure } = await apiFor(event).PATCH("/api/v1/gtm/containers/{container_id}", {
+      params: { path: { container_id: event.params.id } },
+      body: {
+        summary: String(form.get("summary") ?? "").trim(),
+        goal: String(form.get("goal") ?? "").trim(),
+      },
+    });
+    if (failure) return fail(400, { error: apiErrorKey(failure).key });
+    return { saved: true };
+  },
 };

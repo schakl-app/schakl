@@ -94,6 +94,8 @@ def _read(row: GtmContainer, company_name: str | None = None) -> GtmContainerRea
         workspace_changes=row.workspace_changes,
         observed_at=row.observed_at,
         active=row.active,
+        summary=row.summary,
+        goal=row.goal,
         status=row.status,
         last_error=row.last_error,
         last_verified_at=row.last_verified_at,
@@ -277,10 +279,14 @@ async def update_gtm_container(
         company_id=payload.company_id,
         website_id=payload.website_id,
         active=payload.active,
+        summary=payload.summary,
+        goal=payload.goal,
         # Absent and explicit-null are different answers and the payload alone cannot tell them
         # apart — only ``model_fields_set`` can (CLAUDE.md §18).
         company_id_set="company_id" in payload.model_fields_set,
         website_id_set="website_id" in payload.model_fields_set,
+        summary_set="summary" in payload.model_fields_set,
+        goal_set="goal" in payload.model_fields_set,
     )
     return _read(row)
 

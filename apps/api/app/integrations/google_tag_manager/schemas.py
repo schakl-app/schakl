@@ -67,6 +67,10 @@ class GtmContainerRead(BaseModel):
     workspace_changes: int
     observed_at: datetime | None
     active: bool
+    #: Tenant prose (#442): what this container is for the client, and what the tracking is
+    #: supposed to prove. Empty strings when nobody has written them.
+    summary: str = ""
+    goal: str = ""
     status: str
     last_error: str | None
     last_verified_at: datetime | None
@@ -92,11 +96,18 @@ class GtmContainerCreate(BaseModel):
 
 
 class GtmContainerUpdate(BaseModel):
-    """Only the fields schakl *decided*. What Google said is refreshed by verify, never typed."""
+    """Only the fields schakl *decided*. What Google said is refreshed by verify, never typed.
+
+    §18 semantics throughout: a field left out of the payload is left alone, and for the two
+    prose fields an explicit ``null`` clears (they store ``""``, never NULL) — the Ads policy
+    write's shape (``GoogleAdsPolicyWrite``).
+    """
 
     company_id: uuid.UUID | None = None
     website_id: uuid.UUID | None = None
     active: bool | None = None
+    summary: str | None = Field(default=None, max_length=8_000)
+    goal: str | None = Field(default=None, max_length=8_000)
 
 
 class GtmAvailableContainer(BaseModel):

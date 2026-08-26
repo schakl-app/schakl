@@ -19473,6 +19473,11 @@ export interface components {
             connection_id: string | null;
             /** Domain Names */
             domain_names: string[];
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
             /** Gtm Account Id */
             gtm_account_id: string;
             /** Gtm Container Id */
@@ -19502,6 +19507,11 @@ export interface components {
             public_id: string;
             /** Status */
             status: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
             /** Tag Count */
             tag_count: number;
             /** Tag Manager Url */
@@ -19522,12 +19532,20 @@ export interface components {
         /**
          * GtmContainerUpdate
          * @description Only the fields schakl *decided*. What Google said is refreshed by verify, never typed.
+         *
+         *     §18 semantics throughout: a field left out of the payload is left alone, and for the two
+         *     prose fields an explicit ``null`` clears (they store ``""``, never NULL) — the Ads policy
+         *     write's shape (``GoogleAdsPolicyWrite``).
          */
         GtmContainerUpdate: {
             /** Active */
             active?: boolean | null;
             /** Company Id */
             company_id?: string | null;
+            /** Goal */
+            goal?: string | null;
+            /** Summary */
+            summary?: string | null;
             /** Website Id */
             website_id?: string | null;
         };
@@ -42781,6 +42799,7 @@ export interface operations {
                 user_id?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;
+                task_id?: string | null;
                 /** @description Rows on/after this day */
                 date_from?: string | null;
                 /** @description Rows on/before this day */
