@@ -69,5 +69,8 @@ def authorization_server_document(origin: str) -> dict[str, Any]:
         # verifier that anyone who saw the authorization request already holds.
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
+        # RFC 9207: the authorization response carries `iss`, and saying so is what makes a
+        # strict client check it.
+        "authorization_response_iss_parameter_supported": True,
         "service_documentation": f"{origin}/api/docs",
     }

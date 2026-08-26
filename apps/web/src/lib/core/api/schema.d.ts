@@ -9321,6 +9321,78 @@ export interface paths {
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
         trace?: never;
     };
+    "/api/v1/oauth/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clients
+         * @description Every live client of this org — the DCR ones included, so the admin overview and the
+         *     per-user connections list cannot tell two different stories about what may connect.
+         */
+        get: operations["list_clients_api_v1_oauth_clients_get"];
+        put?: never;
+        /**
+         * Create Client
+         * @description Mint a confidential client for something that will not DCR. The secret is in this
+         *     response and nowhere else, ever — only its hash is stored (the API-key rule).
+         */
+        post: operations["create_client_api_v1_oauth_clients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/clients/{client_pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Client
+         * @description The admin kill switch — the per-user disconnect, org-wide: the client is revoked and
+         *     every key it ever issued, whoever's, goes with it. A revoked client cannot refresh back.
+         */
+        delete: operations["revoke_client_api_v1_oauth_clients__client_pk__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/clients/{client_pk}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Client Secret
+         * @description A new secret for a manual client; the old one stops working on the spot.
+         *
+         *     Manual clients only: a DCR client's secret lives in software that registered itself and
+         *     cannot be told about the new one — rotating it there is an outage wearing a security
+         *     control's clothes. Live sessions (api_keys) survive on purpose: rotation is "the old
+         *     *secret* must stop working", and killing the sessions is what DELETE is for.
+         */
+        post: operations["rotate_client_secret_api_v1_oauth_clients__client_pk__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/oauth/connections": {
         parameters: {
             query?: never;
@@ -23309,6 +23381,59 @@ export interface components {
              * Format: date-time
              */
             visible_at: string;
+        };
+        /** OAuthClientCreate */
+        OAuthClientCreate: {
+            /** Client Name */
+            client_name: string;
+            /** Redirect Uris */
+            redirect_uris: string[];
+        };
+        /** OAuthClientCreated */
+        OAuthClientCreated: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Client Secret */
+            client_secret: string;
+            /** Confidential */
+            confidential: boolean;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Manual */
+            manual: boolean;
+            /** Redirect Uris */
+            redirect_uris: string[];
+        };
+        /** OAuthClientRead */
+        OAuthClientRead: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Confidential */
+            confidential: boolean;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Manual */
+            manual: boolean;
+            /** Redirect Uris */
+            redirect_uris: string[];
         };
         /** OrgCreate */
         OrgCreate: {
@@ -50617,6 +50742,119 @@ export interface operations {
             };
         };
     };
+    list_clients_api_v1_oauth_clients_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientRead"][];
+                };
+            };
+        };
+    };
+    create_client_api_v1_oauth_clients_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthClientCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_client_api_v1_oauth_clients__client_pk__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_client_secret_api_v1_oauth_clients__client_pk__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_connections_api_v1_oauth_connections_get: {
         parameters: {
             query?: never;
@@ -51517,7 +51755,7 @@ export interface operations {
                 hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
-                /** @description 'over' keeps only budgeted projects at or past their budget (#437) — the burn enrichment rides along, and the total counts what survived. Other tokens are ignored. */
+                /** @description 'over' keeps only projects at or past their budget; other tokens ignored */
                 burn?: string | null;
             };
             header?: never;

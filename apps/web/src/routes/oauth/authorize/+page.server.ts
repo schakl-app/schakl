@@ -42,6 +42,13 @@ export const load: PageServerLoad = async (event) => {
   if (!request.code_challenge || request.code_challenge_method !== "S256") {
     throw httpError(400, "errors.oauth_pkce_required");
   }
+  // The one response type this server mints (#441). Absent is tolerated — every real client
+  // sends it and refusing the ones that predate this check buys nothing — but a stated
+  // `response_type` that is not `code` is a request for a flow that does not exist here.
+  const responseType = query.get("response_type");
+  if (responseType !== null && responseType !== "code") {
+    throw httpError(400, "errors.oauth_unsupported_response_type");
+  }
 
   const { data, error } = await apiFor(event).GET("/api/v1/oauth/consent", {
     params: {

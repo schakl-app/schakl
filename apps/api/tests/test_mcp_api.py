@@ -223,10 +223,14 @@ async def test_mcp_refuses_the_standalone_stream_instead_of_holding_it_open(clie
 #: input schema together — and a tokenizer is a network download and a dependency this suite
 #: is not going to grow for one assertion. So the budget is expressed in the bytes the server
 #: actually sends, converted at a deliberately pessimistic **3.0 chars/token**: the measured
-#: ratio for this payload is 3.89 (o200k_base), so 14,000 bytes is at most ~4,670 tokens on
-#: the pessimistic reading and ~3,600 on the real one. Either way it is under the cap, and the
+#: ratio for this payload is 3.89 (o200k_base), so 14,300 bytes is at most ~4,767 tokens on
+#: the pessimistic reading and ~3,700 on the real one. Either way it is under the cap, and the
 #: conversion only ever errs towards failing this test early.
-_COMPACT_BUDGET_BYTES = 14_000
+#:
+#: Raised 14,000 → 14,300 when #437/#443 added ``burn`` (projects list) and ``task_id``
+#: (time report) — two parameters an agent genuinely filters by, ~100 bytes together, watched
+#: here exactly as this number exists for.
+_COMPACT_BUDGET_BYTES = 14_300
 
 
 async def test_mcp_compact_profile_fits_a_chat_client(client_for) -> None:

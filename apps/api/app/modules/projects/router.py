@@ -99,14 +99,12 @@ async def list_projects(
         False, description="Include the budget burn-down; costs one grouped query"
     ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    # Description kept terse on purpose: this operation is in the MCP compact profile, whose
+    # whole tool budget is pinned in bytes (test_mcp_compact_profile_fits_a_chat_client).
     burn: str | None = Query(
         None,
         max_length=20,
-        description=(
-            "'over' keeps only budgeted projects at or past their budget (#437) — the burn "
-            "enrichment rides along, and the total counts what survived. Other tokens are "
-            "ignored."
-        ),
+        description="'over' keeps only projects at or past their budget; other tokens ignored",
     ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:

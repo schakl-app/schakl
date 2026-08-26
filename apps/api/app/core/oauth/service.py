@@ -276,6 +276,7 @@ class OAuthService:
         scopes: Sequence[str],
         resource: str | None,
         state: str | None,
+        issuer: str | None = None,
     ) -> str:
         """Write the grant and return the URL to send the browser back to.
 
@@ -303,7 +304,15 @@ class OAuthService:
         )
         client.last_used_at = _now()
         await self.session.flush()
-        return _redirect_with(redirect_uri, {"code": code, **({"state": state} if state else {})})
+        return _redirect_with(
+            redirect_uri,
+            {
+                "code": code,
+                **({"state": state} if state else {}),
+                # RFC 9207 — strict clients compare it against the issuer they discovered.
+                **({"iss": issuer} if issuer else {}),
+            },
+        )
 
     # --- redemption ------------------------------------------------------------------- #
 
