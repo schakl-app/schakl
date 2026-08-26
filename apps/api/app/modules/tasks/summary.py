@@ -43,7 +43,9 @@ async def _open_tasks(ctx: RequestContext, company_id: uuid.UUID) -> list[Summar
             tone="bad" if overdue else "neutral",
             hint_key="companies.summary.tasks_overdue" if overdue else None,
             hint_params={"count": overdue},
-            href=f"/tasks?company_id={company_id}",
+            # The count is org-wide for this client, and /tasks defaults an absent assignee to
+            # the signed-in user — without saying so the tile counts 7 and opens a list of 2.
+            href=f"/tasks?company_id={company_id}&assignee_user_id=all",
             position=20,
         )
     ]

@@ -41,6 +41,7 @@
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import { dayDistance, dueHref, dueLabelKey, dueState, groupByDue, type DueBucket } from "./due";
+  import { ALL_ASSIGNEES } from "./filters";
 
   let { data }: { data: unknown } = $props();
 
@@ -49,6 +50,7 @@
     title: string;
     priority: string;
     due_date: string | null;
+    company_id?: string | null;
     company_name?: string | null;
   }
   interface MinePayload {
@@ -140,16 +142,27 @@
       <ul class="divide-y divide-border">
         {#each shown as task (task.id)}
           <li class="flex items-center justify-between gap-2 py-1.5">
-            <a href={`/tasks/${task.id}`} class="group min-w-0 flex-1">
-              <span class="block truncate text-sm text-text group-hover:text-brand"
-                >{task.title}</span
+            <span class="min-w-0 flex-1">
+              <a href={`/tasks/${task.id}`} class="block truncate text-sm text-text hover:text-brand"
+                >{task.title}</a
               >
               {#if task.company_name}
                 <!-- Which client's work this is. "Nieuwsbrief plannen" is four indistinguishable
-                     rows on a list spanning four clients, and only opening one tells them apart. -->
-                <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+                     rows on a list spanning four clients, and only opening one tells them apart.
+                     A name is an aggregate's address (issue #15): it opens that client's whole
+                     task list — every assignee, so the destination is the client's work rather
+                     than the viewer's share of it. -->
+                {#if task.company_id}
+                  <a
+                    href={`/tasks?company_id=${task.company_id}&assignee_user_id=${ALL_ASSIGNEES}`}
+                    class="block truncate text-xs text-text-muted hover:text-brand hover:underline"
+                    >{task.company_name}</a
+                  >
+                {:else}
+                  <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+                {/if}
               {/if}
-            </a>
+            </span>
             <span class="shrink-0 text-right text-xs tabular-nums">
               {#if task.due_date}
                 {@const distance = dueDistance(task.due_date)}

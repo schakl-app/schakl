@@ -68,13 +68,16 @@
     break_minutes: number;
     billable: boolean;
     approved_at: string | null;
+    project_id?: string | null;
+    project_name?: string | null;
+    task_id?: string | null;
+    task_title?: string | null;
   }
 
   //: Three days of work is what the card is for; the rest is one click of the expander. The
   //: feed default's browser-side companion (#407).
   const COLLAPSED = 4;
 
-  const totalMinutes = $derived((data.total_minutes ?? 0) as number);
   const recent = $derived((data.recent ?? []) as RecentEntry[]);
   /** How many exist behind the ten. Absent on a payload that predates #400 — then the rows we
    *  hold are all we can honestly claim, so the notice simply does not appear. */
@@ -144,10 +147,6 @@
      other — one fact, two places, and neither naming the other. -->
 <PanelHeader {title} />
 
-<p class="text-sm text-text">
-  {t("time.total_logged")}:
-  <span class="font-semibold text-text">{formatMinutes(totalMinutes)}</span>
-</p>
 <!-- Collapsed to a working handful, expandable in place, and honest about the rest (#407).
      The hand-over is offered only to somebody `/overview` will let in — it redirects anyone
      without `time.report.read`, and a link that always bounces is a broken control (#253) — so
@@ -199,6 +198,36 @@
                   </span>
                 {/if}
               </span>
+              <!-- Where the hour belongs (docs/UX.md principle 7): the project opens the report
+                   filtered to exactly these rows — for a viewer /overview lets in — and the task
+                   opens its own page. Plain text otherwise, never a link that bounces (#253). -->
+              {#if entry.project_name || entry.task_title}
+                <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
+                  {#if entry.project_name}
+                    {#if canViewReport && entry.project_id}
+                      <a
+                        href={`/overview?company_id=${companyId}&project_id=${entry.project_id}`}
+                        class="truncate hover:text-brand hover:underline">{entry.project_name}</a
+                      >
+                    {:else}
+                      <span class="truncate">{entry.project_name}</span>
+                    {/if}
+                  {/if}
+                  {#if entry.project_name && entry.task_title}
+                    <span aria-hidden="true">·</span>
+                  {/if}
+                  {#if entry.task_title}
+                    {#if entry.task_id}
+                      <a
+                        href={`/tasks/${entry.task_id}`}
+                        class="truncate hover:text-brand hover:underline">{entry.task_title}</a
+                      >
+                    {:else}
+                      <span class="truncate">{entry.task_title}</span>
+                    {/if}
+                  {/if}
+                </span>
+              {/if}
             </div>
             <span class="shrink-0 font-semibold tabular-nums text-text">
               {formatMinutes(entry.minutes)}
