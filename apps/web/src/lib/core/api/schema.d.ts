@@ -9867,6 +9867,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's projects settings (the budget alert). No saved row means the defaults.
+         */
+        get: operations["get_settings_api_v1_projects_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_projects_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -24751,6 +24772,32 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ProjectSettingsRead
+         * @description Org-wide projects settings; an org that never saved a row gets these defaults.
+         */
+        ProjectSettingsRead: {
+            /**
+             * Budget Alert Emails
+             * @default true
+             */
+            budget_alert_emails: boolean;
+            /**
+             * Budget Alert Threshold
+             * @default 75
+             */
+            budget_alert_threshold: number;
+        };
+        /**
+         * ProjectSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written.
+         */
+        ProjectSettingsUpdate: {
+            /** Budget Alert Emails */
+            budget_alert_emails?: boolean | null;
+            /** Budget Alert Threshold */
+            budget_alert_threshold?: number | null;
         };
         /**
          * ProjectStatus
@@ -51444,6 +51491,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardBudgets"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_projects_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_projects_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettingsRead"];
                 };
             };
             /** @description Validation Error */

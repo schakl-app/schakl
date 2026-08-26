@@ -7,7 +7,7 @@ sidebar:
 
 Employees rather than client contacts: leave balances and requests, employment periods and work schedules, and the login a client gets to look in.
 
-59 endpoints across 3 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+60 endpoints across 3 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `leave`
 
@@ -596,6 +596,7 @@ Query parameters:
 | `date_from` | string · required |  |
 | `date_to` | string · required |  |
 | `user_id` | string |  |
+| `limit` | integer | Cap the rows returned (#407). Absent means every absence in the range, which is what a calendar needs; a dashboard tile passes its own ceiling. |
 
 Returns: `200` · `TeamLeaveItem[]`
 
@@ -719,6 +720,7 @@ Returns: `200` · `DossierRead`
 | Endpoint | Permission |
 | --- | --- |
 | `POST` `/portal/impersonation/stop` | _Deliberately open_ |
+| `GET` `/portal/logins` | `members.member.write` |
 | `GET` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
 | `POST` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
 | `DELETE` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
@@ -735,6 +737,14 @@ Returns: `200` · `DossierRead`
 Permission: _Deliberately open_
 
 Returns: `204`
+
+#### `GET /api/v1/portal/logins`
+
+**List Portal Logins** — The org's client logins — the register (#406).
+
+Permission: `members.member.write`
+
+Returns: `200` · `PortalLoginRow[]`
 
 #### `GET /api/v1/portal/logins/{entity_type}/{subject_id}`
 

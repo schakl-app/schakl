@@ -7,7 +7,7 @@ sidebar:
 
 De cijfers van de klant, de advertenties die ze bewegen, de container die ze meet, en het maandelijkse document dat ze uitlegt.
 
-119 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+120 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `marketing`
 
@@ -19,6 +19,7 @@ De cijfers van de klant, de advertenties die ze bewegen, de container die ze mee
 | `GET` `/marketing/companies/{company_id}/metrics` | `marketing.metrics.read` |
 | `GET` `/marketing/companies/{company_id}/settings` | `marketing.metrics.read` |
 | `PUT` `/marketing/companies/{company_id}/settings` | `marketing.link.manage` |
+| `GET` `/marketing/companies/{company_id}/websites` | `marketing.link.manage` |
 | `GET` `/marketing/links` | `marketing.metrics.read` |
 | `POST` `/marketing/links` | `marketing.link.manage` |
 | `DELETE` `/marketing/links/{link_id}` | `marketing.link.manage` |
@@ -42,6 +43,7 @@ Queryparameters:
 | --- | --- | --- |
 | `source` | MarketingSource · verplicht |  |
 | `website_id` | string | Required for a source whose credential is per website (rankmath); ignored by every other source. |
+| `refresh` | boolean | Skip the short account cache and ask the provider again. What a picker offers after somebody has just created the thing they came here to link. (default `false`) |
 
 Antwoord: `200` · `AccountsResponse`
 
@@ -116,6 +118,16 @@ Padparameters: `company_id`
 Request body: `CompanySettingsUpdate`
 
 Antwoord: `200` · `CompanySettingsRead`
+
+#### `GET /api/v1/marketing/companies/{company_id}/websites`
+
+**Company Websites** — This client's websites — which one a new link attaches to (#399).
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `WebsiteRef[]`
 
 #### `GET /api/v1/marketing/links`
 

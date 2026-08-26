@@ -7,7 +7,7 @@ sidebar:
 
 Calendar, Drive, Gmail and Contacts, connected per organisation with your own OAuth client and switched on per employee.
 
-25 endpoints across 1 group. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+26 endpoints across 1 group. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `google`
 
@@ -20,6 +20,7 @@ Calendar, Drive, Gmail and Contacts, connected per organisation with your own OA
 | `PATCH` `/google/connections/me` | `google.connection.manage` |
 | `POST` `/google/connections/me/disconnect` | `google.connection.manage` |
 | `GET` `/google/drive/browse` | `google.drive.read` |
+| `DELETE` `/google/drive/files/{drive_file_id}` | `google.drive.write` |
 | `PUT` `/google/drive/folder` | `google.drive.write` |
 | `POST` `/google/drive/folders` | `google.drive.write` |
 | `GET` `/google/drive/links` | `google.drive.read` |
@@ -115,6 +116,16 @@ Query parameters:
 
 Returns: `200` · `DriveBrowseResult`
 
+#### `DELETE /api/v1/google/drive/files/{drive_file_id}`
+
+**Trash File** — Move a Drive file to Drive's bin — the other half of unlink (#394).
+
+Permission: `google.drive.write`
+
+Path parameters: `drive_file_id`
+
+Returns: `204`
+
 #### `PUT /api/v1/google/drive/folder`
 
 **Set Folder** — Point a record at an existing Drive folder — the picker's target.
@@ -148,6 +159,7 @@ Query parameters:
 | `entity_type` | string · required |  |
 | `entity_id` | string · required |  |
 | `rollup` | boolean |  (default `false`) |
+| `limit` | integer | Cap the page a panel draws (#407); ask for one more than you keep to learn there are more. Absent means every link, which is what the roll-up view needs — a roll-up folds a project's tasks in after the query and cannot be cut before it. |
 
 Returns: `200` · `DriveLinkRead[]`
 

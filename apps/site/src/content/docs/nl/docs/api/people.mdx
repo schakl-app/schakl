@@ -7,7 +7,7 @@ sidebar:
 
 Medewerkers in plaats van klantcontacten: verlofsaldi en aanvragen, dienstverbanden en werkroosters, en de inlog waarmee een klant meekijkt.
 
-59 endpoints, verdeeld over 3 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+60 endpoints, verdeeld over 3 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `leave`
 
@@ -596,6 +596,7 @@ Queryparameters:
 | `date_from` | string · verplicht |  |
 | `date_to` | string · verplicht |  |
 | `user_id` | string |  |
+| `limit` | integer | Cap the rows returned (#407). Absent means every absence in the range, which is what a calendar needs; a dashboard tile passes its own ceiling. |
 
 Antwoord: `200` · `TeamLeaveItem[]`
 
@@ -719,6 +720,7 @@ Antwoord: `200` · `DossierRead`
 | Endpoint | Recht |
 | --- | --- |
 | `POST` `/portal/impersonation/stop` | _Bewust open_ |
+| `GET` `/portal/logins` | `members.member.write` |
 | `GET` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
 | `POST` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
 | `DELETE` `/portal/logins/{entity_type}/{subject_id}` | `members.member.write` |
@@ -735,6 +737,14 @@ Antwoord: `200` · `DossierRead`
 Recht: _Bewust open_
 
 Antwoord: `204`
+
+#### `GET /api/v1/portal/logins`
+
+**List Portal Logins** — The org's client logins — the register (#406).
+
+Recht: `members.member.write`
+
+Antwoord: `200` · `PortalLoginRow[]`
 
 #### `GET /api/v1/portal/logins/{entity_type}/{subject_id}`
 

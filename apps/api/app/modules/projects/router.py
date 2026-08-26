@@ -12,6 +12,8 @@ from app.modules.projects.schemas import (
     DashboardBudgets,
     ProjectCreate,
     ProjectRead,
+    ProjectSettingsRead,
+    ProjectSettingsUpdate,
     ProjectUpdate,
 )
 from app.modules.projects.service import ProjectService
@@ -36,6 +38,29 @@ async def dashboard_budgets(
     (docs/PERFORMANCE.md).
     """
     return await ProjectService(ctx).dashboard_budgets(limit=limit)
+
+
+# Literal path before the dynamic ``/{project_id}``, like ``/dashboard-budgets`` above.
+@router.get(
+    "/settings",
+    response_model=ProjectSettingsRead,
+    dependencies=[require_permission("projects.settings.manage")],
+)
+async def get_settings(ctx: RequestContext = Depends(require_context)) -> ProjectSettingsRead:
+    """The org's projects settings (the budget alert). No saved row means the defaults."""
+    return await ProjectService(ctx).settings()
+
+
+@router.put(
+    "/settings",
+    response_model=ProjectSettingsRead,
+    dependencies=[require_permission("projects.settings.manage")],
+)
+async def update_settings(
+    payload: ProjectSettingsUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ProjectSettingsRead:
+    return await ProjectService(ctx).update_settings(payload)
 
 
 @router.get(

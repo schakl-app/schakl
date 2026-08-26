@@ -7,7 +7,7 @@ sidebar:
 
 Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet.
 
-25 endpoints, verdeeld over 1 groep. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+26 endpoints, verdeeld over 1 groep. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `google`
 
@@ -20,6 +20,7 @@ Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-
 | `PATCH` `/google/connections/me` | `google.connection.manage` |
 | `POST` `/google/connections/me/disconnect` | `google.connection.manage` |
 | `GET` `/google/drive/browse` | `google.drive.read` |
+| `DELETE` `/google/drive/files/{drive_file_id}` | `google.drive.write` |
 | `PUT` `/google/drive/folder` | `google.drive.write` |
 | `POST` `/google/drive/folders` | `google.drive.write` |
 | `GET` `/google/drive/links` | `google.drive.read` |
@@ -115,6 +116,16 @@ Queryparameters:
 
 Antwoord: `200` · `DriveBrowseResult`
 
+#### `DELETE /api/v1/google/drive/files/{drive_file_id}`
+
+**Trash File** — Move a Drive file to Drive's bin — the other half of unlink (#394).
+
+Recht: `google.drive.write`
+
+Padparameters: `drive_file_id`
+
+Antwoord: `204`
+
 #### `PUT /api/v1/google/drive/folder`
 
 **Set Folder** — Point a record at an existing Drive folder — the picker's target.
@@ -148,6 +159,7 @@ Queryparameters:
 | `entity_type` | string · verplicht |  |
 | `entity_id` | string · verplicht |  |
 | `rollup` | boolean |  (default `false`) |
+| `limit` | integer | Cap the page a panel draws (#407); ask for one more than you keep to learn there are more. Absent means every link, which is what the roll-up view needs — a roll-up folds a project's tasks in after the query and cannot be cut before it. |
 
 Antwoord: `200` · `DriveLinkRead[]`
 

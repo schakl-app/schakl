@@ -12,4 +12,7 @@ PROJECT_PERMISSIONS: list[PermissionSpec] = [
     ),
     PermissionSpec("projects.project.write", position=20),
     PermissionSpec("projects.project.delete", position=30),
+    # Org-wide projects settings (the budget alert). Admin-only by default: a global threshold
+    # is agency policy, not a per-member preference.
+    PermissionSpec("projects.settings.manage", position=40),
 ]

@@ -30,12 +30,19 @@ from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.projects.budget import period_bound, period_start_date
-from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
+from app.modules.projects.budget import effective_budget, period_bound, period_start_date
+from app.modules.projects.models import (
+    Project,
+    ProjectAssignee,
+    ProjectSettings,
+    ProjectStatus,
+)
 from app.modules.projects.schemas import (
     DashboardBudgetProject,
     DashboardBudgets,
     ProjectCreate,
+    ProjectSettingsRead,
+    ProjectSettingsUpdate,
     ProjectUpdate,
 )
 from app.schemas import BudgetHours
@@ -197,21 +204,16 @@ class ProjectService:
 
         sources = await self._attach_subscription_sources(projects)
 
-        def effective_period(project: Project) -> str:
-            return "monthly" if sources.get(project.id) else project.budget_period
-
         tz = await self._zone()
-        periods = {p.id: period_bound(effective_period(p), tz=tz) for p in projects}
+        effective = {
+            p.id: effective_budget(p.budget_hours, p.budget_period, sources.get(p.id, []))
+            for p in projects
+        }
+        periods = {p.id: period_bound(effective[p.id][1], tz=tz) for p in projects}
         logged = await TimeService(self.ctx).minutes_by_project(periods)
         for project in projects:
             minutes = logged.get(project.id, LoggedMinutes())
-            if covering := sources.get(project.id):
-                budget = round(sum(s.monthly_hours for s in covering), 2)
-            elif project.budget_hours is not None:
-                budget = float(project.budget_hours)
-            else:
-                budget = None
-            period = effective_period(project)
+            budget, period = effective[project.id]
             spent = _hours(minutes.total)
             project.hours = BudgetHours(
                 period=period,
@@ -562,3 +564,37 @@ class ProjectService:
         self.ctx.require("projects.project.delete")
         project = await self.repo.get_or_404(project_id)
         await self.repo.delete(project)
+
+    # --- org settings (the budget alert) ---------------------------------------- #
+    async def settings_row(self) -> ProjectSettings | None:
+        """The org's settings row, if it has one. A missing row is not seeded here: writing on
+        a read would race two concurrent GETs into a unique-violation, and the absent row
+        already means exactly "the defaults" (the leave module's rule)."""
+        return await self.ctx.session.scalar(
+            self.ctx.repo(ProjectSettings).scoped_select().limit(1)
+        )
+
+    async def settings(self) -> ProjectSettingsRead:
+        row = await self.settings_row()
+        if row is None:
+            return ProjectSettingsRead()
+        return ProjectSettingsRead(
+            budget_alert_emails=row.budget_alert_emails,
+            budget_alert_threshold=row.budget_alert_threshold,
+        )
+
+    async def update_settings(self, data: ProjectSettingsUpdate) -> ProjectSettingsRead:
+        """Write only what the caller sent (absent means leave alone, §18)."""
+        self.ctx.require("projects.settings.manage")
+        values = {
+            key: value
+            for key, value in data.model_dump(exclude_unset=True).items()
+            if value is not None
+        }
+        repo = self.ctx.repo(ProjectSettings)
+        row = await self.settings_row()
+        if row is None:
+            await repo.create(**values)
+        elif values:
+            await repo.update(row, **values)
+        return await self.settings()

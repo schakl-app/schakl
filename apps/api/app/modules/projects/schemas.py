@@ -109,6 +109,24 @@ class ProjectRead(ProjectBase):
     budget_sources: list[ProjectHoursSource] = Field(default_factory=list)
 
 
+class ProjectSettingsRead(BaseModel):
+    """Org-wide projects settings; an org that never saved a row gets these defaults."""
+
+    #: The dedicated budget alert mail to a project's assignees (nightly watch).
+    budget_alert_emails: bool = True
+    #: Percent of the hour budget at which a project counts as "almost" spent. Drives the
+    #: alert mail *and* the in-app ``project.budget_threshold`` notification, so the bell and
+    #: the mail never disagree about what "almost" means. 75 is the pre-settings behaviour.
+    budget_alert_threshold: int = Field(default=75, ge=5, le=100)
+
+
+class ProjectSettingsUpdate(BaseModel):
+    """A **partial** update: only the fields present in the body are written."""
+
+    budget_alert_emails: bool | None = None
+    budget_alert_threshold: int | None = Field(default=None, ge=5, le=100)
+
+
 class DashboardBudgetProject(BaseModel):
     """The four fields the My Day burn tile draws — nothing else (#290).
 
