@@ -7,6 +7,6 @@
  * can link to. `unnamed` gathers the abandoned create-then-edit rows (#350) and is orthogonal
  * to it: a nameless project has a status like any other.
  */
-export const PROJECT_FILTERS = ["q", "company", "mine", "status", "unnamed"] as const;
+export const PROJECT_FILTERS = ["q", "company", "mine", "status", "unnamed", "burn"] as const;
 
 export type ProjectFilterKey = (typeof PROJECT_FILTERS)[number];

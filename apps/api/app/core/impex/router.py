@@ -63,6 +63,9 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     "invoiceable": (bool | None, Query(None)),
     "uptime_enabled": (bool | None, Query(None)),
     "subscription_type_id": (uuid.UUID | None, Query(None)),
+    # 'over' keeps only budgeted projects at or past their budget (#437) — the projects list's
+    # own token, so the over-budget view exports exactly what it shows.
+    "burn": (str | None, Query(None, max_length=20)),
     "sort": (str | None, Query(None, max_length=50, description="List sort key, '-' desc")),
 }
 

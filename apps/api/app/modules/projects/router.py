@@ -29,7 +29,9 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     dependencies=[require_permission("projects.project.read")],
 )
 async def dashboard_budgets(
-    limit: int = Query(4, ge=1, le=20),
+    # 50, not 20: the budgets donut (#437) draws more of the book than the My Day tile's four,
+    # and the honest tail bucket takes whatever the cap leaves.
+    limit: int = Query(4, ge=1, le=50),
     ctx: RequestContext = Depends(require_context),
 ) -> DashboardBudgets:
     """The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
@@ -97,6 +99,15 @@ async def list_projects(
         False, description="Include the budget burn-down; costs one grouped query"
     ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    burn: str | None = Query(
+        None,
+        max_length=20,
+        description=(
+            "'over' keeps only budgeted projects at or past their budget (#437) — the burn "
+            "enrichment rides along, and the total counts what survived. Other tokens are "
+            "ignored."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
     items, total = await ProjectService(ctx).list(
@@ -110,6 +121,7 @@ async def list_projects(
         sort=sort,
         hours=hours,
         count=count,
+        burn=burn,
     )
     return Page(
         items=[ProjectRead.model_validate(p) for p in items],

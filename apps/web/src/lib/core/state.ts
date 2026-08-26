@@ -96,8 +96,25 @@ const BORDER: Record<UiState, string> = {
   neutral: "border-border",
 };
 
+/**
+ * A chart mark drawn in a state (a donut slice, a plotted point). SVG paints through `fill`,
+ * which `bg-*` cannot reach, so the same hues are stated once more as `fill-*` — same shades
+ * as `FILL`, and only ever restated here.
+ */
+const SVG_FILL: Record<UiState, string> = {
+  late: "fill-red-500 dark:fill-red-400",
+  today: "fill-orange-500 dark:fill-orange-400",
+  soon: "fill-amber-500 dark:fill-amber-400",
+  ok: "fill-emerald-500 dark:fill-emerald-400",
+  neutral: "fill-text-muted",
+};
+
 export function stateTextClass(state: UiState): string {
   return TEXT[state] ?? TEXT.neutral;
+}
+
+export function stateSvgFillClass(state: UiState): string {
+  return SVG_FILL[state] ?? SVG_FILL.neutral;
 }
 
 export function stateChipClass(state: UiState): string {

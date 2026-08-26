@@ -287,7 +287,37 @@ class ProjectService:
         sort: str | None = None,
         hours: bool = False,
         count: bool = True,
+        burn: str | None = None,
     ) -> tuple[Sequence[Project], int]:
+        # "Over budget" cannot be a SQL condition: the effective budget may come from a
+        # covering subscription (#225), and that rule lives in ``_attach_hours`` —
+        # re-expressing it as SQL would be a second copy of it (``dashboard_budgets``' own
+        # argument). So a burn filter takes the ``dashboard_budgets`` shape instead (#437):
+        # fetch the filtered set whole, enrich, filter in Python, cut, and report a total
+        # counted over what survived — the SQL COUNT below would count rows the reader never
+        # sees, which is the one lie a filtered list must not tell. Any token but ``over`` is
+        # ignored (a query string anyone can edit falls back rather than 422s, §9).
+        if burn == "over":
+            items, _ = await self.list(
+                limit=10_000,
+                offset=0,
+                company_id=company_id,
+                status=status,
+                q=q,
+                unnamed=unnamed,
+                mine=mine,
+                sort=sort,
+                hours=True,
+                count=False,
+            )
+            over = [
+                p
+                for p in items
+                if p.hours.budget_hours  # type: ignore[attr-defined]
+                and p.hours.spent_hours >= p.hours.budget_hours  # type: ignore[attr-defined]
+            ]
+            return over[offset : offset + limit], len(over)
+
         conditions = []
         if company_id is not None:
             conditions.append(Project.company_id == company_id)
@@ -362,6 +392,7 @@ class ProjectService:
         # After the cut, never before: the tile draws four rows, so the client labels are one
         # query over at most four clients rather than over every active project in the org.
         rows = budgeted[:limit]
+        tail = budgeted[limit:]
         await self._attach_company_names(rows)
         return DashboardBudgets(
             items=[
@@ -376,6 +407,16 @@ class ProjectService:
             # Free: the sort above already has every budgeted active project in hand, so the
             # tile can say "4 van 17" without a second statement (#407).
             total=len(budgeted),
+            # Also free, and what lets a donut draw an honest "overig" slice (#437): the
+            # tail's hours, not merely its count.
+            tail_spent_hours=sum(p.hours.spent_hours for p in tail),  # type: ignore[attr-defined]
+            tail_budget_hours=sum(p.hours.budget_hours or 0 for p in tail),  # type: ignore[attr-defined]
+            # Over the whole set, so the figure agrees with the ``?burn=over`` list it opens.
+            over_budget=sum(
+                1
+                for p in budgeted
+                if p.hours.spent_hours >= p.hours.budget_hours  # type: ignore[attr-defined]
+            ),
         )
 
     async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:

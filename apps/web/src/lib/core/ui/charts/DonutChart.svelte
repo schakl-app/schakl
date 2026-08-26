@@ -1,15 +1,33 @@
 <script lang="ts">
   /**
-   * Donut for ranked shares of one measure (top clients by omzet). Slices use a single-hue
-   * sequential ramp by rank (magnitude, not identity — identity lives in the legend), with
-   * 2px surface gaps between slices; the trailing "other" bucket is neutral.
+   * Donut for shares of one measure. Two colourings, and which one a slice gets is the
+   * caller's claim to make:
+   *
+   * - **Rank** (the default): a single-hue sequential ramp by magnitude — identity lives in
+   *   the legend. What the revenue page has always drawn (top clients by omzet).
+   * - **State**: a slice carrying `state` is painted from the state palette (#404) — a
+   *   budgets donut colours by burn, where an over-budget slice is a claim, never a shade of
+   *   blue. Never the tenant's brand. The caller still owes the palette's other half ("never
+   *   colour alone"): a glyph-bearing reading of the same fact beside the chart.
+   *
+   * `format` says the unit (#437): this chart was born on the revenue page and hard-coded
+   * euros, so hours rendered as money on any second caller. Slices and legend figures may
+   * carry links (`href` opens the record, `valueHref` opens the records behind the figure) —
+   * a figure the reader cannot take apart is a figure they will not trust (UX Principle 7).
    */
   import { fmtMoney } from "$lib/core/format";
+  import { stateFillClass, stateSvgFillClass, type UiState } from "$lib/core/state";
   import { resolvedTheme } from "$lib/core/theme-mode.svelte";
 
   interface Slice {
     label: string;
     value: number;
+    /** Painted from the state palette instead of the ramp when set. */
+    state?: UiState;
+    /** Where the slice (and its legend name) opens. */
+    href?: string;
+    /** Where the legend figure opens — the records behind the number. */
+    valueHref?: string;
   }
 
   let {
@@ -17,11 +35,14 @@
     otherLabel,
     otherValue = 0,
     centerLabel,
+    format = fmtMoney,
   }: {
     slices: Slice[];
     otherLabel: string;
     otherValue?: number;
     centerLabel: string;
+    /** How a value prints — the caller's unit. Defaults to euros (the first caller's). */
+    format?: (value: number) => string;
   } = $props();
 
   // Sequential blue ramp, dark→light with rank (monotonic lightness). Two variants — the light
@@ -67,7 +88,7 @@
 
   const arcs = $derived.by(() => {
     let acc = 0;
-    return all.map((slice, i) => {
+    return all.map((slice: Slice, i) => {
       const start = total > 0 ? acc / total : 0;
       acc += slice.value;
       const end = total > 0 ? acc / total : 0;
@@ -75,7 +96,10 @@
       return {
         ...slice,
         path: arcPath(start, end),
-        color: isOther ? OTHER_COLOR : rampColor(i, slices.length),
+        // A stated state wins; rank ramps only the stateless slices' world (the first caller).
+        color: isOther ? OTHER_COLOR : slice.state ? null : rampColor(i, slices.length),
+        fillClass: !isOther && slice.state ? stateSvgFillClass(slice.state) : "",
+        swatchClass: !isOther && slice.state ? stateFillClass(slice.state) : "",
         share: total > 0 ? slice.value / total : 0,
       };
     });
@@ -87,16 +111,23 @@
 <div class="flex flex-wrap items-center gap-6">
   <svg viewBox="0 0 200 200" class="h-44 w-44 shrink-0" role="img">
     {#each arcs as arc, i (arc.label)}
-      <path
-        d={arc.path}
-        fill={arc.color}
-        class="stroke-surface-raised"
-        stroke-width="2"
-        opacity={hovered === null || hovered === i ? 1 : 0.4}
-        onmouseenter={() => (hovered = i)}
-        onmouseleave={() => (hovered = null)}
-        role="presentation"
-      />
+      {#snippet slicePath()}
+        <path
+          d={arc.path}
+          fill={arc.color ?? undefined}
+          class="stroke-surface-raised {arc.fillClass}"
+          stroke-width="2"
+          opacity={hovered === null || hovered === i ? 1 : 0.4}
+          onmouseenter={() => (hovered = i)}
+          onmouseleave={() => (hovered = null)}
+          role="presentation"
+        />
+      {/snippet}
+      {#if arc.href}
+        <a href={arc.href} aria-label={arc.label}>{@render slicePath()}</a>
+      {:else}
+        {@render slicePath()}
+      {/if}
     {/each}
     <text
       x={CX}
@@ -104,7 +135,7 @@
       text-anchor="middle"
       class="fill-text text-[15px] font-semibold tabular-nums"
     >
-      {fmtMoney(hovered !== null ? arcs[hovered].value : total)}
+      {format(hovered !== null ? arcs[hovered].value : total)}
     </text>
     <text x={CX} y={CY + 13} text-anchor="middle" class="fill-text-muted text-[9px]">
       {hovered !== null ? arcs[hovered].label.slice(0, 22) : centerLabel}
@@ -121,9 +152,26 @@
         onmouseenter={() => (hovered = i)}
         onmouseleave={() => (hovered = null)}
       >
-        <span class="h-2.5 w-2.5 shrink-0 rounded-sm" style="background:{arc.color}"></span>
-        <span class="min-w-0 flex-1 truncate text-text">{arc.label}</span>
-        <span class="shrink-0 tabular-nums text-text-muted">{fmtMoney(arc.value)}</span>
+        <span
+          class="h-2.5 w-2.5 shrink-0 rounded-sm {arc.swatchClass}"
+          style={arc.color ? `background:${arc.color}` : ""}
+        ></span>
+        {#if arc.href}
+          <a href={arc.href} class="min-w-0 flex-1 truncate text-text hover:text-brand">
+            {arc.label}
+          </a>
+        {:else}
+          <span class="min-w-0 flex-1 truncate text-text">{arc.label}</span>
+        {/if}
+        {#if arc.valueHref}
+          <a
+            href={arc.valueHref}
+            class="shrink-0 tabular-nums text-text-muted underline-offset-2 hover:text-brand hover:underline"
+            >{format(arc.value)}</a
+          >
+        {:else}
+          <span class="shrink-0 tabular-nums text-text-muted">{format(arc.value)}</span>
+        {/if}
         <span class="w-11 shrink-0 text-right text-xs tabular-nums text-text-muted">
           {(arc.share * 100).toFixed(1)}%
         </span>

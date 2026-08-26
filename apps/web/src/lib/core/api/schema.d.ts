@@ -16412,6 +16412,21 @@ export interface components {
         DashboardBudgets: {
             /** Items */
             items: components["schemas"]["DashboardBudgetProject"][];
+            /**
+             * Over Budget
+             * @default 0
+             */
+            over_budget: number;
+            /**
+             * Tail Budget Hours
+             * @default 0
+             */
+            tail_budget_hours: number;
+            /**
+             * Tail Spent Hours
+             * @default 0
+             */
+            tail_spent_hours: number;
             /** Total */
             total: number;
         };
@@ -42270,6 +42285,7 @@ export interface operations {
                 mine?: boolean;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
+                burn?: string | null;
             };
             header?: never;
             path?: never;
@@ -51501,6 +51517,8 @@ export interface operations {
                 hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
+                /** @description 'over' keeps only budgeted projects at or past their budget (#437) — the burn enrichment rides along, and the total counts what survived. Other tokens are ignored. */
+                burn?: string | null;
             };
             header?: never;
             path?: never;

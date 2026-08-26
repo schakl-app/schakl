@@ -151,3 +151,11 @@ class DashboardBudgets(BaseModel):
 
     items: list[DashboardBudgetProject]
     total: int
+    #: Sums over the budgeted projects *past* the cut (#437): a donut's "overig" slice must
+    #: carry the tail's hours, not merely its count — a bucket with no value draws nothing,
+    #: which reads as "these slices are all of it" (§17). Zero when nothing was cut.
+    tail_spent_hours: float = 0.0
+    tail_budget_hours: float = 0.0
+    #: How many budgeted projects are at or past their budget — over the *whole* set, so the
+    #: aggregate the widget prints agrees with the ``?burn=over`` list it opens (#437).
+    over_budget: int = 0

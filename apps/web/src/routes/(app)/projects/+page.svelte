@@ -176,6 +176,13 @@
       key: "unnamed",
       options: [{ value: "1", label: t("projects.filter.unnamed") }],
     },
+    // Over budget (#437) — the dashboard donut's aggregate opens exactly this. A filter you
+    // can arrive at by link must be visible and clearable, so it is a pill like the rest.
+    {
+      kind: "pills",
+      key: "burn",
+      options: [{ value: "over", label: t("projects.filter.over_budget") }],
+    },
   ]);
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
@@ -372,6 +379,7 @@
         status: data.statusQuery,
         mine: data.mine,
         sort: data.table.sort,
+        burn: page.url.searchParams.get("burn") === "over" ? "over" : null,
       }}
       locale={data.locale}
       {form}
