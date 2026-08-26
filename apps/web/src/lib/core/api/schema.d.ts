@@ -3793,6 +3793,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Drive State
+         * @description Provisioning readiness + this entity's folder-job status, for the panels (#444).
+         */
+        get: operations["drive_state_api_v1_google_drive_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/drive/upload-session": {
         parameters: {
             query?: never;
@@ -17185,6 +17205,23 @@ export interface components {
             entity_id: string;
             /** Entity Type */
             entity_type: string;
+        };
+        /**
+         * DriveStateRead
+         * @description Provisioning readiness for the panels (#444) — the flags the company panel's provider
+         *     already computed, servable to the project/task panels that load over ``/links``.
+         */
+        DriveStateRead: {
+            /** Can Provision */
+            can_provision: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Job Error */
+            job_error?: string | null;
+            /** Job Status */
+            job_status?: string | null;
+            /** Viewer Connected */
+            viewer_connected: boolean;
         };
         /** DriveUploadSession */
         DriveUploadSession: {
@@ -40010,6 +40047,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveBulkProvisionResult"];
+                };
+            };
+        };
+    };
+    drive_state_api_v1_google_drive_state_get: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

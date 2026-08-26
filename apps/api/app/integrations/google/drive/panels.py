@@ -11,7 +11,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.integrations.google.drive.models import DriveLink
-from app.integrations.google.drive.service import DriveService
+from app.integrations.google.drive.service import DriveService, drive_root
 from app.integrations.google.oauth import google_settings_row
 from app.registry import PANEL_FEED, SIZE_HALF, PanelSpec
 
@@ -59,7 +59,14 @@ async def _drive_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
         "viewer_connected": bool(
             connection and connection.status == ConnectionStatus.ACTIVE.value
         ),
-        "can_provision": bool(row.automation_connection_user_id and ctx.can("google.drive.write")),
+        # Everything the 409s downstream would refuse on (#444): the automation connection AND
+        # a configured root — a button drawn on half the requirement is a control that can
+        # only refuse, which is precisely what the comment below forbids.
+        "can_provision": bool(
+            row.automation_connection_user_id
+            and drive_root(row)
+            and ctx.can("google.drive.write")
+        ),
         # Choosing the client's *first* folder is ordinary write work; changing or detaching an
         # existing one is not. The panel draws each control on the gate that will answer it —
         # never a lock the API would then contradict.
