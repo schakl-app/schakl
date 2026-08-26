@@ -1,7 +1,7 @@
 """gtm_add_container_prose
 
 Revision ID: d4e91b2c7f38
-Revises: b3d17c5e8a02
+Revises: b24c38a5b7cb
 Create Date: 2026-08-26 10:00:00.000000
 
 Two tenant prose columns on ``gtm_containers`` (#442): a summary (what this container is and
@@ -21,7 +21,9 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d4e91b2c7f38"
-down_revision: str | None = "b3d17c5e8a02"
+# Re-chained onto the budget-alerts revision after both branched off b3d17c5e8a02 in
+# parallel (docs/WORKFLOW.md: the graph has exactly one head; the later push re-chains).
+down_revision: str | None = "b24c38a5b7cb"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
