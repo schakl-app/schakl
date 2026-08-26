@@ -751,6 +751,49 @@ async def test_team_feed_costs_a_constant_number_of_queries(client_for, count_qu
         assert len(four_requests) == len(one_request)
 
 
+async def test_team_feed_drops_a_deactivated_member(client_for) -> None:
+    """#439: a departed colleague's absences stop rendering on the agenda feed. The requests
+    themselves stay (balances and reports are other endpoints); only the feed goes quiet."""
+    tenant = await make_tenant("leave-team-deactivated")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        type_id = await _type_id(client, headers)
+        invited = await client.post(
+            "/api/v1/members/invite",
+            json={"email": "weg@example.com", "full_name": "Weg Gegaan", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        member_id = invited.json()["user_id"]
+        membership_id = invited.json()["membership_id"]
+
+        day = date(2026, 6, 15)
+        for uid in (member_id, str(tenant.user.id)):
+            res = await client.post(
+                "/api/v1/leave/requests",
+                json={
+                    "leave_type_id": type_id,
+                    "user_id": uid,
+                    "start_date": day.isoformat(),
+                    "end_date": day.isoformat(),
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        params = f"date_from={day}&date_to={day}"
+        before = (await client.get(f"/api/v1/leave/team?{params}", headers=headers)).json()
+        assert {item["user_id"] for item in before} == {member_id, str(tenant.user.id)}
+
+        off = await client.patch(
+            f"/api/v1/members/{membership_id}/account", json={"active": False}, headers=headers
+        )
+        assert off.status_code == 200, off.text
+
+        after = (await client.get(f"/api/v1/leave/team?{params}", headers=headers)).json()
+        assert {item["user_id"] for item in after} == {str(tenant.user.id)}
+
+
 # --- tenant isolation -------------------------------------------------------------- #
 async def test_preview_cannot_cross_tenants(client_for) -> None:
     """A manager in org B may not preview a user of org A (Golden Rule 1)."""

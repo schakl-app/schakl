@@ -24,10 +24,11 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.members import active_member_clause
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.core.timezone import org_zoneinfo
@@ -145,6 +146,17 @@ class TaskScheduleService:
             )
         if task_id is not None:
             stmt = stmt.where(TaskSchedule.task_id == task_id)
+        else:
+            # The calendar feed stops drawing a departed colleague's blocks the moment the
+            # roster menus stop offering the person (#439) — the rows themselves stay, and the
+            # task page's own panel (``task_id`` set) keeps showing them, because a record
+            # surface keeps its record. A block with no person is the system's and stays too.
+            stmt = stmt.where(
+                or_(
+                    TaskSchedule.user_id.is_(None),
+                    active_member_clause(self.ctx.org.id, TaskSchedule.user_id),
+                )
+            )
         if targets is not None:
             stmt = stmt.where(TaskSchedule.user_id.in_(targets))
 
