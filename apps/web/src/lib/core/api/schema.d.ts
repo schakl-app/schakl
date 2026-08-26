@@ -3530,6 +3530,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/calendar/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar List
+         * @description The viewer's own calendarList — the selection UI's read (#440). Briefly cached; the
+         *     existing ``calendar.events`` scope covers it, so no re-consent is needed.
+         */
+        get: operations["calendar_list_api_v1_google_calendar_calendars_get"];
+        /**
+         * Set Calendar Selection
+         * @description Choose which shared calendars sync for the viewer. Deselecting removes the calendar's
+         *     cached events on the spot; selecting queues a sync so the agenda fills without waiting.
+         */
+        put: operations["set_calendar_selection_api_v1_google_calendar_calendars_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/calendar/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar Channels
+         * @description The viewer's selection off the database alone — what the Agenda's feeds menu reads on
+         *     every open, so it never costs a Google call.
+         */
+        get: operations["calendar_channels_api_v1_google_calendar_channels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/calendar/events": {
         parameters: {
             query?: never;
@@ -3787,6 +3834,26 @@ export interface paths {
          * @description Backfill: a folder for every client that has none (Instellingen → Google).
          */
         post: operations["provision_all_api_v1_google_drive_provision_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Drive State
+         * @description Provisioning readiness + this entity's folder-job status, for the panels (#444).
+         */
+        get: operations["drive_state_api_v1_google_drive_state_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9301,6 +9368,78 @@ export interface paths {
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
         trace?: never;
     };
+    "/api/v1/oauth/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clients
+         * @description Every live client of this org — the DCR ones included, so the admin overview and the
+         *     per-user connections list cannot tell two different stories about what may connect.
+         */
+        get: operations["list_clients_api_v1_oauth_clients_get"];
+        put?: never;
+        /**
+         * Create Client
+         * @description Mint a confidential client for something that will not DCR. The secret is in this
+         *     response and nowhere else, ever — only its hash is stored (the API-key rule).
+         */
+        post: operations["create_client_api_v1_oauth_clients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/clients/{client_pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Client
+         * @description The admin kill switch — the per-user disconnect, org-wide: the client is revoked and
+         *     every key it ever issued, whoever's, goes with it. A revoked client cannot refresh back.
+         */
+        delete: operations["revoke_client_api_v1_oauth_clients__client_pk__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/clients/{client_pk}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Client Secret
+         * @description A new secret for a manual client; the old one stops working on the spot.
+         *
+         *     Manual clients only: a DCR client's secret lives in software that registered itself and
+         *     cannot be told about the new one — rotating it there is an outage wearing a security
+         *     control's clothes. Live sessions (api_keys) survive on purpose: rotation is "the old
+         *     *secret* must stop working", and killing the sessions is what DELETE is for.
+         */
+        post: operations["rotate_client_secret_api_v1_oauth_clients__client_pk__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/oauth/connections": {
         parameters: {
             query?: never;
@@ -9860,6 +9999,27 @@ export interface paths {
          */
         get: operations["dashboard_budgets_api_v1_projects_dashboard_budgets_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's projects settings (the budget alert). No saved row means the defaults.
+         */
+        get: operations["get_settings_api_v1_projects_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_projects_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -15057,6 +15217,11 @@ export interface components {
             /** All Day */
             all_day: boolean;
             /**
+             * Calendar Id
+             * @default primary
+             */
+            calendar_id: string;
+            /**
              * Cancelled
              * @default false
              */
@@ -15080,6 +15245,31 @@ export interface components {
             tentative: boolean;
             /** Title */
             title: string;
+        };
+        /**
+         * CalendarListEntry
+         * @description One row of the viewer's Google calendarList, with whether it syncs here.
+         */
+        CalendarListEntry: {
+            /** Access Role */
+            access_role: string;
+            /** Id */
+            id: string;
+            /** Primary */
+            primary: boolean;
+            /** Selected */
+            selected: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * CalendarSelection
+         * @description Which shared calendars sync, whole-list (#440). The primary always syncs and is not in
+         *     the vocabulary; an id not on the viewer's own calendarList is refused.
+         */
+        CalendarSelection: {
+            /** Calendar Ids */
+            calendar_ids?: string[];
         };
         /** CapabilityInfo */
         CapabilityInfo: {
@@ -16371,6 +16561,21 @@ export interface components {
         DashboardBudgets: {
             /** Items */
             items: components["schemas"]["DashboardBudgetProject"][];
+            /**
+             * Over Budget
+             * @default 0
+             */
+            over_budget: number;
+            /**
+             * Tail Budget Hours
+             * @default 0
+             */
+            tail_budget_hours: number;
+            /**
+             * Tail Spent Hours
+             * @default 0
+             */
+            tail_spent_hours: number;
             /** Total */
             total: number;
         };
@@ -17164,6 +17369,23 @@ export interface components {
             entity_id: string;
             /** Entity Type */
             entity_type: string;
+        };
+        /**
+         * DriveStateRead
+         * @description Provisioning readiness for the panels (#444) — the flags the company panel's provider
+         *     already computed, servable to the project/task panels that load over ``/links``.
+         */
+        DriveStateRead: {
+            /** Can Provision */
+            can_provision: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Job Error */
+            job_error?: string | null;
+            /** Job Status */
+            job_status?: string | null;
+            /** Viewer Connected */
+            viewer_connected: boolean;
         };
         /** DriveUploadSession */
         DriveUploadSession: {
@@ -19452,6 +19674,11 @@ export interface components {
             connection_id: string | null;
             /** Domain Names */
             domain_names: string[];
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
             /** Gtm Account Id */
             gtm_account_id: string;
             /** Gtm Container Id */
@@ -19481,6 +19708,11 @@ export interface components {
             public_id: string;
             /** Status */
             status: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
             /** Tag Count */
             tag_count: number;
             /** Tag Manager Url */
@@ -19501,12 +19733,20 @@ export interface components {
         /**
          * GtmContainerUpdate
          * @description Only the fields schakl *decided*. What Google said is refreshed by verify, never typed.
+         *
+         *     §18 semantics throughout: a field left out of the payload is left alone, and for the two
+         *     prose fields an explicit ``null`` clears (they store ``""``, never NULL) — the Ads policy
+         *     write's shape (``GoogleAdsPolicyWrite``).
          */
         GtmContainerUpdate: {
             /** Active */
             active?: boolean | null;
             /** Company Id */
             company_id?: string | null;
+            /** Goal */
+            goal?: string | null;
+            /** Summary */
+            summary?: string | null;
             /** Website Id */
             website_id?: string | null;
         };
@@ -23219,6 +23459,59 @@ export interface components {
              */
             visible_at: string;
         };
+        /** OAuthClientCreate */
+        OAuthClientCreate: {
+            /** Client Name */
+            client_name: string;
+            /** Redirect Uris */
+            redirect_uris: string[];
+        };
+        /** OAuthClientCreated */
+        OAuthClientCreated: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Client Secret */
+            client_secret: string;
+            /** Confidential */
+            confidential: boolean;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Manual */
+            manual: boolean;
+            /** Redirect Uris */
+            redirect_uris: string[];
+        };
+        /** OAuthClientRead */
+        OAuthClientRead: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name: string;
+            /** Confidential */
+            confidential: boolean;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Manual */
+            manual: boolean;
+            /** Redirect Uris */
+            redirect_uris: string[];
+        };
         /** OrgCreate */
         OrgCreate: {
             /** Brand Name */
@@ -24751,6 +25044,32 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ProjectSettingsRead
+         * @description Org-wide projects settings; an org that never saved a row gets these defaults.
+         */
+        ProjectSettingsRead: {
+            /**
+             * Budget Alert Emails
+             * @default true
+             */
+            budget_alert_emails: boolean;
+            /**
+             * Budget Alert Threshold
+             * @default 75
+             */
+            budget_alert_threshold: number;
+        };
+        /**
+         * ProjectSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written.
+         */
+        ProjectSettingsUpdate: {
+            /** Budget Alert Emails */
+            budget_alert_emails?: boolean | null;
+            /** Budget Alert Threshold */
+            budget_alert_threshold?: number | null;
         };
         /**
          * ProjectStatus
@@ -27016,6 +27335,15 @@ export interface components {
             source_key: string;
             /** Title Key */
             title_key: string;
+        };
+        /** SelectedCalendar */
+        SelectedCalendar: {
+            /** Calendar Id */
+            calendar_id: string;
+            /** Primary */
+            primary: boolean;
+            /** Summary */
+            summary: string;
         };
         /**
          * SellerDetails
@@ -39528,6 +39856,79 @@ export interface operations {
             };
         };
     };
+    calendar_list_api_v1_google_calendar_calendars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarListEntry"][];
+                };
+            };
+        };
+    };
+    set_calendar_selection_api_v1_google_calendar_calendars_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarListEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_channels_api_v1_google_calendar_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectedCalendar"][];
+                };
+            };
+        };
+    };
     calendar_events_api_v1_google_calendar_events_get: {
         parameters: {
             query: {
@@ -39945,6 +40346,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveBulkProvisionResult"];
+                };
+            };
+        };
+    };
+    drive_state_api_v1_google_drive_state_get: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -42136,6 +42569,7 @@ export interface operations {
                 mine?: boolean;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
+                burn?: string | null;
             };
             header?: never;
             path?: never;
@@ -42734,6 +43168,7 @@ export interface operations {
                 user_id?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;
+                task_id?: string | null;
                 /** @description Rows on/after this day */
                 date_from?: string | null;
                 /** @description Rows on/before this day */
@@ -50466,6 +50901,119 @@ export interface operations {
             };
         };
     };
+    list_clients_api_v1_oauth_clients_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientRead"][];
+                };
+            };
+        };
+    };
+    create_client_api_v1_oauth_clients_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthClientCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_client_api_v1_oauth_clients__client_pk__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_client_secret_api_v1_oauth_clients__client_pk__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_connections_api_v1_oauth_connections_get: {
         parameters: {
             query?: never;
@@ -51366,6 +51914,8 @@ export interface operations {
                 hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
+                /** @description 'over' keeps only projects at or past their budget; other tokens ignored */
+                burn?: string | null;
             };
             header?: never;
             path?: never;
@@ -51444,6 +51994,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardBudgets"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_projects_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_projects_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -56383,6 +56986,7 @@ export interface operations {
                 user_id?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;
+                task_id?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
                 billable?: boolean | null;

@@ -22,6 +22,7 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -100,6 +101,43 @@ class Project(
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The budget state the nightly watch last *e-mailed* about — `<level>:<threshold>:<period>`,
+    # or NULL while the burn is under the org's warn threshold. The `domain_alerted_for` pattern
+    # (app/core/cloud/domain_health.py): the sweep mails when the fingerprint changes, so a
+    # monthly budget warns again next month and a raised threshold re-arms, with no marker table.
+    # Written only when a mail actually left, so "nobody could be reached" retries tomorrow.
+    budget_alerted_for: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class ProjectSettings(
+    UUIDPrimaryKeyMixin,
+    OrgScopedMixin,
+    TimestampMixin,
+    Base,
+):
+    """Org-wide projects settings (one row per org, absent = the defaults).
+
+    The budget alert is deliberately **global, not per project**: "when is a budget almost
+    reached" is one answer per agency, and a per-project knob would be sixty knobs nobody
+    re-visits. The threshold also drives the in-app ``project.budget_threshold`` notification,
+    so the bell and the mail can never disagree about what "almost" means.
+    """
+
+    __tablename__ = "project_settings"
+
+    __table_args__ = (UniqueConstraint("org_id", name="uq_project_settings_org"),)
+
+    #: The dedicated alert mail to the project's assignees. On by default: an alert that has to
+    #: be found alerts nobody (§14) — the mail is internal, deduped per period, and the
+    #: in-app notification precedent (#16) shipped enabled too.
+    budget_alert_emails: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    #: Percent of the hour budget at which a project is "almost" spent. 75 is the pre-settings
+    #: behaviour, so an instance that upgrades and types nothing warns exactly as it did.
+    budget_alert_threshold: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=75, server_default="75"
+    )
 
 
 class ProjectAssignee(

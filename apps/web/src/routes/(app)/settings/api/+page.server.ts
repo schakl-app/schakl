@@ -29,10 +29,13 @@ export const load: PageServerLoad = async (event) => {
   }
 
   const api = apiFor(event);
+  // Minting a standing client id/secret is an org decision, not a personal one (#441): the
+  // card renders — and its list is fetched — only for a holder of the API's own key.
+  const canManageOauth = can(event.locals.user, "settings.oauth.manage");
   // The catalog is already on the settings layout for exactly this screen's sake (#290) — it
   // lists `apikeys.personal.manage` among its consumers — so this load asks for two things.
   const parent = await event.parent();
-  const [keys, modules, mcp, connections] = await Promise.all([
+  const [keys, modules, mcp, connections, oauthClients] = await Promise.all([
     api.GET("/api/v1/api-keys"),
     api.GET("/api/v1/meta/modules"),
     // The section catalog (docs/MCP.md). Its own endpoint rather than four more fields on
@@ -40,6 +43,7 @@ export const load: PageServerLoad = async (event) => {
     // there would be paid for by every page in the product to serve this one screen.
     api.GET("/api/v1/meta/mcp"),
     api.GET("/api/v1/oauth/connections"),
+    canManageOauth ? api.GET("/api/v1/oauth/clients") : Promise.resolve({ data: null }),
   ]);
 
   // A key can never grant more than its owner holds, so the offerable scopes are the catalog
@@ -79,6 +83,9 @@ export const load: PageServerLoad = async (event) => {
     // Clients this user has connected over OAuth. Listed beside the keys because they are the
     // same thing: an OAuth session *is* an api_keys row, so revoking either is one act.
     connections: connections.data ?? [],
+    // The org's registered OAuth clients (#441) — admin surface, `null` for everyone else so
+    // the card knows "may not manage" from "none registered".
+    oauthClients: canManageOauth ? (oauthClients.data ?? []) : null,
   };
 };
 
@@ -123,6 +130,56 @@ export const actions: Actions = {
       if (error) return fail(400, { error: apiErrorKey(error).key });
     }
     return { disconnected: true };
+  },
+
+  // Manual OAuth clients (#441): for the connectors that ask an operator for a client
+  // id/secret instead of registering themselves. The secret rides back on the form result —
+  // shown once, never stored, exactly like a minted key's.
+  createClient: async (event) => {
+    const form = await event.request.formData();
+    const client_name = String(form.get("client_name") ?? "").trim();
+    const redirect_uris = String(form.get("redirect_uris") ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!client_name || redirect_uris.length === 0) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/oauth/clients", {
+      body: { client_name, redirect_uris },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return {
+      clientSecret: data?.client_secret,
+      clientId: data?.client_id,
+      clientName: data?.client_name,
+    };
+  },
+
+  rotateClient: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("client_pk") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/oauth/clients/{client_pk}/rotate", {
+      params: { path: { client_pk: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return {
+      clientSecret: data?.client_secret,
+      clientId: data?.client_id,
+      clientName: data?.client_name,
+      rotated: true,
+    };
+  },
+
+  revokeClient: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("client_pk") ?? "");
+    if (id) {
+      const { error } = await apiFor(event).DELETE("/api/v1/oauth/clients/{client_pk}", {
+        params: { path: { client_pk: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { clientRevoked: true };
   },
 
   revokeKey: async (event) => {

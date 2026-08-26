@@ -7,7 +7,7 @@ sidebar:
 
 Who may sign in, what they may do once they have, which clients they may see, and the keys that let a script act on their behalf.
 
-61 endpoints across 8 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+66 endpoints across 8 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `members`
 
@@ -16,6 +16,7 @@ Who may sign in, what they may do once they have, which clients they may see, an
 | `GET` `/members` | `members.member.read` |
 | `PATCH` `/members/{membership_id}` | `members.member.write` |
 | `DELETE` `/members/{membership_id}` | `members.member.write` |
+| `PATCH` `/members/{membership_id}/account` | `members.member.write` |
 | `GET` `/members/{membership_id}/permissions` | `members.member.read` |
 | `PUT` `/members/{membership_id}/roles` | `settings.roles.manage` |
 | `DELETE` `/members/{membership_id}/two-factor` | `members.member.write` |
@@ -54,6 +55,18 @@ Permission: `members.member.write`
 Path parameters: `membership_id`
 
 Returns: `204`
+
+#### `PATCH /api/v1/members/{membership_id}/account`
+
+**Update Member Account** — Edit a colleague's account: their name, and whether they still work here.
+
+Permission: `members.member.write`
+
+Path parameters: `membership_id`
+
+Request body: `MemberAccountUpdate`
+
+Returns: `200` · `MemberRead`
 
 #### `GET /api/v1/members/{membership_id}/permissions`
 
@@ -359,6 +372,10 @@ Returns: `201` · `ApiKeyCreated`
 
 | Endpoint | Permission |
 | --- | --- |
+| `GET` `/oauth/clients` | `settings.oauth.manage` |
+| `POST` `/oauth/clients` | `settings.oauth.manage` |
+| `DELETE` `/oauth/clients/{client_pk}` | `settings.oauth.manage` |
+| `POST` `/oauth/clients/{client_pk}/rotate` | `settings.oauth.manage` |
 | `GET` `/oauth/connections` | `apikeys.personal.manage` |
 | `DELETE` `/oauth/connections/{client_pk}` | `apikeys.personal.manage` |
 | `GET` `/oauth/consent` | _Deliberately open_ |
@@ -371,6 +388,44 @@ Returns: `201` · `ApiKeyCreated`
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/oauth/clients`
+
+**List Clients** — Every live client of this org — the DCR ones included, so the admin overview and the per-user connections list cannot tell two different stories about what may connect.
+
+Permission: `settings.oauth.manage`
+
+Returns: `200` · `OAuthClientRead[]`
+
+#### `POST /api/v1/oauth/clients`
+
+**Create Client** — Mint a confidential client for something that will not DCR. The secret is in this response and nowhere else, ever — only its hash is stored (the API-key rule).
+
+Permission: `settings.oauth.manage`
+
+Request body: `OAuthClientCreate`
+
+Returns: `201` · `OAuthClientCreated`
+
+#### `DELETE /api/v1/oauth/clients/{client_pk}`
+
+**Revoke Client** — The admin kill switch — the per-user disconnect, org-wide: the client is revoked and every key it ever issued, whoever's, goes with it. A revoked client cannot refresh back.
+
+Permission: `settings.oauth.manage`
+
+Path parameters: `client_pk`
+
+Returns: `204`
+
+#### `POST /api/v1/oauth/clients/{client_pk}/rotate`
+
+**Rotate Client Secret** — A new secret for a manual client; the old one stops working on the spot.
+
+Permission: `settings.oauth.manage`
+
+Path parameters: `client_pk`
+
+Returns: `200` · `OAuthClientCreated`
 
 #### `GET /api/v1/oauth/connections`
 

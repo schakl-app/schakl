@@ -24,10 +24,11 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.members import active_member_clause
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.core.timezone import org_zoneinfo
@@ -145,6 +146,17 @@ class TaskScheduleService:
             )
         if task_id is not None:
             stmt = stmt.where(TaskSchedule.task_id == task_id)
+        else:
+            # The calendar feed stops drawing a departed colleague's blocks the moment the
+            # roster menus stop offering the person (#439) — the rows themselves stay, and the
+            # task page's own panel (``task_id`` set) keeps showing them, because a record
+            # surface keeps its record. A block with no person is the system's and stays too.
+            stmt = stmt.where(
+                or_(
+                    TaskSchedule.user_id.is_(None),
+                    active_member_clause(self.ctx.org.id, TaskSchedule.user_id),
+                )
+            )
         if targets is not None:
             stmt = stmt.where(TaskSchedule.user_id.in_(targets))
 
@@ -276,6 +288,31 @@ class TaskScheduleService:
         )
         for block in blocks:
             await self._emit_removed(block)
+
+    async def refresh_for_task(self, task: Task) -> None:
+        """Re-announce every block of a task whose words changed (a rename, a rewritten
+        description).
+
+        The Google mirror pushes a *snapshot* and deliberately never re-reads a task
+        (``google/calendar/push.py``), so an edit that changes what the event says has to
+        re-emit — otherwise every mirrored block keeps the old title forever. Same emit site
+        as create/update (#188), so the mirror is never reached into from the task service.
+
+        Deliberately unscoped, like ``remove_for_task``: the caller was allowed to edit the
+        task, and the blocks follow it whoever they belong to — recording a consequence is not
+        its own grant (§16).
+        """
+        blocks = (
+            (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(TaskSchedule.task_id == task.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for block in blocks:
+            await self._emit_saved(block, task)
 
     async def log_time(self, schedule_id: uuid.UUID, data: ScheduleLogTime) -> TaskSchedule:
         """Confirm a passed block as a real time entry (#188). The entry is always the *caller's*

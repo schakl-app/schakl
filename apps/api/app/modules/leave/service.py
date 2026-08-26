@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.members import active_member_clause
 from app.core.models import Membership
 from app.core.permissions.service import permission_holder_ids
 from app.core.sorting import apply_sort, user_sort_name
@@ -1090,6 +1091,13 @@ class LeaveService:
         stmt = self.availability.scoped_select()
         if target is not None:
             stmt = stmt.where(EmploymentAvailability.user_id == target)
+        else:
+            # The all-people sweep is the agenda feed, and it stops answering for anyone who
+            # has left (#439). A caller *naming* a person still gets them — an admin reading a
+            # deactivated freelancer's page asked an explicit question about a record.
+            stmt = stmt.where(
+                active_member_clause(self.ctx.org.id, EmploymentAvailability.user_id)
+            )
         rows = (
             (
                 await self.ctx.session.execute(
@@ -3517,6 +3525,10 @@ class LeaveService:
                 LeaveRequest.status.in_(_OCCUPYING),
                 LeaveRequest.start_date <= date_to,
                 LeaveRequest.end_date >= date_from,
+                # A departed colleague's absences stop rendering on the agenda and the My Day
+                # tile (#439); the requests themselves stay for the balance and the reports.
+                # Stated before the cap below, so the cap only ever counts rows that draw.
+                active_member_clause(self.ctx.org.id, LeaveRequest.user_id),
             )
             .order_by(LeaveRequest.start_date.asc())
         )

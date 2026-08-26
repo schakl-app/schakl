@@ -34,13 +34,14 @@
    */
   import { dateLocale, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { stateTextClass, type UiState } from "$lib/core/state";
+  import { stateBandClass, stateTextClass, type UiState } from "$lib/core/state";
   import { orgToday } from "$lib/core/today";
   import { stateIcon } from "$lib/core/ui/state-icons";
   import Card from "$lib/core/ui/Card.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   import { dayDistance, dueHref, dueLabelKey, dueState, groupByDue, type DueBucket } from "./due";
+  import { ALL_ASSIGNEES } from "./filters";
 
   let { data }: { data: unknown } = $props();
 
@@ -49,6 +50,7 @@
     title: string;
     priority: string;
     due_date: string | null;
+    company_id?: string | null;
     company_name?: string | null;
   }
   interface MinePayload {
@@ -96,6 +98,19 @@
    * is dropped entirely — "over 214 dagen" is arithmetic nobody asked for, and the date beside it
    * already carries its year.
    */
+  /**
+   * The partition as *shape* (#438). The two sections that are claims (over tijd, vandaag)
+   * get the palette's faint band; the quiet ones separate with a hairline rule — a wash
+   * behind "later" would be the amber-cards mistake in a new key. Rows stay quiet inside a
+   * quietly-tinted container (#395: the heading carries the colour).
+   */
+  function sectionClass(bucket: DueBucket): string {
+    const band = stateBandClass(dueState(bucket) as UiState);
+    return band
+      ? `-mx-2.5 mt-3 rounded-lg px-2.5 py-2 first:mt-0 ${band}`
+      : "mt-3 border-t border-border pt-2.5 first:mt-0 first:border-t-0 first:pt-0";
+  }
+
   function dueDistance(iso: string): string | null {
     const days = dayDistance(today, iso);
     if (days < 0) {
@@ -117,8 +132,8 @@
 {#snippet partition(bucket: DueBucket)}
   {@const state = dueState(bucket) as UiState}
   {@const Mark = stateIcon(state)}
-  {@const body = `mt-4 mb-1 flex items-center gap-1.5 text-sm font-semibold ${stateTextClass(state)}`}
-  <a href={dueHref(bucket)} class="{body} first:mt-0 hover:underline">
+  {@const body = `mb-1 flex items-center gap-1.5 text-sm font-semibold ${stateTextClass(state)}`}
+  <a href={dueHref(bucket)} class="{body} hover:underline">
     {#if Mark}<Mark size={14} aria-hidden="true" class="shrink-0" />{/if}
     {t(dueLabelKey(bucket))}
     {#if whole[bucket] > 0}
@@ -140,16 +155,27 @@
       <ul class="divide-y divide-border">
         {#each shown as task (task.id)}
           <li class="flex items-center justify-between gap-2 py-1.5">
-            <a href={`/tasks/${task.id}`} class="group min-w-0 flex-1">
-              <span class="block truncate text-sm text-text group-hover:text-brand"
-                >{task.title}</span
+            <span class="min-w-0 flex-1">
+              <a href={`/tasks/${task.id}`} class="block truncate text-sm text-text hover:text-brand"
+                >{task.title}</a
               >
               {#if task.company_name}
                 <!-- Which client's work this is. "Nieuwsbrief plannen" is four indistinguishable
-                     rows on a list spanning four clients, and only opening one tells them apart. -->
-                <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+                     rows on a list spanning four clients, and only opening one tells them apart.
+                     A name is an aggregate's address (issue #15): it opens that client's whole
+                     task list — every assignee, so the destination is the client's work rather
+                     than the viewer's share of it. -->
+                {#if task.company_id}
+                  <a
+                    href={`/tasks?company_id=${task.company_id}&assignee_user_id=${ALL_ASSIGNEES}`}
+                    class="block truncate text-xs text-text-muted hover:text-brand hover:underline"
+                    >{task.company_name}</a
+                  >
+                {:else}
+                  <span class="block truncate text-xs text-text-muted">{task.company_name}</span>
+                {/if}
               {/if}
-            </a>
+            </span>
             <span class="shrink-0 text-right text-xs tabular-nums">
               {#if task.due_date}
                 {@const distance = dueDistance(task.due_date)}
@@ -188,28 +214,36 @@
          renders nothing at all is the silent truncation that issue is about, one level in. With
          no rows to draw, the partition is its heading and its way through. -->
     {#if whole.overdue > 0}
-      {@render partition("overdue")}
-      {@render taskList("overdue")}
+      <section class={sectionClass("overdue")}>
+        {@render partition("overdue")}
+        {@render taskList("overdue")}
+      </section>
     {/if}
 
     <!-- Always drawn, empty or not: this is the heading the tile is for. -->
-    {@render partition("today")}
-    {#if whole.today > 0}
-      {@render taskList("today")}
-    {:else}
-      <p class="py-1.5 text-sm text-text-muted">{t("dashboard.my_day.nothing_today")}</p>
-    {/if}
+    <section class={sectionClass("today")}>
+      {@render partition("today")}
+      {#if whole.today > 0}
+        {@render taskList("today")}
+      {:else}
+        <p class="py-1.5 text-sm text-text-muted">{t("dashboard.my_day.nothing_today")}</p>
+      {/if}
+    </section>
 
     {#if whole.week > 0}
-      {@render partition("week")}
-      {@render taskList("week")}
+      <section class={sectionClass("week")}>
+        {@render partition("week")}
+        {@render taskList("week")}
+      </section>
     {/if}
 
     {#if whole.later > 0}
-      {@render partition("later")}
-      <!-- *Later* is the one section that starts folded: the tile is a working surface for the
-           next few days, and a scroll of November is what made it read as uniform. -->
-      {@render taskList("later", 3)}
+      <section class={sectionClass("later")}>
+        {@render partition("later")}
+        <!-- *Later* is the one section that starts folded: the tile is a working surface for the
+             next few days, and a scroll of November is what made it read as uniform. -->
+        {@render taskList("later", 3)}
+      </section>
     {/if}
   {/if}
 </Card>

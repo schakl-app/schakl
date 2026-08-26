@@ -7,12 +7,15 @@ sidebar:
 
 Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-client en per medewerker aangezet.
 
-25 endpoints, verdeeld over 1 groep. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+30 endpoints, verdeeld over 1 groep. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `google`
 
 | Endpoint | Recht |
 | --- | --- |
+| `GET` `/google/calendar/calendars` | `google.connection.manage` |
+| `PUT` `/google/calendar/calendars` | `google.connection.manage` |
+| `GET` `/google/calendar/channels` | `google.calendar.read` |
 | `GET` `/google/calendar/events` | `google.calendar.read` |
 | `POST` `/google/calendar/webhook` | _Bewust open_ |
 | `GET` `/google/connections` | `google.settings.manage` |
@@ -20,6 +23,7 @@ Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-
 | `PATCH` `/google/connections/me` | `google.connection.manage` |
 | `POST` `/google/connections/me/disconnect` | `google.connection.manage` |
 | `GET` `/google/drive/browse` | `google.drive.read` |
+| `DELETE` `/google/drive/files/{drive_file_id}` | `google.drive.write` |
 | `PUT` `/google/drive/folder` | `google.drive.write` |
 | `POST` `/google/drive/folders` | `google.drive.write` |
 | `GET` `/google/drive/links` | `google.drive.read` |
@@ -27,6 +31,7 @@ Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-
 | `DELETE` `/google/drive/links/{link_id}` | `google.drive.write` |
 | `POST` `/google/drive/provision` | `google.drive.write` |
 | `POST` `/google/drive/provision-all` | `google.settings.manage` |
+| `GET` `/google/drive/state` | `google.drive.read` |
 | `POST` `/google/drive/upload-session` | `google.drive.write` |
 | `POST` `/google/gmail/import` | `interactions.interaction.write` |
 | `GET` `/google/gmail/lookup` | `google.connection.manage` |
@@ -41,6 +46,32 @@ Agenda, Drive, Gmail en Contacten, per organisatie gekoppeld met je eigen OAuth-
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/google/calendar/calendars`
+
+**Calendar List** — The viewer's own calendarList — the selection UI's read (#440). Briefly cached; the existing ``calendar.events`` scope covers it, so no re-consent is needed.
+
+Recht: `google.connection.manage`
+
+Antwoord: `200` · `CalendarListEntry[]`
+
+#### `PUT /api/v1/google/calendar/calendars`
+
+**Set Calendar Selection** — Choose which shared calendars sync for the viewer. Deselecting removes the calendar's cached events on the spot; selecting queues a sync so the agenda fills without waiting.
+
+Recht: `google.connection.manage`
+
+Request body: `CalendarSelection`
+
+Antwoord: `200` · `CalendarListEntry[]`
+
+#### `GET /api/v1/google/calendar/channels`
+
+**Calendar Channels** — The viewer's selection off the database alone — what the Agenda's feeds menu reads on every open, so it never costs a Google call.
+
+Recht: `google.calendar.read`
+
+Antwoord: `200` · `SelectedCalendar[]`
 
 #### `GET /api/v1/google/calendar/events`
 
@@ -115,6 +146,16 @@ Queryparameters:
 
 Antwoord: `200` · `DriveBrowseResult`
 
+#### `DELETE /api/v1/google/drive/files/{drive_file_id}`
+
+**Trash File** — Move a Drive file to Drive's bin — the other half of unlink (#394).
+
+Recht: `google.drive.write`
+
+Padparameters: `drive_file_id`
+
+Antwoord: `204`
+
 #### `PUT /api/v1/google/drive/folder`
 
 **Set Folder** — Point a record at an existing Drive folder — the picker's target.
@@ -148,6 +189,7 @@ Queryparameters:
 | `entity_type` | string · verplicht |  |
 | `entity_id` | string · verplicht |  |
 | `rollup` | boolean |  (default `false`) |
+| `limit` | integer | Cap the page a panel draws (#407); ask for one more than you keep to learn there are more. Absent means every link, which is what the roll-up view needs — a roll-up folds a project's tasks in after the query and cannot be cut before it. |
 
 Antwoord: `200` · `DriveLinkRead[]`
 
@@ -188,6 +230,21 @@ Antwoord: `202`
 Recht: `google.settings.manage`
 
 Antwoord: `200` · `DriveBulkProvisionResult`
+
+#### `GET /api/v1/google/drive/state`
+
+**Drive State** — Provisioning readiness + this entity's folder-job status, for the panels (#444).
+
+Recht: `google.drive.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `entity_type` | string |  |
+| `entity_id` | string |  |
+
+Antwoord: `200` · `DriveStateRead`
 
 #### `POST /api/v1/google/drive/upload-session`
 

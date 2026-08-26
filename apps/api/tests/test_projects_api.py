@@ -339,6 +339,50 @@ async def test_status_filter_takes_a_set_and_absent_still_means_everything(clien
         assert working["total"] == 3
 
 
+async def test_burn_filter_keeps_only_projects_at_or_past_their_budget(client_for) -> None:
+    """``burn=over`` is what makes "projects over budget" a URL (#437): the donut's aggregate
+    must open exactly the list it counts, and dumping the reader on ``?status=active`` is the
+    dead end #15 forbids. The total counts what survived, and an unknown token is ignored."""
+    from datetime import UTC, datetime, timedelta
+
+    t = await make_tenant("proj-burn-filter")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id = (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).json()["id"]
+        # One over budget (5h of 4), one comfortably inside (1h of 8), one with no budget.
+        for name, budget, minutes in (("Overheen", 4, 300), ("Binnen", 8, 60), (None, None, 0)):
+            body: dict = {"name": name or "Zonder budget", "company_id": company_id}
+            if budget:
+                body |= {"budget_hours": budget, "budget_period": "total"}
+            project = (await c.post("/api/v1/projects", json=body, headers=headers)).json()
+            if minutes:
+                started = datetime(2026, 3, 2, 9, 0, tzinfo=UTC)
+                entry = await c.post(
+                    "/api/v1/time/entries",
+                    json={
+                        "project_id": project["id"],
+                        "started_at": started.isoformat(),
+                        "ended_at": (started + timedelta(minutes=minutes)).isoformat(),
+                    },
+                    headers=headers,
+                )
+                assert entry.status_code == 201, entry.text
+
+        over = (await c.get("/api/v1/projects", params={"burn": "over"}, headers=headers)).json()
+        assert [p["name"] for p in over["items"]] == ["Overheen"]
+        assert over["total"] == 1
+        # The burn enrichment rides along, so the screen can draw the bar it filtered on.
+        assert over["items"][0]["hours"]["spent_hours"] == 5.0
+
+        # An unknown token filters nothing (a query string anyone can edit never 422s, §9).
+        ignored = (
+            await c.get("/api/v1/projects", params={"burn": "nonsense"}, headers=headers)
+        ).json()
+        assert ignored["total"] == 3
+
+
 async def test_a_project_status_token_that_names_nothing_falls_back_to_the_whole_list(
     client_for,
 ) -> None:

@@ -44,7 +44,15 @@ async def _hours_this_month(ctx: RequestContext, company_id: uuid.UUID) -> list[
             # Hours to two decimals, raw: the reader's locale decides the separator (§8).
             value=f"{minutes / 60:.2f}",
             format="hours",
-            href=f"/time?company={company_id}",
+            # The figure is the client's month, so it opens the hours report filtered to the
+            # client — /time is the personal timesheet, where ?company= only prefills the entry
+            # form. The report is manager-gated, so a viewer without it gets a plain tile
+            # rather than a link that refuses (#253); /overview already defaults to this month.
+            href=(
+                f"/overview?company_id={company_id}"
+                if ctx.can("time.report.read")
+                else None
+            ),
             position=30,
         )
     ]

@@ -43,11 +43,24 @@ export const load: PageServerLoad = async (event) => {
     user_id: q.get("user_id") || "",
     company_id: q.get("company_id") || "",
     project_id: q.get("project_id") || "",
+    task_id: q.get("task_id") || "",
     date_from: q.get("date_from") ?? monthStartIso(),
     date_to: q.get("date_to") ?? "",
     status: q.get("status") ?? "",
     entry_type: q.get("entry_type") || "",
   };
+
+  // A filter you can arrive at by link must be visible and nameable (#443): the layout's
+  // task lookup is a 200-row page of a longer set, so the task the URL names is fetched by
+  // id — only when the filter is on, and only to give the picker the row it must always
+  // offer. A task the caller may not read (or that is gone) leaves the filter showing as
+  // set-but-unnamed rather than silently widening the report.
+  const taskFilter = filters.task_id
+    ? await api
+        .GET("/api/v1/tasks/{task_id}", { params: { path: { task_id: filters.task_id } } })
+        .then((r) => (r.data ? { id: r.data.id, title: r.data.title ?? "" } : null))
+        .catch(() => null)
+    : null;
 
   // The saved layout comes from the /overview layout load, which does not rerun on filter or sort
   // navigation. The *server* sorts: this page holds 500 rows of a possibly much longer set, and
@@ -70,6 +83,7 @@ export const load: PageServerLoad = async (event) => {
           user_id: filters.user_id || undefined,
           company_id: filters.company_id || undefined,
           project_id: filters.project_id || undefined,
+          task_id: filters.task_id || undefined,
           date_from: filters.date_from || undefined,
           date_to: filters.date_to || undefined,
           entry_type: filters.entry_type || undefined,
@@ -84,6 +98,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     report,
     filters,
+    taskFilter,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };

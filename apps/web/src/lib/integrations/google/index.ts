@@ -32,10 +32,18 @@ const driveEntityPanels: EntityPanelSpec[] = (
   prominence: "register" as const,
   requiresPermission: "google.drive.read",
   load: async (api, { entityId }) => {
-    const { data } = await api.GET("/api/v1/google/drive/links", {
-      params: { query: { entity_type: entityType, entity_id: entityId, rollup } },
-    });
-    return { links: data ?? [], entityType };
+    // The links and the provisioning readiness, in one fan (#444): the create button used to
+    // be drawn off the caller's permission alone, so with no automation account or Drive root
+    // it was a control that could only 409 — and with neither parent folder it was a blank.
+    const [links, state] = await Promise.all([
+      api.GET("/api/v1/google/drive/links", {
+        params: { query: { entity_type: entityType, entity_id: entityId, rollup } },
+      }),
+      api.GET("/api/v1/google/drive/state", {
+        params: { query: { entity_type: entityType, entity_id: entityId } },
+      }),
+    ]);
+    return { links: links.data ?? [], entityType, state: state.data ?? null };
   },
   component: DriveEntityPanel,
 }));
@@ -62,23 +70,40 @@ registerWebModule({
       module: "google",
       labelKey: "google.calendar.source_label",
       color: "blue",
-      load: async (api, { from, to, color }) => {
+      load: async (api, { from, to, color, personColors, hiddenPeople }) => {
         const { data } = await api.GET("/api/v1/google/calendar/events", {
           params: { query: { date_from: from, date_to: to } },
         });
-        return (data ?? []).map((event) => ({
-          id: `gcal-${event.id}`,
-          start: event.start,
-          end: event.end,
-          title: event.title || t("google.calendar.untitled"),
-          color: color ?? "blue",
-          href: event.html_link ?? undefined,
-          tentative: event.tentative,
-          cancelled: event.cancelled,
-          sourceKey: "google.calendar",
-          // Timed events position on the day/week grid (#155); all-day ones stay chips.
-          startsAt: event.starts_at ?? undefined,
-          endsAt: event.ends_at ?? undefined,
+        // Per-calendar colour and hide (#440), riding the per-person split machinery (#281):
+        // the "person" here is a calendar, keyed by its Google id.
+        const hidden = new Set(hiddenPeople ?? []);
+        return (data ?? [])
+          .filter((event) => !hidden.has(event.calendar_id ?? "primary"))
+          .map((event) => ({
+            id: `gcal-${event.id}`,
+            start: event.start,
+            end: event.end,
+            title: event.title || t("google.calendar.untitled"),
+            color: personColors?.[event.calendar_id ?? "primary"] ?? color ?? "blue",
+            href: event.html_link ?? undefined,
+            tentative: event.tentative,
+            cancelled: event.cancelled,
+            sourceKey: "google.calendar",
+            // Timed events position on the day/week grid (#155); all-day ones stay chips.
+            startsAt: event.starts_at ?? undefined,
+            endsAt: event.ends_at ?? undefined,
+          }));
+      },
+      // One split row per synced calendar — drawn only when there is a second calendar to
+      // split on, so a primary-only viewer sees exactly what they always saw. Database only:
+      // the feeds menu opens on every Agenda visit and must never cost a Google call.
+      splitPeople: async (api) => {
+        const { data } = await api.GET("/api/v1/google/calendar/channels");
+        const rows = data ?? [];
+        if (rows.length <= 1) return [];
+        return rows.map((row) => ({
+          id: row.calendar_id,
+          name: row.primary ? t("google.calendar.primary") : row.summary || row.calendar_id,
         }));
       },
     },

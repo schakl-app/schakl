@@ -729,6 +729,84 @@ async def test_provision_request_409s_without_any_root(client_for, monkeypatch) 
         assert response.json()["error"]["code"] == "google_drive_no_folder"
 
 
+async def test_state_says_whether_provisioning_can_work_and_how_a_job_ended(
+    client_for, monkeypatch
+) -> None:
+    """#444: the panels draw the create button off this, so it must model everything the
+    provision 409s on (automation *and* root) — a button drawn on half the requirement is a
+    control that can only refuse — and a queued job's pending/failed state must be readable,
+    or a worker slower than one optimistic reload leaves the panel saying "wordt aangemaakt"
+    forever."""
+    t = await make_tenant("gdrive-state")
+    # Automation account set, but no root: the button must not be offered.
+    await _seed(t, automation=True, parent_folder=None, shared_drive=None)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        state = (await c.get("/api/v1/google/drive/state", headers=headers)).json()
+        assert state["enabled"] is True
+        assert state["viewer_connected"] is True
+        assert state["can_provision"] is False
+
+        # Configure a root: now the button may be drawn.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            from sqlalchemy import select
+
+            row = (await session.execute(select(GoogleSettings))).scalar_one()
+            row.drive_shared_drive_id = "sd-1"
+            await session.commit()
+
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        state = (
+            await c.get(
+                f"/api/v1/google/drive/state?entity_type=company&entity_id={company['id']}",
+                headers=headers,
+            )
+        ).json()
+        assert state["can_provision"] is True
+        assert state["job_status"] is None
+
+        queued = await c.post(
+            "/api/v1/google/drive/provision",
+            json={"entity_type": "company", "entity_id": company["id"]},
+            headers=headers,
+        )
+        assert queued.status_code == 202, queued.text
+        state = (
+            await c.get(
+                f"/api/v1/google/drive/state?entity_type=company&entity_id={company['id']}",
+                headers=headers,
+            )
+        ).json()
+        assert state["job_status"] == "pending"
+
+        # The worker gave up: the panel gets to say so instead of waiting forever.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            from sqlalchemy import select
+
+            job = (await session.execute(select(DriveFolderJob))).scalar_one()
+            job.status = "failed"
+            job.last_error = "insufficient permissions on the shared drive"
+            await session.commit()
+        state = (
+            await c.get(
+                f"/api/v1/google/drive/state?entity_type=company&entity_id={company['id']}",
+                headers=headers,
+            )
+        ).json()
+        assert state["job_status"] == "failed"
+        assert "insufficient" in state["job_error"]
+
+
 # --------------------------------------------------------------------------- #
 # The folder picker: a record's folder is a stored decision, and re-pointing one
 # is `google.drive.manage` while giving a record its first is not.

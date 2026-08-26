@@ -86,6 +86,22 @@ incoming channel/notification back to org + connection via our own channel token
 - Start **one-way** where it's cheap: §14 already wants approved leave → Google Calendar.
   Two-way is much harder — don't sign up for it in v1.
 
+**Shared calendars: a channel row *is* the selection (#440).** Agencies live in shared
+calendars, so `google_calendar_channels` widened from one-per-connection to one per
+`(connection, calendar)` — each row its own sync cursor, and the cached events carry
+`calendar_id` in their identity, because an invitation legitimately exists on two calendars
+under one Google event id. The primary's row is created on first sync, which is what keeps the
+default (primary only) byte-identical for everyone who never touches the setting. The viewer
+picks on their own account page (`GET/PUT /google/calendar/calendars` — the live `calendarList`,
+briefly cached, validates every id, and the existing `calendar.events` scope already covers
+reading a shared calendar, so no re-consent); deselecting removes the calendar's cached events
+on the spot. The Agenda's feeds menu draws one colour/hide row per synced calendar through the
+per-person split machinery (#281) — the "person" is a calendar — fed by
+`GET /google/calendar/channels`, which reads the database alone. Watches stay **primary-only**;
+a shared calendar's channel rides the 15-minute poll, whose staleness check now looks at every
+channel. Push (schakl → Google) stays primary-only too — mirroring *into* shared calendars is a
+separate decision nobody has made.
+
 **The Agenda drops the mirror of anything it already draws natively, and the identity it drops it
 by has to survive the round trip.** A leave request, a freelance availability row and a planned
 task block all mirror outwards *and* come back through the events cache, so `events_feed` filters

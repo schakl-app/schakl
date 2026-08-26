@@ -9,7 +9,7 @@
    * folder, with "Projectmap aanmaken" (nests under the client) and "In klantmap werken"
    * (links the client folder to the project) one click away. The client folder is looked up
    * lazily, when the browser opens, and only when the project has no folder of its own — the
-   * panel's SSR load stays one call (docs/PERFORMANCE.md).
+   * panel's SSR load stays one fan of two cheap DB reads (docs/PERFORMANCE.md).
    *
    * A **task** gets the same two controls (#328). It used to get only a sentence saying where
    * its uploads had landed, which was the whole bug: with no route to a folder of its own, a
@@ -30,6 +30,7 @@
 
   import DriveBrowser from "./DriveBrowser.svelte";
   import DriveLinkList, { type DriveLinkItem } from "./DriveLinkList.svelte";
+  import DriveProvisionStatus from "./DriveProvisionStatus.svelte";
 
   let {
     data,
@@ -43,8 +44,17 @@
     (data ?? { links: [], entityType: "project" }) as {
       links: DriveLinkItem[];
       entityType: string;
+      state?: {
+        enabled: boolean;
+        viewer_connected: boolean;
+        can_provision: boolean;
+      } | null;
     },
   );
+  // Provisioning readiness, from the server (#444): the button used to be drawn off the
+  // caller's permission alone, so with no automation account or Drive root it was a control
+  // that could only 409 (#253). `null` (an old payload, a failed fan) draws nothing extra.
+  const driveState = $derived(panel.state ?? null);
   const canWrite = $derived(can(page.data.user, "google.drive.write"));
 
   // This record's *own* folder. Both halves matter: `is_root` because a subfolder linked as an
@@ -138,6 +148,11 @@
       ? t("google.drive.create_task_folder")
       : t("google.drive.create_project_folder"),
   );
+  const noFolderLabel = $derived(
+    panel.entityType === "task"
+      ? t("google.drive.no_task_folder")
+      : t("google.drive.no_project_folder"),
+  );
   const adoptFolderLabel = $derived(
     parentFolderKind === "project"
       ? t("google.drive.work_in_project_folder")
@@ -148,31 +163,62 @@
       ? t("google.drive.in_project_folder", { name: parentFolder?.name ?? "" })
       : t("google.drive.in_client_folder", { name: parentFolder?.name ?? "" }),
   );
+
+  // A drive action's refusal renders *here*, beside the button that fired it — not as the
+  // host page's `form.error`, two thousand lines below the fold (#444).
+  const driveError = $derived((page.form?.driveError ?? null) as string | null);
 </script>
 
+<!-- Two things live on this card and nothing said which was which: the files coupled to this
+     record, and a browser over the whole Drive folder. Each gets its own heading, and the
+     browser its own rule, so the boundary is visible (the company panel already named its list
+     with the same key). -->
+<h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+  {t("google.drive.linked_files")}
+</h3>
 <DriveLinkList links={panel.links} {canWrite} ontrashed={() => (driveVersion += 1)} />
+
+{#if driveError}
+  <p class="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{t(driveError)}</p>
+{/if}
+
+<!-- The record's own folder, or the way to one (#444). The create button no longer hides
+     behind an opened browser and a found parent: it stands whenever the server says the org
+     can provision — a task whose project and client have no folder included, since the worker
+     walks the chain — and its absence is a sentence naming what is missing, never a blank. -->
+{#if canWrite && !ownFolder && driveState?.enabled}
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <p class="text-sm text-text-muted">{noFolderLabel}</p>
+    {#if driveState.can_provision}
+      <form method="POST" action="?/provisionDriveFolder" use:enhance={busy.wrap("provision")}>
+        <input type="hidden" name="entity_type" value={panel.entityType} />
+        <input type="hidden" name="entity_id" value={context.entityId} />
+        <Button variant="secondary" size="xs" loading={busy.is("provision")} disabled={busy.active}>
+          {createFolderLabel}
+        </Button>
+      </form>
+    {/if}
+  </div>
+  {#if !driveState.can_provision}
+    <p class="mt-1 text-xs text-text-muted">{t("google.drive.not_provisionable")}</p>
+  {/if}
+{/if}
+
+<DriveProvisionStatus entityType={panel.entityType} entityId={context.entityId} />
 
 {#if canWrite}
   {#if browsing}
+    <div class="mt-4 border-t border-border pt-3">
+      <h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+        {t("google.drive.browser_title")}
+      </h3>
+    </div>
     {#if showParentActions && parentFolder}
-      <!-- Say where the browser landed — so it's clear it isn't at the shared-drive root (#150)
-           — and make the two sensible next steps one click each. -->
+      <!-- Say where the browser landed — so it's clear it isn't at the shared-drive root (#150).
+           The create button lives above with the folder strip now (#444); what belongs to the
+           *browsed* folder is adopting it, the same act the picker performs (`?/setDriveFolder`). -->
       <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <span class="text-text-muted">{parentFolderLabel}</span>
-        <form method="POST" action="?/provisionDriveFolder" use:enhance={busy.wrap("provision")}>
-          <input type="hidden" name="entity_type" value={panel.entityType} />
-          <input type="hidden" name="entity_id" value={context.entityId} />
-          <Button
-            variant="secondary"
-            size="xs"
-            loading={busy.is("provision")}
-            disabled={busy.active}
-          >
-            {createFolderLabel}
-          </Button>
-        </form>
-        <!-- Adopting the folder we're standing in *is* giving this record its folder — the same
-             act the picker performs, so it takes the same route (`?/setDriveFolder`). -->
         <form method="POST" action="?/setDriveFolder" use:enhance={busy.wrap("link")}>
           <input type="hidden" name="entity_type" value={panel.entityType} />
           <input type="hidden" name="entity_id" value={context.entityId} />

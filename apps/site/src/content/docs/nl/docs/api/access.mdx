@@ -7,7 +7,7 @@ sidebar:
 
 Wie er mag inloggen, wat diegene daarna mag, welke klanten diegene ziet, en de sleutels waarmee een script namens hen handelt.
 
-61 endpoints, verdeeld over 8 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+66 endpoints, verdeeld over 8 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `members`
 
@@ -16,6 +16,7 @@ Wie er mag inloggen, wat diegene daarna mag, welke klanten diegene ziet, en de s
 | `GET` `/members` | `members.member.read` |
 | `PATCH` `/members/{membership_id}` | `members.member.write` |
 | `DELETE` `/members/{membership_id}` | `members.member.write` |
+| `PATCH` `/members/{membership_id}/account` | `members.member.write` |
 | `GET` `/members/{membership_id}/permissions` | `members.member.read` |
 | `PUT` `/members/{membership_id}/roles` | `settings.roles.manage` |
 | `DELETE` `/members/{membership_id}/two-factor` | `members.member.write` |
@@ -54,6 +55,18 @@ Recht: `members.member.write`
 Padparameters: `membership_id`
 
 Antwoord: `204`
+
+#### `PATCH /api/v1/members/{membership_id}/account`
+
+**Update Member Account** — Edit a colleague's account: their name, and whether they still work here.
+
+Recht: `members.member.write`
+
+Padparameters: `membership_id`
+
+Request body: `MemberAccountUpdate`
+
+Antwoord: `200` · `MemberRead`
 
 #### `GET /api/v1/members/{membership_id}/permissions`
 
@@ -359,6 +372,10 @@ Antwoord: `201` · `ApiKeyCreated`
 
 | Endpoint | Recht |
 | --- | --- |
+| `GET` `/oauth/clients` | `settings.oauth.manage` |
+| `POST` `/oauth/clients` | `settings.oauth.manage` |
+| `DELETE` `/oauth/clients/{client_pk}` | `settings.oauth.manage` |
+| `POST` `/oauth/clients/{client_pk}/rotate` | `settings.oauth.manage` |
 | `GET` `/oauth/connections` | `apikeys.personal.manage` |
 | `DELETE` `/oauth/connections/{client_pk}` | `apikeys.personal.manage` |
 | `GET` `/oauth/consent` | _Bewust open_ |
@@ -371,6 +388,44 @@ Antwoord: `201` · `ApiKeyCreated`
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/oauth/clients`
+
+**List Clients** — Every live client of this org — the DCR ones included, so the admin overview and the per-user connections list cannot tell two different stories about what may connect.
+
+Recht: `settings.oauth.manage`
+
+Antwoord: `200` · `OAuthClientRead[]`
+
+#### `POST /api/v1/oauth/clients`
+
+**Create Client** — Mint a confidential client for something that will not DCR. The secret is in this response and nowhere else, ever — only its hash is stored (the API-key rule).
+
+Recht: `settings.oauth.manage`
+
+Request body: `OAuthClientCreate`
+
+Antwoord: `201` · `OAuthClientCreated`
+
+#### `DELETE /api/v1/oauth/clients/{client_pk}`
+
+**Revoke Client** — The admin kill switch — the per-user disconnect, org-wide: the client is revoked and every key it ever issued, whoever's, goes with it. A revoked client cannot refresh back.
+
+Recht: `settings.oauth.manage`
+
+Padparameters: `client_pk`
+
+Antwoord: `204`
+
+#### `POST /api/v1/oauth/clients/{client_pk}/rotate`
+
+**Rotate Client Secret** — A new secret for a manual client; the old one stops working on the spot.
+
+Recht: `settings.oauth.manage`
+
+Padparameters: `client_pk`
+
+Antwoord: `200` · `OAuthClientCreated`
 
 #### `GET /api/v1/oauth/connections`
 

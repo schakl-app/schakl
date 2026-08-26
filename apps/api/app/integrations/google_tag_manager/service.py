@@ -77,7 +77,7 @@ _SETTINGS_ENTITY = "gtm_settings"
 
 #: What an edit records. Only the fields schakl decides — what Google said is refreshed, not
 #: edited, and an activity line per nightly rename would bury the decisions in observations.
-_TRACKED = ("company_id", "website_id", "active", "connection_id")
+_TRACKED = ("company_id", "website_id", "active", "connection_id", "summary", "goal")
 
 
 def container_url(account_id: str, container_id: str) -> str:
@@ -352,14 +352,19 @@ class GtmService:
         company_id: uuid.UUID | None = None,
         website_id: uuid.UUID | None = None,
         active: bool | None = None,
+        summary: str | None = None,
+        goal: str | None = None,
         company_id_set: bool = False,
         website_id_set: bool = False,
+        summary_set: bool = False,
+        goal_set: bool = False,
     ) -> GtmContainer:
         """Edit the fields schakl *decided*. What Google said is refreshed by verify, never typed.
 
         The ``*_set`` flags carry the absent-vs-null distinction the payload alone cannot
         (CLAUDE.md §18): omitted means leave it alone, an explicit ``null`` detaches — which is a
-        real state (the agency's own container), not an accident.
+        real state (the agency's own container), not an accident. The two prose fields store
+        ``""`` for "nothing written" (the Ads policy shape), so their explicit ``null`` clears.
         """
         self.ctx.require("google_tag_manager.settings.manage")
         before = snapshot(row, _TRACKED)
@@ -370,6 +375,10 @@ class GtmService:
             row.website_id = website_id
         if active is not None:
             row.active = active
+        if summary_set:
+            row.summary = (summary or "").strip()
+        if goal_set:
+            row.goal = (goal or "").strip()
         await self.ctx.session.flush()
         await self.activity.record_update(_ENTITY, row.id, before, snapshot(row, _TRACKED))
         return row

@@ -218,6 +218,29 @@ def account_active(membership: Membership, user: User) -> bool:
     return user.is_active and membership.deactivated_at is None
 
 
+def active_member_clause(org_id: uuid.UUID, user_id_col):  # noqa: ANN001, ANN201
+    """``account_active`` as a SQL predicate: the given user-id column names an account that
+    can still work in this org.
+
+    An EXISTS over ``memberships`` × ``users``, so a caller can splice it into any query that
+    carries a user column without growing a join of its own — the calendar feeds read it
+    (#439: a departed colleague's blocks, leave chips and availability stopped rendering the
+    moment the roster menus stopped offering the person). Same conjunction as
+    ``account_active`` above, and only ever restated here.
+    """
+    return (
+        select(Membership.id)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.org_id == org_id,
+            Membership.user_id == user_id_col,
+            Membership.deactivated_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .exists()
+    )
+
+
 async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
     """Reject any mutation that would leave nobody able to administer roles.
 

@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-165 endpoints, verdeeld over 14 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+197 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -27,6 +27,8 @@ Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerst
 | `DELETE` `/ai/settings` | `ai.settings.manage` |
 | `POST` `/ai/settings/models` | `ai.settings.manage` |
 | `POST` `/ai/settings/test` | `ai.settings.manage` |
+| `POST` `/ai/tasks/parse` | `ai.use` |
+| `POST` `/ai/tasks/transcribe` | `ai.use` |
 | `POST` `/ai/time/parse` | `ai.use` |
 | `POST` `/ai/time/reconstruct` | `ai.use` |
 | `POST` `/ai/time/transcribe` | `ai.use` |
@@ -176,6 +178,26 @@ Antwoord: `200` · `AIModelsResult`
 Recht: `ai.settings.manage`
 
 Antwoord: `200` · `AITestResult`
+
+#### `POST /api/v1/ai/tasks/parse`
+
+**Task Parse** — One dictation into a *draft* task. Creates nothing (#129's rule).
+
+Recht: `ai.use`
+
+Request body: `TaskParseRequest`
+
+Antwoord: `200` · `TaskParseResult`
+
+#### `POST /api/v1/ai/tasks/transcribe`
+
+**Task Transcribe** — Speech to text for the dictated-task field (#382).
+
+Recht: `ai.use`
+
+Request body: `TaskTranscribeRequest`
+
+Antwoord: `200` · `TimeTranscribeResult`
 
 #### `POST /api/v1/ai/time/parse`
 
@@ -828,6 +850,269 @@ Antwoord: `200`
 
 </details>
 
+## `google-analytics`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/google-analytics/properties` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/breakdown` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/compatibility` | `google_analytics.report.run` |
+| `GET` `/google-analytics/properties/{property_id}/custom-dimensions` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/custom-metrics` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/data-retention` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/data-streams` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/firebase-links` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/google-ads-links` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/key-events` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/metadata` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/overview` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/pivot` | `google_analytics.report.run` |
+| `GET` `/google-analytics/properties/{property_id}/realtime` | `google_analytics.property.read` |
+| `GET` `/google-analytics/properties/{property_id}/report` | `google_analytics.report.run` |
+| `GET` `/google-analytics/properties/{property_id}/timeseries` | `google_analytics.property.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/google-analytics/properties`
+
+**List Google Analytics Properties** — Every GA4 property the signed-in user's Google account can read. Start here.
+
+Recht: `google_analytics.property.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `query` | string | Filter by property name or id. |
+
+Antwoord: `200` · `GoogleAnalyticsPropertyList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}`
+
+**Get Google Analytics Property** — One property's own record: its currency, industry and **reporting timezone**.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsProperty`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/breakdown`
+
+**Google Analytics Breakdown** — One dimension, ranked — top pages, channels, sources, devices, countries, events.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dimension` | string · verplicht | One GA4 dimension: pagePath, landingPage, sessionDefaultChannelGroup, sessionSource, sessionMedium, deviceCategory, country, city, eventName, browser, or any custom dimension from /metadata. |
+| `metrics` | string[] | Repeatable; defaults to sessions, totalUsers, keyEvents. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
+| `limit` | integer |  (default `25`) |
+| `order` | string | A named metric or dimension; prefix with - for descending. |
+| `filters` | string[] | Dimension filters, repeatable: name==value (exact), name=@value (contains) or name=^value (begins with). All clauses must match. A clause that parses as none of these is refused rather than ignored. |
+
+Antwoord: `200` · `GoogleAnalyticsReport`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/compatibility`
+
+**Google Analytics Compatibility** — Which fields may still be combined with the ones named.
+
+Recht: `google_analytics.report.run`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dimensions` | string[] | Already-chosen dimensions. |
+| `metrics` | string[] | Already-chosen metrics. |
+
+Antwoord: `200` · `GoogleAnalyticsCompatibility`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/custom-dimensions`
+
+**Google Analytics Custom Dimensions** — The property's own dimensions — the fields a report about *this* client can group by.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/custom-metrics`
+
+**Google Analytics Custom Metrics** — The property's own metrics, with the unit each one is measured in.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/data-retention`
+
+**Google Analytics Data Retention** — How long this property keeps event-level data.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/data-streams`
+
+**Google Analytics Data Streams** — The web and app streams feeding this property, with their measurement IDs.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/firebase-links`
+
+**Google Analytics Firebase Links** — Which Firebase projects feed this property — the app half of a client's measurement.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/google-ads-links`
+
+**Google Analytics Google Ads Links** — Which Google Ads customers this property is linked to.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/key-events`
+
+**Google Analytics Key Events** — The events this property counts as conversions (GA4's own name for them is key events).
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsResourceList`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/metadata`
+
+**Google Analytics Metadata** — Every dimension and metric this property will accept, custom ones included.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Antwoord: `200` · `GoogleAnalyticsMetadata`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/overview`
+
+**Google Analytics Overview** — How a property did over a period, against the same period a year earlier, with the change already computed — plus the acquisition channel split.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
+| `compare` | string | year (default — what seasonality survives) or previous. |
+
+Antwoord: `200` · `GoogleAnalyticsOverview`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/pivot`
+
+**Google Analytics Pivot** — One dimension crossed against another: channel by month, device by landing page.
+
+Recht: `google_analytics.report.run`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `metrics` | string[] · verplicht | Repeatable GA4 metric names. At least one. |
+| `pivot_on` | string · verplicht | The dimension to spread across the columns. |
+| `dimensions` | string[] | The dimension(s) that make the rows. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
+| `limit` | integer |  (default `25`) |
+
+Antwoord: `200` · `GoogleAnalyticsReport`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/realtime`
+
+**Google Analytics Realtime** — Who is on the site in the last thirty minutes. There is no period here, by design — realtime answers about now and about nothing else.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dimensions` | string[] | Repeatable realtime dimensions: unifiedScreenName, country, deviceCategory. |
+| `metrics` | string[] | Repeatable; defaults to activeUsers. |
+| `limit` | integer |  (default `50`) |
+
+Antwoord: `200` · `GoogleAnalyticsRealtime`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/report`
+
+**Google Analytics Report** — Any dimensions crossed with any metrics — the escape hatch for questions the curated reads do not answer.
+
+Recht: `google_analytics.report.run`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `metrics` | string[] · verplicht | Repeatable GA4 metric names. At least one. |
+| `dimensions` | string[] | Repeatable GA4 dimension names; none is a total. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
+| `limit` | integer |  (default `25`) |
+| `offset` | integer |  (default `0`) |
+| `order` | string | A named metric or dimension; prefix with - for descending. |
+| `filters` | string[] | Dimension filters, repeatable: name==value (exact), name=@value (contains) or name=^value (begins with). All clauses must match. A clause that parses as none of these is refused rather than ignored. |
+
+Antwoord: `200` · `GoogleAnalyticsReport`
+
+#### `GET /api/v1/google-analytics/properties/{property_id}/timeseries`
+
+**Google Analytics Timeseries** — The chosen metrics day by day, oldest first.
+
+Recht: `google_analytics.property.read`
+
+Padparameters: `property_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `metrics` | string[] | Repeatable GA4 metric names; defaults to sessions, totalUsers, keyEvents. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
+
+Antwoord: `200` · `GoogleAnalyticsReport`
+
+</details>
+
 ## `impex`
 
 | Endpoint | Recht |
@@ -1165,6 +1450,7 @@ Queryparameters:
 | `company_id` | string |  |
 | `mine` | boolean | Only rows assigned to me (default `false`) |
 | `sort` | string | List sort key, '-' desc |
+| `burn` | string |  |
 
 Antwoord: `200`
 
@@ -1296,8 +1582,10 @@ Queryparameters:
 
 | Naam | Type | Betekenis |
 | --- | --- | --- |
+| `q` | string | Search, as on the list |
 | `status` | string | Status, as on the list |
 | `company_id` | string |  |
+| `subscription_type_id` | string |  |
 | `sort` | string | List sort key, '-' desc |
 
 Antwoord: `200`
@@ -1403,6 +1691,7 @@ Queryparameters:
 | `user_id` | string |  |
 | `company_id` | string |  |
 | `project_id` | string |  |
+| `task_id` | string |  |
 | `date_from` | string | Rows on/after this day |
 | `date_to` | string | Rows on/before this day |
 | `sort` | string | List sort key, '-' desc |
@@ -1759,7 +2048,7 @@ Queryparameters:
 | `limit` | integer |  (default `50`) |
 | `offset` | integer |  (default `0`) |
 | `unread` | boolean | true = unread only, false = read only |
-| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` |  |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · `interaction` |  |
 | `sort` | string | created_at, '-' desc |
 | `count` | boolean | false skips the count query (docs/PERFORMANCE.md) (default `true`) |
 
@@ -1787,7 +2076,7 @@ Queryparameters:
 
 | Naam | Type | Betekenis |
 | --- | --- | --- |
-| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · verplicht |  |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · `interaction` · verplicht |  |
 | `entity_id` | string · verplicht |  |
 | `limit` | integer |  (default `20`) |
 
@@ -1965,7 +2254,7 @@ Queryparameters:
 
 | Naam | Type | Betekenis |
 | --- | --- | --- |
-| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · verplicht |  |
+| `entity_type` | `task` · `project` · `company` · `leave_request` · `timesheet` · `interaction` · verplicht |  |
 | `entity_id` | string · verplicht |  |
 
 Antwoord: `200` · `WatchRead`
@@ -2100,6 +2389,186 @@ Antwoord: `204`
 Recht: `settings.system.read`
 
 Antwoord: `200` · `SystemInfo`
+
+</details>
+
+## `timeon`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/timeon/accounts` | `timeon.settings.manage` |
+| `POST` `/timeon/accounts` | `timeon.settings.manage` |
+| `PATCH` `/timeon/accounts/{account_id}` | `timeon.settings.manage` |
+| `DELETE` `/timeon/accounts/{account_id}` | `timeon.settings.manage` |
+| `POST` `/timeon/accounts/{account_id}/sync` | `timeon.sync.run` |
+| `POST` `/timeon/accounts/{account_id}/verify` | `timeon.settings.manage` |
+| `GET` `/timeon/accounts/options` | `timeon.sync.run` |
+| `GET` `/timeon/conflicts` | `timeon.sync.run` |
+| `POST` `/timeon/conflicts/{conflict_id}/resolve` | `timeon.sync.write` |
+| `GET` `/timeon/links` | `timeon.sync.run` |
+| `DELETE` `/timeon/links/{link_id}` | `timeon.sync.write` |
+| `GET` `/timeon/runs` | `timeon.sync.run` |
+| `GET` `/timeon/workspace` | `timeon.sync.run` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/timeon/accounts`
+
+**List Accounts** — Connected Timeon organisations. The API key is never part of the response.
+
+Recht: `timeon.settings.manage`
+
+Antwoord: `200` · `TimeonAccountRead[]`
+
+#### `POST /api/v1/timeon/accounts`
+
+**Create Account** — Store a credential. Both directions start at ``off``: a connection that began syncing the moment a key was pasted would be an irreversible act performed by a form.
+
+Recht: `timeon.settings.manage`
+
+Request body: `TimeonAccountCreate`
+
+Antwoord: `201` · `TimeonAccountRead`
+
+#### `PATCH /api/v1/timeon/accounts/{account_id}`
+
+**Update Account** — Rename, rotate the key, or change what the sync does. An omitted key keeps the stored one.
+
+Recht: `timeon.settings.manage`
+
+Padparameters: `account_id`
+
+Request body: `TimeonAccountUpdate`
+
+Antwoord: `200` · `TimeonAccountRead`
+
+#### `DELETE /api/v1/timeon/accounts/{account_id}`
+
+**Delete Account** — Forget the connection. Pairings, conflicts and runs go with it; **time entries do not** — a pulled entry is schakl's record of work somebody did, and removing a credential is not a statement about whether that work happened.
+
+Recht: `timeon.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/timeon/accounts/{account_id}/sync`
+
+**Run Sync** — Run one sync and answer with its report.
+
+Recht: `timeon.sync.run`
+
+Padparameters: `account_id`
+
+Request body: `TimeonSyncRequest`
+
+Antwoord: `200` · `TimeonSyncRunRead`
+
+#### `POST /api/v1/timeon/accounts/{account_id}/verify`
+
+**Verify Account** — Ask Timeon which organisation this key opens, and how big it is.
+
+Recht: `timeon.settings.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `TimeonVerifyResult`
+
+#### `GET /api/v1/timeon/accounts/options`
+
+**Account Options** — The connections a sync may run against.
+
+Recht: `timeon.sync.run`
+
+Antwoord: `200` · `TimeonAccountRead[]`
+
+#### `GET /api/v1/timeon/conflicts`
+
+**List Conflicts** — The queue. Readable on ``sync.run`` — seeing what needs deciding must not require the power to decide it.
+
+Recht: `timeon.sync.run`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+| `status` | string |  (default `open`) |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `TimeonConflictRead[]`
+
+#### `POST /api/v1/timeon/conflicts/{conflict_id}/resolve`
+
+**Resolve Conflict** — Settle one conflict: keep schakl's version, keep Timeon's, or record that they may differ.
+
+Recht: `timeon.sync.write`
+
+Padparameters: `conflict_id`
+
+Request body: `TimeonConflictResolve`
+
+Antwoord: `200` · `TimeonConflictRead`
+
+#### `GET /api/v1/timeon/links`
+
+**List Links** — The pairings, filterable by what is wrong with them.
+
+Recht: `timeon.sync.run`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+| `kind` | string |  |
+| `status` | string |  |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `TimeonLinkRead[]`
+
+#### `DELETE /api/v1/timeon/links/{link_id}`
+
+**Unpair** — Forget one pairing without touching either record.
+
+Recht: `timeon.sync.write`
+
+Padparameters: `link_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/timeon/runs`
+
+**List Runs** — What the last runs did, and what they could not do.
+
+Recht: `timeon.sync.run`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+| `limit` | integer |  (default `25`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `TimeonSyncRunRead[]`
+
+#### `GET /api/v1/timeon/workspace`
+
+**Workspace** — Everything the sync page's shell draws, in one round trip.
+
+Recht: `timeon.sync.run`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `account_id` | string |  |
+
+Antwoord: `200` · `TimeonWorkspaceRead`
 
 </details>
 

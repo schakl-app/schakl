@@ -1601,6 +1601,12 @@ class TaskService:
         if changed:
             await self._record(task.id, "updated", {"changed": changed})
 
+        # The Google mirror pushes a snapshot of the task's words and never re-reads it, so a
+        # rename (or rewritten description) has to re-announce every scheduled block — without
+        # this, a mirrored event keeps saying the old title forever.
+        if "title" in changed or "description" in changed:
+            await TaskScheduleService(self.ctx).refresh_for_task(task)
+
         # The hours the task took, in this same transaction (#314): a finished task with no
         # hours because a second request failed is the exact thing this feature exists to stop.
         if data.log_time is not None:

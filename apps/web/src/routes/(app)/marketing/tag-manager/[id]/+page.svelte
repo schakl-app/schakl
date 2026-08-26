@@ -207,6 +207,59 @@
   </p>
 </section>
 
+<!-- Summary & goal (#442): the tenant's own words about what this container is for and what
+     the tracking is supposed to prove — the Ads policy prose, one integration over. The write
+     mirrors the PATCH's own key (settings.manage, #310); a reader without it still sees the
+     words, because they are what the words are *for*. -->
+{#if data.canManage}
+  <section class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("gtm.detail.prose_title")}</h2>
+    <p class="mt-0.5 text-xs text-text-muted">{t("gtm.detail.prose_hint")}</p>
+    <form method="POST" action="?/details" use:enhance={busy.keep("details")} class="mt-3 space-y-3">
+      <div>
+        <label for="gtm-summary" class="mb-1 block text-xs font-medium text-text-muted"
+          >{t("gtm.detail.summary")}</label
+        >
+        <textarea
+          id="gtm-summary"
+          name="summary"
+          rows="3"
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          placeholder={t("gtm.detail.summary_hint")}>{container.summary}</textarea
+        >
+      </div>
+      <div>
+        <label for="gtm-goal" class="mb-1 block text-xs font-medium text-text-muted"
+          >{t("gtm.detail.goal")}</label
+        >
+        <textarea
+          id="gtm-goal"
+          name="goal"
+          rows="2"
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          placeholder={t("gtm.detail.goal_hint")}>{container.goal}</textarea
+        >
+      </div>
+      <div class="flex items-center gap-3">
+        <Button type="submit" size="sm" loading={busy.is("details")}>{t("common.save")}</Button>
+        {#if form?.saved}<span class="text-sm text-text-muted">{t("common.saved")}</span>{/if}
+      </div>
+    </form>
+  </section>
+{:else if container.summary || container.goal}
+  <section class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("gtm.detail.prose_title")}</h2>
+    {#if container.summary}
+      <p class="mt-2 whitespace-pre-line text-sm text-text">{container.summary}</p>
+    {/if}
+    {#if container.goal}
+      <p class="mt-2 text-xs text-text-muted">
+        {t("gtm.detail.goal")}: <span class="text-text">{container.goal}</span>
+      </p>
+    {/if}
+  </section>
+{/if}
+
 <!-- Conversions: what an agency is actually asked for -->
 <section class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-3 flex items-start justify-between gap-4">

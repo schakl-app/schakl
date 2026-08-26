@@ -716,6 +716,58 @@ async def test_a_list_names_the_people_it_answers_for(client_for) -> None:
         assert [r["user_name"] for r in rows] == ["Member"]
 
 
+async def test_availability_feed_drops_a_deactivated_member_and_a_named_read_keeps_them(
+    client_for,
+) -> None:
+    """#439: the all-people sweep is the agenda feed and stops answering for anyone who has
+    left; a caller *naming* the person (an admin on their page) still gets an answer."""
+    t = await make_tenant("avail-deactivated")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "weg@example.com", "full_name": "Weg Gegaan", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        member_id = invited.json()["user_id"]
+        membership_id = invited.json()["membership_id"]
+
+        monday = _monday()
+        res = await c.post(
+            "/api/v1/leave/availability",
+            json={"user_id": member_id, "kind": "extra", "date": monday.isoformat()},
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+
+        window = {"date_from": monday.isoformat(), "date_to": monday.isoformat()}
+        feed = {"all_users": True, **window}
+        before = (
+            await c.get("/api/v1/leave/availability/days", params=feed, headers=headers)
+        ).json()
+        assert member_id in {d["user_id"] for d in before}
+
+        off = await c.patch(
+            f"/api/v1/members/{membership_id}/account", json={"active": False}, headers=headers
+        )
+        assert off.status_code == 200, off.text
+
+        after = (
+            await c.get("/api/v1/leave/availability/days", params=feed, headers=headers)
+        ).json()
+        assert member_id not in {d["user_id"] for d in after}
+
+        named = (
+            await c.get(
+                "/api/v1/leave/availability/days",
+                params={"user_id": member_id, **window},
+                headers=headers,
+            )
+        ).json()
+        assert {d["user_id"] for d in named} == {member_id}
+
+
 async def test_availability_is_tenant_isolated(client_for) -> None:
     a = await make_tenant("avail-iso-a")
     b = await make_tenant("avail-iso-b")

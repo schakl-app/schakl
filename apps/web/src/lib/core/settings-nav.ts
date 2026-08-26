@@ -344,6 +344,16 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "tasks",
   },
   {
+    key: "projects",
+    href: "/settings/projects",
+    titleKey: "settings.projects.title",
+    subtitleKey: "settings.projects.subtitle",
+    keywordsKey: "settings.search.projects",
+    group: "modules",
+    permissions: ["projects.settings.manage"],
+    module: "projects",
+  },
+  {
     key: "leave",
     href: "/settings/leave",
     titleKey: "settings.leave.title",

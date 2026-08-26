@@ -49,6 +49,9 @@ async def _fetch_page(
         mine=bool(filters.get("mine")),
         sort=filters.get("sort"),
         count=False,
+        # The over-budget view exports exactly what it shows (#437, §9): the resolved filter
+        # reaches the file, or the spreadsheet quietly grows the healthy budgets back.
+        burn=filters.get("burn"),
     )
     # Resolve company names for the export cells in one grouped query, never one per row.
     company_ids = {p.company_id for p in items if p.company_id}
@@ -110,7 +113,7 @@ PROJECT_IMPEX = ImpexDescriptor(
     read_permission="projects.project.read",
     write_permission="projects.project.write",
     natural_keys=("name",),
-    filters=("q", "status", "company_id", "mine", "sort"),
+    filters=("q", "status", "company_id", "mine", "sort", "burn"),
     columns=(
         ImpexColumn("name", required=True),
         # Required, and stated *here* rather than left to ``ProjectCreate``: a schema rejection

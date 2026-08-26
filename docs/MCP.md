@@ -354,6 +354,41 @@ authorization server from the `401` challenge, registers itself, and sends the u
 consent screen on their ordinary session. Connected clients are listed on the same settings
 screen, and disconnecting one revokes every session it ever opened.
 
+### Manual clients (#441)
+
+**A DCR client — claude.ai custom connectors, Claude Desktop — needs no credentials at all**:
+only the `/mcp` URL. If connecting Claude fails on an instance, that is a bug or a config
+problem, never a missing client id. Manual clients exist for everything that will *not* DCR —
+an enterprise connector config, an n8n/Zapier-style tool that asks its operator for a client
+id + secret up front.
+
+An admin mints one on the same **Instellingen → API en MCP** screen (its own card, gated on
+`settings.oauth.manage` — a standing credential onto the MCP surface is an org decision, not a
+personal one): a name, one redirect URI per line, and back come a `client_id` and a secret
+shown **exactly once** (only its hash is stored, the API-key rule). The card also lists every
+live client — the self-registered ones included, marked apart, so the admin overview and the
+per-user connections list cannot tell two different stories — with **New secret** (manual
+clients only: rotating a DCR client's secret would be an outage wearing a security control's
+clothes; live sessions survive, because rotation means "the old *secret* stops working" and
+killing sessions is what revoke is for) and **Revoke** (the org-wide kill switch: the client
+and every key it ever issued, whoever's).
+
+Everything after the credential is the ordinary flow: authorization code + PKCE, consent on the
+app session, and redemption hands back an `api_keys` row capped by the consenting person's live
+permissions.
+
+### CORS is scoped to the bearer surfaces (#441)
+
+A browser-resident MCP client (MCP Inspector, an in-page connector) passed discovery — the two
+`.well-known` proxies say `Access-Control-Allow-Origin: *` — and then died on the preflight,
+because the API served no CORS headers and `/mcp`'s credential gate 401'd an `OPTIONS` that by
+definition carries no credential. `app/core/cors.py` answers now, and the boundary is the
+authentication model rather than a list of favourite endpoints: any-origin CORS on the OAuth
+token/register/revoke/metadata endpoints and the `/mcp` prefix (bearer-token surfaces, where
+CORS protects nothing the token does not already gate), and **never** on the
+cookie-authenticated `/api/v1` routes, where blanket CORS would be a CSRF protection deleted by
+middleware. The authorization response also carries RFC 9207's `iss`, and the metadata says so.
+
 **The screen asks whether the surface is there before it offers the command.** `/meta/modules`
 carries `mcp_enabled` (is `/mcp` mounted at all — `SCHAKL_MCP_ENABLED`) and `mcp_entitled` (does
 the license cover the `mcp` sku, which `LicenseGateASGI` enforces on the whole mount). Neither

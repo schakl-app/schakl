@@ -104,6 +104,21 @@ class DriveBulkProvisionResult(BaseModel):
     queued: int
 
 
+class DriveStateRead(BaseModel):
+    """Provisioning readiness for the panels (#444) — the flags the company panel's provider
+    already computed, servable to the project/task panels that load over ``/links``."""
+
+    enabled: bool
+    viewer_connected: bool
+    #: Everything the provision 409s on, plus the caller's own write permission: a button drawn
+    #: on less can only refuse (#253).
+    can_provision: bool
+    #: With an entity named: ``pending`` / ``failed`` while its folder job is one of those.
+    job_status: str | None = None
+    #: Google's own sentence for a failed job — an admin-facing read, never an i18n key.
+    job_error: str | None = None
+
+
 @router.get(
     "/browse",
     response_model=DriveBrowseResult,
@@ -123,6 +138,20 @@ async def browse(
     """
     listing = await DriveService(ctx).browse(folder_id, q=q, refresh=refresh)
     return DriveBrowseResult(**listing)
+
+
+@router.get(
+    "/state",
+    response_model=DriveStateRead,
+    dependencies=[require_permission("google.drive.read")],
+)
+async def drive_state(
+    entity_type: str | None = Query(None, max_length=32),
+    entity_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> DriveStateRead:
+    """Provisioning readiness + this entity's folder-job status, for the panels (#444)."""
+    return DriveStateRead(**await DriveService(ctx).provision_state(entity_type, entity_id))
 
 
 @router.get(

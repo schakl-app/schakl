@@ -24,6 +24,7 @@ from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
 from app.core.bulk.router import build_bulk_router
+from app.core.cors import BearerSurfaceCORS
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.demo import demo_guard_middleware
@@ -136,6 +137,9 @@ def create_app() -> FastAPI:
     # the catalogued dangerous operations with errors.demo_blocked. Added last so it runs first
     # (Starlette middleware is LIFO), rejecting before routing/auth.
     app.add_middleware(BaseHTTPMiddleware, dispatch=demo_guard_middleware)
+    # CORS on the bearer-token surfaces only — the OAuth endpoints and /mcp (#441). Never the
+    # cookie-authenticated /api/v1 routes; see app/core/cors.py for why the line sits there.
+    app.add_middleware(BearerSurfaceCORS)
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api/v1")

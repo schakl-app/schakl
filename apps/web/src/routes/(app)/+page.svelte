@@ -252,7 +252,9 @@
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
       {#each columns as column, columnIndex (columnIndex)}
         <div
-          class="flex min-h-24 w-full min-w-0 flex-col gap-4 sm:flex-1"
+          class="flex min-h-24 w-full min-w-0 flex-col gap-4 sm:flex-1 {columnIndex > 0
+            ? 'sm:border-l sm:border-border sm:pl-4'
+            : ''}"
           data-dashboard-column={columnIndex}
           use:dndzone={{
             items: column,
@@ -295,8 +297,13 @@
          heights, instead of grid rows stretching to the tallest tile and leaving holes. -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
       {#each columns as column, columnIndex (columnIndex)}
+        <!-- A visible column rule (#438): the board is two stacks of same-shaped cards, and a
+             hairline between the stacks is what lets the card edges read as a grid at a glance
+             — structure as shape, not something recovered by parsing each card. -->
         <div
-          class="flex w-full min-w-0 flex-col gap-4 sm:flex-1"
+          class="flex w-full min-w-0 flex-col gap-4 sm:flex-1 {columnIndex > 0
+            ? 'sm:border-l sm:border-border sm:pl-4'
+            : ''}"
           data-dashboard-column={columnIndex}
         >
           {#each column as tile (tile.id)}

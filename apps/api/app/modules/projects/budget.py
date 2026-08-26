@@ -35,6 +35,24 @@ def _zone(tz: ZoneInfo | None) -> ZoneInfo:
     return tz if tz is not None else resolve_zoneinfo(None)
 
 
+def effective_budget(
+    budget_hours: float | None, budget_period: str, covering: list
+) -> tuple[float | None, str]:
+    """The budget a project actually burns against, and the period it resets on.
+
+    A project covered by an active subscription with included hours (#225) burns against the
+    sum of those subscriptions' monthly-equivalent hours and its period is forced to monthly —
+    the stored ``budget_hours`` is derived and read-only then. One copy of that rule, taken by
+    the screen's burn bar (``ProjectService._attach_hours``) and the nightly budget watch
+    alike, so the alert and the bar can never disagree about how many hours a project has.
+    ``covering`` is duck-typed (objects carrying ``monthly_hours``) so this file never imports
+    the subscriptions module (CLAUDE.md §6).
+    """
+    if covering:
+        return round(sum(s.monthly_hours for s in covering), 2), "monthly"
+    return (float(budget_hours) if budget_hours is not None else None), budget_period
+
+
 def period_start_date(
     budget_period: str, *, now: datetime | None = None, tz: ZoneInfo | None = None
 ) -> date | None:

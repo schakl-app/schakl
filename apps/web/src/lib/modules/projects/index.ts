@@ -6,6 +6,7 @@ import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
 import { FolderKanban } from "@lucide/svelte";
 
+import ProjectBudgetsDonutWidget from "./ProjectBudgetsDonutWidget.svelte";
 import ProjectBudgetsWidget from "./ProjectBudgetsWidget.svelte";
 import ProjectsPanel from "./ProjectsPanel.svelte";
 
@@ -28,6 +29,22 @@ registerWebModule({
           .GET("/api/v1/projects/dashboard-budgets", { params: { query: { limit: 4 } } })
           .then((r) => r.data ?? { items: [], total: 0 }),
       component: ProjectBudgetsWidget,
+    },
+    {
+      key: "projects.budgets_donut",
+      module: "projects",
+      position: 26,
+      requiresPermission: "projects.project.read",
+      descriptionKey: "dashboard.widget_desc.projects.budgets_donut",
+      category: "dashboard.category.projects",
+      size: "md",
+      // Ten slices plus an honest tail bucket (#437): the endpoint hands back the hottest
+      // rows, the tail's summed hours, and the over-budget count over the whole set.
+      load: (api) =>
+        api
+          .GET("/api/v1/projects/dashboard-budgets", { params: { query: { limit: 10 } } })
+          .then((r) => r.data ?? { items: [], total: 0 }),
+      component: ProjectBudgetsDonutWidget,
     },
   ],
   nav: [

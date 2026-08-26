@@ -46,16 +46,17 @@ company_details_panel = PanelSpec(
     entity_type="company",
     title_key="companies.panel.details",
     provider=_details_provider,
-    position=10,
+    position=45,
     # Whoever may open the client may read its own definition — this is the record the page
     # *is*. Declared rather than omitted (#365): the hub's own panel is the one every later
     # module copies, so it has to show the shape.
     requires_permission="companies.company.read",
-    # A working surface (#403). #364 sorted every panel into two lanes and filed this one under
-    # *VASTGELEGD* — a register is something you occasionally consult, and a client's telephone
-    # number, e-mail address and adres are the single thing somebody opens a client's page for
-    # when the phone rings. Sorted by what the panel is *called* rather than by what it is used
-    # for, it sat roughly 1.100 px down the page, under every working surface on it.
+    # A working surface, at the *end* of the working lane. #364 filed this under VASTGELEGD and
+    # buried it 1.100 px down; #403 pulled it to the top; the owner then asked for the middle
+    # position: the vital signs and the live work (contacts, projects, taken, contactmomenten,
+    # uren) come first, and the address block closes the lane — consulted when the phone rings,
+    # but not the reason the page is opened. Still primary: a register heading over the record's
+    # own definition read as filing it away.
     #
     # Half width — an address and six labelled values do not want 1150 px — and since #403 that
     # is what it is drawn at, whether or not it has a neighbour.

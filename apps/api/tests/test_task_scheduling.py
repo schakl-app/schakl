@@ -208,3 +208,57 @@ async def test_schedule_own_vs_any_scoping(client_for) -> None:
             headers=member_headers,
         )
         assert denied.status_code == 403
+
+
+async def test_feed_drops_a_deactivated_members_blocks_and_the_task_panel_keeps_them(
+    client_for,
+) -> None:
+    """#439: the calendar feed stops drawing a departed colleague the moment the roster menus
+    stop offering them — while the task page's own panel (``task_id``) keeps the record."""
+    t = await make_tenant("sched-deactivated")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "weg@example.com", "full_name": "Weg Gegaan", "role": "member"},
+            headers=owner_headers,
+        )
+        assert invited.status_code == 201, invited.text
+        member_id = invited.json()["user_id"]
+        membership_id = invited.json()["membership_id"]
+
+        task_id = await _make_task(c, owner_headers, assignee=uuid.UUID(member_id))
+        theirs = await c.post(
+            "/api/v1/tasks/schedules",
+            json=_block(task_id=task_id, user_id=member_id),
+            headers=owner_headers,
+        )
+        assert theirs.status_code == 201, theirs.text
+        ours = await c.post(
+            "/api/v1/tasks/schedules",
+            json=_block(task_id=task_id, user_id=str(t.user.id), start_time="13:00"),
+            headers=owner_headers,
+        )
+        assert ours.status_code == 201, ours.text
+
+        feed = f"/api/v1/tasks/schedules?date_from={_DAY}&date_to={_DAY}"
+        both = f"{feed}&user_ids={member_id}&user_ids={t.user.id}"
+        before = (await c.get(both, headers=owner_headers)).json()
+        assert {row["user_id"] for row in before} == {member_id, str(t.user.id)}
+
+        off = await c.patch(
+            f"/api/v1/members/{membership_id}/account",
+            json={"active": False},
+            headers=owner_headers,
+        )
+        assert off.status_code == 200, off.text
+
+        # The feed no longer draws their block — even when the URL still names them.
+        after = (await c.get(both, headers=owner_headers)).json()
+        assert {row["user_id"] for row in after} == {str(t.user.id)}
+
+        # The task page's panel is a record surface and keeps the planned block.
+        panel = (
+            await c.get(f"/api/v1/tasks/schedules?task_id={task_id}", headers=owner_headers)
+        ).json()
+        assert {row["user_id"] for row in panel} == {member_id, str(t.user.id)}

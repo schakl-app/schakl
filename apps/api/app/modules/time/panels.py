@@ -19,11 +19,16 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, column, func, select, table
 
 from app.core.tenancy import RequestContext
 from app.modules.time.models import TimeEntry
 from app.registry import PANEL_FEED, PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
+
+# The two tables an entry points at, named rather than imported (CLAUDE.md §6) — the same
+# stand-in shape ``service.SORTABLE`` uses. Only the columns the panel prints.
+_projects = table("projects", column("id"), column("org_id"), column("name"))
+_tasks = table("tasks", column("id"), column("org_id"), column("title"))
 
 # How many recent entries the panel shows — the hub's shared feed default (#407). The panel used
 # to load the client's *entire* timesheet to display this handful and one total; the total is an
@@ -54,18 +59,29 @@ async def _time_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
         totals_stmt = totals_stmt.where(horizon)
     total_minutes, total_entries = (await ctx.session.execute(totals_stmt)).one()
 
-    entries = (
-        (
-            await ctx.session.execute(
-                repo.scoped_select()
-                .where(TimeEntry.company_id == company_id)
-                .order_by(TimeEntry.started_at.desc())
-                .limit(_RECENT)
+    # Which project and/or task an hour belongs to, named on the row (docs/UX.md principle 7:
+    # "which hours?" is the question a duration invites). Two outer joins on the same bounded
+    # page — still one statement, and it cannot multiply rows: both are FK → PK.
+    entry_rows = (
+        await ctx.session.execute(
+            repo.scoped_select()
+            .add_columns(_projects.c.name.label("project_name"), _tasks.c.title.label("task_title"))
+            .outerjoin(
+                _projects,
+                and_(
+                    _projects.c.id == TimeEntry.project_id,
+                    _projects.c.org_id == TimeEntry.org_id,
+                ),
             )
+            .outerjoin(
+                _tasks,
+                and_(_tasks.c.id == TimeEntry.task_id, _tasks.c.org_id == TimeEntry.org_id),
+            )
+            .where(TimeEntry.company_id == company_id)
+            .order_by(TimeEntry.started_at.desc())
+            .limit(_RECENT)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     return {
         "total_minutes": int(total_minutes or 0),
         "total_entries": int(total_entries or 0),
@@ -80,8 +96,12 @@ async def _time_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
                 "break_minutes": e.break_minutes,
                 "billable": e.billable,
                 "approved_at": e.approved_at.isoformat() if e.approved_at else None,
+                "project_id": str(e.project_id) if e.project_id else None,
+                "project_name": project_name,
+                "task_id": str(e.task_id) if e.task_id else None,
+                "task_title": task_title,
             }
-            for e in entries
+            for e, project_name, task_title in entry_rows
         ],
     }
 

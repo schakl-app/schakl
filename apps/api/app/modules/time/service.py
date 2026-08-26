@@ -645,6 +645,7 @@ class TimeService:
         user_id: uuid.UUID | None,
         company_id: uuid.UUID | None,
         project_id: uuid.UUID | None,
+        task_id: uuid.UUID | None = None,
         date_from: date | None,
         date_to: date | None,
         billable: bool | None,
@@ -661,6 +662,8 @@ class TimeService:
             conditions.append(TimeEntry.company_id == company_id)
         if project_id is not None:
             conditions.append(TimeEntry.project_id == project_id)
+        if task_id is not None:
+            conditions.append(TimeEntry.task_id == task_id)
         if date_from is not None:
             conditions.append(
                 TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
@@ -690,6 +693,7 @@ class TimeService:
         user_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
         billable: bool | None = None,
@@ -704,6 +708,7 @@ class TimeService:
             user_id=user_id,
             company_id=company_id,
             project_id=project_id,
+            task_id=task_id,
             date_from=date_from,
             date_to=date_to,
             billable=billable,

@@ -2,6 +2,11 @@
  * The form actions behind the Drive panels (issue #21). Host detail pages (company /
  * project / task) spread these into their `actions`, the same contract the interactions
  * panels use — a panel edits through its host page.
+ *
+ * A refusal comes back as `driveError`, not `error` (#444): the hosts render `form.error` at
+ * the very bottom of the page, so a 409 from the create-folder button painted a red line two
+ * thousand pixels from the button that fired it. The panels render `driveError` themselves,
+ * beside the control it is about.
  */
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
@@ -23,7 +28,7 @@ export const driveActions = {
         drive_file_id,
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { driveError: apiErrorKey(error).key });
     return { driveLinked: true };
   },
 
@@ -46,7 +51,7 @@ export const driveActions = {
         drive_file_id,
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { driveError: apiErrorKey(error).key });
     return { driveFolderSet: true };
   },
 
@@ -58,7 +63,7 @@ export const driveActions = {
     const { error } = await apiFor(event).DELETE("/api/v1/google/drive/links/{link_id}", {
       params: { path: { link_id } },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { driveError: apiErrorKey(error).key });
     return { driveUnlinked: true };
   },
 
@@ -75,7 +80,7 @@ export const driveActions = {
     const { error } = await apiFor(event).DELETE("/api/v1/google/drive/files/{drive_file_id}", {
       params: { path: { drive_file_id } },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { driveError: apiErrorKey(error).key });
     return { driveFileTrashed: true };
   },
 
@@ -87,7 +92,7 @@ export const driveActions = {
     const { error } = await apiFor(event).POST("/api/v1/google/drive/provision", {
       body: { entity_type: entity_type as "company", entity_id },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { driveError: apiErrorKey(error).key });
     return { driveProvisionQueued: true };
   },
 };

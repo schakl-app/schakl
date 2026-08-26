@@ -111,6 +111,9 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     # Single sign-on (issue #76): embeds the IdP client secret and its "enforce" toggle can
     # turn password login off for the whole org — admin-only (owner via the wildcard).
     PermissionSpec("settings.auth.manage", group="settings", position=120),
+    # Manual OAuth clients (#441): minting a client id/secret hands a third party a standing
+    # door onto the MCP surface, so it is an org decision — admin-only, never personal.
+    PermissionSpec("settings.oauth.manage", group="settings", position=130),
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),

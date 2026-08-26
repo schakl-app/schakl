@@ -391,3 +391,151 @@ async def test_refresh_rotates_the_access_token_and_disconnect_kills_both(client
             },
         )
         assert denied.status_code == 401
+
+
+async def test_manual_client_mint_rotate_and_revoke(client_for) -> None:
+    """#441: the settings screen's own client — ``created_by_user_id`` finally has a caller.
+
+    The secret is shown once and only its hash is stored; rotating replaces it (the old one
+    stops authenticating at the token endpoint, the new one does); revoking is org-wide.
+    """
+    t = await make_tenant("oauth-manual")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/oauth/clients",
+            json={"client_name": "n8n", "redirect_uris": ["https://flows.example/callback"]},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        client = created.json()
+        assert client["manual"] is True
+        assert client["confidential"] is True
+        secret = client["client_secret"]
+        assert secret
+
+        # The admin overview lists it, and never the secret.
+        listed = (await c.get("/api/v1/oauth/clients", headers=headers)).json()
+        assert [row["client_name"] for row in listed] == ["n8n"]
+        assert "client_secret" not in listed[0]
+
+        # The minted secret authenticates at the token endpoint (a garbage code then fails
+        # as a *grant* problem, which proves the client check passed)…
+        with_secret = await c.post(
+            "/api/v1/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": "nonsense",
+                "redirect_uri": "https://flows.example/callback",
+                "client_id": client["client_id"],
+                "client_secret": secret,
+                "code_verifier": _VERIFIER,
+            },
+        )
+        assert with_secret.status_code == 400
+        assert with_secret.json()["error"] == "invalid_grant"
+
+        rotated = await c.post(f"/api/v1/oauth/clients/{client['id']}/rotate", headers=headers)
+        assert rotated.status_code == 200, rotated.text
+        new_secret = rotated.json()["client_secret"]
+        assert new_secret and new_secret != secret
+
+        # …and after rotation the old secret is refused before any grant is looked at.
+        with_old = await c.post(
+            "/api/v1/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": "nonsense",
+                "redirect_uri": "https://flows.example/callback",
+                "client_id": client["client_id"],
+                "client_secret": secret,
+                "code_verifier": _VERIFIER,
+            },
+        )
+        assert with_old.status_code == 401
+        assert with_old.json()["error"] == "invalid_client"
+
+        gone = await c.delete(f"/api/v1/oauth/clients/{client['id']}", headers=headers)
+        assert gone.status_code == 204
+        assert (await c.get("/api/v1/oauth/clients", headers=headers)).json() == []
+
+
+async def test_rotate_refuses_a_self_registered_client(client_for) -> None:
+    """A DCR client's secret lives in software that cannot be told about the new one —
+    rotating it would be an outage wearing a security control's clothes."""
+    t = await make_tenant("oauth-rotate-dcr")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        registered = await _register(c)
+        listed = (await c.get("/api/v1/oauth/clients", headers=headers)).json()
+        pk = next(r["id"] for r in listed if r["client_id"] == registered["client_id"])
+        refused = await c.post(f"/api/v1/oauth/clients/{pk}/rotate", headers=headers)
+        assert refused.status_code == 422
+        assert refused.json()["error"]["code"] == "validation"
+
+
+async def test_authorization_response_carries_the_issuer(client_for) -> None:
+    """RFC 9207: the redirect names which issuer minted the code, and the metadata says so."""
+    t = await make_tenant("oauth-iss")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        registered = await _register(c)
+        approved = await c.post(
+            "/api/v1/oauth/consent",
+            json={
+                "client_id": registered["client_id"],
+                "redirect_uri": registered["redirect_uris"][0],
+                "code_challenge": _CHALLENGE,
+                "code_challenge_method": "S256",
+                "scopes": ["companies.company.read"],
+                "state": "xyz",
+            },
+            headers=headers,
+        )
+        assert approved.status_code == 200, approved.text
+        redirect_to = approved.json()["redirect_to"]
+        from urllib.parse import parse_qs, urlparse
+
+        params = parse_qs(urlparse(redirect_to).query)
+        server = (await c.get("/api/v1/oauth/metadata/authorization-server")).json()
+        assert params["iss"] == [server["issuer"]]
+        assert server["authorization_response_iss_parameter_supported"] is True
+
+
+async def test_cors_covers_the_bearer_surfaces_and_never_the_cookie_ones(client_for) -> None:
+    """#441: a browser-resident MCP client passes discovery and must then pass the preflight.
+
+    Any-origin CORS on the token/register/revoke endpoints and /mcp — bearer surfaces, where
+    CORS protects nothing the token does not already gate — and never on the
+    cookie-authenticated routes, where it would be a CSRF protection deleted by middleware.
+    """
+    t = await make_tenant("oauth-cors")
+    headers = await auth_cookie(t.user)
+    preflight = {
+        "Origin": "https://inspector.example",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization, content-type",
+    }
+    async with client_for(t.host) as c:
+        for path in ("/api/v1/oauth/token", "/api/v1/oauth/register", "/mcp"):
+            response = await c.options(path, headers=preflight)
+            assert response.status_code == 204, (path, response.status_code)
+            assert response.headers["access-control-allow-origin"] == "*"
+            assert "authorization" in response.headers["access-control-allow-headers"]
+
+        # The actual (non-preflight) response carries the header too.
+        actual = await c.post(
+            "/api/v1/oauth/token",
+            data={"grant_type": "authorization_code", "code": "x", "client_id": "y"},
+            headers={"Origin": "https://inspector.example"},
+        )
+        assert actual.headers.get("access-control-allow-origin") == "*"
+
+        # A cookie-authenticated route gets nothing from this middleware, preflight included.
+        plain = await c.get(
+            "/api/v1/companies",
+            headers={**headers, "Origin": "https://inspector.example"},
+        )
+        assert "access-control-allow-origin" not in plain.headers
+        blocked = await c.options("/api/v1/companies", headers=preflight)
+        assert "access-control-allow-origin" not in blocked.headers

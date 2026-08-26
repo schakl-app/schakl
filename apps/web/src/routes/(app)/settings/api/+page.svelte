@@ -511,6 +511,119 @@
     </section>
   {/if}
 
+  <!-- Manual OAuth clients (#441) — admin surface. DCR clients (Claude) need none of this:
+       they register themselves with only the /mcp URL. This exists for the connectors that
+       ask an operator for a client id + secret and will not DCR. -->
+  {#if data.oauthClients !== null}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.api.clients_title")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.api.clients_help")}</p>
+
+      {#if form?.clientSecret}
+        <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950">
+          <p class="text-sm font-medium text-amber-900 dark:text-amber-200">
+            {t(form?.rotated ? "settings.api.client_rotated" : "settings.api.client_created", {
+              name: form.clientName ?? "",
+            })}
+          </p>
+          <p class="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{t("settings.api.once")}</p>
+          <div class="mt-3 space-y-2">
+            <CopyBlock value={form.clientId ?? ""} label={t("settings.api.client_id_label")} />
+            <CopyBlock value={form.clientSecret} label={t("settings.api.client_secret_label")} />
+          </div>
+        </div>
+      {/if}
+
+      {#if data.oauthClients.length > 0}
+        <ul class="mt-4 divide-y divide-border rounded-lg border border-border">
+          {#each data.oauthClients as client (client.id)}
+            <li class="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+              <Bot size={16} class="shrink-0 text-text-muted" />
+              <div class="min-w-0 flex-1">
+                <span class="font-medium text-text">{client.client_name}</span>
+                <span class="block truncate text-xs text-text-muted">
+                  {client.client_id}
+                  · {t(client.manual ? "settings.api.client_manual" : "settings.api.client_dcr")}
+                </span>
+              </div>
+              {#if client.manual}
+                <form
+                  method="POST"
+                  action="?/rotateClient"
+                  use:enhance={busy.wrap(`rotate:${client.id}`)}
+                >
+                  <input type="hidden" name="client_pk" value={client.id} />
+                  <Button variant="secondary" size="xs" loading={busy.is(`rotate:${client.id}`)}>
+                    {t("settings.api.client_rotate")}
+                  </Button>
+                </form>
+              {/if}
+              <form
+                method="POST"
+                action="?/revokeClient"
+                use:enhance={busy.wrap(`revokeClient:${client.id}`)}
+              >
+                <input type="hidden" name="client_pk" value={client.id} />
+                <Button
+                  variant="danger-outline"
+                  size="xs"
+                  loading={busy.is(`revokeClient:${client.id}`)}
+                >
+                  {t("settings.api.client_revoke")}
+                </Button>
+              </form>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <!-- One create form: name + one redirect URI per line. Cleared on success — the reveal
+           block above is what carries the result, and a fresh form is what the next client
+           wants. -->
+      <form
+        method="POST"
+        action="?/createClient"
+        use:enhance={busy.clear("createClient")}
+        class="mt-4 space-y-3"
+      >
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label for="oauth-client-name" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("settings.api.client_name_label")}</label
+            >
+            <input
+              id="oauth-client-name"
+              name="client_name"
+              required
+              maxlength="200"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+              placeholder={t("settings.api.client_name_placeholder")}
+            />
+          </div>
+          <div>
+            <label
+              for="oauth-client-redirects"
+              class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("settings.api.client_redirects_label")}</label
+            >
+            <textarea
+              id="oauth-client-redirects"
+              name="redirect_uris"
+              required
+              rows="2"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+              placeholder="https://voorbeeld.nl/oauth/callback"
+            ></textarea>
+            <p class="mt-1 text-xs text-text-muted">{t("settings.api.client_redirects_help")}</p>
+          </div>
+        </div>
+        <Button type="submit" size="sm" loading={busy.is("createClient")}>
+          {t("settings.api.client_create")}
+        </Button>
+      </form>
+    </section>
+  {/if}
+
   <!-- The keys that already exist. No secret here, ever — the API keeps only a hash. -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="text-sm font-semibold text-text">{t("settings.api.keys_title")}</h2>

@@ -7,7 +7,7 @@ sidebar:
 
 What the agency actually does, and what it bills: projects with budgets, task boards and checklists, the timer and the timesheet, and every contact moment on one timeline.
 
-99 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+101 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `projects`
 
@@ -19,6 +19,8 @@ What the agency actually does, and what it bills: projects with budgets, task bo
 | `PATCH` `/projects/{project_id}` | `projects.project.write` |
 | `DELETE` `/projects/{project_id}` | `projects.project.delete` |
 | `GET` `/projects/dashboard-budgets` | `projects.project.read` |
+| `GET` `/projects/settings` | `projects.settings.manage` |
+| `PUT` `/projects/settings` | `projects.settings.manage` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -43,6 +45,7 @@ Query parameters:
 | `sort` | string | name \| status \| start_date \| end_date \| budget_hours \| …, '-' desc |
 | `hours` | boolean | Include the budget burn-down; costs one grouped query (default `false`) |
 | `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+| `burn` | string | 'over' keeps only projects at or past their budget; other tokens ignored |
 
 Returns: `200` · `Page_ProjectRead_`
 
@@ -106,7 +109,25 @@ Query parameters:
 | --- | --- | --- |
 | `limit` | integer |  (default `4`) |
 
-Returns: `200` · `DashboardBudgetProject[]`
+Returns: `200` · `DashboardBudgets`
+
+#### `GET /api/v1/projects/settings`
+
+**Get Settings** — The org's projects settings (the budget alert). No saved row means the defaults.
+
+Permission: `projects.settings.manage`
+
+Returns: `200` · `ProjectSettingsRead`
+
+#### `PUT /api/v1/projects/settings`
+
+**Update Settings**
+
+Permission: `projects.settings.manage`
+
+Request body: `ProjectSettingsUpdate`
+
+Returns: `200` · `ProjectSettingsRead`
 
 </details>
 
@@ -186,11 +207,12 @@ Query parameters:
 | `assignee_contact_id` | string |  |
 | `status` | string | A configured status key |
 | `label_id` | string |  |
-| `due` | `overdue` · `today` · `week` |  |
+| `due` | `overdue` · `today` · `week` · `later` |  |
 | `due_from` | string | Deadline window start (the Agenda feed) |
 | `due_to` | string | Deadline window end (inclusive) |
 | `q` | string |  |
 | `unnamed` | boolean | Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. |
+| `undated` | boolean | Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. |
 | `sort` | string | due \| title \| due_date \| priority \| status \| assignee \| …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. |
 | `meta` | boolean | Include label/checklist/comment aggregates (default `true`) |
 | `hours` | boolean | Include the hour budget's burn (logged/remaining minutes); costs one grouped query. Omitted for a caller without time.entry.read rather than refused. (default `false`) |
@@ -464,15 +486,21 @@ Returns: `204`
 
 #### `GET /api/v1/tasks/dashboard-groups`
 
-**Dashboard Groups** — Open-task counts grouped by project, then company, in one compact query.
+**Dashboard Groups** — Open-task counts grouped by project, then company, ranked by urgency (#398, #407).
 
 Permission: `tasks.task.read`
 
-Returns: `200` · `DashboardTaskGroup[]`
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `8`) |
+
+Returns: `200` · `DashboardTaskGroups`
 
 #### `GET /api/v1/tasks/dashboard-mine`
 
-**Dashboard Mine** — Compact personal task list for the dashboard tile.
+**Dashboard Mine** — The personal task tile: a page of rows, plus the bucket counts of the whole set (#407).
 
 Permission: `tasks.task.read`
 
@@ -482,7 +510,7 @@ Query parameters:
 | --- | --- | --- |
 | `limit` | integer |  (default `20`) |
 
-Returns: `200` · `DashboardTaskItem[]`
+Returns: `200` · `DashboardMineSummary`
 
 #### `GET /api/v1/tasks/labels`
 
@@ -975,6 +1003,7 @@ Query parameters:
 | `user_id` | string |  |
 | `company_id` | string |  |
 | `project_id` | string |  |
+| `task_id` | string |  |
 | `date_from` | string |  |
 | `date_to` | string |  |
 | `billable` | boolean |  |

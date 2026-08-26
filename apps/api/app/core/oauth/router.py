@@ -273,7 +273,7 @@ class ConsentResult(BaseModel):
     dependencies=[require_permission("apikeys.personal.manage")],
 )
 async def approve_consent(
-    body: ConsentApproval, ctx: RequestContext = Depends(require_context)
+    body: ConsentApproval, request: Request, ctx: RequestContext = Depends(require_context)
 ) -> ConsentResult:
     """Approve, and get the URL to send the browser back to.
 
@@ -292,6 +292,9 @@ async def approve_consent(
         scopes=body.scopes,
         resource=body.resource,
         state=body.state,
+        # RFC 9207: the redirect says which issuer minted the code, so a strict client can
+        # refuse a mixed-up authorization response. Same value the metadata advertises.
+        issuer=external_origin(request),
     )
     return ConsentResult(redirect_to=redirect_to)
 
@@ -467,6 +470,148 @@ async def disconnect(
     from datetime import UTC, datetime
 
     client.revoked_at = datetime.now(UTC)
+    for key in (
+        (await ctx.session.execute(select(ApiKey).where(ApiKey.oauth_client_id == client.id)))
+        .scalars()
+        .all()
+    ):
+        key.revoked_at = key.revoked_at or datetime.now(UTC)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- manual clients (#441) ----------------------------------------------------------- #
+# DCR covers every client that can register itself (Claude needs only the /mcp URL). Some
+# cannot — enterprise connector configs, n8n/Zapier-style tools that ask an operator for a
+# client id + secret — and until now there was no way to mint one: ``created_by_user_id``
+# existed with no caller. These routes are the caller. Admin-gated (`settings.oauth.manage`):
+# a standing credential onto the MCP surface is an org decision, not a personal one.
+
+
+class OAuthClientRead(BaseModel):
+    id: uuid.UUID
+    client_id: str
+    client_name: str
+    redirect_uris: list[str]
+    #: Whether a secret exists for it (public PKCE-only clients have none).
+    confidential: bool
+    #: Minted from the settings screen rather than over RFC 7591.
+    manual: bool
+    created_at: Any
+    last_used_at: Any
+
+
+class OAuthClientCreate(BaseModel):
+    client_name: str = Field(..., min_length=1, max_length=200)
+    redirect_uris: list[str] = Field(..., min_length=1, max_length=10)
+
+
+class OAuthClientCreated(OAuthClientRead):
+    #: Shown exactly once; only the hash is stored.
+    client_secret: str
+
+
+def _client_read(client: OAuthClient) -> OAuthClientRead:
+    return OAuthClientRead(
+        id=client.id,
+        client_id=client.client_id,
+        client_name=client.client_name,
+        redirect_uris=list(client.redirect_uris or []),
+        confidential=client.secret_hash is not None,
+        manual=client.created_by_user_id is not None,
+        created_at=client.created_at,
+        last_used_at=client.last_used_at,
+    )
+
+
+@router.get(
+    "/clients",
+    response_model=list[OAuthClientRead],
+    dependencies=[require_permission("settings.oauth.manage")],
+)
+async def list_clients(ctx: RequestContext = Depends(require_context)) -> list[OAuthClientRead]:
+    """Every live client of this org — the DCR ones included, so the admin overview and the
+    per-user connections list cannot tell two different stories about what may connect."""
+    rows = (
+        (
+            await ctx.session.execute(
+                select(OAuthClient)
+                .where(OAuthClient.revoked_at.is_(None))
+                .order_by(OAuthClient.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_client_read(client) for client in rows]
+
+
+@router.post(
+    "/clients",
+    response_model=OAuthClientCreated,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("settings.oauth.manage")],
+)
+async def create_client(
+    body: OAuthClientCreate, ctx: RequestContext = Depends(require_context)
+) -> OAuthClientCreated:
+    """Mint a confidential client for something that will not DCR. The secret is in this
+    response and nowhere else, ever — only its hash is stored (the API-key rule)."""
+    service = OAuthService(ctx.session, ctx.org.id)
+    client, secret = await service.register_client(
+        client_name=body.client_name,
+        redirect_uris=body.redirect_uris,
+        confidential=True,
+        created_by_user_id=ctx.user.id,
+    )
+    return OAuthClientCreated(**_client_read(client).model_dump(), client_secret=secret or "")
+
+
+@router.post(
+    "/clients/{client_pk}/rotate",
+    response_model=OAuthClientCreated,
+    dependencies=[require_permission("settings.oauth.manage")],
+)
+async def rotate_client_secret(
+    client_pk: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> OAuthClientCreated:
+    """A new secret for a manual client; the old one stops working on the spot.
+
+    Manual clients only: a DCR client's secret lives in software that registered itself and
+    cannot be told about the new one — rotating it there is an outage wearing a security
+    control's clothes. Live sessions (api_keys) survive on purpose: rotation is "the old
+    *secret* must stop working", and killing the sessions is what DELETE is for.
+    """
+    import secrets as _secrets
+
+    from app.core.apikeys import keys as keygen
+
+    client = await ctx.session.get(OAuthClient, client_pk)
+    if client is None or client.org_id != ctx.org.id or client.revoked_at is not None:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    if client.created_by_user_id is None:
+        raise AppError("validation", "errors.oauth_client_not_manual", status_code=422)
+    secret = _secrets.token_urlsafe(32)
+    client.secret_hash = keygen.hash_secret(secret)
+    await ctx.session.flush()
+    return OAuthClientCreated(**_client_read(client).model_dump(), client_secret=secret)
+
+
+@router.delete(
+    "/clients/{client_pk}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require_permission("settings.oauth.manage")],
+)
+async def revoke_client(
+    client_pk: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> Response:
+    """The admin kill switch — the per-user disconnect, org-wide: the client is revoked and
+    every key it ever issued, whoever's, goes with it. A revoked client cannot refresh back."""
+    client = await ctx.session.get(OAuthClient, client_pk)
+    if client is None or client.org_id != ctx.org.id:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    from datetime import UTC, datetime
+
+    client.revoked_at = client.revoked_at or datetime.now(UTC)
     for key in (
         (await ctx.session.execute(select(ApiKey).where(ApiKey.oauth_client_id == client.id)))
         .scalars()

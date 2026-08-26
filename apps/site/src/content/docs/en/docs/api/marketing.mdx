@@ -7,7 +7,7 @@ sidebar:
 
 The client's numbers, the advertising that moves them, the container that measures them, and the monthly document that explains them.
 
-119 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+120 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `marketing`
 
@@ -19,6 +19,7 @@ The client's numbers, the advertising that moves them, the container that measur
 | `GET` `/marketing/companies/{company_id}/metrics` | `marketing.metrics.read` |
 | `GET` `/marketing/companies/{company_id}/settings` | `marketing.metrics.read` |
 | `PUT` `/marketing/companies/{company_id}/settings` | `marketing.link.manage` |
+| `GET` `/marketing/companies/{company_id}/websites` | `marketing.link.manage` |
 | `GET` `/marketing/links` | `marketing.metrics.read` |
 | `POST` `/marketing/links` | `marketing.link.manage` |
 | `DELETE` `/marketing/links/{link_id}` | `marketing.link.manage` |
@@ -42,6 +43,7 @@ Query parameters:
 | --- | --- | --- |
 | `source` | MarketingSource · required |  |
 | `website_id` | string | Required for a source whose credential is per website (rankmath); ignored by every other source. |
+| `refresh` | boolean | Skip the short account cache and ask the provider again. What a picker offers after somebody has just created the thing they came here to link. (default `false`) |
 
 Returns: `200` · `AccountsResponse`
 
@@ -116,6 +118,16 @@ Path parameters: `company_id`
 Request body: `CompanySettingsUpdate`
 
 Returns: `200` · `CompanySettingsRead`
+
+#### `GET /api/v1/marketing/companies/{company_id}/websites`
+
+**Company Websites** — This client's websites — which one a new link attaches to (#399).
+
+Permission: `marketing.link.manage`
+
+Path parameters: `company_id`
+
+Returns: `200` · `WebsiteRef[]`
 
 #### `GET /api/v1/marketing/links`
 

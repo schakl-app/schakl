@@ -81,7 +81,10 @@ registerWebModule({
       module: "tasks",
       labelKey: "tasks.calendar.scheduled",
       color: "sky",
-      load: async (api, { from, to, user, people, color }): Promise<CalendarEvent[]> => {
+      load: async (
+        api,
+        { from, to, user, people, color, personColors, hiddenPeople },
+      ): Promise<CalendarEvent[]> => {
         const writeOwn = hasPermission(user?.permissions, "tasks.schedule.write");
         const writeAny = hasPermission(user?.permissions, "tasks.schedule.write", "any");
         const [own, team] = await Promise.all([
@@ -99,24 +102,30 @@ registerWebModule({
         const byId = new Map<string, NonNullable<typeof own.data>[number]>();
         for (const block of own.data ?? []) byId.set(block.id, block);
         for (const block of team?.data ?? []) byId.set(block.id, block);
-        return [...byId.values()].map((block) => {
-          const mine = block.user_id === user?.id;
-          // Name a colleague's block; the viewer's own feed stays clean (the time grid shows when).
-          const who = mine ? "" : `${block.user_name ?? ""} · `;
-          return {
-            id: block.id,
-            start: block.start,
-            end: block.end,
-            title: `${who}${block.task_title}`,
-            color: color ?? "sky",
-            href: `/tasks/${block.task_id}`,
-            startsAt: block.starts_at,
-            endsAt: block.ends_at,
-            sourceKey: "tasks.scheduled",
-            // Offer the day-drag only where an edit could succeed; the API stays the boundary.
-            draggable: mine ? writeOwn : writeAny,
-          };
-        });
+        // Colleagues the viewer hid from this split feed drop out entirely (#281).
+        const hidden = new Set(hiddenPeople ?? []);
+        return [...byId.values()]
+          .filter((block) => !block.user_id || !hidden.has(block.user_id))
+          .map((block) => {
+            const mine = block.user_id === user?.id;
+            // Name a colleague's block; the viewer's own feed stays clean (the grid shows when).
+            const who = mine ? "" : `${block.user_name ?? ""} · `;
+            return {
+              id: block.id,
+              start: block.start,
+              end: block.end,
+              title: `${who}${block.task_title}`,
+              // Colour precedence (#281): this colleague's own override, then the whole-feed
+              // override, then the source default — the same ladder as the leave feeds.
+              color: (block.user_id ? personColors?.[block.user_id] : undefined) ?? color ?? "sky",
+              href: `/tasks/${block.task_id}`,
+              startsAt: block.starts_at,
+              endsAt: block.ends_at,
+              sourceKey: "tasks.scheduled",
+              // Offer the day-drag only where an edit could succeed; the API stays the boundary.
+              draggable: mine ? writeOwn : writeAny,
+            };
+          });
       },
       move: async (api, { id, deltaDays }) => {
         // A day-move: shift the block's local day, keep its time. The API recomputes the instants
@@ -136,7 +145,20 @@ registerWebModule({
         // Only a holder of the any-scope read may overlay colleagues; a member gets no roster.
         if (!hasPermission(user?.permissions, "tasks.schedule.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
-        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
+        // A colleague who left is not somebody to overlay: the lookup keeps them in the answer
+        // on purpose (the picker decides), and this picker decides they are out.
+        return (data ?? [])
+          .filter((m) => m.is_active)
+          .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
+      },
+      splitPeople: async (api, { user }): Promise<CalendarPerson[]> => {
+        // Per-person colour + show/hide rows (#281), exactly as the leave feeds offer them —
+        // this feed draws several colleagues' blocks and drew them all in one colour.
+        if (!hasPermission(user?.permissions, "tasks.schedule.read", "any")) return [];
+        const { data } = await api.GET("/api/v1/members/lookup");
+        return (data ?? [])
+          .filter((m) => m.is_active)
+          .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
       },
     },
     {

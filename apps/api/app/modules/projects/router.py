@@ -12,6 +12,8 @@ from app.modules.projects.schemas import (
     DashboardBudgets,
     ProjectCreate,
     ProjectRead,
+    ProjectSettingsRead,
+    ProjectSettingsUpdate,
     ProjectUpdate,
 )
 from app.modules.projects.service import ProjectService
@@ -27,7 +29,9 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     dependencies=[require_permission("projects.project.read")],
 )
 async def dashboard_budgets(
-    limit: int = Query(4, ge=1, le=20),
+    # 50, not 20: the budgets donut (#437) draws more of the book than the My Day tile's four,
+    # and the honest tail bucket takes whatever the cap leaves.
+    limit: int = Query(4, ge=1, le=50),
     ctx: RequestContext = Depends(require_context),
 ) -> DashboardBudgets:
     """The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
@@ -36,6 +40,29 @@ async def dashboard_budgets(
     (docs/PERFORMANCE.md).
     """
     return await ProjectService(ctx).dashboard_budgets(limit=limit)
+
+
+# Literal path before the dynamic ``/{project_id}``, like ``/dashboard-budgets`` above.
+@router.get(
+    "/settings",
+    response_model=ProjectSettingsRead,
+    dependencies=[require_permission("projects.settings.manage")],
+)
+async def get_settings(ctx: RequestContext = Depends(require_context)) -> ProjectSettingsRead:
+    """The org's projects settings (the budget alert). No saved row means the defaults."""
+    return await ProjectService(ctx).settings()
+
+
+@router.put(
+    "/settings",
+    response_model=ProjectSettingsRead,
+    dependencies=[require_permission("projects.settings.manage")],
+)
+async def update_settings(
+    payload: ProjectSettingsUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ProjectSettingsRead:
+    return await ProjectService(ctx).update_settings(payload)
 
 
 @router.get(
@@ -72,6 +99,13 @@ async def list_projects(
         False, description="Include the budget burn-down; costs one grouped query"
     ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    # Description kept terse on purpose: this operation is in the MCP compact profile, whose
+    # whole tool budget is pinned in bytes (test_mcp_compact_profile_fits_a_chat_client).
+    burn: str | None = Query(
+        None,
+        max_length=20,
+        description="'over' keeps only projects at or past their budget; other tokens ignored",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
     items, total = await ProjectService(ctx).list(
@@ -85,6 +119,7 @@ async def list_projects(
         sort=sort,
         hours=hours,
         count=count,
+        burn=burn,
     )
     return Page(
         items=[ProjectRead.model_validate(p) for p in items],

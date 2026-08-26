@@ -744,6 +744,56 @@ class DriveService:
         }
 
     # --- provisioning -------------------------------------------------------------- #
+    async def provision_state(
+        self, entity_type: str | None = None, entity_id: uuid.UUID | None = None
+    ) -> dict:
+        """What the entity panels need before they draw a provision control (#444).
+
+        The company panel gets these flags from its own provider; the project/task panels load
+        over ``/links``, which knows nothing about provisioning readiness — so the button was
+        drawn off the caller's permission alone and could only 409. One read answers: is Drive
+        on, is the viewer's own connection live (the browser needs it), and is everything the
+        provision 409s on actually configured. With an entity named, the panel also learns
+        whether a queued folder job is still pending or has failed — a worker slower than one
+        optimistic reload otherwise leaves "de map wordt aangemaakt…" standing forever.
+        """
+        row = await google_settings_row(self.ctx.session, self._org_id)
+        enabled = bool(row is not None and row.drive_enabled)
+        connection = await connection_for(self.ctx.session, self._org_id, self.ctx.user.id)
+        state: dict = {
+            "enabled": enabled,
+            "viewer_connected": bool(
+                connection and connection.status == ConnectionStatus.ACTIVE.value
+            ),
+            "can_provision": bool(
+                enabled
+                and row is not None
+                and row.automation_connection_user_id
+                and drive_root(row)
+                and self.ctx.can("google.drive.write")
+            ),
+            "job_status": None,
+            "job_error": None,
+        }
+        if entity_type is not None and entity_id is not None:
+            await self._require_visible(entity_type, entity_id)
+            job = await self.ctx.session.scalar(
+                select(DriveFolderJob).where(
+                    DriveFolderJob.org_id == self._org_id,
+                    DriveFolderJob.entity_type == entity_type,
+                    DriveFolderJob.entity_id == entity_id,
+                )
+            )
+            if job is not None and job.status in (
+                FolderJobStatus.PENDING.value,
+                FolderJobStatus.FAILED.value,
+            ):
+                state["job_status"] = job.status
+                # Google's own sentence, scrubbed on write — an admin-facing read like the
+                # container's ``last_error``, never an i18n key (§9).
+                state["job_error"] = job.last_error
+        return state
+
     async def request_provision(self, entity_type: str, entity_id: uuid.UUID) -> None:
         """Queue one entity's folder (the panel's "create folder" button)."""
         self.ctx.require("google.drive.write")

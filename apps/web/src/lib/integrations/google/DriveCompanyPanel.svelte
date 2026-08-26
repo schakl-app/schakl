@@ -26,8 +26,12 @@
 
   import DriveBrowser from "./DriveBrowser.svelte";
   import DriveLinkList, { type DriveLinkItem } from "./DriveLinkList.svelte";
+  import DriveProvisionStatus from "./DriveProvisionStatus.svelte";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
+
+  // A drive action's refusal renders here, beside the button that fired it (#444).
+  const driveError = $derived((page.form?.driveError ?? null) as string | null);
 
   const busy = new InFlight();
 
@@ -52,6 +56,10 @@
 </script>
 
 {#if !disabled}
+  {#if driveError}
+    <p class="mb-2 text-sm text-red-600 dark:text-red-400" role="alert">{t(driveError)}</p>
+  {/if}
+  <DriveProvisionStatus entityType="company" entityId={companyId} />
   {#if folder && !picking}
     <div class="flex items-center gap-2 py-1">
       <p class="min-w-0 flex-1 truncate text-sm text-text-muted">

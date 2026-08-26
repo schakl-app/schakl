@@ -40,6 +40,10 @@ export const load: PageServerLoad = async (event) => {
   const unnamed = filters.unnamed === "1" || undefined;
   const status =
     statusFilter === PROJECT_STATUS_ALL ? undefined : statusFilter || PROJECT_WORKING_SET;
+  // "Over budget" (#437) — what the dashboard donut's aggregate opens. The API filters on the
+  // enriched burn, so the token forces the hours enrichment on: a link arriving with the burn
+  // column hidden must not filter on data that was never computed.
+  const burn = filters.burn === "over" ? "over" : undefined;
 
   // The saved layout decides two things before a row is fetched: how the *server* sorts, and
   // whether the budget burn-down is worth computing at all (#24 — a hidden aggregate costs
@@ -65,10 +69,11 @@ export const load: PageServerLoad = async (event) => {
         q,
         mine,
         sort,
-        hours,
+        hours: hours || Boolean(burn),
         company_id,
         status,
         unnamed,
+        burn,
       },
     },
   });

@@ -323,6 +323,44 @@ async def test_a_quota_refusal_keeps_what_was_read_and_says_the_reading_stopped(
 # --- isolation ------------------------------------------------------------------------------ #
 
 
+async def test_container_prose_is_editable_and_absent_means_leave_alone(client_for, fake) -> None:
+    """#442: the summary/goal pair (the Ads policy prose, one integration over) with §18's
+    absent-vs-null semantics — a PATCH naming neither field leaves both alone, and an explicit
+    null clears to the empty string the columns store."""
+    t = await _connected("gtm-prose")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        container = await _link(c, headers, public_id=PUBLIC_ID)
+        assert container["summary"] == "" and container["goal"] == ""
+
+        written = await c.patch(
+            f"/api/v1/gtm/containers/{container['id']}",
+            json={"summary": "Meet het contactformulier", "goal": "offerte-aanvragen meten"},
+            headers=headers,
+        )
+        assert written.status_code == 200, written.text
+        assert written.json()["summary"] == "Meet het contactformulier"
+        assert written.json()["goal"] == "offerte-aanvragen meten"
+
+        # Absent means leave alone: a PATCH about something else does not touch the prose.
+        other = await c.patch(
+            f"/api/v1/gtm/containers/{container['id']}",
+            json={"active": True},
+            headers=headers,
+        )
+        assert other.json()["summary"] == "Meet het contactformulier"
+        assert other.json()["goal"] == "offerte-aanvragen meten"
+
+        # An explicit null clears — the columns store "", never NULL.
+        cleared = await c.patch(
+            f"/api/v1/gtm/containers/{container['id']}",
+            json={"summary": None},
+            headers=headers,
+        )
+        assert cleared.json()["summary"] == ""
+        assert cleared.json()["goal"] == "offerte-aanvragen meten"
+
+
 async def test_a_container_is_invisible_to_another_tenant(client_for, fake) -> None:
     one = await _connected("gtm-iso-a")
     two = await _connected("gtm-iso-b")

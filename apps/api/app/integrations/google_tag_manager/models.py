@@ -40,6 +40,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     column,
     select,
@@ -195,6 +196,14 @@ class GtmContainer(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditabl
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    #: Tenant prose, the Ads policy pair one integration over (#442,
+    #: ``google_ads.models.GoogleAdsPolicy``): what this container is and does for the client,
+    #: and what the tracking is supposed to prove ("offerte-aanvragen meten"). ``NOT NULL
+    #: DEFAULT ''`` like Ads', so absent and empty are one state and no reader branches on NULL.
+    #: When these ever feed a model they travel as two labelled fields, never concatenated into
+    #: the prompt (#300's rule, stated where the columns are born).
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    goal: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
 
     # -- health -------------------------------------------------------------------------------- #
     status: Mapped[str] = mapped_column(

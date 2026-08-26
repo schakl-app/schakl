@@ -229,6 +229,35 @@ Deliberately **not** in the band: breadcrumbs (the layout's), the vital-signs st
 putting them in the band is what made `/tasks` a four-storey opening. A band that grows a `tabs`
 prop has stopped being one shape.
 
+### 5. A partition is drawn as shape, not only announced (#438)
+
+The team asked the dashboard and the client hub for *more visible structure*: the urgency
+groups and the two lanes existed, and everything still sat on one white card — the grouping
+lived in heading text alone, so it vanished the moment the headings scrolled by. Three moves,
+each inside the constraints already decided (#404: a state is never the brand and never colour
+alone; #395/#397: the heading carries the colour and the rows stay quiet):
+
+- **A group that is a claim gets a band** — `stateBandClass` in `core/state.ts`, the palette
+  one octave quieter again: a faint wash on the *section container* (over tijd, vandaag) with
+  the rows unchanged inside it. A **neutral group gets a hairline rule instead of a wash**, and
+  that is the rule rather than a compromise: a band behind "later" is the wash of amber cards
+  in a new key, spending attention on the section with nothing to say. The tasks tile on My Day
+  and the client hub's Taken panel both draw it; a surface whose urgency already rides per-row
+  chips (`TasksByGroupWidget`'s counters) adds nothing — a band per *row* is what #395 already
+  rejected.
+- **Between the dashboard's two columns, a hairline column rule** (`sm:border-l` on the second
+  stack): the board is two stacks of same-shaped cards, and the rule is what lets the card
+  edges read as a grid at a glance instead of being recovered by parsing each card.
+- **The client hub's register lane sits on a `--surface-tint` band.** A register card is a
+  hairline rule on the page's own ground (#404), so the lane's *ground* is the thing that can
+  say "a different kind of thing starts here" — and `--surface-tint` is hueless by
+  construction, so it can never read as a state or collide with a brand.
+
+The panel-width loose end from the same issue is decided in code, with reasons beside the
+declarations: `marketing.overview` keeps `SIZE_FULL` (the one panel that is a dashboard rather
+than a card), `snelstart.company` became `SIZE_HALF` (it defaulted to full only because nobody
+had decided).
+
 ### Adopting it
 
 The primitives are in place and the four screens the issue measured are converted; the rest of

@@ -633,7 +633,11 @@
 
   <!-- Google koppelen (#22): a per-user grant, so it lives on the person (docs/GOOGLE.md). -->
   {#if data.google}
-    <GoogleAccountCard data={data.google} status={data.googleStatus} />
+    <GoogleAccountCard
+      data={data.google}
+      status={data.googleStatus}
+      calendars={data.googleCalendars}
+    />
   {/if}
 
   <!-- Personal API keys moved to their own screen (Instellingen → API en MCP): the flow grew a

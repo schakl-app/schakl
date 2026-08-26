@@ -24,7 +24,7 @@ from app.integrations.snelstart.models import (
     SnelstartLinkKind,
     SnelstartLinkStatus,
 )
-from app.registry import PanelSpec
+from app.registry import SIZE_HALF, PanelSpec
 
 
 async def company_panel(ctx: RequestContext, company_id: uuid.UUID) -> dict[str, Any]:
@@ -91,6 +91,9 @@ SNELSTART_PANELS: list[PanelSpec] = [
         # put a client-portal login behind that key at `:own`, and a client has no business
         # knowing which accounting package their agency uses.
         requires_permission="snelstart.sync.run",
+        # Half, like every other card (#438): a pairing status and a short invoice-state list
+        # need no full row — it defaulted to SIZE_FULL only because nobody had decided.
+        size=SIZE_HALF,
         empty_when=lambda data: not data.get("linked") and not data.get("invoices"),
     )
 ]

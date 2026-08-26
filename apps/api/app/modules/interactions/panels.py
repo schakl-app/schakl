@@ -10,7 +10,7 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.interactions.service import InteractionService
-from app.registry import PROMINENCE_PRIMARY, PanelSpec
+from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
 PANEL_LIMIT = 8
 
@@ -76,5 +76,8 @@ interactions_company_panel = PanelSpec(
     position=35,
     requires_permission="interactions.interaction.read",
     prominence=PROMINENCE_PRIMARY,
+    # Half width, like every other working panel: the timeline is a feed of short rows, and at
+    # full width it pushed everything after it down a storey.
+    size=SIZE_HALF,
     empty_when=lambda data: not data.get("items"),
 )

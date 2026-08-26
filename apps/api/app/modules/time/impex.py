@@ -41,6 +41,7 @@ async def _fetch_page(
         user_id=filters.get("user_id"),
         company_id=filters.get("company_id"),
         project_id=filters.get("project_id"),
+        task_id=filters.get("task_id"),
         date_from=filters.get("date_from"),
         date_to=filters.get("date_to"),
         running=False,
@@ -103,7 +104,16 @@ TIME_ENTRY_IMPEX = ImpexDescriptor(
     read_permission="time.entry.read",
     write_permission="time.entry.write",
     natural_keys=(),
-    filters=("mine", "user_id", "company_id", "project_id", "date_from", "date_to", "sort"),
+    filters=(
+        "mine",
+        "user_id",
+        "company_id",
+        "project_id",
+        "task_id",
+        "date_from",
+        "date_to",
+        "sort",
+    ),
     columns=(
         ImpexColumn(
             "date",
