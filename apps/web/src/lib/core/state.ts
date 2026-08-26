@@ -87,6 +87,22 @@ const FILL: Record<UiState, string> = {
   neutral: "bg-text-muted",
 };
 
+/**
+ * A group band: the faint wash behind a whole urgency *section* (#438). The heading carries
+ * the colour and the rows stay quiet (#395); the band is the container's — one octave down
+ * again — so the partition reads as *shape* once the headings scroll past. `neutral` is the
+ * page's own ground on purpose: a wash behind a section with nothing to say is the
+ * amber-cards mistake this palette exists to prevent, so a neutral section separates with a
+ * hairline rule instead (the caller's, not this map's).
+ */
+const BAND: Record<UiState, string> = {
+  late: "bg-red-500/[0.06] dark:bg-red-400/[0.09]",
+  today: "bg-orange-500/[0.06] dark:bg-orange-400/[0.09]",
+  soon: "bg-amber-500/[0.06] dark:bg-amber-400/[0.09]",
+  ok: "bg-emerald-500/[0.06] dark:bg-emerald-400/[0.09]",
+  neutral: "",
+};
+
 /** An edge: a card or row border that carries the state without filling the whole surface. */
 const BORDER: Record<UiState, string> = {
   late: "border-red-300 dark:border-red-800",
@@ -115,6 +131,10 @@ export function stateTextClass(state: UiState): string {
 
 export function stateSvgFillClass(state: UiState): string {
   return SVG_FILL[state] ?? SVG_FILL.neutral;
+}
+
+export function stateBandClass(state: UiState): string {
+  return BAND[state] ?? "";
 }
 
 export function stateChipClass(state: UiState): string {

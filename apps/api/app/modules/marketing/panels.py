@@ -47,6 +47,9 @@ marketing_company_panel = PanelSpec(
     # A client with a container and no metrics source still has something to say, so the
     # connections row counts as content (#411) — folding it away would put back exactly the
     # warning the deleted Tag Manager card existed to carry.
+    # SIZE_FULL stays, and now with its reason stated (#438): this is the one panel that is a
+    # dashboard rather than a card — a metrics grid plus per-source rows — and halving it
+    # would fold the grid to a column. Every other panel is half.
     empty_when=lambda data: not data.get("sources")
     and not data.get("connections")
     and not data.get("forbidden"),

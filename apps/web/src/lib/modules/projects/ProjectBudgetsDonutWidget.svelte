@@ -70,7 +70,10 @@
     />
     {#if (payload.over_budget ?? 0) > 0}
       <p class="mt-3">
-        <a href="/projects?burn=over" class="inline-flex hover:underline">
+        <!-- The count is over *active* budgeted projects (the donut's own set), so the link
+             narrows the list to the same set — a figure of 4 over a list of 5 is the
+             disagreement Principle 7 forbids. -->
+        <a href="/projects?burn=over&status=active" class="inline-flex hover:underline">
           <StateMark
             state="late"
             variant="chip"

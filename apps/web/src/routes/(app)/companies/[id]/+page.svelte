@@ -451,11 +451,16 @@
        and its own heading so the working surfaces above are unmistakably the foreground.
        The heading is `BAND_HEADING` now (#404): it used to be 12 px uppercase muted over 14 px
        dark panel titles, which is the hierarchy the wrong way up — the container quieter than
-       its own contents, on the one screen whose whole argument is that the two lanes differ. -->
-  <h2 class="mb-3 mt-8 {BAND_HEADING}">
-    {t("companies.section.registers")}
-  </h2>
-  {@render lane(registerRows, REGISTER_LANE)}
+       its own contents, on the one screen whose whole argument is that the two lanes differ.
+       And the whole lane sits on a `--surface-tint` band (#438): a register card is a rule on
+       the page's own ground, so the lane's *ground* is what can say "different kind of thing"
+       — hueless by construction, never a state and never the brand. -->
+  <div class="mt-8 rounded-xl bg-surface-tint p-4 sm:p-5">
+    <h2 class="mb-3 {BAND_HEADING}">
+      {t("companies.section.registers")}
+    </h2>
+    {@render lane(registerRows, REGISTER_LANE)}
+  </div>
 {/if}
 
 {#if empties.length > 0}

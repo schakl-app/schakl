@@ -15,7 +15,7 @@
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
-  import { stateTextClass, type UiState } from "$lib/core/state";
+  import { stateBandClass, stateTextClass, type UiState } from "$lib/core/state";
   import { orgToday } from "$lib/core/today";
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
@@ -94,6 +94,14 @@
       .filter((entry) => entry.member !== undefined);
   }
 
+  /** The partition as shape (#438) — the same bands the My Day tile draws; see there. */
+  function sectionClass(bucket: DueBucket): string {
+    const band = stateBandClass(dueState(bucket) as UiState);
+    return band
+      ? `-mx-2.5 mt-3 rounded-lg px-2.5 py-2 first:mt-0 ${band}`
+      : "mt-3 border-t border-border pt-2.5 first:mt-0 first:border-t-0 first:pt-0";
+  }
+
   // The client page's ＋ opens the same dialog as every other create path (#391).
   let creating = $state(false);
   const me = $derived((page.data.user?.id as string | undefined) ?? "");
@@ -104,7 +112,7 @@
   {@const Mark = stateIcon(state)}
   <a
     href={`${listHref}&due=${bucket}`}
-    class="mt-3 mb-1 flex items-center gap-1.5 text-sm font-semibold first:mt-0 hover:underline {stateTextClass(
+    class="mb-1 flex items-center gap-1.5 text-sm font-semibold hover:underline {stateTextClass(
       state,
     )}"
   >
@@ -197,14 +205,16 @@
            way through is then the whole section. -->
       {#each DUE_BUCKETS as bucket (bucket)}
         {#if whole[bucket] > 0}
-          {@render partition(bucket)}
-          {#if shownGroups[bucket].length > 0}
-            <ul class="divide-y divide-border">
-              {#each shownGroups[bucket] as task (task.id)}
-                {@render taskRow(task)}
-              {/each}
-            </ul>
-          {/if}
+          <section class={sectionClass(bucket)}>
+            {@render partition(bucket)}
+            {#if shownGroups[bucket].length > 0}
+              <ul class="divide-y divide-border">
+                {#each shownGroups[bucket] as task (task.id)}
+                  {@render taskRow(task)}
+                {/each}
+              </ul>
+            {/if}
+          </section>
         {/if}
       {/each}
     {/if}
