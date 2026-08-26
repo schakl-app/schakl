@@ -207,7 +207,11 @@ registerWebModule({
         // gets an individual colour + show/hide row (#281).
         if (!hasPermission(user?.permissions, "leave.request.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
-        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
+        // Active colleagues only: a departed account's historic leave still renders, but a
+        // feed-menu row for someone who left is a control over nothing.
+        return (data ?? [])
+          .filter((m) => m.is_active)
+          .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
       },
     },
     {
@@ -290,7 +294,9 @@ registerWebModule({
         // colour and no per-person rows.
         if (!hasPermission(user?.permissions, "leave.availability.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
-        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
+        return (data ?? [])
+          .filter((m) => m.is_active)
+          .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
       },
     },
     {
