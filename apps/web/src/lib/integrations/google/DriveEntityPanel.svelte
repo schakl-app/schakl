@@ -21,6 +21,7 @@
    * `?/provisionDriveFolder` (spread `driveActions`).
    */
   import { enhance } from "$app/forms";
+  import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -148,12 +149,42 @@
       ? t("google.drive.in_project_folder", { name: parentFolder?.name ?? "" })
       : t("google.drive.in_client_folder", { name: parentFolder?.name ?? "" }),
   );
+
+  // "Taakmap aanmaken" answers 202 and queues a worker job (deferred a couple of seconds), so
+  // the immediate page reload always came back folderless: the button spun, the panel returned
+  // identical, and the folder appeared only on the *next* visit. Say the job was queued, then
+  // reload once after the worker has had its head start — the browser is keyed on the folder id,
+  // so when the folder lands the open browser moves into it by itself.
+  const provisionQueued = $derived(Boolean(page.form?.driveProvisionQueued));
+  let provisionRefreshed = $state(false);
+  $effect(() => {
+    if (provisionQueued && !provisionRefreshed) {
+      provisionRefreshed = true;
+      setTimeout(() => void invalidateAll(), 5000);
+    }
+  });
 </script>
 
+<!-- Two things live on this card and nothing said which was which: the files coupled to this
+     record, and a browser over the whole Drive folder. Each gets its own heading, and the
+     browser its own rule, so the boundary is visible (the company panel already named its list
+     with the same key). -->
+<h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+  {t("google.drive.linked_files")}
+</h3>
 <DriveLinkList links={panel.links} {canWrite} ontrashed={() => (driveVersion += 1)} />
+
+{#if provisionQueued}
+  <p class="mt-2 text-sm text-text-muted" role="status">{t("google.drive.folder_queued")}</p>
+{/if}
 
 {#if canWrite}
   {#if browsing}
+    <div class="mt-4 border-t border-border pt-3">
+      <h3 class="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+        {t("google.drive.browser_title")}
+      </h3>
+    </div>
     {#if showParentActions && parentFolder}
       <!-- Say where the browser landed — so it's clear it isn't at the shared-drive root (#150)
            — and make the two sensible next steps one click each. -->
