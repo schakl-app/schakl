@@ -45,6 +45,7 @@ Query parameters:
 | `sort` | string | name \| status \| start_date \| end_date \| budget_hours \| …, '-' desc |
 | `hours` | boolean | Include the budget burn-down; costs one grouped query (default `false`) |
 | `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
+| `burn` | string | 'over' keeps only projects at or past their budget; other tokens ignored |
 
 Returns: `200` · `Page_ProjectRead_`
 
@@ -1002,6 +1003,7 @@ Query parameters:
 | `user_id` | string |  |
 | `company_id` | string |  |
 | `project_id` | string |  |
+| `task_id` | string |  |
 | `date_from` | string |  |
 | `date_to` | string |  |
 | `billable` | boolean |  |
