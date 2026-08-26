@@ -1253,3 +1253,157 @@ async def test_unavailable_day_is_mirrored_busy_and_all_day(monkeypatch) -> None
         assert body["start"] == {"date": "2026-08-17"}
         assert body["end"] == {"date": "2026-08-18"}  # Google's exclusive end
         assert "recurrence" not in body  # a one-off is not a series
+
+
+# --------------------------------------------------------------------------- #
+# Shared / secondary calendars (#440)
+# --------------------------------------------------------------------------- #
+_TEAM_CAL = "team@group.calendar.google.com"
+
+
+def _calendar_list_response() -> _StubResponse:
+    return _StubResponse(
+        200,
+        {
+            "items": [
+                {
+                    "id": "me@agency.nl",
+                    "summary": "Mijn agenda",
+                    "primary": True,
+                    "accessRole": "owner",
+                },
+                {"id": _TEAM_CAL, "summary": "Teamagenda", "accessRole": "reader"},
+            ]
+        },
+    )
+
+
+async def test_shared_calendar_selection_sync_and_deselect(client_for, monkeypatch) -> None:
+    """#440 end to end: tick a shared calendar → its own channel with its own cursor, events
+    tagged by calendar (the same Google event id on two calendars is two rows, not a fight),
+    the feed says which calendar each event came off — and unticking removes the calendar's
+    cached events on the spot while the primary's stay."""
+    t = await make_tenant("gcal-shared")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        # The selection UI's read: the viewer's calendarList, with the primary always synced.
+        stub = _StubClient([("GET", _calendar_list_response())])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        listed = await c.get("/api/v1/google/calendar/calendars", headers=headers)
+        assert listed.status_code == 200, listed.text
+        by_id = {row["id"]: row for row in listed.json()}
+        assert by_id["me@agency.nl"]["selected"] is True  # the primary is the floor
+        assert by_id[_TEAM_CAL]["selected"] is False
+
+        # Tick the team calendar. The PUT re-reads the list live (an id arrives from a form
+        # anyone can edit), so the stub answers calendarList once more.
+        stub = _StubClient([("GET", _calendar_list_response())])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        saved = await c.put(
+            "/api/v1/google/calendar/calendars",
+            json={"calendar_ids": [_TEAM_CAL]},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        assert {r["id"]: r["selected"] for r in saved.json()}[_TEAM_CAL] is True
+
+        # The feeds menu's cheap read: database only, no Google call.
+        channels = (await c.get("/api/v1/google/calendar/channels", headers=headers)).json()
+        assert {(row["calendar_id"], row["primary"]) for row in channels} == {
+            ("primary", True),
+            (_TEAM_CAL, False),
+        }
+        assert next(r for r in channels if not r["primary"])["summary"] == "Teamagenda"
+
+        # An id that is not on the viewer's own list is refused, never subscribed.
+        stub = _StubClient([("GET", _calendar_list_response())])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        refused = await c.put(
+            "/api/v1/google/calendar/calendars",
+            json={"calendar_ids": ["stranger@group.calendar.google.com"]},
+            headers=headers,
+        )
+        assert refused.status_code == 422
+
+    # One sync pass covers both channels — per-calendar URLs, per-calendar cursors — and the
+    # same event id on both calendars lands as two rows.
+    shared_invite = _event_item("ev-both", "2026-07-08", summary="Kickoff")
+    stub = _StubClient(
+        [
+            ("GET", _StubResponse(200, {"items": [shared_invite], "nextSyncToken": "tok-p"})),
+            ("GET", _StubResponse(200, {"items": [shared_invite], "nextSyncToken": "tok-s"})),
+        ]
+    )
+    monkeypatch.setattr("app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        await sync_connection(session, t.org, connection)
+        await session.commit()
+
+    urls = [call[1] for call in stub.calls]
+    assert any("/calendars/primary/events" in url for url in urls)
+    assert any(f"/calendars/{_TEAM_CAL}/events" in url for url in urls)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        events = (await session.execute(select(GoogleCalendarEvent))).scalars().all()
+        assert {(e.calendar_id, e.google_event_id) for e in events} == {
+            ("primary", "ev-both"),
+            (_TEAM_CAL, "ev-both"),
+        }
+        channels_rows = (await session.execute(select(GoogleCalendarChannel))).scalars().all()
+        assert {(c.calendar_id, c.sync_token) for c in channels_rows} == {
+            ("primary", "tok-p"),
+            (_TEAM_CAL, "tok-s"),
+        }
+
+    async with client_for(t.host) as c:
+        feed = (
+            await c.get(
+                "/api/v1/google/calendar/events?date_from=2026-07-06&date_to=2026-07-12",
+                headers=headers,
+            )
+        ).json()
+        assert {(item["calendar_id"], item["title"]) for item in feed} == {
+            ("primary", "11:00 Kickoff"),
+            (_TEAM_CAL, "11:00 Kickoff"),
+        }
+
+        # Untick: the calendar's channel and its cached events go on the spot; the primary's
+        # stay — a deselected calendar's meetings must leave the agenda, not linger.
+        stub = _StubClient([("GET", _calendar_list_response())])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        cleared = await c.put(
+            "/api/v1/google/calendar/calendars", json={"calendar_ids": []}, headers=headers
+        )
+        assert cleared.status_code == 200, cleared.text
+
+        after = (
+            await c.get(
+                "/api/v1/google/calendar/events?date_from=2026-07-06&date_to=2026-07-12",
+                headers=headers,
+            )
+        ).json()
+        assert {(item["calendar_id"], item["title"]) for item in after} == {
+            ("primary", "11:00 Kickoff"),
+        }
+        channels = (await c.get("/api/v1/google/calendar/channels", headers=headers)).json()
+        assert [row["calendar_id"] for row in channels] == ["primary"]

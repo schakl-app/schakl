@@ -36,10 +36,37 @@
     gmail_enabled: boolean;
   }
 
-  let { data, status }: { data: MyConnection; status: string | null } = $props();
+  interface CalendarEntry {
+    id: string;
+    summary: string;
+    primary: boolean;
+    access_role: string;
+    selected: boolean;
+  }
+
+  let {
+    data,
+    status,
+    calendars = Promise.resolve(null),
+  }: {
+    data: MyConnection;
+    status: string | null;
+    /** The viewer's calendarList (#440), streamed — `null` while unknown or unavailable. */
+    calendars?: Promise<CalendarEntry[] | null>;
+  } = $props();
 
   let includeGmail = $state(false);
   let confirmDisconnect = $state(false);
+
+  // Resolved into state, never awaited in the markup: a save invalidates the page, and a raw
+  // `{#await}` would blank the whole checklist on every one (docs/PERFORMANCE.md).
+  let calendarList = $state<CalendarEntry[] | null>(null);
+  $effect(() => {
+    void calendars.then((value) => (calendarList = value));
+  });
+  // The section is worth its space only when there is a choice to make: a viewer whose
+  // account holds nothing but the primary sees the card exactly as it always was.
+  const selectableCalendars = $derived((calendarList ?? []).filter((c) => !c.primary));
 
   const busy = new InFlight();
 
@@ -147,6 +174,41 @@
         >
           {t("google.account.reconnect")}
         </a>
+      {/if}
+
+      {#if data.calendar_enabled && connection.status === "active" && selectableCalendars.length > 0}
+        <!-- Which calendars sync (#440). The primary always does — that is the pre-existing
+             behaviour, stated rather than offered as a checkbox — and each ticked shared
+             calendar gets its own colour/hide row in the Agenda's feeds menu. -->
+        <form
+          method="POST"
+          action="?/googleCalendars"
+          use:enhance={busy.keep("calendars")}
+          class="space-y-2 border-t border-border pt-3"
+        >
+          <p class="text-sm font-medium text-text">{t("google.account.calendars_title")}</p>
+          <p class="text-xs text-text-muted">{t("google.account.calendars_hint")}</p>
+          <ul class="space-y-1.5">
+            {#each selectableCalendars as calendar (calendar.id)}
+              <li>
+                <label class="flex items-start gap-2 text-sm text-text">
+                  <FormCheckbox
+                    name="calendar_ids"
+                    value={calendar.id}
+                    checked={calendar.selected}
+                    class="mt-0.5"
+                  />
+                  <span class="min-w-0">
+                    <span class="block truncate">{calendar.summary || calendar.id}</span>
+                  </span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+          <Button type="submit" variant="secondary" size="sm" loading={busy.is("calendars")}>
+            {t("common.save")}
+          </Button>
+        </form>
       {/if}
 
       {#if data.gmail_enabled}

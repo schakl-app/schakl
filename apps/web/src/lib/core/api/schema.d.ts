@@ -3530,6 +3530,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/calendar/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar List
+         * @description The viewer's own calendarList — the selection UI's read (#440). Briefly cached; the
+         *     existing ``calendar.events`` scope covers it, so no re-consent is needed.
+         */
+        get: operations["calendar_list_api_v1_google_calendar_calendars_get"];
+        /**
+         * Set Calendar Selection
+         * @description Choose which shared calendars sync for the viewer. Deselecting removes the calendar's
+         *     cached events on the spot; selecting queues a sync so the agenda fills without waiting.
+         */
+        put: operations["set_calendar_selection_api_v1_google_calendar_calendars_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/calendar/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar Channels
+         * @description The viewer's selection off the database alone — what the Agenda's feeds menu reads on
+         *     every open, so it never costs a Google call.
+         */
+        get: operations["calendar_channels_api_v1_google_calendar_channels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/calendar/events": {
         parameters: {
             query?: never;
@@ -15170,6 +15217,11 @@ export interface components {
             /** All Day */
             all_day: boolean;
             /**
+             * Calendar Id
+             * @default primary
+             */
+            calendar_id: string;
+            /**
              * Cancelled
              * @default false
              */
@@ -15193,6 +15245,31 @@ export interface components {
             tentative: boolean;
             /** Title */
             title: string;
+        };
+        /**
+         * CalendarListEntry
+         * @description One row of the viewer's Google calendarList, with whether it syncs here.
+         */
+        CalendarListEntry: {
+            /** Access Role */
+            access_role: string;
+            /** Id */
+            id: string;
+            /** Primary */
+            primary: boolean;
+            /** Selected */
+            selected: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * CalendarSelection
+         * @description Which shared calendars sync, whole-list (#440). The primary always syncs and is not in
+         *     the vocabulary; an id not on the viewer's own calendarList is refused.
+         */
+        CalendarSelection: {
+            /** Calendar Ids */
+            calendar_ids?: string[];
         };
         /** CapabilityInfo */
         CapabilityInfo: {
@@ -27258,6 +27335,15 @@ export interface components {
             source_key: string;
             /** Title Key */
             title_key: string;
+        };
+        /** SelectedCalendar */
+        SelectedCalendar: {
+            /** Calendar Id */
+            calendar_id: string;
+            /** Primary */
+            primary: boolean;
+            /** Summary */
+            summary: string;
         };
         /**
          * SellerDetails
@@ -39766,6 +39852,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_list_api_v1_google_calendar_calendars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarListEntry"][];
+                };
+            };
+        };
+    };
+    set_calendar_selection_api_v1_google_calendar_calendars_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarListEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_channels_api_v1_google_calendar_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectedCalendar"][];
                 };
             };
         };

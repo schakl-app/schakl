@@ -86,19 +86,36 @@ async def google_calendar_poll_fallback(ctx: dict) -> None:  # noqa: ARG001
     async def _poll(org, session) -> None:
         now = datetime.now(UTC)
         for connection in await _calendar_connections(session, org.id):
-            channel = await session.scalar(
-                select(GoogleCalendarChannel).where(
-                    GoogleCalendarChannel.org_id == org.id,
-                    GoogleCalendarChannel.connection_id == connection.id,
+            channels = (
+                (
+                    await session.execute(
+                        select(GoogleCalendarChannel).where(
+                            GoogleCalendarChannel.org_id == org.id,
+                            GoogleCalendarChannel.connection_id == connection.id,
+                        )
+                    )
                 )
+                .scalars()
+                .all()
             )
-            fresh = (
-                channel is not None
-                and channel.watch_status == WatchStatus.ACTIVE.value
-                and channel.last_synced_at is not None
-                and now - channel.last_synced_at < _STALE_AFTER
+
+            def fresh(channel: GoogleCalendarChannel) -> bool:
+                return (
+                    channel.last_synced_at is not None
+                    and now - channel.last_synced_at < _STALE_AFTER  # noqa: B023 — read-only loop var
+                )
+
+            # Only the primary carries a watch (#440); a shared calendar's channel rides this
+            # poll alone. One stale channel — or none at all — re-syncs the connection, and
+            # the sync loop covers every channel in one pass.
+            primary = next((c for c in channels if c.calendar_id == "primary"), None)
+            primary_ok = (
+                primary is not None
+                and primary.watch_status == WatchStatus.ACTIVE.value
+                and fresh(primary)
             )
-            if not fresh:
+            secondaries_ok = all(fresh(c) for c in channels if c.calendar_id != "primary")
+            if not (primary_ok and secondaries_ok):
                 await enqueue("google_calendar_sync_connection", str(org.id), str(connection.id))
 
     await run_per_org(_poll)

@@ -73,6 +73,16 @@ export const load: PageServerLoad = async (event) => {
     // and `data` stays null, which is exactly "don't render the card".
     api.GET("/api/v1/auth/2fa"),
   ]);
+  // Which calendars sync (#440) — a live (briefly cached) Google read, so it streams behind
+  // the shell rather than holding the whole account page on it, and only a connected viewer
+  // with the calendar surface on pays for it at all.
+  const googleCalendars =
+    googleEnabled && google.data?.connected && google.data?.calendar_enabled
+      ? api
+          .GET("/api/v1/google/calendar/calendars")
+          .then((r) => r.data ?? null)
+          .catch(() => null)
+      : Promise.resolve(null);
 
   // The personal sidebar layout (#169): the (app) layout already resolved the effective pref.
   const navPref = parent.navPref as
@@ -90,6 +100,7 @@ export const load: PageServerLoad = async (event) => {
     dateFormats: DATE_FORMATS,
     canManageKeys,
     google: google.data ?? null,
+    googleCalendars,
     googleStatus: event.url.searchParams.get("google"),
     localLogin: modules.data?.local_login_enabled ?? true,
     twoFactor: twoFactor.data ?? null,
@@ -287,6 +298,17 @@ export const actions: Actions = {
     const { error } = await apiFor(event).POST("/api/v1/google/connections/me/disconnect");
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { googleDisconnected: true };
+  },
+
+  // Which shared calendars sync (#440). Whole-list: every offered checkbox is in the form, so
+  // an unticked calendar really means "stop syncing it" — the API removes its cached events.
+  googleCalendars: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/google/calendar/calendars", {
+      body: { calendar_ids: form.getAll("calendar_ids").map(String).filter(Boolean) },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { googleCalendarsSaved: true };
   },
 
   googleGmailPrefs: async (event) => {

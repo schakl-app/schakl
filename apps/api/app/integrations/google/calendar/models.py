@@ -53,9 +53,19 @@ class LinkStatus(StrEnum):
 
 
 class GoogleCalendarChannel(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One synced calendar of one connection — and, since #440, the *selection* too.
+
+    A row here **is** "this calendar syncs for this person": the primary's row is created on
+    first sync (so default behaviour is unchanged), and ticking a shared calendar on the
+    account page creates its row. Widened from one-per-connection when agencies turned out to
+    live in shared calendars; each row keeps its own sync cursor and watch state.
+    """
+
     __tablename__ = "google_calendar_channels"
     __table_args__ = (
-        UniqueConstraint("org_id", "connection_id", name="uq_gcal_channels_org_connection"),
+        UniqueConstraint(
+            "org_id", "connection_id", "calendar_id", name="uq_gcal_channels_org_conn_calendar"
+        ),
     )
 
     connection_id: Mapped[uuid.UUID] = mapped_column(
@@ -67,6 +77,9 @@ class GoogleCalendarChannel(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin,
     calendar_id: Mapped[str] = mapped_column(
         String(255), nullable=False, default="primary", server_default="primary"
     )
+    #: Google's own name for the calendar, snapshotted when it was selected — what the feeds
+    #: menu prints. Empty for the primary (the feed names that one itself).
+    summary: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     #: We mint ``channel_id`` (uuid4) and ``channel_token`` (the webhook's shared secret);
     #: ``resource_id`` is Google's handle, needed to stop the channel.
     channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -88,8 +101,15 @@ class GoogleCalendarEvent(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, B
 
     __tablename__ = "google_calendar_events"
     __table_args__ = (
+        # ``calendar_id`` is part of the identity (#440): an invitation exists on the inviter's
+        # calendar *and* on a shared one under the same Google event id, and two synced
+        # calendars must not fight over one row.
         UniqueConstraint(
-            "org_id", "connection_id", "google_event_id", name="uq_gcal_events_org_conn_event"
+            "org_id",
+            "connection_id",
+            "calendar_id",
+            "google_event_id",
+            name="uq_gcal_events_org_conn_cal_event",
         ),
         Index("ix_gcal_events_org_conn_start_at", "org_id", "connection_id", "start_at"),
         Index("ix_gcal_events_org_conn_start_date", "org_id", "connection_id", "start_date"),
