@@ -22,6 +22,7 @@
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
+  import { billableSettled, projectBillableDefault } from "$lib/modules/time/billable";
   import { endFromDuration, minutesBetween } from "$lib/modules/time/duration";
   import {
     entryTypeLabel,
@@ -158,6 +159,9 @@
     break_minutes?: number | null;
     duration_text?: string | null;
     billable?: boolean | null;
+    /** Whether the person moved the toggle themselves — the value alone cannot say (#284,
+     *  `billable.ts`). Absent on a draft saved before this field existed. */
+    billable_touched?: boolean | null;
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
@@ -172,14 +176,16 @@
    *  covers it, because the retainer already pays for that work. Mirrors what the API
    *  resolves when a client sends no `billable` at all; no project means the old plain true. */
   function projectBillable(projectId: string): boolean {
-    if (!projectId) return true;
-    return projects.find((p) => p.id === projectId)?.billable_default ?? true;
+    return projectBillableDefault(projects, projectId);
   }
   const initialProject = entry?.project_id ?? restored?.project_id ?? defaultProjectId;
   let fBillable = $state(entry?.billable ?? restored?.billable ?? projectBillable(initialProject));
-  // An entry being edited, and a restored draft, both carry a billable the person already
-  // settled — picking a project must not quietly overwrite it (#284).
-  let billableTouched = Boolean(entry) || restored?.billable != null;
+  // An entry being edited carries a billable the person already settled — picking a project must
+  // not quietly overwrite it (#284). A restored draft carries one too, but *carrying* it is not
+  // deciding it: every autosave writes the field whether or not anyone touched the toggle, so
+  // reading presence as a decision froze the flag on every day with a concept on it, and picking
+  // a non-billable project after that left the entry billable. `billable.ts` holds the rule.
+  let billableTouched = Boolean(entry) || billableSettled(restored, projects);
   function setBillable(value: boolean) {
     fBillable = value;
     billableTouched = true;
@@ -363,6 +369,9 @@
       break_minutes: Number(fBreak) || 0,
       duration_text: durationText || null,
       billable: fBillable,
+      // The decision, beside the value: a draft that carries only the value cannot say whether
+      // anybody made one, and reading it as one freezes the toggle (`billable.ts`).
+      billable_touched: billableTouched,
       company_id: fCompany || null,
       project_id: fProject || null,
       task_id: fTask || null,
@@ -380,6 +389,7 @@
     // opens on "niet factureerbaar", and a baseline of `true` would read that as typed input
     // and autosave a draft for a day nobody touched.
     billable: projectBillable(defaultProjectId),
+    billable_touched: false,
     company_id: defaultCompanyId || null,
     project_id: defaultProjectId || null,
     task_id: null,
@@ -412,7 +422,10 @@
     fStart = "";
     fEnd = "";
     fBreak = 0;
-    fBillable = true;
+    // The day's own seed, not a flat `true`: discarding returns the form to how it opened, and
+    // on a retainer project that is "niet factureerbaar" (#284).
+    fBillable = projectBillable(defaultProjectId);
+    billableTouched = false;
     fCompany = defaultCompanyId;
     fProject = defaultProjectId;
     fTask = "";

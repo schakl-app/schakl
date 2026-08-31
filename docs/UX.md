@@ -2676,3 +2676,21 @@ contrast bug in dark mode rather than only an inconsistency.
   edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
   edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
   have been the first thing an agency met after upgrading.
+- **A field a draft carries is not a field anybody filled in** (#284, `modules/time/billable.ts`).
+  The hour form seeds `billable` from the project — false where a subscription covers the work —
+  and stops seeding it the moment the person moves the toggle themselves. That second half read
+  "the person moved it" off the restored draft (#44) as *`billable` is present*, and the autosave
+  writes every field on every keystroke, so a draft always carries it: one typed word was enough
+  to freeze the flag for the rest of the day, and picking a non-billable project after that left
+  the entry billable. Three things generalise. **A payload that stores a value has to store the
+  decision beside it** where anything downstream reads the value as a choice — the toggle is a
+  real control showing a real value, so nothing on the screen can disagree, and what disagrees is
+  the project's settings page after the hours are invoiced. **A field added to a closed shape
+  must be added at both ends**: `TimeEntryDraftPayload` is `extra="forbid"`, so the form and the
+  whitelist mirror each other field for field or every autosave 422s in silence (#176's lesson,
+  and the test in `test_time_drafts.py` exists because of it). And **a draft written before the
+  rule is read by the rule, not by a default**: an older payload has its value compared against
+  what its own project would have seeded, so a real override survives the upgrade and a value
+  nobody chose goes back to following the project. Its sibling on the same form: discarding a
+  concept reset `billable` to a flat `true` rather than to the day's own seed, which quietly
+  billed a retainer client on a form that had just been emptied.

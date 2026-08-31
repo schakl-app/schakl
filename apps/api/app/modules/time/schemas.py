@@ -231,6 +231,12 @@ class TimeEntryDraftPayload(BaseModel):
     break_minutes: int | None = Field(default=None, ge=0, le=1440)
     duration_text: str | None = Field(default=None, max_length=40)
     billable: bool | None = None
+    #: Whether the person moved the toggle themselves, beside what it says (#284). The value
+    #: alone cannot answer that — every autosave writes it — and the form reading its presence
+    #: as a decision froze the flag on any day with a concept on it, so a non-billable project
+    #: picked afterwards still billed. A draft written before this field keeps its old shape and
+    #: is read by the form's own fallback; it is not required here.
+    billable_touched: bool | None = None
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
