@@ -3,10 +3,11 @@
  * each host detail page (company / project / contact / task) spreads these into its own
  * `actions` — the panel body posts to `?/createInteraction` etc. wherever it renders.
  */
-import { fail, type RequestEvent } from "@sveltejs/kit";
+import { fail, redirect, type RequestEvent } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { parseAssignees } from "$lib/core/assignees";
+import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
@@ -371,6 +372,14 @@ export const interactionActions = {
       if (closeError) {
         return fail(400, { error: apiErrorKey(closeError).key, approvedButCloseFailed: true });
       }
+    }
+    // The review dialog made this task while reading this message (`open_task=1`), so the
+    // reviewer's next act is going to it: land there in edit mode rather than leaving them to
+    // find a task that exists only because of the email they just filed. Last, and only on the
+    // way out — a redirect thrown earlier would discard the close above, which is a separate
+    // write that already stands on its own.
+    if (form.get("open_task") === "1" && task_id) {
+      throw redirect(303, editHref(`/tasks/${task_id}`));
     }
     return { ok: true };
   },

@@ -1,19 +1,23 @@
 /**
- * A task is named by the person making it (#391).
+ * The two shapes a task is created in, and why neither may drift into the other.
  *
- * `Nieuwe taak` used to post the row before anyone had typed anything: a placeholder title
- * ("Naamloze taak"), `unnamed: true` (#350), a due date of nothing and an assignee it chose
- * itself. One click and a closed tab left real work on the board, in the client's Taken panel
- * and in the export. The dialog in front of it is the fix, and this is the half of the fix that
- * a browser cannot show you — a body builder is invisible in review, and "the title is the
- * caller's" is exactly the kind of thing a later refactor re-introduces a default for.
+ * A **dialog** create (a picker's inline ＋) is named by the person making it: the control that
+ * opened it needs an id back, so it may not navigate, so the title has to be asked for. Nothing
+ * about it is invented — "the title is the caller's" is exactly the kind of thing a later
+ * refactor re-introduces a default for, and a body builder is invisible in review.
+ *
+ * A **placeholder** create is `Nieuwe taak` itself: create-then-edit (#230), one click and
+ * straight into edit mode on the detail page. It invents all three of the fields the dialog
+ * asks for, so each one is pinned here — above all `unnamed` (#350), which is what keeps an
+ * abandoned create findable rather than indistinguishable from real work, and the org's own
+ * today rather than a `NULL` that would take the task out of every urgency screen (#392).
  *
  * Run with `pnpm web test:unit` (node's built-in runner strips the types; no vitest here).
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { taskCreateBody } from "../../src/lib/modules/tasks/create.ts";
+import { taskCreateBody, taskPlaceholderBody } from "../../src/lib/modules/tasks/create.ts";
 
 //: A deadline is required too (#392), so every body that is *meant* to build carries one —
 //: only the tests about the deadline itself leave it out.
@@ -30,7 +34,7 @@ describe("taskCreateBody", () => {
   test("the title is the caller's, and nothing else is invented", () => {
     const body = taskCreateBody(posted({ title: "Productfeed opschonen", due_date: DUE }));
     assert.equal(body?.title, "Productfeed opschonen");
-    // The point of the issue: no placeholder, and nothing marks the row as unnamed.
+    // A named row is not an unnamed one: the flag belongs to the placeholder shape alone.
     assert.ok(body && !("unnamed" in body));
   });
 
@@ -94,7 +98,9 @@ describe("taskCreateBody", () => {
   });
 
   test("no roster at all falls back to the creator, which is what the picker-less org gets", () => {
-    const body = taskCreateBody(posted({ title: "x", due_date: DUE }), { fallbackAssigneeUserId: ME });
+    const body = taskCreateBody(posted({ title: "x", due_date: DUE }), {
+      fallbackAssigneeUserId: ME,
+    });
     assert.equal(body?.assignee_user_id, ME);
     assert.ok(!("assignees" in body!));
   });
@@ -107,5 +113,46 @@ describe("taskCreateBody", () => {
     const body = taskCreateBody(posted({ title: "x", due_date: DUE }));
     assert.ok(body && !("status" in body));
     assert.equal(body?.priority, "normal");
+  });
+});
+
+describe("taskPlaceholderBody", () => {
+  const TODAY = "2026-08-31";
+  const placeholder = (extra: Record<string, string | null> = {}) =>
+    taskPlaceholderBody({ title: "Naamloze taak", today: TODAY, ...extra });
+
+  test("the row says it is unnamed, so an abandoned create stays findable (#350)", () => {
+    const body = placeholder();
+    assert.equal(body.title, "Naamloze taak");
+    assert.equal(body.unnamed, true);
+  });
+
+  test("the deadline is the org's today, never absent (#392)", () => {
+    // The default #392 wrote down for exactly this path. A `NULL` here would take the task out
+    // of `?due=overdue`, the Agenda's deadline feed and both dashboards' overdue counts — while
+    // the user is standing on the field, one keystroke from changing it.
+    assert.equal(placeholder().due_date, TODAY);
+  });
+
+  test("the creator is assigned, and an unknown one is nobody rather than a guess", () => {
+    assert.equal(placeholder({ assigneeUserId: ME }).assignee_user_id, ME);
+    assert.equal(placeholder().assignee_user_id, null);
+    // The roster field is the dialog's; a placeholder never posts one.
+    assert.ok(!("assignees" in placeholder({ assigneeUserId: ME })));
+  });
+
+  test("an empty client or project is null, never the empty string", () => {
+    const body = placeholder({ companyId: "", projectId: "" });
+    assert.equal(body.company_id, null);
+    assert.equal(body.project_id, null);
+    assert.equal(placeholder({ companyId: "c1" }).company_id, "c1");
+  });
+
+  test("the status is left to the org's default (#62), like every other create", () => {
+    const body = placeholder();
+    assert.ok(!("status" in body));
+    assert.equal(body.priority, "normal");
+    assert.equal(body.requires_interaction, false);
+    assert.equal(body.visible_to_client, false);
   });
 });

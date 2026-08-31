@@ -1941,6 +1941,49 @@ contrast bug in dark mode rather than only an inconsistency.
   because "the title is the caller's" is invisible in a diff and is exactly the kind of rule a
   later refactor re-introduces a placeholder for; it is asserted without a browser in
   `tests/unit/task-create.test.ts`.
+- **…and the dialog in front of it was worse than the row behind it.** The entry above is
+  reversed for the *primary* create paths (`/tasks`, the client header, the client's Taken
+  panel), and the reversal is worth writing down because both directions look reasonable on
+  paper. What #391 traded away is only visible with a hand on the mouse: the modal asked three
+  of a task's twenty fields — title, deadline, roster — and then dropped the user on the page
+  where all twenty, *including those three*, are edited. Two forms for one act, on the one path
+  where the user was going to that page anyway. The abandoned-row problem it bought is real and
+  is not free to solve this way: it is one dialog on every create, forever, against a row that
+  `unnamed` already marks, `?unnamed=1` already finds and a bulk delete already clears.
+  So **the primary create paths are create-then-edit again**, and three things make the row
+  honest rather than merely tolerated. It says it is unnamed (`unnamed`, #350), so it italicises
+  in the reader's own language and stays findable. It carries the org's own today as a deadline
+  (`orgToday()`, the default #392 wrote down for exactly this path), so it is never invisible to
+  the urgency screens while the user is standing on the field. And the page it lands on **puts
+  the caret in the title with the placeholder selected**, so the first keystroke names it —
+  which is what makes this one act instead of two, and is repeated over the second after arrival
+  for the same three reasons `TaskComments.reveal` is (arriving is a navigation, SvelteKit's
+  `reset_focus()` runs after we take focus, and the description editor mounts asynchronously).
+  **`TaskQuickCreate` keeps every other job**: a picker's inline ＋ must hand an id back to the
+  control that opened it and therefore may not navigate, so it has to ask; the project to-do list
+  keeps it too, because that list is written several items at a time and a redirect per item is
+  the wrong shape. A dialog is right where the create is somebody's *side errand*, and wrong
+  where it is the thing they came to do.
+- **An approve that made a task should end on the task** (the same issue). Approving a pending
+  e-mail onto a task created in the review dialog closed the dialog over the inbox — leaving a
+  task that exists only because of that e-mail, holding a title and nothing else, for the
+  reviewer to go and find. The approve now redirects into edit mode on it (`open_task=1`, set by
+  the dialog only when the picked task is the one *it* created; filing onto an existing task
+  stays where it is, because that is an inbox being worked and a navigation per approve would
+  empty it one page load at a time).
+  Its other half is the strip above the card. `TaskAIStatus` (#327) said *"schakl leest de
+  e-mail…"* beside a pulsing icon, which was the right amount of information for somebody who
+  had not been sent to that page — and is not, now that the approve lands them on it while the
+  worker is still running. It draws the run as **phases with a bar**: queued, running, and a
+  short confirmation when it lands. The bar's width is *not* a measurement (the endpoint answers
+  one column and the job publishes no progress), so it is `aria-hidden` decoration and the phase
+  in words is what the live region carries — a creeping bar that is honest about what it is beats
+  a spinner, because it shows the run is still alive. And **the redraw is a button in edit mode,
+  never automatic**: `invalidateAll()` would write the server's answer over a half-typed form, and
+  it could not redraw the description anyway — that is a *mounted* rich-text editor, not a
+  controlled input, so it keeps the value it was created with however many times the load re-runs.
+  A press there reloads. A control that says "toon wat is aangevuld" and visibly does nothing is
+  the one outcome worse than not offering it.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and

@@ -223,6 +223,20 @@
    * capture: only a create made *by this instance* arrives after mount.
    */
   let handledCreate = $state((page.form?.inlineCreated as { id?: string } | undefined)?.id ?? "");
+  /**
+   * The task this dialog made, if it made one.
+   *
+   * Approving an email that turned out to *be* new work leaves a task holding a title, a client
+   * and nothing else — and, when "laat schakl deze taak invullen" is ticked, a worker about to
+   * write its notes, its checklist and its deadline. The reviewer's next act is going to that
+   * task either way, so the approve takes them there in edit mode rather than closing over the
+   * inbox and asking them to find it.
+   *
+   * Only a task **created here** does that. Filing a message onto a task that already exists is
+   * the ordinary case and must stay where it is: the reviewer is working an inbox, and a
+   * navigation per approve would empty the queue one page load at a time.
+   */
+  let taskCreatedHere = $state("");
   $effect(() => {
     const created = page.form?.inlineCreated as
       | {
@@ -238,6 +252,8 @@
     if (!created || created.id === handledCreate) return;
     if (created.slot === "move_task") {
       handledCreate = created.id;
+      // Made here, on this message: the approve that follows opens it in edit mode (below).
+      taskCreatedHere = created.id;
       if (!tasks.some((option) => option.value === created.id)) {
         tasks = [
           ...tasks,
@@ -302,6 +318,8 @@
           }
           error = "";
           closeFailedAfterApprove = false;
+          // The approve that made a task redirects onto it in edit mode; `update` performs the
+          // navigation, and the host is told to close so the dialog does not flash over it.
           await update({ reset: false });
           onsaved?.();
         },
@@ -517,7 +535,13 @@
       {canApprove ? t("interactions.save_pending") : t("common.save")}
     </Button>
     {#if canApprove}
-      <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links. -->
+      <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links.
+           `open_task` rides with it when the task on this message was created in this dialog:
+           a task that only exists because of this email is unfinished by definition, so the
+           approve lands on it in edit mode instead of closing over the inbox. -->
+      {#if taskId && taskId === taskCreatedHere}
+        <input type="hidden" name="open_task" value="1" />
+      {/if}
       <Button
         type="submit"
         name="assign"

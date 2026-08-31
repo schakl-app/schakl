@@ -19,11 +19,13 @@
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
   import { splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -52,7 +54,6 @@
   } from "$lib/modules/tasks/statuses";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskDictateSheet from "$lib/modules/tasks/TaskDictateSheet.svelte";
-  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -80,12 +81,10 @@
   // after mount; the opener mirrors the two the page already knows, so it is never drawn on a
   // tenant with no speech provider. `micSupported` is the sheet's to answer.
   let dictating = $state(false);
-  // Who the dialog opens with on the roster: yourself, the way this button has always assigned
-  // its rows — but as a chip that can be taken off, not a decision made off screen.
-  const me = $derived((page.data.user?.id as string | undefined) ?? "");
-  // The name is asked for before the row exists (#391): `Nieuwe taak` opens the same dialog every
-  // picker's inline-create opens, and its action redirects into edit mode for the rest.
-  let creating = $state(false);
+  // `Nieuwe taak` is create-then-edit again: one click, one placeholder row, straight into edit
+  // mode on the detail page. `busy` is only here so the button can spin — the form carries
+  // nothing but hidden fields, so there is nothing for a reset to blank.
+  const creating = new InFlight();
   const canDictate = $derived(
     canCreate && aiEnabled(page.data.user, "task_assist") && aiEnabled(page.data.user, "speech"),
   );
@@ -377,12 +376,12 @@
       <StateMark state="late" label={t("tasks.overdue_count", { count: overdueCount })} />
     {/if}
   {/snippet}
-  <!-- Ask for the name, then create-then-edit for the rest (#391, #230): the dialog posts a
-       named task and the action redirects to its detail page in edit mode, so creating and
-       editing still share one surface (docs/UX.md Principle 3). Beside it, the other way in
-       (#382): a task spoken in one breath, reviewed whole. Not a menu item — this is a primary
-       create path, not a variant of one — and on a phone it is the reachable pair the FAB rule
-       asks for. -->
+  <!-- Create-then-edit (#230, docs/UX.md Principle 3): the button posts a placeholder row and
+       the action redirects to its detail page in edit mode, where every field lives. No dialog
+       in front of it — asking three of a task's twenty fields on the way to the page that edits
+       all twenty is a form in front of a form. Beside it, the other way in (#382): a task spoken
+       in one breath, reviewed whole. Not a menu item — this is a primary create path, not a
+       variant of one — and on a phone it is the reachable pair the FAB rule asks for. -->
   {#snippet actions()}
     {#if canCreate}
       {#if canDictate}
@@ -396,13 +395,17 @@
           <span class="hidden sm:inline">{t("tasks.dictate.open")}</span>
         </button>
       {/if}
-      <button
-        type="button"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        onclick={() => (creating = true)}
-      >
-        {t("tasks.new")}
-      </button>
+      <form method="POST" action="?/create" use:enhance={creating.wrap()}>
+        <!-- The list's own filters ride along, so a task made while looking at one client lands
+             on that client — the same carry-through the dictation sheet already does. -->
+        {#if data.filters.company_id}
+          <input type="hidden" name="company_id" value={data.filters.company_id} />
+        {/if}
+        {#if data.filters.project_id}
+          <input type="hidden" name="project_id" value={data.filters.project_id} />
+        {/if}
+        <Button loading={creating.active}>{t("tasks.new")}</Button>
+      </form>
     {/if}
   {/snippet}
 </PageHeader>
@@ -417,21 +420,6 @@
     members={data.members}
     companyId={data.filters.company_id ?? null}
     projectId={data.filters.project_id ?? null}
-  />
-{/if}
-
-{#if canCreate}
-  <!-- The list's own filters ride along, so a task made while looking at one client lands on
-       that client (#391) — the same carry-through the dictation sheet already does. -->
-  <TaskQuickCreate
-    bind:open={creating}
-    companyId={data.filters.company_id ?? null}
-    projectId={data.filters.project_id ?? null}
-    members={data.members}
-    assignees={me ? [{ user_id: me, is_primary: true }] : []}
-    action="?/create"
-    error={form?.error ?? null}
-    pickerSlot="tasks_new"
   />
 {/if}
 

@@ -3,14 +3,16 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
+import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { orgToday } from "$lib/core/today";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
-import { taskCreateBody } from "$lib/modules/tasks/create";
+import { taskPlaceholderBody } from "$lib/modules/tasks/create";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
 import { DUE_SORT, resolveGrouping } from "$lib/modules/tasks/grouping";
 
@@ -140,20 +142,31 @@ export const actions: Actions = {
   bulkDelete: (event) => bulkDeleteAction(event, "task"),
 
   /**
-   * The one create path behind every "＋ nieuwe taak" (#391) — this list's button, the client's
-   * Taken panel, the client header. The user names the task in `TaskQuickCreate` (the dialog
-   * every picker's inline-create already opens) and *then* lands on the detail page in edit
-   * mode (#78's `?edit=1` marker), so create-then-edit's benefit survives: one editing surface,
-   * no second field set to keep in step.
+   * The one create path behind every "＋ nieuwe taak" — this list's button, the client's Taken
+   * panel, the client header. Create-then-edit (#230, docs/UX.md Principle 3): one click writes
+   * a placeholder row and the user lands on its detail page in edit mode (#78's `?edit=1`), the
+   * one surface where a task's definition is edited.
    *
-   * What no longer survives is the row this action used to write before anyone had been asked
-   * anything — a placeholder title marked `unnamed` (#350), a due date of nothing and an
-   * assignee it picked itself, left on the board by one click and a closed tab.
+   * #391 put `TaskQuickCreate` in front of this, to stop an abandoned create leaving a row on
+   * the board. The cost turned out to be larger than the thing it bought: a modal asking three
+   * of a task's twenty fields, in front of the page where all twenty — including those three —
+   * are edited, on the one path where the user was going to that page anyway. So the dialog
+   * goes back to being what it was built for (a picker's inline ＋, which must hand an id back
+   * and may not navigate), and this writes the placeholder again.
+   *
+   * The row is not silent about being one: `unnamed` (#350) is what makes an abandoned create
+   * findable (`?unnamed=1`) and renders as *Naamloze taak* in the reader's own language, and
+   * the flag clears itself the moment a real title is saved.
    */
   create: async (event) => {
     const form = await event.request.formData();
-    const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
-    if (!body) return fail(400, { error: "errors.required" });
+    const body = taskPlaceholderBody({
+      title: t("tasks.untitled"),
+      today: orgToday(),
+      companyId: String(form.get("company_id") ?? "").trim(),
+      projectId: String(form.get("project_id") ?? "").trim(),
+      assigneeUserId: event.locals.user?.id ?? null,
+    });
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (error || !data) return fail(400, { error: apiErrorKey(error).key });
     throw redirect(303, editHref(`/tasks/${data.id}`));

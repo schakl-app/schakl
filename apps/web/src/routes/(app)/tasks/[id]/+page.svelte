@@ -8,6 +8,7 @@
     Pencil,
     Trash2,
   } from "@lucide/svelte";
+  import { tick } from "svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
@@ -497,6 +498,37 @@
   let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
 
+  /**
+   * Create-then-edit lands here to *name* the task, so the caret starts in the title and the
+   * placeholder is selected: the first keystroke replaces "Naamloze taak" rather than appending
+   * to it, which is the whole difference between this and a form that merely happens to be open.
+   *
+   * Only for a row nobody has named (`unnamed`, #350) — opening the pencil on real work must not
+   * put the reader's cursor in a field they did not come to change.
+   *
+   * Repeated over the second after arrival, and for the same three reasons `TaskComments.reveal`
+   * is: arriving here is a navigation, so SvelteKit's `reset_focus()` hands focus back to
+   * `<body>` *after* we take it, and the description editor mounts asynchronously beside us. One
+   * attempt loses to whichever runs last, silently. `claimedTitle` makes it once per visit, so a
+   * later reload (the AI fill-in, #327) never steals a caret back.
+   */
+  let titleInput = $state<HTMLInputElement | null>(null);
+  let claimedTitle = false;
+  $effect(() => {
+    if (claimedTitle || !editMode || !data.task.unnamed) return;
+    claimedTitle = true;
+    void (async () => {
+      for (const wait of [0, 60, 200, 500]) {
+        await tick();
+        if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+        if (!titleInput) continue;
+        if (document.activeElement === titleInput) return;
+        titleInput.focus({ preventScroll: true });
+        titleInput.select();
+      }
+    })();
+  });
+
   // A detour that started on a client's or a project's page (#408): leaving edit mode — by
   // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
   // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
@@ -889,7 +921,7 @@
   <!-- "schakl leest de e-mail" (#327). Above the card rather than inside it: it is about the whole
        task, it is short-lived, and it must not push the title around while it comes and goes. -->
   {#if task.ai_status}
-    <TaskAIStatus taskId={task.id} status={task.ai_status} />
+    <TaskAIStatus taskId={task.id} status={task.ai_status} editing={editMode} />
   {/if}
 
   <!-- Header — what this task is, and what is true of it at a glance. Always first, and not
@@ -902,6 +934,7 @@
           value={task.title}
           required
           form="task-edit"
+          bind:this={titleInput}
           class="w-full flex-1 rounded-lg border border-border p-2 text-xl font-semibold text-text outline-none focus:border-brand"
         />
       {:else}
