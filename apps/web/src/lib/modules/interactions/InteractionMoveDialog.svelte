@@ -29,6 +29,8 @@
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
+  import TaskReviewDialog from "$lib/modules/tasks/TaskReviewDialog.svelte";
+  import { fmtDateTime } from "$lib/core/format";
   import { companyArchivedLabel } from "$lib/modules/companies/picker";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
@@ -228,15 +230,30 @@
    *
    * Approving an email that turned out to *be* new work leaves a task holding a title, a client
    * and nothing else — and, when "laat schakl deze taak invullen" is ticked, a worker about to
-   * write its notes, its checklist and its deadline. The reviewer's next act is going to that
-   * task either way, so the approve takes them there in edit mode rather than closing over the
-   * inbox and asking them to find it.
+   * write its notes, its checklist and its deadline. The reviewer's next act is checking that
+   * task either way, so the approve opens it **here**, in a review slide-over beside the message
+   * it came from (`TaskReviewDialog`), rather than closing over the inbox and asking them to
+   * find it — or, as it did before, redirecting them onto the task's page and losing the inbox
+   * and the e-mail both (docs/UX.md Principle 8: a dialog is the default).
    *
    * Only a task **created here** does that. Filing a message onto a task that already exists is
-   * the ordinary case and must stay where it is: the reviewer is working an inbox, and a
-   * navigation per approve would empty the queue one page load at a time.
+   * the ordinary case and must stay where it is: the reviewer is working an inbox, and a review
+   * per approve would be a dialog over every row they file.
    */
   let taskCreatedHere = $state("");
+  /** The task under review after the approve — while set, the host is not told to close. */
+  let reviewTaskId = $state("");
+  let reviewOpen = $state(false);
+  const reviewOrigin = $derived.by(() => {
+    const from =
+      interaction.participants?.find((p) => p.role === "from") ?? interaction.participants?.[0];
+    const who = from?.name || from?.email || interaction.contact_name || "";
+    return {
+      label: t("tasks.review.origin"),
+      title: interaction.subject || interaction.task_title || t("interactions.detail_title"),
+      detail: [who, fmtDateTime(interaction.occurred_at)].filter(Boolean).join(" · "),
+    };
+  });
   $effect(() => {
     const created = page.form?.inlineCreated as
       | {
@@ -318,9 +335,16 @@
           }
           error = "";
           closeFailedAfterApprove = false;
-          // The approve that made a task redirects onto it in edit mode; `update` performs the
-          // navigation, and the host is told to close so the dialog does not flash over it.
+          const review =
+            result.type === "success" ? (result.data?.reviewTaskId as string | undefined) : "";
           await update({ reset: false });
+          if (review) {
+            // The approve that made a task hands it back: the review opens over this dialog and
+            // the host is told to close only when that review is done (`onReviewClosed`).
+            reviewTaskId = review;
+            reviewOpen = true;
+            return;
+          }
           onsaved?.();
         },
     )(input);
@@ -388,173 +412,196 @@
   }
 </script>
 
-<form method="POST" action="?/moveInteraction" class="space-y-4" use:enhance={submit}>
-  <input type="hidden" name="id" value={interaction.id} />
-  <input type="hidden" name="source" value={interaction.source} />
+{#if reviewTaskId}
+  <!-- Approved, and the task it made is open beside this for review. The form is done; what
+       is left of this dialog says so, and closes with the review. -->
+  <p class="text-sm text-text-muted">{t("interactions.approved_review")}</p>
+{:else}
+  <form method="POST" action="?/moveInteraction" class="space-y-4" use:enhance={submit}>
+    <input type="hidden" name="id" value={interaction.id} />
+    <input type="hidden" name="source" value={interaction.source} />
 
-  {#if loading}
-    <p class="text-sm text-text-muted">{t("common.loading")}</p>
-  {:else}
-    <div class="grid gap-4 sm:grid-cols-2">
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
-        <Combobox
-          items={linkSplit.companies.live}
-          archived={linkSplit.companies.retired}
-          archivedLabel={companyArchivedLabel()}
-          name="company_id"
-          value={companyId}
-          placeholder={t("common.none")}
-          onselect={(v) => (companyId = v)}
-          oncreate={canCreateCompany
-            ? (query) => {
-                companyDraft = query;
-                companyCreateOpen = true;
-              }
-            : undefined}
-          id="move-company"
-        />
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
-        <Combobox
-          items={projectOptions}
-          archived={linkSplit.projects.retired}
-          archivedLabel={projectArchivedLabel()}
-          name="project_id"
-          value={projectId}
-          placeholder={t("common.none")}
-          onselect={onProjectPicked}
-          oncreate={canCreateProject
-            ? (query) => {
-                projectDraft = query;
-                projectCreateOpen = true;
-              }
-            : undefined}
-          id="move-project"
-        />
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-        <Combobox
-          items={taskOptions}
-          archived={linkSplit.tasks.retired}
-          archivedLabel={t("tasks.picker.archived")}
-          name="task_id"
-          value={taskId}
-          placeholder={t("common.none")}
-          onselect={onTaskPicked}
-          oncreate={canCreateTask
-            ? (query) => {
-                taskDraft = query;
-                taskCreateOpen = true;
-              }
-            : undefined}
-          id="move-task"
-        />
-      </label>
-      <div class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
-        <ContactChips
-          {roster}
-          id="move-contacts"
-          oncreate={canCreateContact ? (query) => void startContactCreate(query) : undefined}
-        />
+    {#if loading}
+      <p class="text-sm text-text-muted">{t("common.loading")}</p>
+    {:else}
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+          <Combobox
+            items={linkSplit.companies.live}
+            archived={linkSplit.companies.retired}
+            archivedLabel={companyArchivedLabel()}
+            name="company_id"
+            value={companyId}
+            placeholder={t("common.none")}
+            onselect={(v) => (companyId = v)}
+            oncreate={canCreateCompany
+              ? (query) => {
+                  companyDraft = query;
+                  companyCreateOpen = true;
+                }
+              : undefined}
+            id="move-company"
+          />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
+          <Combobox
+            items={projectOptions}
+            archived={linkSplit.projects.retired}
+            archivedLabel={projectArchivedLabel()}
+            name="project_id"
+            value={projectId}
+            placeholder={t("common.none")}
+            onselect={onProjectPicked}
+            oncreate={canCreateProject
+              ? (query) => {
+                  projectDraft = query;
+                  projectCreateOpen = true;
+                }
+              : undefined}
+            id="move-project"
+          />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
+          <Combobox
+            items={taskOptions}
+            archived={linkSplit.tasks.retired}
+            archivedLabel={t("tasks.picker.archived")}
+            name="task_id"
+            value={taskId}
+            placeholder={t("common.none")}
+            onselect={onTaskPicked}
+            oncreate={canCreateTask
+              ? (query) => {
+                  taskDraft = query;
+                  taskCreateOpen = true;
+                }
+              : undefined}
+            id="move-task"
+          />
+        </label>
+        <div class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
+          <ContactChips
+            {roster}
+            id="move-contacts"
+            oncreate={canCreateContact ? (query) => void startContactCreate(query) : undefined}
+          />
+        </div>
       </div>
-    </div>
 
-    {#if canEnrichTask && taskId}
-      <!-- Carry the email into the task while approving (#327) — the opening move to
+      {#if canEnrichTask && taskId}
+        <!-- Carry the email into the task while approving (#327) — the opening move to
            "sluit deze taak hiermee"'s closing one, and it reads like its sibling. Off by
            default: sending a client's own words to a model is a decision, not an inheritance. -->
-      <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
-        <input
-          type="checkbox"
-          name="enrich_task"
-          value="1"
-          bind:checked={enrichTask}
-          class="mt-0.5"
-        />
-        <span>
-          {t("interactions.approve_enrich_task")}
-          <span class="mt-0.5 block text-xs text-text-muted"
-            >{t("interactions.approve_enrich_task_hint")}</span
-          >
-        </span>
-      </label>
-    {/if}
-
-    {#if canCloseTask && taskId}
-      <!-- Close the task with this contact moment while approving (#157): offered for any
-           picked task, required-close or not; the status pick mirrors CloseTaskDialog. -->
-      <div class="space-y-2 rounded-lg border border-border p-3">
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" name="close_task" value="1" bind:checked={closeTask} />
-          {t("interactions.approve_close_task")}
+        <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
+          <input
+            type="checkbox"
+            name="enrich_task"
+            value="1"
+            bind:checked={enrichTask}
+            class="mt-0.5"
+          />
+          <span>
+            {t("interactions.approve_enrich_task")}
+            <span class="mt-0.5 block text-xs text-text-muted"
+              >{t("interactions.approve_enrich_task_hint")}</span
+            >
+          </span>
         </label>
-        {#if closeTask}
-          {#if terminalLoaded && terminal.length === 0}
-            <p class="text-sm text-red-600">{t("interactions.close_task_no_terminal")}</p>
-          {:else if terminal.length > 1}
-            <fieldset class="space-y-1.5 pl-6">
-              <legend class="sr-only">{t("interactions.close_task_pick_status")}</legend>
-              {#each terminal as status (status.id)}
-                <label class="flex items-center gap-2 text-sm text-text">
-                  <input
-                    type="radio"
-                    name="close_status"
-                    value={status.key}
-                    bind:group={closeStatus}
-                  />
-                  {status.name}
-                </label>
-              {/each}
-            </fieldset>
-          {:else if terminal.length === 1}
-            <input type="hidden" name="close_status" value={closeStatus} />
-          {/if}
-        {/if}
-      </div>
-    {/if}
-  {/if}
-
-  {#if closeFailedAfterApprove}
-    <p class="text-sm text-red-600">{t("interactions.close_after_approve_failed")}</p>
-  {/if}
-  {#if error}
-    <p class="text-sm text-red-600">{t(error)}</p>
-  {/if}
-
-  <div class="flex justify-end gap-2">
-    <Button
-      type="submit"
-      variant={canApprove ? "secondary" : "primary"}
-      loading={busy.is("save")}
-      disabled={loading || busy.active}
-    >
-      {canApprove ? t("interactions.save_pending") : t("common.save")}
-    </Button>
-    {#if canApprove}
-      <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links.
-           `open_task` rides with it when the task on this message was created in this dialog:
-           a task that only exists because of this email is unfinished by definition, so the
-           approve lands on it in edit mode instead of closing over the inbox. -->
-      {#if taskId && taskId === taskCreatedHere}
-        <input type="hidden" name="open_task" value="1" />
       {/if}
+
+      {#if canCloseTask && taskId}
+        <!-- Close the task with this contact moment while approving (#157): offered for any
+           picked task, required-close or not; the status pick mirrors CloseTaskDialog. -->
+        <div class="space-y-2 rounded-lg border border-border p-3">
+          <label class="flex items-center gap-2 text-sm text-text">
+            <input type="checkbox" name="close_task" value="1" bind:checked={closeTask} />
+            {t("interactions.approve_close_task")}
+          </label>
+          {#if closeTask}
+            {#if terminalLoaded && terminal.length === 0}
+              <p class="text-sm text-red-600">{t("interactions.close_task_no_terminal")}</p>
+            {:else if terminal.length > 1}
+              <fieldset class="space-y-1.5 pl-6">
+                <legend class="sr-only">{t("interactions.close_task_pick_status")}</legend>
+                {#each terminal as status (status.id)}
+                  <label class="flex items-center gap-2 text-sm text-text">
+                    <input
+                      type="radio"
+                      name="close_status"
+                      value={status.key}
+                      bind:group={closeStatus}
+                    />
+                    {status.name}
+                  </label>
+                {/each}
+              </fieldset>
+            {:else if terminal.length === 1}
+              <input type="hidden" name="close_status" value={closeStatus} />
+            {/if}
+          {/if}
+        </div>
+      {/if}
+    {/if}
+
+    {#if closeFailedAfterApprove}
+      <p class="text-sm text-red-600">{t("interactions.close_after_approve_failed")}</p>
+    {/if}
+    {#if error}
+      <p class="text-sm text-red-600">{t(error)}</p>
+    {/if}
+
+    <div class="flex justify-end gap-2">
       <Button
         type="submit"
-        name="assign"
-        value="1"
-        formaction={approveAction}
-        loading={busy.is("approve")}
+        variant={canApprove ? "secondary" : "primary"}
+        loading={busy.is("save")}
         disabled={loading || busy.active}
       >
-        {t("interactions.approve")}
+        {canApprove ? t("interactions.save_pending") : t("common.save")}
       </Button>
-    {/if}
-  </div>
-</form>
+      {#if canApprove}
+        <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links.
+           `review_task` rides with it when the task on this message was created in this dialog:
+           a task that only exists because of this email is unfinished by definition, so the
+           approve hands it back and it opens for review beside the message. -->
+        {#if taskId && taskId === taskCreatedHere}
+          <input type="hidden" name="review_task" value="1" />
+        {/if}
+        <Button
+          type="submit"
+          name="assign"
+          value="1"
+          formaction={approveAction}
+          loading={busy.is("approve")}
+          disabled={loading || busy.active}
+        >
+          {t("interactions.approve")}
+        </Button>
+      {/if}
+    </div>
+  </form>
+{/if}
+
+<!-- The task the approve just made, open for review beside the message (see `taskCreatedHere`).
+     The project options are this dialog's own, already narrowed to the client the task was
+     filed under; every way out of the review closes the host with it. -->
+{#if reviewTaskId}
+  <TaskReviewDialog
+    bind:open={reviewOpen}
+    taskId={reviewTaskId}
+    origin={reviewOrigin}
+    projects={projectOptions}
+    archivedProjects={linkSplit.projects.retired}
+    members={(page.data.members as
+      { user_id: string; full_name: string | null; email: string }[] | undefined) ?? []}
+    action="?/updateReviewTask"
+    onclose={() => onsaved?.()}
+  />
+{/if}
 
 <!-- The client roster is the one this dialog already loaded, so the ＋ costs no second fetch. -->
 <ProjectQuickCreate

@@ -262,8 +262,11 @@ flips `tasks.ai_status` to `queued` and a deferred ARQ job does the reading, re-
 widening ladder while the body has not landed and ending as `skipped` when it never does. The
 card polls `GET /tasks/{id}/ai-status` — one column, its own endpoint precisely so the poll does
 not drag the whole card — and calls `invalidateAll()` exactly once, when there is something new
-to draw. A quarter-hourly reaper ends runs whose worker is gone: the #300 rule, because the row
-cannot tell a busy worker from a dead one.
+to draw. The review slide-over the approve now opens the new task in (`TaskReviewDialog`,
+docs/UX.md) is the other reader of that column: it hands the strip its own `reveal`, re-reads
+the row when the run lands and adopts only the fields the reader has not touched. A
+quarter-hourly reaper ends runs whose worker is gone: the #300 rule, because the row cannot
+tell a busy worker from a dead one.
 
 **The prompt is not the defence.** `_INJECTION_STANCE` is stated in this feature's own terms,
 and it is a request rather than a control. What actually bounds the damage:

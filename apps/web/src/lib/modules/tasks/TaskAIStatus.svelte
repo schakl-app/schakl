@@ -29,6 +29,13 @@
    * Terminal states are shown rather than swallowed. A run that failed or found nothing says so
    * quietly, because a control that cannot fail visibly is worse than one that refuses
    * (CLAUDE.md §10).
+   *
+   * **A host that is not a page redraws itself.** The review dialog a task opens in straight
+   * after the approve that made it (`TaskReviewDialog`) is a form over a fetched row, not a
+   * load — a `location.reload()` there would throw the dialog away with the words in it. Such
+   * a host hands in `reveal`, which is asked when the run lands and again on the button, and
+   * answers whether the screen now shows what was added: `false` keeps the button, because a
+   * field the reader was typing in is theirs until they ask.
    */
   import { Check, Sparkles, TriangleAlert } from "@lucide/svelte";
 
@@ -39,12 +46,19 @@
     taskId,
     status = null,
     editing = false,
+    reveal: customReveal,
   }: {
     taskId: string;
     /** The task's stored `ai_status`; `null` on a task no AI run ever touched. */
     status?: string | null;
     /** The page is in edit mode — see the note above: the redraw becomes a button. */
     editing?: boolean;
+    /**
+     * The host's own redraw, for a host that is not a page (see above). `forced` is the button:
+     * the reader asked, so a half-typed field may be merged rather than left alone. Answers
+     * whether everything the run wrote is now on screen.
+     */
+    reveal?: (forced: boolean) => Promise<boolean> | boolean;
   } = $props();
 
   /** How often to ask, and how long to keep asking. Four seconds × 45 ≈ three minutes, which
@@ -92,7 +106,11 @@
    * to somebody mid-sentence. In use mode nothing is mounted over the data, so the cheap call
    * is also the correct one.
    */
-  async function reveal() {
+  async function reveal(forced = true) {
+    if (customReveal) {
+      revealed = await customReveal(forced);
+      return;
+    }
     revealed = true;
     if (editing) location.reload();
     else await invalidateAll();
@@ -120,8 +138,10 @@
           clearInterval(timer);
           landed = true;
           // The one heavy call, and only when there is something new to draw — and only when
-          // there is no half-typed form for it to overwrite.
-          if (!editing) await reveal();
+          // there is no half-typed form for it to overwrite. A host with its own redraw
+          // decides that for itself, field by field.
+          if (customReveal) await reveal(false);
+          else if (!editing) await reveal();
         }
       } catch {
         // A dropped poll is not a failed run: the next tick asks again, and the ceiling ends it.
@@ -153,9 +173,10 @@
       ></div>
     </div>
   </div>
-{:else if landed && !revealed}
+{:else if landed && (!revealed || customReveal)}
   <!-- Finished while somebody was editing: the fields it wrote are on the server and the form
-       on screen is the reader's, so the redraw is theirs to ask for. -->
+       on screen is the reader's, so the redraw is theirs to ask for. A host that redrew itself
+       keeps the confirmation and drops the button: the dialog was opened to check exactly this. -->
   <div
     class="flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-4 py-2.5 text-sm text-text"
     role="status"
@@ -163,9 +184,15 @@
   >
     <Check size={16} class="shrink-0 text-brand" />
     <span>{t("tasks.ai.done")}</span>
-    <button type="button" class="font-medium text-brand hover:underline" onclick={reveal}>
-      {t("tasks.ai.show")}
-    </button>
+    {#if !revealed}
+      <button
+        type="button"
+        class="font-medium text-brand hover:underline"
+        onclick={() => reveal(true)}
+      >
+        {t("tasks.ai.show")}
+      </button>
+    {/if}
   </div>
 {:else if live === "failed" || live === "skipped"}
   <div

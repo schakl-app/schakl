@@ -1976,26 +1976,42 @@ contrast bug in dark mode rather than only an inconsistency.
   keeps it too, because that list is written several items at a time and a redirect per item is
   the wrong shape. A dialog is right where the create is somebody's *side errand*, and wrong
   where it is the thing they came to do.
-- **An approve that made a task should end on the task** (the same issue). Approving a pending
-  e-mail onto a task created in the review dialog closed the dialog over the inbox — leaving a
-  task that exists only because of that e-mail, holding a title and nothing else, for the
-  reviewer to go and find. The approve now redirects into edit mode on it (`open_task=1`, set by
-  the dialog only when the picked task is the one *it* created; filing onto an existing task
-  stays where it is, because that is an inbox being worked and a navigation per approve would
-  empty it one page load at a time).
+- **An approve that made a task should end *with* the task, beside the e-mail it came from**
+  (the same issue, then task 80a90bfd). Approving a pending e-mail onto a task created in the
+  review dialog closed the dialog over the inbox — leaving a task that exists only because of
+  that e-mail, holding a title and nothing else, for the reviewer to go and find. The first fix
+  redirected into edit mode on it, which was Principle 8's navigation taken by default: it lost
+  the inbox being worked, and it lost the message the task was written *from*, which is the one
+  thing a reviewer checking what schakl filled in wants beside them. So the approve now hands
+  the task back (`review_task=1` → `reviewTaskId`, set by the dialog only when the picked task
+  is the one *it* created; filing onto an existing task stays where it is, because that is an
+  inbox being worked and a review per approve would be a dialog over every row) and the dialog
+  opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
+  the top, title / description / project / assignees / deadline editable at once, Sluiten,
+  Opslaan and a link to the full card — and the host is told to close only when the review is,
+  whichever way out is taken. **It fills itself in the moment schakl is done, and never over
+  the reader's words**: the strip polls exactly as on the task page, and on landing the dialog
+  re-reads the row and adopts the server's value for every field the reader has *not* touched;
+  a field they were typing in keeps the "toon wat is aangevuld" button, which *merges* the notes
+  under their text (the run only ever appends). A later deadline asks for its reason inline,
+  because a modal over a slide-over is one dialog too many. Self-contained in the move dialog,
+  so all three hosts (the inbox, every entity's contactmomenten panel, the detail modal) got it
+  without being wired.
   Its other half is the strip above the card. `TaskAIStatus` (#327) said *"schakl leest de
   e-mail…"* beside a pulsing icon, which was the right amount of information for somebody who
-  had not been sent to that page — and is not, now that the approve lands them on it while the
-  worker is still running. It draws the run as **phases with a bar**: queued, running, and a
-  short confirmation when it lands. The bar's width is *not* a measurement (the endpoint answers
-  one column and the job publishes no progress), so it is `aria-hidden` decoration and the phase
-  in words is what the live region carries — a creeping bar that is honest about what it is beats
-  a spinner, because it shows the run is still alive. And **the redraw is a button in edit mode,
-  never automatic**: `invalidateAll()` would write the server's answer over a half-typed form, and
-  it could not redraw the description anyway — that is a *mounted* rich-text editor, not a
-  controlled input, so it keeps the value it was created with however many times the load re-runs.
-  A press there reloads. A control that says "toon wat is aangevuld" and visibly does nothing is
-  the one outcome worse than not offering it.
+  had not been sent to that page — and is not when somebody is looking straight at the task
+  while the worker is still running. It draws the run as **phases with a bar**: queued, running,
+  and a short confirmation when it lands. The bar's width is *not* a measurement (the endpoint
+  answers one column and the job publishes no progress), so it is `aria-hidden` decoration and
+  the phase in words is what the live region carries — a creeping bar that is honest about what
+  it is beats a spinner, because it shows the run is still alive. And **the redraw is a button in
+  edit mode, never automatic**: `invalidateAll()` would write the server's answer over a
+  half-typed form, and it could not redraw the description anyway — that is a *mounted*
+  rich-text editor, not a controlled input, so it keeps the value it was created with however
+  many times the load re-runs. A press there reloads; a host that is not a page (the review
+  dialog) hands in its own `reveal` and answers whether everything is on screen. A control that
+  says "toon wat is aangevuld" and visibly does nothing is the one outcome worse than not
+  offering it.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and

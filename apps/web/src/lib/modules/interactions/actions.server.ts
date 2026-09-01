@@ -3,11 +3,10 @@
  * each host detail page (company / project / contact / task) spreads these into its own
  * `actions` — the panel body posts to `?/createInteraction` etc. wherever it renders.
  */
-import { fail, redirect, type RequestEvent } from "@sveltejs/kit";
+import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { parseAssignees } from "$lib/core/assignees";
-import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
@@ -373,13 +372,62 @@ export const interactionActions = {
         return fail(400, { error: apiErrorKey(closeError).key, approvedButCloseFailed: true });
       }
     }
-    // The review dialog made this task while reading this message (`open_task=1`), so the
-    // reviewer's next act is going to it: land there in edit mode rather than leaving them to
-    // find a task that exists only because of the email they just filed. Last, and only on the
-    // way out — a redirect thrown earlier would discard the close above, which is a separate
-    // write that already stands on its own.
-    if (form.get("open_task") === "1" && task_id) {
-      throw redirect(303, editHref(`/tasks/${task_id}`));
+    // The review dialog made this task while reading this message (`review_task=1`), so the
+    // reviewer's next act is checking it: hand the id back and the dialog opens the task for
+    // review beside the message, rather than redirecting onto its page and losing the inbox
+    // and the e-mail both. Not a redirect any more, so the close above needs no ordering rule.
+    if (form.get("review_task") === "1" && task_id) {
+      return { ok: true, reviewTaskId: task_id };
+    }
+    return { ok: true };
+  },
+
+  /**
+   * The review slide-over's save (`TaskReviewDialog`): the task's defining fields, patched
+   * through the task's own endpoint with exactly what the form carried — partial, like every
+   * update action here. The roster and the due-date rules mirror the task page's `update`:
+   * `assignees` is one JSON field or absent, an emptied deadline is refused before the API
+   * says the same less clearly, and a later deadline carries its reason.
+   */
+  updateReviewTask: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const task_id = String(form.get("task_id") ?? "").trim();
+    if (!task_id) return fail(400, { error: "errors.required" });
+    if (form.has("title") && !String(form.get("title") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
+    if (form.has("due_date") && !String(form.get("due_date") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
+    const body: Record<string, unknown> = {};
+    for (const field of [
+      "title",
+      "description",
+      "project_id",
+      "assignee_contact_id",
+      "due_date",
+      "due_change_reason",
+    ]) {
+      if (form.has(field)) {
+        const raw = String(form.get(field) ?? "").trim();
+        body[field] = raw || null;
+      }
+    }
+    const assignees = parseAssignees(form.get("assignees"));
+    if (assignees !== undefined) body.assignees = assignees;
+    const { error } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+      params: { path: { task_id } },
+      body,
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, {
+        error:
+          e.fields?.due_change_reason ??
+          e.fields?.due_date ??
+          e.fields?.assignee_contact_id ??
+          e.key,
+      });
     }
     return { ok: true };
   },
