@@ -43,6 +43,8 @@
     status: string;
     priority: string;
     due_date?: string | null;
+    /** When a finished task was closed — the note a done row prints instead of "x dagen te laat". */
+    completed_at?: string | null;
     allocated_minutes?: number | null;
     // Only when the caller's load asked for `hours=true` and may read hours (#313).
     logged_minutes?: number | null;
@@ -235,8 +237,9 @@
     {/if}
     <!-- Absolute *and* relative (#395). A finished task's deadline is history, so it stays
          grey however late it was: red on a struck-through title is the loudest way to say
-         something that no longer matters. -->
-    <DueDate due={task.due_date} {today} muted={done} />
+         something that no longer matters — and its note is the day it was finished, not a
+         count of days that has stopped meaning anything. -->
+    <DueDate due={task.due_date} {today} muted={done} completedAt={task.completed_at} />
     {#each faces.slice(0, 3) as { link, member } (link.user_id)}
       <Avatar
         name={member?.full_name}

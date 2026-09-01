@@ -512,7 +512,12 @@ contrast bug in dark mode rather than only an inconsistency.
   today's date and subtract; `3 dagen te laat` alone cannot be matched against a calendar, a
   client's mail or anything else. Both, with the relative half muted and one size down
   (`DueDate.svelte`) — and dropped only where the row is genuinely too narrow for it, which is a
-  decision the caller states rather than a rule the component guesses.
+  decision the caller states rather than a rule the component guesses. **A finished task's note is
+  the day it was finished**, never the distance: "3 dagen te laat" is a claim about today, false
+  the day the task is closed and one day falser every morning after — a task done in March read
+  *142 dagen te laat* in August on a struck-through row. `dueNote` prints `afgerond 20 aug` from
+  `completed_at` (exact moment in the `title`), and a done row whose shape carries no stamp says
+  nothing rather than something wrong.
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical. The arrows are not a fallback nobody uses — they are the only reorder a

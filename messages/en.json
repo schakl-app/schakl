@@ -692,6 +692,7 @@
   "tasks.due.rel.late_one": "1 day late",
   "tasks.due.rel.late_other": "{count} days late",
   "tasks.due.rel.in_days": "in {count} days",
+  "tasks.due.rel.completed": "completed {date}",
   "tasks.group_by.label": "Group by",
   "tasks.group_by.due": "Deadline",
   "tasks.group_by.status": "Status",

@@ -589,7 +589,7 @@
     <!-- Absolute *and* relative (#395): "18 aug" alone asks the reader to know today's date and
          subtract, and "3 dagen te laat" alone cannot be matched against a calendar. Overdue work
          stays loudly red (docs/UX.md, principle 4); a finished task's date is history. -->
-    <DueDate due={task.due_date} {today} muted={isDone(task)} />
+    <DueDate due={task.due_date} {today} muted={isDone(task)} completedAt={task.completed_at} />
   {:else}
     <span class="text-text-muted">—</span>
   {/if}

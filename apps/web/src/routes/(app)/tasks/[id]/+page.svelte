@@ -41,7 +41,7 @@
   import StateMark from "$lib/core/ui/StateMark.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
-  import { dueBucket, dueDistance } from "$lib/modules/tasks/due";
+  import { dueBucket, dueNote } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
@@ -767,7 +767,10 @@
   const bucket = $derived(isDone ? "later" : dueBucket(task.due_date, today));
   const overdue = $derived(bucket === "overdue");
   const dueToday = $derived(bucket === "today");
-  const distance = $derived(task.due_date ? dueDistance(task.due_date, today) : null);
+  // A finished task's note is the day it was finished, never a distance that keeps counting.
+  const distance = $derived(
+    task.due_date ? dueNote(task.due_date, today, isDone, task.completed_at) : null,
+  );
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   const when = (iso: string) => fmtDateTime(iso);
@@ -1491,7 +1494,11 @@
                 : 'text-text'}"
             >
               {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
-              {#if distance}
+              {#if distance && "on" in distance}
+                <span class="text-xs font-normal text-text-muted" title={fmtDateTime(distance.on)}
+                  >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
+                >
+              {:else if distance}
                 <!-- The distance, muted: a date on its own asks the reader to subtract (#395). -->
                 <span class="text-xs font-normal text-text-muted"
                   >{t(distance.key, { count: distance.count })}</span

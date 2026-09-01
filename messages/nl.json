@@ -692,6 +692,7 @@
   "tasks.due.rel.late_one": "1 dag te laat",
   "tasks.due.rel.late_other": "{count} dagen te laat",
   "tasks.due.rel.in_days": "over {count} dagen",
+  "tasks.due.rel.completed": "afgerond {date}",
   "tasks.group_by.label": "Groeperen",
   "tasks.group_by.due": "Deadline",
   "tasks.group_by.status": "Status",

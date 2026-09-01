@@ -21,6 +21,7 @@ import {
   DUE_BUCKETS,
   dueBucket,
   dueHref,
+  dueNote,
   dueState,
   groupByDue,
   WEEK_HORIZON,
@@ -123,5 +124,32 @@ describe("a heading is a link and a colour", () => {
     // the moment that has passed and the moment that is now shout; `neutral` is still *drawn*
     // (the theme's own text), which is what keeps it above the muted grey *Later* keeps.
     assert.deepEqual(DUE_BUCKETS.map(dueState), ["late", "today", "neutral", "neutral"]);
+  });
+});
+
+describe("the note beside a deadline", () => {
+  test("open work reads as a distance from today", () => {
+    assert.deepEqual(dueNote("2026-07-04", TODAY, false), {
+      key: "tasks.due.rel.late_other",
+      count: 3,
+    });
+    assert.deepEqual(dueNote("2026-07-08", TODAY, false), {
+      key: "tasks.due.rel.tomorrow",
+      count: 1,
+    });
+  });
+
+  test("a finished task reads as the day it was finished, however late that was", () => {
+    // "3 dagen te laat" is a sentence about today; on a task closed last week it is false, and
+    // it kept counting up every morning after — the days-ago that made no sense on a done row.
+    assert.deepEqual(dueNote("2026-07-04", TODAY, true, "2026-07-05T14:02:00Z"), {
+      key: "tasks.due.rel.completed",
+      on: "2026-07-05T14:02:00Z",
+    });
+  });
+
+  test("a finished row with no completion stamp says nothing rather than something wrong", () => {
+    assert.equal(dueNote("2026-07-04", TODAY, true, null), null);
+    assert.equal(dueNote("2026-07-04", TODAY, true), null);
   });
 });
