@@ -32,6 +32,7 @@
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import InlineText from "$lib/core/ui/InlineText.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -1572,10 +1573,18 @@
           value={task.description ?? ""}
           scope={candidateScope}
         />
-      {:else if task.description}
-        <Markdown value={task.description} />
       {:else}
-        <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
+        <!-- Edited in place (#455): the one field people change ten times a day should not cost
+             ⋯ → Bewerken and a save at the foot of the page. Posts `description` alone to
+             `?/update`, which patches only what the form carries. -->
+        <InlineText
+          name="description"
+          value={task.description ?? ""}
+          placeholder={t("tasks.detail.description_placeholder")}
+          canEdit={canEditTask}
+          scope={candidateScope}
+          id="task-description-inline"
+        />
       {/if}
     </section>
   {/snippet}

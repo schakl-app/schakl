@@ -6654,5 +6654,6 @@
   "tasks.email.kind.assigned_contact_hint": "Gaat naar de contactpersoon van een klant zodra een taak aan hem of haar wordt toegewezen, met een link naar het klantportaal. Alleen naar een contactpersoon met een actieve portaallogin.",
   "tasks.email.assigned_contact_subject": "Een taak voor jou: {title}",
   "tasks.email.assigned_contact_body": "Hoi {name},\n\n{brand} heeft een taak aan je toegewezen voor {company}:\n\n{title}\nUiterlijk {due_date}\n\nJe vindt hem, met eventuele toelichting en checklist, in het klantportaal:\n{link}\n\nMet vriendelijke groet,\n{brand}",
-  "tasks.email.assigned_contact_button": "Taak openen"
+  "tasks.email.assigned_contact_button": "Taak openen",
+  "companies.notes_placeholder": "Voeg notities toe…"
 }

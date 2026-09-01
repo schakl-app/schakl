@@ -37,6 +37,18 @@
    the *whole page*: the task detail page joins title, status, dates, priority, relations,
    visibility and planning to one `form="task-edit"` whose save is at the foot, and reaching for
    the control nearest the field you just changed is exactly what lost the change.
+   **A single-field inline edit is its own surface; the one-save rule is about edit mode**
+   (#455). The principle keeps a record's *definition* behind Bewerken, and it was being applied
+   to the one field people change ten times a day: a task's description read "Voeg een
+   omschrijving toe…" in use mode and the prompt did nothing, and a client's notes sat inside
+   the slide-over behind every other field. `InlineText` (`$lib/core/ui/`) is the shape: the
+   read view is the affordance (the text or its placeholder, plus a pencil on hover), a click
+   swaps in the editor for **that one field**, Opslaan posts the page's own `?/update` carrying
+   only that field — every update action here already patches what the form carries and nothing
+   else — and Annuleren or Esc puts the text back. It is gated on the same API permission the
+   page's edit mode mirrors, and without it an empty field is a dash, never a prompt that would
+   refuse (#253). Reach for it for free text a person revises between two phone calls; not for
+   anything that changes what the record *is*, which stays in edit mode with the others.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.

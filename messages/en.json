@@ -6654,5 +6654,6 @@
   "tasks.email.kind.assigned_contact_hint": "Sent to a client's contact person when a task is assigned to them, with a link into the client portal. Only to a contact who holds an active portal login.",
   "tasks.email.assigned_contact_subject": "A task for you: {title}",
   "tasks.email.assigned_contact_body": "Hi {name},\n\n{brand} has assigned a task to you for {company}:\n\n{title}\nDue {due_date}\n\nYou can find it, with any details and checklist, in the client portal:\n{link}\n\nKind regards,\n{brand}",
-  "tasks.email.assigned_contact_button": "Open the task"
+  "tasks.email.assigned_contact_button": "Open the task",
+  "companies.notes_placeholder": "Add notes…"
 }
