@@ -28858,6 +28858,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -28971,6 +28973,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -29169,6 +29173,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -54883,6 +54889,8 @@ export interface operations {
                 assignee_contact_id?: string | null;
                 /** @description A configured status key */
                 status?: string | null;
+                /** @description Only tasks in a non-terminal status — the working set, any status key */
+                open?: boolean;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week" | "later") | null;
                 /** @description Deadline window start (the Agenda feed) */

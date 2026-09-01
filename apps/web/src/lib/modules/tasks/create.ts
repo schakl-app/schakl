@@ -41,6 +41,8 @@ export interface TaskCreateBody {
   visible_to_client: boolean;
   assignees?: Assignee[];
   assignee_user_id?: string | null;
+  /** A client contact instead of a roster (#273/#453); the API makes the task client-visible. */
+  assignee_contact_id?: string;
 }
 
 /** Just enough of `FormData` to build a body from — so a test needs no DOM. */
@@ -76,6 +78,9 @@ export function taskCreateBody(
   if (!title || !dueDate) return null;
 
   const assignees = parseAssignees(form.get("assignees"));
+  // The client's contact (#453): `TaskAssigneePicker` posts it beside an explicitly empty
+  // roster, and the API refuses the pair — so a contact wins outright and no employee rides.
+  const contactId = String(form.get("assignee_contact_id") ?? "").trim();
   const companyId = String(form.get("company_id") ?? "").trim();
   const projectId = (opts.projectId ?? String(form.get("project_id") ?? "")).trim();
 
@@ -86,9 +91,11 @@ export function taskCreateBody(
     project_id: projectId || null,
     // Status is omitted so the API assigns the org's default status (issue #62).
     priority: "normal",
-    ...(assignees !== undefined
-      ? { assignees }
-      : { assignee_user_id: opts.fallbackAssigneeUserId ?? null }),
+    ...(contactId
+      ? { assignee_contact_id: contactId, assignees: [] }
+      : assignees !== undefined
+        ? { assignees }
+        : { assignee_user_id: opts.fallbackAssigneeUserId ?? null }),
     // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
     requires_interaction: false,
     visible_to_client: false,

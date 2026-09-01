@@ -13,6 +13,7 @@
 | Channel / e-mail settings / template test sends | `notifications/channel_admin.py`, `core/email/service.py` | `send_org_email` | n/a |
 | Invoice / quote / reminder (request + cron) | `app/modules/invoicing/emails.py`, `jobs.py` | `send_email` directly¹ | yes (`invoicing.*`) |
 | Custom-domain alert (cloud, daily sweep) | `app/core/cloud/domain_alert.py` | `send_org_email` | no |
+| Task assigned to a client contact (#454, worker job) | `app/modules/tasks/emails.py` | `send_org_email` | yes (`tasks.assigned_contact`) |
 
 ¹ The invoicing request path does its network call inside `ctx.release_db()` and the worker
 has no request, so both bypass `send_org_email` — they call `apply_branding` themselves.

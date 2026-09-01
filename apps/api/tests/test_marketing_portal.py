@@ -19,6 +19,20 @@ from app.modules.marketing.service import portal_source_label
 from tests.conftest import auth_cookie, make_tenant
 
 
+class _FakeRedis:
+    """The drill-down's cache, in memory: the process-wide client is bound to whichever event
+    loop first opened it, which in a long run is not this test's."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def get(self, key: str):
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:  # noqa: ARG002
+        self.store[key] = value
+
+
 async def _seed_link(org_id, company_id: str, source: str) -> uuid.UUID:
     async with async_session_maker() as session:
         await set_current_org(session, org_id)
@@ -35,7 +49,8 @@ async def _seed_link(org_id, company_id: str, source: str) -> uuid.UUID:
         return link.id
 
 
-async def test_portal_reads_a_source_without_its_vendor(client_for) -> None:
+async def test_portal_reads_a_source_without_its_vendor(client_for, monkeypatch) -> None:
+    monkeypatch.setattr("app.modules.marketing.service.get_redis", lambda: _FakeRedis())
     t = await make_tenant("mktg-portal-label")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:

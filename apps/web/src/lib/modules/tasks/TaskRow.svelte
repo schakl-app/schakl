@@ -48,6 +48,8 @@
     logged_minutes?: number | null;
     remaining_minutes?: number | null;
     assignee_user_id?: string | null;
+    /** The client contact this is assigned to (#453) — the face the roster cannot draw. */
+    assignee_contact_name?: string | null;
     /** The roster (#375), primary first. Optional: the compact dashboard shapes carry neither it
      *  nor the mirrored column, and those rows draw no face at all. */
     assignees?: { user_id: string; is_primary: boolean }[];
@@ -251,6 +253,11 @@
           .map(({ member }) => member?.full_name || member?.email)
           .join(", ")}>+{faces.length - 3}</span
       >
+    {/if}
+    <!-- A task held by a client contact (#273) has no roster face; the person still gets one
+         (#453), or "who is on this" reads as nobody on every board, panel and widget. -->
+    {#if task.assignee_contact_name}
+      <Avatar name={task.assignee_contact_name} email={null} avatarUrl={null} size="sm" />
     {/if}
   </div>
 </div>

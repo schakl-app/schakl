@@ -6643,5 +6643,16 @@
   "marketing.source.portal.rankmath": "AI-zichtbaarheid",
   "settings.marketing.portal_labels": "Namen in het klantportaal",
   "settings.marketing.portal_labels_hint": "Zo ziet een klant elke bron genoemd. Laat een veld leeg voor de getoonde standaard — de naam van een leverancier komt nooit bij een klant terecht tenzij je die hier invult.",
-  "marketing.portal_unavailable": "deze cijfers zijn op dit moment niet op te halen."
+  "marketing.portal_unavailable": "deze cijfers zijn op dit moment niet op te halen.",
+  "dashboard.widget.tasks.portal": "Jullie taken",
+  "dashboard.widget_desc.tasks.portal": "Wat het bureau van jullie vraagt, en het overige open werk op jullie account.",
+  "tasks.portal.mine": "Voor jou",
+  "tasks.portal.others": "Overige open taken",
+  "tasks.portal.empty": "Op dit moment geen open taken.",
+  "reporting.widget.open": "Rapport openen",
+  "tasks.email.kind.assigned_contact": "Taak toegewezen aan contactpersoon",
+  "tasks.email.kind.assigned_contact_hint": "Gaat naar de contactpersoon van een klant zodra een taak aan hem of haar wordt toegewezen, met een link naar het klantportaal. Alleen naar een contactpersoon met een actieve portaallogin.",
+  "tasks.email.assigned_contact_subject": "Een taak voor jou: {title}",
+  "tasks.email.assigned_contact_body": "Hoi {name},\n\n{brand} heeft een taak aan je toegewezen voor {company}:\n\n{title}\nUiterlijk {due_date}\n\nJe vindt hem, met eventuele toelichting en checklist, in het klantportaal:\n{link}\n\nMet vriendelijke groet,\n{brand}",
+  "tasks.email.assigned_contact_button": "Taak openen"
 }

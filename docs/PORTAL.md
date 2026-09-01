@@ -232,6 +232,44 @@ the boundary).
 `tests/test_marketing_portal.py` and `tests/test_projects_portal.py` pin all four against a real
 portal session beside a staff one on the same endpoints.
 
+## The client's board: what is asked of them, then what was written for them (#450–#453)
+
+The same review found the portal homepage squeezing every widget into a 50 % column beside an
+empty card, printing a report as one grey paragraph, and offering no tasks at all — while a task
+*assigned* to the client's contact (#273) was invisible to that contact and read "Contactpersoon
+(Contactpersoon)" on their own page. Four rules came out of it.
+
+* **"Mine" for a client is a question about a contact, not a user** (#453).
+  `TaskService._portal_contact_id` resolves the contact behind a portal session through the
+  portal-subject seam (`for_user`, so tasks names no other module's table), and
+  `_mine_condition` is the one predicate `/tasks/mine`, `/tasks/dashboard-mine` and its bucket
+  counts share — a page and its totals must agree about whose tasks these are. A portal login
+  behind no contact matches nothing, which is the honest answer rather than the org's list.
+* **Assigning a contact makes the task visible to the client**, recorded on the trail as the field
+  edit it is (`_contact_assignee_implies_visible`, create and update alike), and every reader gets
+  the contact's *name* (`TaskRead.assignee_contact_name`, resolved in `_list_items` with one
+  org-scoped query per page) — the browser used to look it up through `/contacts?company_id=`,
+  which is exactly the endpoint a client cannot read. The create dialog offers the client's
+  contacts when a client is pinned, through the same `TaskAssigneePicker` the task page draws.
+* **The client's board is one column, top down** (#451): what is asked of them (`tasks.portal`,
+  position 5), the latest report (10), the live dashboard (15). Every portal widget is a `lg`
+  tile, and `spec.size` had been applied nowhere but the gallery. A layout stored with two columns
+  folds into one rather than dropping a column. Staff My Day is unchanged.
+* **A report on the homepage reads as the report's front page** (#452): period, publication date,
+  the summary as paragraphs in body colour, each section under its own heading, the two ways in.
+  The prompt deliberately asks for prose without markdown, so the widget gives the document its
+  shape rather than rendering markup it does not have.
+
+`tests/test_tasks_contact_assignee.py` pins the assignment half against a real portal session.
+
+* **The contact is told, by mail, only if they can open the link** (#454). `tasks.assigned_contact`
+  is a tenant-rewordable kind (`docs/EMAIL.md`), queued from the assignment inside `release_db`
+  and sent by the worker with its own session — never inside the transaction that made the
+  assignment, and never to a contact without an **active** portal login: a link to a login they
+  do not have is #253's control that always refuses, printed in an inbox. Whether they hold one
+  is asked through the portal-subject seam, so `tasks` still names no other module's table.
+  `tests/test_tasks_contact_mail.py` pins the queue, the gate and the override.
+
 ## Adding a second kind of subject
 
 1. Implement `PortalSubjectProvider` in the module that owns the row (`load`, `for_user`,

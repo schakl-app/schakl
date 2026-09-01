@@ -6643,5 +6643,16 @@
   "marketing.source.portal.rankmath": "AI visibility",
   "settings.marketing.portal_labels": "Names in the client portal",
   "settings.marketing.portal_labels_hint": "What a client sees each source called. Leave a field empty for the default shown — a supplier's name is never shown to a client unless you type it here.",
-  "marketing.portal_unavailable": "these figures cannot be read right now."
+  "marketing.portal_unavailable": "these figures cannot be read right now.",
+  "dashboard.widget.tasks.portal": "Your tasks",
+  "dashboard.widget_desc.tasks.portal": "What your agency asks of you, and the other open work on your account.",
+  "tasks.portal.mine": "For you",
+  "tasks.portal.others": "Other open tasks",
+  "tasks.portal.empty": "No open tasks at the moment.",
+  "reporting.widget.open": "Open report",
+  "tasks.email.kind.assigned_contact": "Task assigned to a contact",
+  "tasks.email.kind.assigned_contact_hint": "Sent to a client's contact person when a task is assigned to them, with a link into the client portal. Only to a contact who holds an active portal login.",
+  "tasks.email.assigned_contact_subject": "A task for you: {title}",
+  "tasks.email.assigned_contact_body": "Hi {name},\n\n{brand} has assigned a task to you for {company}:\n\n{title}\nDue {due_date}\n\nYou can find it, with any details and checklist, in the client portal:\n{link}\n\nKind regards,\n{brand}",
+  "tasks.email.assigned_contact_button": "Open the task"
 }

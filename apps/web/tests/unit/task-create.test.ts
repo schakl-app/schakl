@@ -31,6 +31,22 @@ function posted(fields: Record<string, string>) {
 }
 
 describe("taskCreateBody", () => {
+  test("a client contact holds the task alone, with an explicitly empty roster (#453)", () => {
+    const body = taskCreateBody(
+      posted({
+        title: "Foto's aanleveren",
+        due_date: DUE,
+        assignee_contact_id: JAN,
+        assignees: "[]",
+      }),
+      { fallbackAssigneeUserId: ME },
+    );
+    assert.equal(body?.assignee_contact_id, JAN);
+    assert.deepEqual(body?.assignees, []);
+    // Nobody rides along: not the fallback, not a mirrored single id.
+    assert.ok(body && !("assignee_user_id" in body));
+  });
+
   test("the title is the caller's, and nothing else is invented", () => {
     const body = taskCreateBody(posted({ title: "Productfeed opschonen", due_date: DUE }));
     assert.equal(body?.title, "Productfeed opschonen");

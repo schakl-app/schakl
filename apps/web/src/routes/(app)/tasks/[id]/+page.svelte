@@ -458,7 +458,9 @@
   $effect(() => {
     const companyId = fCompany;
     if (!companyId) return;
-    if (!editMode && !task.assignee_contact_id) return;
+    // Edit mode only since #453: the read view prints `assignee_contact_name`, which the API
+    // resolves — a portal login cannot read `/contacts` and used to see "Contactpersoon".
+    if (!editMode) return;
     if (companyId === editContactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
@@ -1152,7 +1154,9 @@
             />
           {:else if task.assignee_contact_id}
             <p class="text-sm text-text">
-              {contactName(task.assignee_contact_id) ?? t("party.contact")}
+              {task.assignee_contact_name ??
+                contactName(task.assignee_contact_id) ??
+                t("party.contact")}
               <span class="text-xs text-text-muted">({t("party.contact")})</span>
             </p>
           {:else if (task.assignees ?? []).length > 0}
