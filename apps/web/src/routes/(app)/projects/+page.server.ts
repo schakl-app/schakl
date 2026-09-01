@@ -55,7 +55,9 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, PROJECTS_TABLE_ID);
   const resolved = resolveColumns(PROJECT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
-  const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
+  // A portal login is never drawn the burn column (#449) and must not pay for the aggregate.
+  const hours =
+    !event.locals.user?.isPortal && resolved.columns.some((column) => column.key === HOURS_COLUMN);
 
   const paging = resolvePaging(event.url, pref);
 

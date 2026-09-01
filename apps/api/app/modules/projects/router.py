@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     DashboardBudgets,
     ProjectCreate,
@@ -20,6 +21,26 @@ from app.modules.projects.service import ProjectService
 from app.schemas import Page
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _read(project: Project, ctx: RequestContext) -> ProjectRead:
+    """One project, as *this* reader may see it (#449).
+
+    A client-portal login reads its own projects — the name, the status, who is on it, the
+    dates — and never the agency's economics: the hour budget, the amount, and the burn are
+    what the agency agreed with itself about the work, not a fact the client is party to.
+    Decided here, on the way out of every read, so the list, the detail and an MCP client
+    answer alike; the web mirrors it by not drawing the column or the block (§15: the guard
+    there is UX, the boundary is here). ``budget_watch`` already keeps a client off the burn
+    *alerts* for the same reason — this is the screen catching up with the mail.
+    """
+    read = ProjectRead.model_validate(project)
+    if ctx.is_portal:
+        read.budget_hours = None
+        read.budget_amount = None
+        read.hours = None
+        read.budget_sources = []
+    return read
 
 
 # Literal path before the dynamic ``/{project_id}``, or the segment swallows it.
@@ -117,12 +138,13 @@ async def list_projects(
         unnamed=unnamed,
         mine=mine,
         sort=sort,
-        hours=hours,
+        # A client never pays for the burn aggregate it is not shown (#449, `_read`).
+        hours=hours and not ctx.is_portal,
         count=count,
         burn=burn,
     )
     return Page(
-        items=[ProjectRead.model_validate(p) for p in items],
+        items=[_read(p, ctx) for p in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -140,7 +162,7 @@ async def create_project(
     ctx: RequestContext = Depends(require_context),
 ) -> ProjectRead:
     project = await ProjectService(ctx).create(payload)
-    return ProjectRead.model_validate(project)
+    return _read(project, ctx)
 
 
 @router.get(
@@ -155,8 +177,8 @@ async def get_project(
     ),
     ctx: RequestContext = Depends(require_context),
 ) -> ProjectRead:
-    project = await ProjectService(ctx).get(project_id, hours=hours)
-    return ProjectRead.model_validate(project)
+    project = await ProjectService(ctx).get(project_id, hours=hours and not ctx.is_portal)
+    return _read(project, ctx)
 
 
 @router.patch(
@@ -170,7 +192,7 @@ async def update_project(
     ctx: RequestContext = Depends(require_context),
 ) -> ProjectRead:
     project = await ProjectService(ctx).update(project_id, payload)
-    return ProjectRead.model_validate(project)
+    return _read(project, ctx)
 
 
 @router.delete(

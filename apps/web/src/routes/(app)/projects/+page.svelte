@@ -31,7 +31,7 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
-  import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
+  import { HOURS_COLUMN, PROJECT_COLUMNS, STAFF_COLUMNS } from "$lib/modules/projects/columns";
   import type { ProjectFilterKey } from "$lib/modules/projects/filters";
   import {
     PROJECT_STATUS_ALL,
@@ -97,8 +97,12 @@
   });
 
   // --- columns ---------------------------------------------------------------
+  // A client never sees the agency's economics (#449): the API blanks the budget and the burn
+  // for a portal login, and a column of dashes is a question, so the columns go with them.
   const allColumns = $derived([
-    ...PROJECT_COLUMNS,
+    ...PROJECT_COLUMNS.filter(
+      (column) => !page.data.user?.isPortal || !STAFF_COLUMNS.has(column.key),
+    ),
     ...customFieldColumns(data.definitions, data.locale),
   ]);
 
@@ -145,7 +149,7 @@
    * default is a pill of its own and pressing the one you are on returns you to it: a filter you
    * cannot unset with the control you set it with is a trap.
    */
-  const filterDefs: FilterDef<ProjectFilterKey>[] = $derived([
+  const allFilterDefs: FilterDef<ProjectFilterKey>[] = $derived([
     { kind: "search", key: "q", placeholder: t("projects.search_placeholder") },
     {
       kind: "select",
@@ -184,6 +188,11 @@
       options: [{ value: "over", label: t("projects.filter.over_budget") }],
     },
   ]);
+  // Not for a client (#449): the budget is what the over-budget pill filters on, and the API
+  // blanks it for a portal login — a filter over a figure the reader never sees is a question.
+  const filterDefs = $derived(
+    allFilterDefs.filter((def) => !page.data.user?.isPortal || def.key !== "burn"),
+  );
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Status, client and the billable default: the three that say how a *batch* of work is run —

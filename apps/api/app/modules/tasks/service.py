@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, column, func, or_, select, table
+from sqlalchemy import false as sql_false
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
@@ -23,6 +24,7 @@ from app.core.entitlements import OrgPlan, refusal_for, sku_writable
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.parent import ensure_parent_in_tenant
+from app.core.portal import portal_subject_provider, portal_subject_types
 from app.core.richtext import (
     extract_contact_mention_ids,
     extract_mention_ids,
@@ -382,6 +384,13 @@ class TaskService:
     async def _list_items(self, tasks: Sequence[Task]) -> list[TaskListItem]:
         """Decorate tasks with assignee rosters, label chips, checklist progress and comments."""
         items = [TaskListItem.model_validate(t) for t in tasks]
+        if self.ctx.is_portal:
+            # A task's time budget is the agency's estimate of its own work (#449) — like a
+            # project's hour budget, not a fact the client is party to. Its burn already stays
+            # off a client's rows (`_attach_hours` is gated on `time.entry.read`); this is the
+            # allocated half catching up.
+            for item in items:
+                item.allocated_minutes = None
         task_ids = [t.id for t in tasks]
         if not task_ids:
             return items
@@ -628,13 +637,51 @@ class TaskService:
             await self._attach_hours(items)
         return items, total
 
+    async def _portal_contact_id(self) -> uuid.UUID | None:
+        """The contact behind a client-portal session, or ``None`` (#450/#453).
+
+        A client is assigned through ``assignee_contact_id``, never through the roster —
+        ``/members/lookup`` keeps client logins out of every picker on purpose — so "mine" for
+        a portal login is a question about a **contact**, and the session carries no contact
+        identity. It is resolved through the portal-subject seam (``app/core/portal.py``): the
+        module that owns the row answers "who is this login for", and this module names no
+        other module's table (§6). A subject of some other kind (a supplier login, one day)
+        is not a contact and so is assigned nothing.
+        """
+        if not self.ctx.is_portal:
+            return None
+        for entity_type in portal_subject_types():
+            provider = portal_subject_provider(entity_type)
+            if provider is None:
+                continue
+            subject = await provider.for_user(self.ctx, self.ctx.user.id)
+            if subject is not None and subject.entity_type == "contact":
+                return subject.id
+        return None
+
+    async def _mine_condition(self, column: Any) -> Any:
+        """``column`` (a task id) is one of *my* tasks — any roster seat for a colleague (#375),
+        the contact assignee for a portal login (#450). A portal login behind no contact at
+        all matches nothing, which is the honest answer rather than the org's whole list."""
+        if not self.ctx.is_portal:
+            return column.in_(self.assignees.entity_ids_for_user(self.ctx.user.id))
+        contact_id = await self._portal_contact_id()
+        if contact_id is None:
+            return sql_false()
+        return column.in_(
+            select(Task.id).where(
+                Task.org_id == self.ctx.org.id,
+                Task.assignee_contact_id == contact_id,
+            )
+        )
+
     async def _my_open_rows(self, limit: int) -> list[Task]:
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         stmt = (
             self.repo.scoped_select()
             # Any assignee, not the star (#375) — My Day is exactly the screen a shared task
-            # must not fall off.
-            .where(Task.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+            # must not fall off. For a client, the tasks assigned to *their* contact (#450).
+            .where(await self._mine_condition(Task.id))
             .where(Task.status.in_(non_terminal_keys(statuses)))
             .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
@@ -696,7 +743,9 @@ class TaskService:
             )
             # Any assignee (#375), same rule as the list and My Day — a personal tile that
             # disagreed with "mijn taken" about which tasks are mine would be worse than none.
-            .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+            # A client's tile is the tasks assigned to their contact (#450), through the same
+            # visible relation, so the portal rule still holds on it.
+            .where(await self._mine_condition(visible.c.id))
             .where(visible.c.status.in_(non_terminal_keys(statuses)))
             # Date first, then priority — the order the team asked for and the one the board
             # already sorts by, so the tile and the list agree about which of two tasks due on
@@ -889,6 +938,8 @@ class TaskService:
         list_item = (await self._list_items([task]))[0]
         detail.labels = list_item.labels
         detail.assignees = list_item.assignees
+        # Same redaction as the list row (#449): the portal reads the task, never its estimate.
+        detail.allocated_minutes = list_item.allocated_minutes
 
         checklists = (
             await self.ctx.session.execute(

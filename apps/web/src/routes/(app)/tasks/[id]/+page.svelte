@@ -1209,7 +1209,9 @@
           {/if}
         </div>
 
-        <div>
+        <!-- Not for a client (#449): the estimate is the agency's, the API blanks it, and a
+             dash headed "Tijdbudget" is a question the client should not be holding. -->
+        <div class:hidden={isPortal}>
           {#if editMode}
             <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.allocated_input")}</label
@@ -2130,31 +2132,33 @@
             {#snippet children(shown)}
               <ul class="space-y-2">
                 {#each shown as activity (activity.id)}
-              {@const href = activityHref(activity)}
-              <li class="flex items-baseline gap-2 text-sm">
-                <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
-                  >{when(activity.created_at)}</span
-                >
-                <span class="text-text">
-                  <span class="font-medium">{actorLabel(activity)}</span>
-                  <!-- Someone was signed in as them (#296) — a client's comment written by the
-                         agency reads as the client's until this says otherwise. -->
-                  {#if activity.impersonator_name}
-                    <span
-                      class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                      title={t("activity.impersonated_title", {
-                        actor: activity.impersonator_name,
-                      })}
+                  {@const href = activityHref(activity)}
+                  <li class="flex items-baseline gap-2 text-sm">
+                    <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
+                      >{when(activity.created_at)}</span
                     >
-                      {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                    <span class="text-text">
+                      <span class="font-medium">{actorLabel(activity)}</span>
+                      <!-- Someone was signed in as them (#296) — a client's comment written by the
+                         agency reads as the client's until this says otherwise. -->
+                      {#if activity.impersonator_name}
+                        <span
+                          class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                          title={t("activity.impersonated_title", {
+                            actor: activity.impersonator_name,
+                          })}
+                        >
+                          {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                        </span>
+                      {/if}
+                      {#if href}
+                        <a class="hover:text-brand hover:underline" {href}
+                          >{activityText(activity)}</a
+                        >
+                      {:else}
+                        {activityText(activity)}
+                      {/if}
                     </span>
-                  {/if}
-                  {#if href}
-                    <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
-                  {:else}
-                    {activityText(activity)}
-                  {/if}
-                </span>
                   </li>
                 {/each}
               </ul>

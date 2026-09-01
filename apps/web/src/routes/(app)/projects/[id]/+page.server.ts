@@ -41,8 +41,9 @@ export const load: PageServerLoad = async (event) => {
   // used to make. It also carries the period start the API resolved on the org's clock — the
   // browser used to recompute that in UTC, which lands on the wrong day for half the year. The
   // budget bar and the Uren panel below it now count from exactly the same instant (#43).
+  // A client (#449) is not shown the budget block, so it is not asked for either.
   const { data: project } = await api.GET("/api/v1/projects/{project_id}", {
-    params: { path: { project_id }, query: { hours: true } },
+    params: { path: { project_id }, query: { hours: !event.locals.user?.isPortal } },
   });
   if (!project) throw error(404, { code: "not_found", message: "errors.not_found" });
 
