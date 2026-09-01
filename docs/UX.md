@@ -37,6 +37,18 @@
    the *whole page*: the task detail page joins title, status, dates, priority, relations,
    visibility and planning to one `form="task-edit"` whose save is at the foot, and reaching for
    the control nearest the field you just changed is exactly what lost the change.
+   **A single-field inline edit is its own surface; the one-save rule is about edit mode**
+   (#455). The principle keeps a record's *definition* behind Bewerken, and it was being applied
+   to the one field people change ten times a day: a task's description read "Voeg een
+   omschrijving toe…" in use mode and the prompt did nothing, and a client's notes sat inside
+   the slide-over behind every other field. `InlineText` (`$lib/core/ui/`) is the shape: the
+   read view is the affordance (the text or its placeholder, plus a pencil on hover), a click
+   swaps in the editor for **that one field**, Opslaan posts the page's own `?/update` carrying
+   only that field — every update action here already patches what the form carries and nothing
+   else — and Annuleren or Esc puts the text back. It is gated on the same API permission the
+   page's edit mode mirrors, and without it an empty field is a dash, never a prompt that would
+   refuse (#253). Reach for it for free text a person revises between two phone calls; not for
+   anything that changes what the record *is*, which stays in edit mode with the others.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -500,7 +512,12 @@ contrast bug in dark mode rather than only an inconsistency.
   today's date and subtract; `3 dagen te laat` alone cannot be matched against a calendar, a
   client's mail or anything else. Both, with the relative half muted and one size down
   (`DueDate.svelte`) — and dropped only where the row is genuinely too narrow for it, which is a
-  decision the caller states rather than a rule the component guesses.
+  decision the caller states rather than a rule the component guesses. **A finished task's note is
+  the day it was finished**, never the distance: "3 dagen te laat" is a claim about today, false
+  the day the task is closed and one day falser every morning after — a task done in March read
+  *142 dagen te laat* in August on a struck-through row. `dueNote` prints `afgerond 20 aug` from
+  `completed_at` (exact moment in the `title`), and a done row whose shape carries no stamp says
+  nothing rather than something wrong.
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical. The arrows are not a fallback nobody uses — they are the only reorder a
@@ -1328,6 +1345,23 @@ contrast bug in dark mode rather than only an inconsistency.
   hatch does — and a control **says it takes a drop** (`common.drop_hint` beside the button),
   because an affordance nobody can see is one nobody uses. The highlight is one rule in `app.css`
   keyed on `data-filedrop`, not a hover class re-typed per site.
+- **A screenshot is pasted, an image is shown, and attaching is use-mode work** (the
+  image-attachment research task). A screenshot on a task took three steps through Drive because
+  the only way in was click-to-browse, in edit mode, and what came out was a filename. Three
+  things changed and each is a rule. **Ctrl+V uploads** — `FileAttachments` listens for a paste on
+  the document while it is mounted and editable, lands the image on the same `<input type="file">`
+  the button and the drop use (`filedrop`'s rule: one input, one form, one kind of upload), names
+  it on the org's clock, and steps aside when the paste is text bound for a field the user is
+  typing in. **An image is shown, not spelled out** (the `ImageField` rule, applied to a list):
+  raster attachments draw the API's thumbnail in a strip and open in a lightbox; anything else
+  stays a filename with a paperclip. And **attaching is use-mode work**, like a comment: a
+  screenshot is evidence of what happened on the task, not a change to its definition, so the
+  strip is drawn whenever the viewer holds `files.file.write`, in use mode too — a drop target that
+  only exists after ⋯ → Bewerken is the three-step route the strip exists to remove. Deleting stays
+  behind the per-row ⋯ and confirms. The strip's client-visibility eye follows the task's own
+  marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
+  applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
+  drop its `!isPortal` around the strip.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -1941,6 +1975,65 @@ contrast bug in dark mode rather than only an inconsistency.
   because "the title is the caller's" is invisible in a diff and is exactly the kind of rule a
   later refactor re-introduces a placeholder for; it is asserted without a browser in
   `tests/unit/task-create.test.ts`.
+- **…and the dialog in front of it was worse than the row behind it.** The entry above is
+  reversed for the *primary* create paths (`/tasks`, the client header, the client's Taken
+  panel), and the reversal is worth writing down because both directions look reasonable on
+  paper. What #391 traded away is only visible with a hand on the mouse: the modal asked three
+  of a task's twenty fields — title, deadline, roster — and then dropped the user on the page
+  where all twenty, *including those three*, are edited. Two forms for one act, on the one path
+  where the user was going to that page anyway. The abandoned-row problem it bought is real and
+  is not free to solve this way: it is one dialog on every create, forever, against a row that
+  `unnamed` already marks, `?unnamed=1` already finds and a bulk delete already clears.
+  So **the primary create paths are create-then-edit again**, and three things make the row
+  honest rather than merely tolerated. It says it is unnamed (`unnamed`, #350), so it italicises
+  in the reader's own language and stays findable. It carries the org's own today as a deadline
+  (`orgToday()`, the default #392 wrote down for exactly this path), so it is never invisible to
+  the urgency screens while the user is standing on the field. And the page it lands on **puts
+  the caret in the title with the placeholder selected**, so the first keystroke names it —
+  which is what makes this one act instead of two, and is repeated over the second after arrival
+  for the same three reasons `TaskComments.reveal` is (arriving is a navigation, SvelteKit's
+  `reset_focus()` runs after we take focus, and the description editor mounts asynchronously).
+  **`TaskQuickCreate` keeps every other job**: a picker's inline ＋ must hand an id back to the
+  control that opened it and therefore may not navigate, so it has to ask; the project to-do list
+  keeps it too, because that list is written several items at a time and a redirect per item is
+  the wrong shape. A dialog is right where the create is somebody's *side errand*, and wrong
+  where it is the thing they came to do.
+- **An approve that made a task should end *with* the task, beside the e-mail it came from**
+  (the same issue, then task 80a90bfd). Approving a pending e-mail onto a task created in the
+  review dialog closed the dialog over the inbox — leaving a task that exists only because of
+  that e-mail, holding a title and nothing else, for the reviewer to go and find. The first fix
+  redirected into edit mode on it, which was Principle 8's navigation taken by default: it lost
+  the inbox being worked, and it lost the message the task was written *from*, which is the one
+  thing a reviewer checking what schakl filled in wants beside them. So the approve now hands
+  the task back (`review_task=1` → `reviewTaskId`, set by the dialog only when the picked task
+  is the one *it* created; filing onto an existing task stays where it is, because that is an
+  inbox being worked and a review per approve would be a dialog over every row) and the dialog
+  opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
+  the top, title / description / project / assignees / deadline editable at once, Sluiten,
+  Opslaan and a link to the full card — and the host is told to close only when the review is,
+  whichever way out is taken. **It fills itself in the moment schakl is done, and never over
+  the reader's words**: the strip polls exactly as on the task page, and on landing the dialog
+  re-reads the row and adopts the server's value for every field the reader has *not* touched;
+  a field they were typing in keeps the "toon wat is aangevuld" button, which *merges* the notes
+  under their text (the run only ever appends). A later deadline asks for its reason inline,
+  because a modal over a slide-over is one dialog too many. Self-contained in the move dialog,
+  so all three hosts (the inbox, every entity's contactmomenten panel, the detail modal) got it
+  without being wired.
+  Its other half is the strip above the card. `TaskAIStatus` (#327) said *"schakl leest de
+  e-mail…"* beside a pulsing icon, which was the right amount of information for somebody who
+  had not been sent to that page — and is not when somebody is looking straight at the task
+  while the worker is still running. It draws the run as **phases with a bar**: queued, running,
+  and a short confirmation when it lands. The bar's width is *not* a measurement (the endpoint
+  answers one column and the job publishes no progress), so it is `aria-hidden` decoration and
+  the phase in words is what the live region carries — a creeping bar that is honest about what
+  it is beats a spinner, because it shows the run is still alive. And **the redraw is a button in
+  edit mode, never automatic**: `invalidateAll()` would write the server's answer over a
+  half-typed form, and it could not redraw the description anyway — that is a *mounted*
+  rich-text editor, not a controlled input, so it keeps the value it was created with however
+  many times the load re-runs. A press there reloads; a host that is not a page (the review
+  dialog) hands in its own `reveal` and answers whether everything is on screen. A control that
+  says "toon wat is aangevuld" and visibly does nothing is the one outcome worse than not
+  offering it.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and
@@ -2633,3 +2726,21 @@ contrast bug in dark mode rather than only an inconsistency.
   edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
   edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
   have been the first thing an agency met after upgrading.
+- **A field a draft carries is not a field anybody filled in** (#284, `modules/time/billable.ts`).
+  The hour form seeds `billable` from the project — false where a subscription covers the work —
+  and stops seeding it the moment the person moves the toggle themselves. That second half read
+  "the person moved it" off the restored draft (#44) as *`billable` is present*, and the autosave
+  writes every field on every keystroke, so a draft always carries it: one typed word was enough
+  to freeze the flag for the rest of the day, and picking a non-billable project after that left
+  the entry billable. Three things generalise. **A payload that stores a value has to store the
+  decision beside it** where anything downstream reads the value as a choice — the toggle is a
+  real control showing a real value, so nothing on the screen can disagree, and what disagrees is
+  the project's settings page after the hours are invoiced. **A field added to a closed shape
+  must be added at both ends**: `TimeEntryDraftPayload` is `extra="forbid"`, so the form and the
+  whitelist mirror each other field for field or every autosave 422s in silence (#176's lesson,
+  and the test in `test_time_drafts.py` exists because of it). And **a draft written before the
+  rule is read by the rule, not by a default**: an older payload has its value compared against
+  what its own project would have seeded, so a real override survives the upgrade and a value
+  nobody chose goes back to following the project. Its sibling on the same form: discarding a
+  concept reset `billable` to a flat `true` rather than to the day's own seed, which quietly
+  billed a retainer client on a form that had just been emptied.

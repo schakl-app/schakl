@@ -252,6 +252,10 @@ class TaskRead(TaskBase):
     #: person as the starred entry here — read this, and treat that as the compatibility mirror
     #: it is. Empty on a task assigned to a client contact, and on one assigned to nobody.
     assignees: list[AssigneeRead] = Field(default_factory=list)
+    #: The client contact this task is assigned to, by name (#453) — resolved by the service so
+    #: a reader who cannot list contacts (a portal login reading their own task) still prints
+    #: the person. ``None`` when ``assignee_contact_id`` is.
+    assignee_contact_name: str | None = None
     #: Nobody has typed a title for this task. The stored ``title`` is still a real string (a
     #: placeholder), so a surface that has not been taught about this reads exactly as before;
     #: one that has renders its own locale's word for *unnamed* (#350).

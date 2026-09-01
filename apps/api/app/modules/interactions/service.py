@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import bindparam, func, or_, select, text
+from sqlalchemy import String, and_, bindparam, case, cast, func, or_, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -311,8 +311,33 @@ class InteractionService:
         # Gmail-style folding (#272): a conversation collapses to one representative row — the
         # newest message — before pagination and the total, so paging/totals describe what's
         # shown, not raw rows. The group key is COALESCE(conversation_id, id): a NULL row (every
-        # manual/pending row, by construction) is its own singleton, so this is a no-op for them.
-        group_key = func.coalesce(Interaction.conversation_id, Interaction.id)
+        # manual row, by construction) is its own singleton, so this is a no-op for them.
+        #
+        # A **pending** row never carries a conversation_id (it joins one on approval), so the
+        # review queue listed a twelve-message reply chain as twelve rows to be reviewed one by
+        # one. It folds on its own key now — the mailbox owner plus the Gmail thread — which is
+        # the one grouping a pending row can honestly have: a Gmail thread id means something only
+        # inside the mailbox it came from, and an unreviewed row is private to that owner (#172).
+        # Deliberately a *separate* key from the logged conversation's, never merged with it: the
+        # representative of a mixed group could be a row only its owner may see, and the fold runs
+        # before the privacy condition has narrowed the timeline to one viewer. So a thread with a
+        # logged history and a new reply shows the history folded on the timeline and the reply on
+        # the queue, and ``thread()`` on the reply is where the two meet.
+        group_key = case(
+            (
+                and_(
+                    Interaction.status == InteractionStatus.PENDING.value,
+                    Interaction.gmail_thread_id.is_not(None),
+                ),
+                func.concat(
+                    "pending:",
+                    cast(Interaction.owner_user_id, String),
+                    ":",
+                    Interaction.gmail_thread_id,
+                ),
+            ),
+            else_=cast(func.coalesce(Interaction.conversation_id, Interaction.id), String),
+        )
         folded = (
             select(
                 Interaction.id.label("iid"),
@@ -367,6 +392,9 @@ class InteractionService:
         # here. Batched over the page's conversation ids — never per row (docs/PERFORMANCE.md) —
         # and consistent with what _present_one/thread() already report for a single row.
         conv_counts = await self._conversation_counts(plain_rows)
+        # The pending half of the same question, for the queue's folded rows: what each one
+        # stands for, and who is in it. One batched query over the page's pending threads.
+        pending_threads = await self._pending_threads(plain_rows)
         return [
             self._present(
                 row,
@@ -376,9 +404,15 @@ class InteractionService:
                 contacts_by_email,
                 members_by_email,
                 closing_ids,
-                conversation_count=conv_counts.get(row.conversation_id, 1),
+                conversation_count=(
+                    len(pending_threads[row.id][0])
+                    if row.id in pending_threads
+                    else conv_counts.get(row.conversation_id, 1)
+                ),
                 with_body=with_body,
                 rosters=rosters,
+                review_ids=pending_threads[row.id][0] if row.id in pending_threads else None,
+                participants=(pending_threads[row.id][1] if row.id in pending_threads else None),
             )
             for row, full_name, email in rows
         ], total
@@ -400,6 +434,80 @@ class InteractionService:
             )
         ).group_by(Interaction.conversation_id)
         return {cid: int(n) for cid, n in (await self.ctx.session.execute(stmt)).all()}
+
+    async def _pending_threads(
+        self, rows: list[Interaction]
+    ) -> dict[uuid.UUID, tuple[list[uuid.UUID], list[dict[str, Any]]]]:
+        """For each pending gmail row on this page, the ids of its whole pending thread (oldest
+        first, itself included) and the union of their participants — keyed by the row's id.
+
+        One batched, org-scoped read over the page's distinct threads, never per row
+        (docs/PERFORMANCE.md), and skipped outright on a page with no pending rows — which is
+        every timeline page a colleague opens, since a pending row is only ever listed to its
+        owner. The owner filter is therefore ``self.ctx.user`` rather than each row's, and the
+        read carries the company horizon like ``_conversation_counts`` does: a sibling remapped
+        onto a client the caller may not see must not be approved through the fold.
+
+        The participants are merged because the row stands for the conversation now: the
+        representative is its newest message, and a reply's headers name whoever answered last,
+        not everyone the thread reached. The representative's own come first, in their order;
+        the rest follow in thread order, deduplicated by address.
+        """
+        pending = [
+            row
+            for row in rows
+            if row.status == InteractionStatus.PENDING.value and row.gmail_thread_id
+        ]
+        if not pending:
+            return {}
+        stmt = self._horizon(
+            select(Interaction.id, Interaction.gmail_thread_id, Interaction.participants).where(
+                Interaction.org_id == self._org_id,
+                Interaction.owner_user_id == self.ctx.user.id,
+                Interaction.status == InteractionStatus.PENDING.value,
+                Interaction.gmail_thread_id.in_({row.gmail_thread_id for row in pending}),
+            )
+        ).order_by(Interaction.occurred_at.asc(), Interaction.id.asc())
+        by_thread: dict[str, list[tuple[uuid.UUID, list[Any]]]] = {}
+        for row_id, thread_id, participants in (await self.ctx.session.execute(stmt)).all():
+            by_thread.setdefault(thread_id, []).append((row_id, participants or []))
+        out: dict[uuid.UUID, tuple[list[uuid.UUID], list[dict[str, Any]]]] = {}
+        for row in pending:
+            members = by_thread.get(row.gmail_thread_id, [(row.id, row.participants or [])])
+            seen: set[str] = set()
+            merged: list[dict[str, Any]] = []
+            for participant in [
+                *(row.participants or []),
+                *(p for _, plist in members for p in plist),
+            ]:
+                key = (participant.get("email") or "").lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(participant)
+            out[row.id] = ([row_id for row_id, _ in members], merged)
+        return out
+
+    async def _own_pending_thread_rows(
+        self, gmail_thread_id: str | None, *, exclude_id: uuid.UUID
+    ) -> list[Interaction]:
+        """The caller's other still-pending messages of one Gmail thread, oldest first — what
+        ``whole_thread`` approves and ``suppress_thread`` rejects. Through ``scoped_select`` so
+        the horizon rides along, and pending-only: the thread's logged history is the team's
+        record and not this review's to touch."""
+        if not gmail_thread_id:
+            return []
+        stmt = (
+            self.repo.scoped_select()
+            .where(
+                Interaction.owner_user_id == self.ctx.user.id,
+                Interaction.status == InteractionStatus.PENDING.value,
+                Interaction.gmail_thread_id == gmail_thread_id,
+                Interaction.id != exclude_id,
+            )
+            .order_by(Interaction.occurred_at.asc(), Interaction.id.asc())
+        )
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
@@ -424,16 +532,36 @@ class InteractionService:
         """
         anchor = await self.get(interaction_id)
         conversation_id = anchor["conversation_id"]
-        if conversation_id is None:
+        if anchor["status"] == InteractionStatus.PENDING.value and anchor["gmail_thread_id"]:
+            # A pending anchor has no conversation yet, so its thread is its **Gmail** thread:
+            # the logged history anybody may read, plus the caller's own unreviewed messages in
+            # it — ``get()`` above already refused a pending row to anyone but its owner. That is
+            # the review desk the queue's folded row opens onto: what was said before, where it
+            # was filed, and what is waiting. A colleague's pending copy of the same thread is not
+            # theirs to see (#172) and is left out by the owner clause.
+            where = [
+                Interaction.org_id == self._org_id,
+                Interaction.gmail_thread_id == anchor["gmail_thread_id"],
+                or_(
+                    Interaction.status == InteractionStatus.LOGGED.value,
+                    and_(
+                        Interaction.status == InteractionStatus.PENDING.value,
+                        Interaction.owner_user_id == self.ctx.user.id,
+                    ),
+                ),
+            ]
+        elif conversation_id is None:
             return [anchor]
-        stmt = (
-            select(Interaction, User.full_name, User.email)
-            .outerjoin(User, User.id == Interaction.owner_user_id)
-            .where(
+        else:
+            where = [
                 Interaction.org_id == self._org_id,
                 Interaction.conversation_id == conversation_id,
                 Interaction.status == InteractionStatus.LOGGED.value,
-            )
+            ]
+        stmt = (
+            select(Interaction, User.full_name, User.email)
+            .outerjoin(User, User.id == Interaction.owner_user_id)
+            .where(*where)
             .order_by(Interaction.occurred_at.desc(), Interaction.id.desc())
         )
         stmt = self._horizon(stmt)
@@ -445,6 +573,11 @@ class InteractionService:
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
         count = len(plain_rows)
+        # Every pending member of the thread carries the same review set (oldest first), so
+        # whichever one a client anchors a thread-level action on names the same messages.
+        pending_ids = [
+            row.id for row in reversed(plain_rows) if row.status == InteractionStatus.PENDING.value
+        ]
         return [
             self._present(
                 row,
@@ -456,6 +589,7 @@ class InteractionService:
                 closing_ids,
                 conversation_count=count,
                 rosters=rosters,
+                review_ids=(pending_ids if row.status == InteractionStatus.PENDING.value else None),
             )
             for row, full_name, email in rows
         ]
@@ -978,7 +1112,18 @@ class InteractionService:
                     partial=True,
                 )
                 roster = await self._requested_roster(sent)
+        # The siblings are read before the named row lands, in the order a batch asks its two
+        # questions ("which rows", then "approve them"); each then goes through the same
+        # ``_approve_row``, so a thread approved in one press is fifty clicks' worth of trail,
+        # host mirrors and conversation folding, never a shortcut past them.
+        siblings = (
+            await self._own_pending_thread_rows(row.gmail_thread_id, exclude_id=row.id)
+            if data is not None and data.whole_thread
+            else []
+        )
         row = await self._approve_row(row, link_values, roster)
+        for sibling in siblings:
+            await self._approve_row(sibling, dict(link_values), roster)
         if data is not None and data.enrich_task:
             await self.offer_task_enrichment(row)
         return await self._present_one(row)
@@ -1100,7 +1245,20 @@ class InteractionService:
     async def reject(self, interaction_id: uuid.UUID, *, suppress_thread: bool = False) -> None:
         """The owner keeps this email out of the CRM: metadata removed, message suppressed."""
         row = await self._owned_gmail_or_404(interaction_id)
+        # Suppressing the thread means "not this conversation" — so the messages of it already
+        # waiting in the queue go too, each through the same path (their own message-level
+        # suppression rides the emit; the thread-level one is written once, by the named row).
+        # The bulk route does **not** widen itself like this: it acts on the ids it was handed,
+        # and the screen hands it the folded set — a batch that quietly did more than its
+        # selection said is the one way a bulk reject could stop meaning what it means (§18).
+        siblings = (
+            await self._own_pending_thread_rows(row.gmail_thread_id, exclude_id=row.id)
+            if suppress_thread
+            else []
+        )
         await self._reject_row(row, suppress_thread=suppress_thread)
+        for sibling in siblings:
+            await self._reject_row(sibling, suppress_thread=False)
 
     async def _reject_row(self, row: Interaction, *, suppress_thread: bool) -> None:
         """Reject one already-loaded, already-eligible row — the shared path (see
@@ -1806,6 +1964,12 @@ class InteractionService:
                 )
                 or 1
             )
+        # A pending row folds its own pending thread (see ``list``): the same one-query answer
+        # the list gives a page, asked for one row.
+        pending_threads = await self._pending_threads([row])
+        review_ids, participants = pending_threads.get(row.id, (None, None))
+        if review_ids is not None:
+            conversation_count = len(review_ids)
         return self._present(
             row,
             owner[0] if owner else None,
@@ -1816,6 +1980,8 @@ class InteractionService:
             closing_ids,
             conversation_count=conversation_count,
             rosters=rosters,
+            review_ids=review_ids,
+            participants=participants,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -1868,8 +2034,14 @@ class InteractionService:
         conversation_count: int = 1,
         with_body: bool = True,
         rosters: dict[uuid.UUID, list[dict[str, Any]]] | None = None,
+        review_ids: list[uuid.UUID] | None = None,
+        participants: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after.
+
+        ``review_ids`` is a pending row's whole pending thread (``_pending_threads``) and
+        ``participants`` the union over it — both ``None`` for a row that stands only for
+        itself, which then reads its own column.
 
         ``with_body=False`` blanks ``body_text`` for list rows: the key stays (so the response
         schema is unchanged and a client can tell "not loaded" from "no body" only by asking
@@ -1931,12 +2103,15 @@ class InteractionService:
                         (participant.get("email") or "").lower()
                     ),
                 }
-                for participant in (row.participants or [])
+                for participant in (
+                    (row.participants if participants is None else participants) or []
+                )
             ],
             "source": row.source,
             "gmail_thread_id": row.gmail_thread_id,
             "conversation_id": row.conversation_id,
             "conversation_count": conversation_count,
+            "review_ids": review_ids or [],
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }

@@ -122,6 +122,13 @@ class InteractionRead(BaseModel):
     #: How many messages this conversation folds — ``1`` for a row not in one. Drives the list
     #: message-count badge and whether the detail modal fetches the full thread.
     conversation_count: int = 1
+    #: The still-unreviewed messages this row stands for, in the caller's own mailbox — the
+    #: whole pending half of its Gmail thread, oldest first, the row itself included. The review
+    #: queue folds a thread to one row (its newest message) exactly as the timeline folds a
+    #: logged conversation, and this is what "approve / file / reject the conversation" acts
+    #: on: a bulk call takes ids, so the row carries them. Empty on a logged or manual row.
+    #: Bounded by the queue, never by the thread — a logged history is not listed here.
+    review_ids: list[uuid.UUID] = Field(default_factory=list)
     deep_link: str | None = None
     created_at: datetime
 
@@ -223,10 +230,20 @@ class InteractionApprove(BaseModel):
     #: task named, or no AI configured for this org, and the approve lands exactly as it would
     #: have — the alternative is losing a review to an optional convenience.
     enrich_task: bool = False
+    #: Approve every other still-pending message of this Gmail thread in the caller's own
+    #: mailbox in the same step, with these same links — the conversation is the unit of review,
+    #: and a reply chain reviewed one message at a time was the whole complaint. Off by default
+    #: so an existing caller (the generated MCP tool included) keeps approving exactly the row it
+    #: named; a single message may still be filed differently by approving it on its own first.
+    #: ``enrich_task`` applies to the named row only: the body a model reads is one message's.
+    whole_thread: bool = False
 
 
 class InteractionReject(BaseModel):
-    #: Also suppress the whole Gmail thread, so follow-ups never get logged either.
+    #: Also suppress the whole Gmail thread, so follow-ups never get logged either — and reject
+    #: the thread's other still-pending messages in the caller's own mailbox now. "Ignore this
+    #: conversation" that left its four siblings in the queue, one click each, was half an
+    #: answer; the logged history of the thread stays, because somebody approved it.
     suppress_thread: bool = False
 
 

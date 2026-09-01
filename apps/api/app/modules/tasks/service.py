@@ -7,12 +7,14 @@ a Trello-style history.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, column, func, or_, select, table
+from sqlalchemy import false as sql_false
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
@@ -21,8 +23,10 @@ from app.core.auth.models import User
 from app.core.directory import visible_ids
 from app.core.entitlements import OrgPlan, refusal_for, sku_writable
 from app.core.events import emit
+from app.core.jobs import enqueue
 from app.core.models import Membership
 from app.core.parent import ensure_parent_in_tenant
+from app.core.portal import portal_subject_provider, portal_subject_types
 from app.core.richtext import (
     extract_contact_mention_ids,
     extract_mention_ids,
@@ -99,6 +103,8 @@ from app.modules.tasks.statuses import (
     status_order,
     terminal_keys,
 )
+
+logger = logging.getLogger("schakl.tasks")
 
 # Fields whose change is worth an ``updated`` activity entry (position/derived ones are noise).
 _TRACKED_FIELDS = (
@@ -382,9 +388,38 @@ class TaskService:
     async def _list_items(self, tasks: Sequence[Task]) -> list[TaskListItem]:
         """Decorate tasks with assignee rosters, label chips, checklist progress and comments."""
         items = [TaskListItem.model_validate(t) for t in tasks]
+        if self.ctx.is_portal:
+            # A task's time budget is the agency's estimate of its own work (#449) — like a
+            # project's hour budget, not a fact the client is party to. Its burn already stays
+            # off a client's rows (`_attach_hours` is gated on `time.entry.read`); this is the
+            # allocated half catching up.
+            for item in items:
+                item.allocated_minutes = None
         task_ids = [t.id for t in tasks]
         if not task_ids:
             return items
+
+        # The contact assignee's name (#453), resolved here so every reader prints the person.
+        # It used to be looked up in the browser through `/contacts?company_id=`, which a
+        # client-portal login cannot read — so the one task a client was assigned printed
+        # "Contactpersoon (Contactpersoon)" on their own page. Org-scoped SQL against the
+        # contacts table, never an import of that module's internals (§6), one query per page.
+        contact_ids = {t.assignee_contact_id for t in tasks if t.assignee_contact_id}
+        if contact_ids:
+            rows = await self.ctx.session.execute(
+                sql_text(
+                    "SELECT id, first_name, last_name FROM contacts"
+                    " WHERE org_id = :oid AND id = ANY(:ids)"
+                ),
+                {"oid": self.ctx.org.id, "ids": list(contact_ids)},
+            )
+            names = {
+                row.id: " ".join(part for part in (row.first_name, row.last_name) if part)
+                for row in rows
+            }
+            for item in items:
+                if item.assignee_contact_id:
+                    item.assignee_contact_name = names.get(item.assignee_contact_id)
 
         # One query for the whole page, never one per row (docs/PERFORMANCE.md) — the shape that
         # is invisible in the JSON and only shows up at three hundred rows.
@@ -489,6 +524,7 @@ class TaskService:
         assignee_user_id: uuid.UUID | None = None,
         assignee_contact_id: uuid.UUID | None = None,
         status: str | None = None,
+        open_only: bool = False,
         label_id: uuid.UUID | None = None,
         due: str | None = None,
         due_from: date | None = None,
@@ -553,6 +589,10 @@ class TaskService:
         # ``task_statuses`` rather than a hardcoded open/done tuple.
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         today = await org_today(self.ctx.session, self.ctx.org.id)
+        # "Still going on" (§9): every non-terminal status, whatever the tenant named them.
+        # ``status`` picks one key; this is the working set, which a client's dashboard reads.
+        if open_only:
+            stmt = stmt.where(Task.status.in_(non_terminal_keys(statuses)))
         # The four values are a **partition** (#397): every task is in exactly one of them, and
         # the boundaries are the ones the dashboard tile and the task board draw their sections
         # from (`apps/web/src/lib/modules/tasks/due.ts`). ``week`` used to start *at* today, which
@@ -628,13 +668,51 @@ class TaskService:
             await self._attach_hours(items)
         return items, total
 
+    async def _portal_contact_id(self) -> uuid.UUID | None:
+        """The contact behind a client-portal session, or ``None`` (#450/#453).
+
+        A client is assigned through ``assignee_contact_id``, never through the roster —
+        ``/members/lookup`` keeps client logins out of every picker on purpose — so "mine" for
+        a portal login is a question about a **contact**, and the session carries no contact
+        identity. It is resolved through the portal-subject seam (``app/core/portal.py``): the
+        module that owns the row answers "who is this login for", and this module names no
+        other module's table (§6). A subject of some other kind (a supplier login, one day)
+        is not a contact and so is assigned nothing.
+        """
+        if not self.ctx.is_portal:
+            return None
+        for entity_type in portal_subject_types():
+            provider = portal_subject_provider(entity_type)
+            if provider is None:
+                continue
+            subject = await provider.for_user(self.ctx, self.ctx.user.id)
+            if subject is not None and subject.entity_type == "contact":
+                return subject.id
+        return None
+
+    async def _mine_condition(self, column: Any) -> Any:
+        """``column`` (a task id) is one of *my* tasks — any roster seat for a colleague (#375),
+        the contact assignee for a portal login (#450). A portal login behind no contact at
+        all matches nothing, which is the honest answer rather than the org's whole list."""
+        if not self.ctx.is_portal:
+            return column.in_(self.assignees.entity_ids_for_user(self.ctx.user.id))
+        contact_id = await self._portal_contact_id()
+        if contact_id is None:
+            return sql_false()
+        return column.in_(
+            select(Task.id).where(
+                Task.org_id == self.ctx.org.id,
+                Task.assignee_contact_id == contact_id,
+            )
+        )
+
     async def _my_open_rows(self, limit: int) -> list[Task]:
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         stmt = (
             self.repo.scoped_select()
             # Any assignee, not the star (#375) — My Day is exactly the screen a shared task
-            # must not fall off.
-            .where(Task.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+            # must not fall off. For a client, the tasks assigned to *their* contact (#450).
+            .where(await self._mine_condition(Task.id))
             .where(Task.status.in_(non_terminal_keys(statuses)))
             .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
@@ -663,6 +741,9 @@ class TaskService:
         company_name = func.coalesce(
             _dashboard_companies.c.name, _dashboard_project_companies.c.name
         )
+        # Resolved once and used by both statements below: the page and its counts must agree
+        # about whose tasks these are, and for a portal login resolving it costs a query.
+        mine = await self._mine_condition(visible.c.id)
         stmt = (
             select(
                 visible.c.id,
@@ -696,7 +777,9 @@ class TaskService:
             )
             # Any assignee (#375), same rule as the list and My Day — a personal tile that
             # disagreed with "mijn taken" about which tasks are mine would be worse than none.
-            .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+            # A client's tile is the tasks assigned to their contact (#450), through the same
+            # visible relation, so the portal rule still holds on it.
+            .where(mine)
             .where(visible.c.status.in_(non_terminal_keys(statuses)))
             # Date first, then priority — the order the team asked for and the one the board
             # already sorts by, so the tile and the list agree about which of two tasks due on
@@ -735,7 +818,7 @@ class TaskService:
                     ),
                 )
                 .select_from(visible)
-                .where(visible.c.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id)))
+                .where(mine)
                 .where(visible.c.status.in_(non_terminal_keys(statuses)))
             )
         ).one()
@@ -889,6 +972,9 @@ class TaskService:
         list_item = (await self._list_items([task]))[0]
         detail.labels = list_item.labels
         detail.assignees = list_item.assignees
+        # Same redaction as the list row (#449): the portal reads the task, never its estimate.
+        detail.allocated_minutes = list_item.allocated_minutes
+        detail.assignee_contact_name = list_item.assignee_contact_name
 
         checklists = (
             await self.ctx.session.execute(
@@ -1093,6 +1179,7 @@ class TaskService:
             company_id=values.get("company_id"),
             roster_size=len(links),
         )
+        self._contact_assignee_implies_visible(values)
         # Verantwoordelijke defaults down: project's responsible → else the company's, when the
         # task names neither an employee nor a contact (a contact assignee is a deliberate choice
         # that must not be silently overwritten by the client's responsible employee).
@@ -1144,6 +1231,8 @@ class TaskService:
             await self._emit_task(
                 "task.assigned", task, [link.user_id for link in task.assignees]
             )
+        if task.assignee_contact_id is not None:
+            await self._notify_contact_assigned(task)
         return task
 
     async def _apply_composite(
@@ -1202,6 +1291,35 @@ class TaskService:
 
             return await CompanyService(self.ctx).primary_assignee(company_id)
         return None
+
+    async def _notify_contact_assigned(self, task: Task) -> None:
+        """Queue the mail a client contact gets when a task is handed to them (#454).
+
+        Last thing in the write, and inside ``release_db``: the entry commit is what lets the
+        worker read the row it is about to mail about (the reporting runner's race), and a
+        Redis round-trip is not something to hold a pooled connection across. Whether the
+        contact can *receive* it — an active portal login — is the worker's question
+        (``emails.tasks_send_contact_assigned``). A queue that is down is logged; the
+        assignment it rides on has already been saved and must not fail for a nicety.
+        """
+        try:
+            async with self.ctx.release_db():
+                await enqueue("tasks_send_contact_assigned", str(self.ctx.org.id), str(task.id))
+        except Exception as exc:  # noqa: BLE001 — Redis being down is not this task's fault
+            logger.warning("tasks: could not queue contact mail for %s: %s", task.id, exc)
+
+    @staticmethod
+    def _contact_assignee_implies_visible(values: dict[str, Any]) -> None:
+        """Assigning a task to a client contact makes it visible to the client (#453).
+
+        The person it is assigned to could not see it otherwise: ``visible_to_client`` is a
+        separate tick on another screen, and a task nobody can see is not assigned to anybody.
+        Set into ``values`` before the diff is taken, so the trail records the flip like any
+        other field edit. Never the reverse — clearing the contact leaves the tick where the
+        agency put it.
+        """
+        if values.get("assignee_contact_id") is not None:
+            values["visible_to_client"] = True
 
     async def _validate_assignee(
         self,
@@ -1366,6 +1484,9 @@ class TaskService:
 
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
         task = await self._writable_task_or_403(task_id)
+        # Who held it before, so handing it to a client contact can be told apart from saving
+        # the same contact again (#454).
+        previous_contact = task.assignee_contact_id
         values = data.model_dump(exclude_unset=True)
         # A ride-along, not a column: pop it before anything reaches ``repo.update`` (#314).
         values.pop("log_time", None)
@@ -1408,6 +1529,7 @@ class TaskService:
                 company_id=values.get("company_id", task.company_id),
                 roster_size=roster_size,
             )
+            self._contact_assignee_implies_visible(values)
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])
@@ -1630,6 +1752,8 @@ class TaskService:
             # spawn_next mutates the source (recurrence handed off); reload server-side
             # defaults so serialization never lazy-loads.
             await self.ctx.session.refresh(task)
+        if task.assignee_contact_id is not None and task.assignee_contact_id != previous_contact:
+            await self._notify_contact_assigned(task)
         return task
 
     async def _log_time(self, task: Task, log_time: TaskLogTime) -> None:

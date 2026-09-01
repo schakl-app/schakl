@@ -31,6 +31,7 @@ from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
 from app.core.googleads import ads_developer_token, attach_ads_account
 from app.core.jobs import enqueue
+from app.core.models import OrgSettings
 from app.core.narratives import latest_narrative
 from app.core.periods import (
     ComparePeriod,
@@ -57,6 +58,7 @@ from app.core.wordpress import describe_setup as describe_wordpress_setup
 from app.core.wordpress import open_client as open_wordpress_client
 from app.core.wordpress import resolve_credential as resolve_wordpress_credential
 from app.errors import AppError
+from app.i18n import resolve_locale, translate
 from app.integrations.google import client as google_client
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.companies.models import Company
@@ -1365,6 +1367,7 @@ class MarketingService:
         websites = await self._company_websites(company_id)
         website_names = {w.id: w.name for w in websites}
         can_manage = self.ctx.can("marketing.link.manage")
+        portal_labels = await self._portal_source_labels() if self.ctx.is_portal else {}
         sources: list[SourceMetrics] = []
         if links:
             metrics_by_link = await self._metrics_for_links(
@@ -1389,6 +1392,7 @@ class MarketingService:
                     layout=layout,
                     website_names=website_names,
                     owners=owners,
+                    portal_labels=portal_labels,
                 )
                 sm.hidden = hidden
                 sources.append(sm)
@@ -1488,6 +1492,22 @@ class MarketingService:
             out[link_id][day] = payload
         return out
 
+    async def _portal_source_labels(self) -> dict[str, str]:
+        """The tenant's client-facing source names (#446), ``{source: label}`` — org-level, one
+        read, and only ever asked for on the portal path. Absent keys mean the code default
+        (:func:`portal_source_label`), translated in the org's own display language: a client
+        reads the tenant's product, in the tenant's language, and never a colleague's."""
+        row = await self.ctx.session.execute(
+            select(MarketingSettings.portal_source_labels, OrgSettings.default_locale)
+            .select_from(OrgSettings)
+            .outerjoin(MarketingSettings, MarketingSettings.org_id == OrgSettings.org_id)
+            .where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        stored, locale = row.first() or (None, None)
+        labels = {k: v for k, v in (stored or {}).items() if v}
+        labels.setdefault(_LOCALE_KEY, resolve_locale(None, locale))
+        return labels
+
     def _source_metrics(
         self,
         link: MarketingLink,
@@ -1502,8 +1522,16 @@ class MarketingService:
         layout: dict | None = None,
         website_names: dict[uuid.UUID, str] | None = None,
         owners: dict[uuid.UUID, ConnectionOwner] | None = None,
+        portal_labels: dict[str, str] | None = None,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
+        # A client-facing login gets the numbers and nothing about the machinery behind them
+        # (#446/#447/#448): not whose Google grant they ride, not a link into the supplier's
+        # console, and not the supplier's name where the tenant has chosen another. Decided here
+        # — the one place a source row is built — so the widget, the tab and an MCP client
+        # cannot disagree, and `is_portal` is the statement rather than a permission that
+        # happens to exclude them (§15, #274).
+        portal = self.ctx.is_portal
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
         prev_rows = [m for day, m in daily.items() if prev_start <= day <= prev_end]
         cur_agg = aggregate(link.source, current_rows)
@@ -1554,10 +1582,13 @@ class MarketingService:
             last_error=link.last_error,
             last_synced_at=link.last_synced_at,
             connection_owner=(
-                (owners or {}).get(link.connection_id) if link.connection_id else None
+                (owners or {}).get(link.connection_id)
+                if link.connection_id and not portal
+                else None
             ),
             currency=currency,
-            deep_link=adapter.deep_link(link.external_id, link.config or {}),
+            deep_link="" if portal else adapter.deep_link(link.external_id, link.config or {}),
+            label=portal_source_label(link.source, portal_labels or {}) if portal else None,
             primary_metric=resolved_primary(link.source, src_layout, metrics),
             kpis=kpis,
             series=SeriesData(dates=dates, metrics=series_metrics),
@@ -1662,6 +1693,26 @@ class MarketingService:
         )
 
     async def drilldown(
+        self,
+        company_id: uuid.UUID,
+        link_id: uuid.UUID,
+        kind: str,
+        range_days: int,
+        period: str | None = None,
+    ) -> DrilldownResponse:
+        response = await self._drilldown(company_id, link_id, kind, range_days, period)
+        if self.ctx.is_portal:
+            # The same redaction `_source_metrics` applies one level up (#446/#447): a client
+            # gets the table and nothing about the machinery. No link into the supplier's
+            # console, and — where the table could not be read — no sentence naming the
+            # supplier or telling them to "reconnect" or "ask your administrator": every
+            # reason is the agency's to act on, so the client reads one neutral line.
+            response.deep_link = ""
+            if not response.available:
+                response.unavailable_reason = "marketing.portal_unavailable"
+        return response
+
+    async def _drilldown(
         self,
         company_id: uuid.UUID,
         link_id: uuid.UUID,
@@ -2094,6 +2145,36 @@ class MarketingService:
         return MarketingClientList(rows=rows[:limit], total=len(rows))
 
 
+#: Private key inside the portal-label map for the locale the defaults translate in — a
+#: source is never called this, so it cannot collide with a stored label.
+_LOCALE_KEY = "__locale"
+
+
+def portal_source_label(source: str, labels: dict[str, str]) -> str:
+    """What a client is told a source is called (#446).
+
+    The tenant's own label wins. Without one, a **keyed** source — SE Ranking, Rank Math: the
+    agency's supplier, on the agency's account — gets the vendor-free catalog name for what it
+    *measures* (``marketing.source.portal.<source>``), because the supplier's name is not the
+    client's business and a client's login cannot open it anyway. A **Google** source keeps the
+    product name: it is the client's own property and they know it by that name.
+    """
+    own = labels.get(source)
+    if own:
+        return own
+    locale = labels.get(_LOCALE_KEY)
+    if source in PORTAL_NEUTRAL_SOURCES:
+        return translate(f"marketing.source.portal.{source}", locale)
+    return translate(f"marketing.source.{source}", locale)
+
+
+#: The sources whose vendor a client is not told about by default (#446): every keyed source —
+#: the ones the agency holds the credential for, rather than the client's own Google property.
+PORTAL_NEUTRAL_SOURCES = frozenset(
+    {MarketingSource.SERANKING.value, MarketingSource.RANKMATH.value}
+)
+
+
 class MarketingSettingsService:
     """Org-level marketing settings (#134): the encrypted Google Ads developer token.
 
@@ -2124,6 +2205,9 @@ class MarketingSettingsService:
             report=ReportSplitSettingsRead(
                 **parse_report(row.report if row else None).as_dict()
             ),
+            portal_source_labels={
+                k: v for k, v in ((row.portal_source_labels if row else None) or {}).items() if v
+            },
         )
 
     async def get(self) -> MarketingSettingsRead:
@@ -2188,6 +2272,18 @@ class MarketingSettingsService:
                 base=parse_report(row.report),
             ).as_dict()
             row.report.pop("exclude", None)
+        if data.portal_source_labels is not None:
+            # Merged key by key (#446): the form posts every source it draws, an empty label
+            # clears that source back to the default, and a source the form does not name
+            # keeps whatever was stored — the same "absent means leave alone" every other
+            # field on this row follows.
+            merged = dict(row.portal_source_labels or {})
+            for source, label in data.portal_source_labels.items():
+                if label:
+                    merged[source] = label
+                else:
+                    merged.pop(source, None)
+            row.portal_source_labels = merged or None
         await self.ctx.session.flush()
         return self._read(row)
 

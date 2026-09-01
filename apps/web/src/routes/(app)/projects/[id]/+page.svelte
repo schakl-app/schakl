@@ -255,78 +255,82 @@
 </div>
 
 <div class="grid gap-4 lg:grid-cols-2">
-  <!-- Budget overview -->
-  <section class="rounded-xl border border-border bg-surface-raised p-5">
-    <h2 class="mb-4 text-sm font-semibold text-text">{t("projects.budget")}</h2>
-    <dl class="grid grid-cols-2 gap-4 text-sm">
-      <div>
-        <dt class="text-text-muted">{t("projects.field.budget_hours")}</dt>
-        <dd class="mt-0.5 font-medium text-text">
-          {budgetHours != null ? `${budgetHours} ${t("projects.hours_unit")}` : "—"}
-          {#if subscriptionBacked}
-            <!-- At-a-glance connection state (#225): the hours are subscription-backed. -->
-            <a
-              href="/subscriptions"
-              title={budgetSourceNames}
-              class="ml-1 inline-block rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-text-muted hover:text-brand"
-            >
-              {t("projects.hours_from_subscription")}
-            </a>
-          {/if}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-text-muted">{t("projects.field.budget_amount")}</dt>
-        <dd class="mt-0.5 font-medium text-text">
-          {project.budget_amount != null ? money(project.budget_amount) : "—"}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-text-muted">{t("projects.field.billable_default")}</dt>
-        <dd class="mt-0.5 font-medium text-text">
-          {project.billable_default ? t("common.yes") : t("common.no")}
-        </dd>
-      </div>
-    </dl>
-    <div class="mt-4 border-t border-border pt-4">
-      <!-- The one burn block (core/ui/BudgetBar.svelte), worded by core/hours.ts (#340): what
+  <!-- Budget overview. Not for a client (#449): the API blanks every figure in it for a portal
+       login, and a block of dashes headed "Budget" asks a question the client should not be
+       holding. The guard is UX; the API is the boundary. -->
+  {#if !page.data.user?.isPortal}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-4 text-sm font-semibold text-text">{t("projects.budget")}</h2>
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt class="text-text-muted">{t("projects.field.budget_hours")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
+            {budgetHours != null ? `${budgetHours} ${t("projects.hours_unit")}` : "—"}
+            {#if subscriptionBacked}
+              <!-- At-a-glance connection state (#225): the hours are subscription-backed. -->
+              <a
+                href="/subscriptions"
+                title={budgetSourceNames}
+                class="ml-1 inline-block rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-text-muted hover:text-brand"
+              >
+                {t("projects.hours_from_subscription")}
+              </a>
+            {/if}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">{t("projects.field.budget_amount")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
+            {project.budget_amount != null ? money(project.budget_amount) : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">{t("projects.field.billable_default")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
+            {project.billable_default ? t("common.yes") : t("common.no")}
+          </dd>
+        </div>
+      </dl>
+      <div class="mt-4 border-t border-border pt-4">
+        <!-- The one burn block (core/ui/BudgetBar.svelte), worded by core/hours.ts (#340): what
            is left leads, in words, and the bare `4 / 5 u` below it is spent-of-budget — the
            same sentence the lists, My Day and the timesheet print for this project. The label
            is the API's effective period: forced to monthly when a subscription sources the
            hours (#225), the project's own otherwise. -->
-      {#if burn}
-        <BudgetBar
-          spent={burn.spent}
-          budget={burn.budget}
-          label={t(
-            `projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`,
-          )}
-          remainingText={burn.remainingText}
-          spentText={burn.spentText}
-        />
-      {/if}
-      <!-- Money from employee rates (#111, #226): every hour is priced at its logger's rate,
+        {#if burn}
+          <BudgetBar
+            spent={burn.spent}
+            budget={burn.budget}
+            label={t(
+              `projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`,
+            )}
+            remainingText={burn.remainingText}
+            spentText={burn.spentText}
+          />
+        {/if}
+        <!-- Money from employee rates (#111, #226): every hour is priced at its logger's rate,
            so billable value and cost come from the same API query. Only loaded (and rendered)
            for someone the API lets read rate-derived money. -->
-      {#if data.cost}
-        <div class="mt-3 flex items-center justify-between text-sm">
-          <span class="text-text-muted">{t("projects.billable_value")}</span>
-          <span class="font-medium text-text">{money(data.cost.billable_amount)}</span>
-        </div>
-        <div class="mt-2 flex items-center justify-between text-sm">
-          <span class="text-text-muted">{t("projects.cost")}</span>
-          <span class="font-medium text-text">{money(data.cost.cost)}</span>
-        </div>
-        {#if data.cost.unrated_minutes > 0}
-          <p class="mt-1 text-xs text-text-muted">
-            {t("projects.cost_unrated", {
-              hours: fmtNumber(data.cost.unrated_minutes / 60, 1),
-            })}
-          </p>
+        {#if data.cost}
+          <div class="mt-3 flex items-center justify-between text-sm">
+            <span class="text-text-muted">{t("projects.billable_value")}</span>
+            <span class="font-medium text-text">{money(data.cost.billable_amount)}</span>
+          </div>
+          <div class="mt-2 flex items-center justify-between text-sm">
+            <span class="text-text-muted">{t("projects.cost")}</span>
+            <span class="font-medium text-text">{money(data.cost.cost)}</span>
+          </div>
+          {#if data.cost.unrated_minutes > 0}
+            <p class="mt-1 text-xs text-text-muted">
+              {t("projects.cost_unrated", {
+                hours: fmtNumber(data.cost.unrated_minutes / 60, 1),
+              })}
+            </p>
+          {/if}
         {/if}
-      {/if}
-    </div>
-  </section>
+      </div>
+    </section>
+  {/if}
 
   <!-- Details (use mode) / Edit (edit mode) -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
@@ -675,6 +679,7 @@
     files={data.files}
     uploadAction="?/uploadFile"
     deleteAction="?/deleteFile"
+    visibilityAction="?/setFileVisibility"
     readonly={!canWriteFile}
     error={form?.fileError ?? null}
   />

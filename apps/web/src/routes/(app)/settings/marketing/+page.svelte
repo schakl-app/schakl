@@ -12,8 +12,8 @@
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
-  import { compareModeLabel } from "$lib/modules/marketing/format";
-  import { COMPARE_PERIODS } from "$lib/modules/marketing/types";
+  import { compareModeLabel, portalDefaultLabel, sourceLabel } from "$lib/modules/marketing/format";
+  import { COMPARE_PERIODS, PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
@@ -72,6 +72,35 @@
       />
       <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_key_hint")}</p>
     </div>
+
+    <!-- What a client is told each source is called (#446). The supplier behind the agency's
+         service is not the client's business, so a keyed source (SE Ranking, Rank Math) is
+         named for what it *measures* by default and the tenant may put their own product name
+         on it — "Breik. Analytics" is one tenant's word and lives here, never in code (§2). A
+         Google source keeps the product name: it is the client's own account. -->
+    <fieldset class="border-t border-border pt-5">
+      <legend class="mb-1 text-sm font-semibold text-text">
+        {t("settings.marketing.portal_labels")}
+      </legend>
+      <p class="mb-3 text-xs text-text-muted">{t("settings.marketing.portal_labels_hint")}</p>
+      <div class="grid gap-3 sm:grid-cols-2">
+        {#each PORTAL_LABEL_SOURCES as source (source)}
+          <div>
+            <label for={`portal-label-${source}`} class="mb-1 block text-xs text-text-muted">
+              {sourceLabel(source)}
+            </label>
+            <input
+              id={`portal-label-${source}`}
+              name={`portal_label_${source}`}
+              value={settings?.portal_source_labels?.[source] ?? ""}
+              placeholder={portalDefaultLabel(source)}
+              maxlength="80"
+              class={inputClass}
+            />
+          </div>
+        {/each}
+      </div>
+    </fieldset>
 
     <!-- The agency's house comparison (#312). A client's own dashboard overrides it in its edit
          mode; this is what the other fifty-nine clients inherit without anyone touching them. -->

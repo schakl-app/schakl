@@ -36,7 +36,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
-  import { contactChips, type InteractionItem, isMailRow } from "./format";
+  import { contactChips, type InteractionItem, isMailRow, reviewIds } from "./format";
   import { cleanSnippet, snippetPreview } from "./snippet";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
   import { splitQuotedTrail } from "./quoted";
@@ -58,8 +58,9 @@
   const me = $derived(page.data.user?.id ?? null);
   const canReadActivity = $derived(can(page.data.user, "activity.read"));
   const isOwner = (i: InteractionItem) => i.owner_user_id !== null && i.owner_user_id === me;
-  // A pending gmail row I own is reviewed (assign + approve/reject) right here (#184). A pending
-  // row never folds (#272), so review always concerns a single, unfolded message.
+  // A pending gmail row I own is reviewed (assign + approve/reject) right here (#184). The row
+  // may stand for a whole pending thread now — the queue folds one — so the review form is told
+  // how many messages are waiting and offers to take them all in the one press.
   const detailPending = $derived(
     item != null && item.source === "gmail" && item.status === "pending" && isOwner(item),
   );
@@ -69,6 +70,13 @@
   // Which messages are open in full; the rest show a one-line summary. Newest defaults open.
   const expanded = new SvelteSet<string>();
   const threaded = $derived(messages.length > 1);
+  /** How many messages of this thread still wait for review — what "hele gesprek" means. */
+  const pendingCount = $derived(
+    Math.max(
+      messages.filter((m) => m.status === "pending").length,
+      item ? reviewIds(item).length : 1,
+    ),
+  );
 
   async function loadThread(anchor: InteractionItem) {
     const response = await fetch(`/api/v1/interactions/${anchor.id}/thread`, {
@@ -77,12 +85,12 @@
     if (!open || item?.id !== anchor.id) return; // the modal moved on or closed while fetching
     const thread: InteractionItem[] = response.ok ? await response.json() : [anchor];
     messages = thread.length ? thread : [anchor];
-    // The thread is newest-first and the anchor is its newest member: keep that one open.
+    // The anchor stays open: on a logged fold it is the newest message, on a pending one the
+    // newest still waiting — and the logged history a pending thread carries folds under it.
+    const shown = messages.find((m) => m.id === anchor.id) ?? messages[0];
     expanded.clear();
-    expanded.add(messages[0]?.id ?? anchor.id);
-    if (isMailRow(messages[0]) && messages[0].status === "logged") {
-      void loadAttachments(messages[0].id);
-    }
+    expanded.add(shown?.id ?? anchor.id);
+    if (shown && isMailRow(shown) && shown.status === "logged") void loadAttachments(shown.id);
   }
 
   // A list row carries no `body_text` (#290): twenty full e-mail bodies to draw a snippet column
@@ -168,7 +176,12 @@
       expanded.clear();
       expanded.add(anchor.id);
       if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
-      if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
+      // A pending Gmail row always asks for its thread: what it folds (the rest of the queue
+      // for this conversation) and what came before it (the logged history, and where that
+      // was filed) are the review desk — and a lone message costs the same one request that
+      // `loadBody` would have made.
+      const pendingThread = anchor.status === "pending" && !!anchor.gmail_thread_id;
+      if ((anchor.conversation_count ?? 1) > 1 || pendingThread) void loadThread(anchor);
       else if (anchor.body_text == null) void loadBody(anchor);
     });
   });
@@ -233,8 +246,19 @@
   {@const bodyParts = bodyPartsFor(di)}
   <div class="space-y-3 text-sm">
     <div class="flex items-start justify-between gap-2">
-      <p class="text-xs text-text-muted">
-        {fmtDateTime(di.occurred_at)}{#if di.owner_name}&nbsp;· {di.owner_name}{/if}
+      <p class="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <span
+          >{fmtDateTime(di.occurred_at)}{#if di.owner_name}&nbsp;· {di.owner_name}{/if}</span
+        >
+        {#if threaded && di.status === "pending"}
+          <!-- In a thread that mixes the logged history with what is waiting, say which is
+               which: the pill is what tells a reviewer this message is theirs to decide on. -->
+          <span
+            class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
+          >
+            {t("interactions.pending")}
+          </span>
+        {/if}
       </p>
       {#if threaded}
         <!-- Collapse this message back to its one-line summary. -->
@@ -261,6 +285,36 @@
         {#if di.task_id && di.task_title}
           <a href="/tasks/{di.task_id}" class="text-xs text-brand hover:underline"
             >{di.task_title}</a
+          >
+        {/if}
+      </div>
+    {/if}
+
+    {#if item?.status === "pending" && di.status === "logged" && (di.task_title || di.project_name || di.company_name)}
+      <!-- The history of a thread under review says where it was filed: that is the one fact a
+           reviewer wants before filing the reply the same way, and the form below is prefilled
+           from the reply's own (matcher-derived) links, which may well disagree with it. -->
+      <div class="flex flex-wrap items-center gap-1">
+        <span class="text-[11px] text-text-muted">{t("interactions.thread_filed_under")}</span>
+        {#if di.task_id && di.task_title}
+          <a
+            href="/tasks/{di.task_id}"
+            class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
+            >{di.task_title}</a
+          >
+        {/if}
+        {#if di.project_id && di.project_name}
+          <a
+            href="/projects/{di.project_id}"
+            class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
+            >{di.project_name}</a
+          >
+        {/if}
+        {#if di.company_id && di.company_name}
+          <a
+            href="/companies/{di.company_id}"
+            class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
+            >{di.company_name}</a
           >
         {/if}
       </div>
@@ -428,8 +482,17 @@
     class="-mx-1.5 block w-full rounded-lg px-1.5 py-1.5 text-left hover:bg-surface"
   >
     <span class="flex items-center justify-between gap-2">
-      <span class="truncate text-xs font-medium text-text">
-        {di.owner_name ?? t("interactions.kind.email")}
+      <span class="flex min-w-0 items-center gap-2">
+        <span class="truncate text-xs font-medium text-text">
+          {di.owner_name ?? t("interactions.kind.email")}
+        </span>
+        {#if di.status === "pending"}
+          <span
+            class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
+          >
+            {t("interactions.pending")}
+          </span>
+        {/if}
       </span>
       <span class="shrink-0 text-[11px] text-text-muted">{fmtDateTime(di.occurred_at)}</span>
     </span>
@@ -464,11 +527,13 @@
 
         {#if detailPending}
           <!-- Review in place (#184): assign a client/project/task and approve, or reject.
-               Scoped to the original row (#272) — a pending row never folds. -->
+               Anchored on the opened row; with `threadPendingCount` the approve may take the
+               thread's other waiting messages along (the queue folds them onto this row). -->
           <div class="border-t border-border pt-3">
             <InteractionMoveDialog
               interaction={item}
               {approveAction}
+              threadPendingCount={pendingCount}
               onsaved={() => (open = false)}
             />
             <button
@@ -540,6 +605,13 @@
         <input type="checkbox" name="suppress_thread" value="1" />
         {t("interactions.reject_thread")}
       </label>
+      {#if pendingCount > 1}
+        <!-- Ignoring the conversation takes the rest of the queue for it along: said here,
+             because a checkbox that quietly does more than its label is a broken control. -->
+        <p class="pl-6 text-xs text-text-muted">
+          {tn("interactions.reject_thread_pending", pendingCount - 1)}
+        </p>
+      {/if}
       <div class="flex justify-end gap-2">
         <button
           type="button"

@@ -8,6 +8,7 @@
     Pencil,
     Trash2,
   } from "@lucide/svelte";
+  import { tick } from "svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
@@ -31,6 +32,7 @@
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import InlineText from "$lib/core/ui/InlineText.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -39,7 +41,7 @@
   import StateMark from "$lib/core/ui/StateMark.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
-  import { dueBucket, dueDistance } from "$lib/modules/tasks/due";
+  import { dueBucket, dueNote } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
@@ -457,7 +459,9 @@
   $effect(() => {
     const companyId = fCompany;
     if (!companyId) return;
-    if (!editMode && !task.assignee_contact_id) return;
+    // Edit mode only since #453: the read view prints `assignee_contact_name`, which the API
+    // resolves — a portal login cannot read `/contacts` and used to see "Contactpersoon".
+    if (!editMode) return;
     if (companyId === editContactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
@@ -496,6 +500,37 @@
   // svelte-ignore state_referenced_locally
   let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
+
+  /**
+   * Create-then-edit lands here to *name* the task, so the caret starts in the title and the
+   * placeholder is selected: the first keystroke replaces "Naamloze taak" rather than appending
+   * to it, which is the whole difference between this and a form that merely happens to be open.
+   *
+   * Only for a row nobody has named (`unnamed`, #350) — opening the pencil on real work must not
+   * put the reader's cursor in a field they did not come to change.
+   *
+   * Repeated over the second after arrival, and for the same three reasons `TaskComments.reveal`
+   * is: arriving here is a navigation, so SvelteKit's `reset_focus()` hands focus back to
+   * `<body>` *after* we take it, and the description editor mounts asynchronously beside us. One
+   * attempt loses to whichever runs last, silently. `claimedTitle` makes it once per visit, so a
+   * later reload (the AI fill-in, #327) never steals a caret back.
+   */
+  let titleInput = $state<HTMLInputElement | null>(null);
+  let claimedTitle = false;
+  $effect(() => {
+    if (claimedTitle || !editMode || !data.task.unnamed) return;
+    claimedTitle = true;
+    void (async () => {
+      for (const wait of [0, 60, 200, 500]) {
+        await tick();
+        if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+        if (!titleInput) continue;
+        if (document.activeElement === titleInput) return;
+        titleInput.focus({ preventScroll: true });
+        titleInput.select();
+      }
+    })();
+  });
 
   // A detour that started on a client's or a project's page (#408): leaving edit mode — by
   // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
@@ -732,7 +767,10 @@
   const bucket = $derived(isDone ? "later" : dueBucket(task.due_date, today));
   const overdue = $derived(bucket === "overdue");
   const dueToday = $derived(bucket === "today");
-  const distance = $derived(task.due_date ? dueDistance(task.due_date, today) : null);
+  // A finished task's note is the day it was finished, never a distance that keeps counting.
+  const distance = $derived(
+    task.due_date ? dueNote(task.due_date, today, isDone, task.completed_at) : null,
+  );
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   const when = (iso: string) => fmtDateTime(iso);
@@ -828,6 +866,14 @@
     if (a.action === "attachment_added" || a.action === "attachment_deleted") {
       return t(`tasks.activity.${a.action}`, { filename: String(a.payload.filename ?? "") });
     }
+    if (a.action === "attachment_visibility_changed") {
+      return t(
+        a.payload.client_visible
+          ? "tasks.activity.attachment_shown_to_client"
+          : "tasks.activity.attachment_hidden_from_client",
+        { filename: String(a.payload.filename ?? "") },
+      );
+    }
     // A contact-moment milestone mirrored onto this task from the core log (#152) — reuse the
     // shared activity.action.interaction.* strings the company/project panels already read.
     if (a.action.startsWith("interaction.")) {
@@ -889,7 +935,7 @@
   <!-- "schakl leest de e-mail" (#327). Above the card rather than inside it: it is about the whole
        task, it is short-lived, and it must not push the title around while it comes and goes. -->
   {#if task.ai_status}
-    <TaskAIStatus taskId={task.id} status={task.ai_status} />
+    <TaskAIStatus taskId={task.id} status={task.ai_status} editing={editMode} />
   {/if}
 
   <!-- Header — what this task is, and what is true of it at a glance. Always first, and not
@@ -902,6 +948,7 @@
           value={task.title}
           required
           form="task-edit"
+          bind:this={titleInput}
           class="w-full flex-1 rounded-lg border border-border p-2 text-xl font-semibold text-text outline-none focus:border-brand"
         />
       {:else}
@@ -1119,7 +1166,9 @@
             />
           {:else if task.assignee_contact_id}
             <p class="text-sm text-text">
-              {contactName(task.assignee_contact_id) ?? t("party.contact")}
+              {task.assignee_contact_name ??
+                contactName(task.assignee_contact_id) ??
+                t("party.contact")}
               <span class="text-xs text-text-muted">({t("party.contact")})</span>
             </p>
           {:else if (task.assignees ?? []).length > 0}
@@ -1176,7 +1225,9 @@
           {/if}
         </div>
 
-        <div>
+        <!-- Not for a client (#449): the estimate is the agency's, the API blanks it, and a
+             dash headed "Tijdbudget" is a question the client should not be holding. -->
+        <div class:hidden={isPortal}>
           {#if editMode}
             <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.allocated_input")}</label
@@ -1443,7 +1494,11 @@
                 : 'text-text'}"
             >
               {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
-              {#if distance}
+              {#if distance && "on" in distance}
+                <span class="text-xs font-normal text-text-muted" title={fmtDateTime(distance.on)}
+                  >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
+                >
+              {:else if distance}
                 <!-- The distance, muted: a date on its own asks the reader to subtract (#395). -->
                 <span class="text-xs font-normal text-text-muted"
                   >{t(distance.key, { count: distance.count })}</span
@@ -1533,10 +1588,18 @@
           value={task.description ?? ""}
           scope={candidateScope}
         />
-      {:else if task.description}
-        <Markdown value={task.description} />
       {:else}
-        <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
+        <!-- Edited in place (#455): the one field people change ten times a day should not cost
+             ⋯ → Bewerken and a save at the foot of the page. Posts `description` alone to
+             `?/update`, which patches only what the form carries. -->
+        <InlineText
+          name="description"
+          value={task.description ?? ""}
+          placeholder={t("tasks.detail.description_placeholder")}
+          canEdit={canEditTask}
+          scope={candidateScope}
+          id="task-description-inline"
+        />
       {/if}
     </section>
   {/snippet}
@@ -1963,7 +2026,7 @@
     <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
            uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
            no files → no section, until you edit. -->
-    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
+    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode || canWriteFile}
       <!-- A register (#404): where the files are is looked up when somebody needs a file, and
            it is never the news on a task. Under a rule rather than in the eighth bordered box —
            and the Drive card directly under it declares the same, so the two now read as one
@@ -2046,15 +2109,21 @@
           </form>
         {/if}
 
-        {#if !isPortal && (data.files.length > 0 || editMode)}
-          <!-- Document uploads through the storage core (#123) — staff-only surface. -->
-          <div class={editMode ? "mt-4 border-t border-border pt-4" : ""}>
+        {#if data.files.length > 0 || canWriteFile}
+          <!-- Document uploads through the storage core (#123). Attaching is *use-mode* work,
+               like a comment: a screenshot is evidence of what happened on the task, not a change
+               to its definition, and a drop target that only exists after ⋯ → Bewerken is the
+               three-step route this strip exists to remove (docs/UX.md). Gated on the key the
+               API checks, never on `!isPortal`: a client holds no `files.file.write` and the API
+               hands it only the files ticked visible. -->
+          <div class={(task.links ?? []).length > 0 || editMode ? "mt-4 border-t border-border pt-4" : ""}>
             <FileAttachments
               files={data.files}
               uploadAction="?/uploadFile"
               deleteAction="?/deleteFile"
+              visibilityAction="?/setFileVisibility"
               error={form?.fileError ?? null}
-              readonly={!editMode || !canWriteFile}
+              readonly={!canWriteFile}
             />
           </div>
         {/if}
@@ -2097,31 +2166,33 @@
             {#snippet children(shown)}
               <ul class="space-y-2">
                 {#each shown as activity (activity.id)}
-              {@const href = activityHref(activity)}
-              <li class="flex items-baseline gap-2 text-sm">
-                <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
-                  >{when(activity.created_at)}</span
-                >
-                <span class="text-text">
-                  <span class="font-medium">{actorLabel(activity)}</span>
-                  <!-- Someone was signed in as them (#296) — a client's comment written by the
-                         agency reads as the client's until this says otherwise. -->
-                  {#if activity.impersonator_name}
-                    <span
-                      class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                      title={t("activity.impersonated_title", {
-                        actor: activity.impersonator_name,
-                      })}
+                  {@const href = activityHref(activity)}
+                  <li class="flex items-baseline gap-2 text-sm">
+                    <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
+                      >{when(activity.created_at)}</span
                     >
-                      {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                    <span class="text-text">
+                      <span class="font-medium">{actorLabel(activity)}</span>
+                      <!-- Someone was signed in as them (#296) — a client's comment written by the
+                         agency reads as the client's until this says otherwise. -->
+                      {#if activity.impersonator_name}
+                        <span
+                          class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                          title={t("activity.impersonated_title", {
+                            actor: activity.impersonator_name,
+                          })}
+                        >
+                          {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                        </span>
+                      {/if}
+                      {#if href}
+                        <a class="hover:text-brand hover:underline" {href}
+                          >{activityText(activity)}</a
+                        >
+                      {:else}
+                        {activityText(activity)}
+                      {/if}
                     </span>
-                  {/if}
-                  {#if href}
-                    <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
-                  {:else}
-                    {activityText(activity)}
-                  {/if}
-                </span>
                   </li>
                 {/each}
               </ul>

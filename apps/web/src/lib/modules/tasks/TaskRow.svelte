@@ -43,11 +43,15 @@
     status: string;
     priority: string;
     due_date?: string | null;
+    /** When a finished task was closed — the note a done row prints instead of "x dagen te laat". */
+    completed_at?: string | null;
     allocated_minutes?: number | null;
     // Only when the caller's load asked for `hours=true` and may read hours (#313).
     logged_minutes?: number | null;
     remaining_minutes?: number | null;
     assignee_user_id?: string | null;
+    /** The client contact this is assigned to (#453) — the face the roster cannot draw. */
+    assignee_contact_name?: string | null;
     /** The roster (#375), primary first. Optional: the compact dashboard shapes carry neither it
      *  nor the mirrored column, and those rows draw no face at all. */
     assignees?: { user_id: string; is_primary: boolean }[];
@@ -233,8 +237,9 @@
     {/if}
     <!-- Absolute *and* relative (#395). A finished task's deadline is history, so it stays
          grey however late it was: red on a struck-through title is the loudest way to say
-         something that no longer matters. -->
-    <DueDate due={task.due_date} {today} muted={done} />
+         something that no longer matters — and its note is the day it was finished, not a
+         count of days that has stopped meaning anything. -->
+    <DueDate due={task.due_date} {today} muted={done} completedAt={task.completed_at} />
     {#each faces.slice(0, 3) as { link, member } (link.user_id)}
       <Avatar
         name={member?.full_name}
@@ -251,6 +256,11 @@
           .map(({ member }) => member?.full_name || member?.email)
           .join(", ")}>+{faces.length - 3}</span
       >
+    {/if}
+    <!-- A task held by a client contact (#273) has no roster face; the person still gets one
+         (#453), or "who is on this" reads as nobody on every board, panel and widget. -->
+    {#if task.assignee_contact_name}
+      <Avatar name={task.assignee_contact_name} email={null} avatarUrl={null} size="sm" />
     {/if}
   </div>
 </div>

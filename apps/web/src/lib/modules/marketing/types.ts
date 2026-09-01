@@ -19,6 +19,14 @@ export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking" | "rankmath";
  * same one, and two copies of an order is how a sixth source lands in one place and not the other.
  */
 export const ALL_SOURCES: MarketingSource[] = ["ga4", "gsc", "gads", "seranking", "rankmath"];
+/** The sources a tenant may name for clients (#446) — every one the dashboard can draw. */
+export const PORTAL_LABEL_SOURCES: MarketingSource[] = [
+  "ga4",
+  "gsc",
+  "gads",
+  "seranking",
+  "rankmath",
+];
 
 /** Sources whose credential is an org-level API key, not the shared Google consent. */
 export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
@@ -146,7 +154,12 @@ export interface SourceMetrics {
   /** Whose Google connection syncs this source (`null` once that connection is gone). */
   connection_owner: ConnectionOwner | null;
   currency: string | null;
+  /** The vendor console. Empty for a portal login (#447) — never drawn without one. */
   deep_link: string;
+  /** What *this reader* calls the source (#446): set for a portal login (the tenant's own
+   *  client-facing name, else a vendor-free default), `null` for staff, who read the product
+   *  name. Consumers print `label ?? sourceLabel(source)`. */
+  label?: string | null;
   primary_metric: string;
   kpis: Record<string, KpiValue>;
   series: SeriesData;

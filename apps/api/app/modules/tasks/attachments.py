@@ -21,7 +21,7 @@ async def on_file_event(ctx: EmitContext, payload: dict[str, Any]) -> None:
     task = await ctx.repo(Task).get(payload["entity_id"])
     if task is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
-    action = "attachment_added" if payload["action"] == "attached" else "attachment_deleted"
+    action = _ACTIONS[payload["action"]]
     actor = ctx.user
     # An attachment can be added through an impersonated session too (#296); ``getattr`` because
     # a ``SystemContext`` has no such field.
@@ -38,7 +38,23 @@ async def on_file_event(ctx: EmitContext, payload: dict[str, Any]) -> None:
                 (impersonator.full_name or impersonator.email) if impersonator else None
             ),
             action=action,
-            payload={"filename": payload.get("filename")},
+            payload={
+                "filename": payload.get("filename"),
+                **(
+                    {"client_visible": payload["client_visible"]}
+                    if "client_visible" in payload
+                    else {}
+                ),
+            },
         )
     )
     await ctx.session.flush()
+
+
+_ACTIONS = {
+    "attached": "attachment_added",
+    "removed": "attachment_deleted",
+    # Showing a client a screenshot is a change to what the client reads (#193's rule that a
+    # task's visibility is the agency's decision, one level down), so the trail records it.
+    "visibility": "attachment_visibility_changed",
+}

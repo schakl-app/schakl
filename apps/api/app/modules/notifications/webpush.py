@@ -392,6 +392,7 @@ async def dispatch_webpush_deliveries(session, org) -> None:  # noqa: ANN001
         _backoff_ready,
         _due,
         _settle,
+        _still_active,
         build_digest_message,
     )
 
@@ -413,6 +414,11 @@ async def dispatch_webpush_deliveries(session, org) -> None:  # noqa: ANN001
 
     for user_id, items in groups.items():
         ready = [pair for pair in items if _backoff_ready(pair[0], now)]
+        if not ready:
+            continue
+        # A phone is an inbox too: a notification read/resolved in-app before its push slot is no
+        # longer news, so drop it and, if the bundle is emptied, buzz nobody (#170).
+        ready = _still_active(ready)
         if not ready:
             continue
 

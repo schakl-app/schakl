@@ -49,9 +49,14 @@
   const canDelete = $derived(!!deletePermission && can(page.data.user, deletePermission));
   const count = $derived(selected.length);
 
-  /** A count beside a label, only when the action is doing less than the selection suggests. */
+  /**
+   * A count beside a label, whenever the action is doing something other than what the selection
+   * suggests: fewer, because some rows are ineligible — or **more**, because a ticked row stands
+   * for several (the interactions queue folds a thread to one row, and approving it approves
+   * the thread). Either way the number a button prints has to be the number it will act on.
+   */
   const partial = (eligible: number | undefined) =>
-    eligible !== undefined && eligible < count ? ` (${eligible})` : "";
+    eligible !== undefined && eligible !== count ? ` (${eligible})` : "";
 
   const button =
     "inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg" +

@@ -12,6 +12,8 @@ from the hostname alone — and reaches *only* rows tagged with a public entity 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import io
 import logging
 import re
@@ -21,12 +23,13 @@ from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 
+from app.config import settings
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.scope import entity_visible
 from app.core.storage.backend import StorageUnavailableError, storage_for
 from app.core.storage.models import StoredFile
-from app.core.storage.schemas import StoredFileRead
-from app.core.storage.service import PUBLIC_ENTITY_TYPES, FileService
+from app.core.storage.schemas import InlineUpload, StoredFileRead, StoredFileUpdate
+from app.core.storage.service import PUBLIC_ENTITY_TYPES, FileService, check_upload
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -146,6 +149,81 @@ async def upload_file(
     return StoredFileRead.model_validate(stored)
 
 
+@router.post(
+    "/inline",
+    response_model=StoredFileRead,
+    status_code=201,
+    dependencies=[require_permission("files.file.write")],
+)
+async def upload_file_inline(
+    body: InlineUpload,
+    ctx: RequestContext = Depends(require_context),
+) -> StoredFileRead:
+    """The same upload as ``POST /files``, carried as base64 inside a JSON body.
+
+    This is the route an MCP tool, an n8n node or any JSON-only automation can actually call
+    (docs/MCP.md): a generated tool sends a JSON document, and a ``multipart/form-data`` route
+    answers that with ``422 file: field required`` however the bytes were meant. Same
+    guardrails, same de-duplication, same activity line — only the envelope differs.
+    """
+    if body.entity_type and body.entity_id and not await entity_visible(
+        ctx, body.entity_type, body.entity_id
+    ):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    payload = body.data
+    # A ``data:image/png;base64,....`` URL is what a browser hands you for a pasted image and
+    # what a model tends to write; the prefix carries nothing the body does not already state.
+    if payload.startswith("data:"):
+        _, _, payload = payload.partition(",")
+    # Refuse by the *encoded* length before decoding: base64 is 4/3 of the bytes, so a body
+    # that cannot possibly fit under the ceiling never costs the decode — the same "check the
+    # cap before the work it bounds" rule the import parser follows (§17).
+    if len(payload) > settings.upload_max_bytes * 4 // 3 + 4:
+        raise AppError(
+            "validation",
+            "errors.upload_too_large",
+            status_code=413,
+            fields={"data": "errors.upload_too_large"},
+        )
+    try:
+        raw = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError):
+        raise AppError(
+            "validation",
+            "errors.invalid_base64",
+            status_code=422,
+            fields={"data": "errors.invalid_base64"},
+        ) from None
+    check_upload(body.content_type, len(raw))
+    stored = await FileService(ctx).create(
+        filename=body.filename,
+        content_type=body.content_type,
+        stream=io.BytesIO(raw),
+        size_bytes=len(raw),
+        entity_type=body.entity_type,
+        entity_id=body.entity_id,
+        client_visible=body.client_visible,
+    )
+    return StoredFileRead.model_validate(stored)
+
+
+@router.patch(
+    "/{file_id}",
+    response_model=StoredFileRead,
+    dependencies=[require_permission("files.file.write")],
+)
+async def update_file(
+    file_id: uuid.UUID,
+    body: StoredFileUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> StoredFileRead:
+    """Tick or untick "the client may see this" on one attachment (the model's
+    ``client_visible``). The only editable fact about a stored file: its bytes are immutable
+    by construction (content-addressed) and its name is what the uploader gave it."""
+    stored = await FileService(ctx).set_client_visible(file_id, body.client_visible)
+    return StoredFileRead.model_validate(stored)
+
+
 @router.get(
     "",
     response_model=list[StoredFileRead],
@@ -215,9 +293,104 @@ async def serve_file(
     ctx: RequestContext = Depends(require_context),
 ) -> Response:
     """Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup)."""
-    stored = await FileService(ctx).get_or_404(file_id)
+    service = FileService(ctx)
+    stored = await service.get_or_404(file_id)
     _company_horizon_guard(ctx, stored)
+    _portal_guard(service, stored)
     return await _file_response(stored, request, ctx=ctx)
+
+
+def _portal_guard(service: FileService, stored: StoredFile) -> None:
+    """A client-portal login reads an attachment on a task, project or company only when the
+    agency ticked it visible — 404, the same answer the list gives by leaving it out."""
+    if not service.portal_may_read(stored):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+
+
+#: Thumbnail long-edge sizes (px): a chip in an attachment strip, a card preview, a lightbox
+#: that still fits a laptop screen. A closed set, like ``_ICON_SIZES`` — this is a preview of
+#: a stored image, not a general-purpose resizing proxy.
+_THUMB_SIZES = frozenset({160, 480, 1200})
+#: Formats Pillow decodes and a browser draws inline; an SVG never (script), a PDF never (no
+#: raster to scale — the first page of a PDF is a different feature).
+_THUMB_SOURCE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
+
+
+def _thumbnail(data: bytes, size: int) -> tuple[bytes, str]:
+    """Scale an image down so its long edge is ``size`` px, keeping the aspect ratio.
+
+    A source smaller than that is re-encoded at its own size rather than blown up. Alpha stays
+    alpha (PNG); an opaque source comes back as JPEG, which is what makes a 4 MB screenshot a
+    30 kB chip. Animated GIFs lose their animation — a thumbnail is a still. Pillow work, so
+    callers run this in a thread; Pillow's own decompression-bomb ceiling stays in force.
+    """
+    from PIL import Image, ImageOps  # local import: Pillow loads only when a preview is asked for
+
+    with Image.open(io.BytesIO(data)) as source:
+        # Honour the EXIF orientation a phone camera writes, or every portrait photo lies down.
+        img = ImageOps.exif_transpose(source) or source
+        has_alpha = img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
+        )
+        img = img.convert("RGBA" if has_alpha else "RGB")
+        img.thumbnail((size, size), Image.LANCZOS)
+        out = io.BytesIO()
+        if has_alpha:
+            img.save(out, "PNG", optimize=True)
+            return out.getvalue(), "image/png"
+        img.save(out, "JPEG", quality=82, optimize=True, progressive=True)
+        return out.getvalue(), "image/jpeg"
+
+
+@router.get(
+    "/{file_id}/thumbnail",
+    dependencies=[
+        no_permission_required(
+            "same gate as fetching the file itself: any signed-in member, RLS-scoped row, "
+            "company horizon and portal visibility applied exactly as GET /files/{id}"
+        )
+    ],
+)
+async def serve_thumbnail(
+    file_id: uuid.UUID,
+    request: Request,
+    size: int = Query(default=480),
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """A scaled-down preview of a stored raster image, so an attachment strip shows the
+    screenshot rather than its filename and a client card shows the logo proof rather than a
+    paperclip. Computed on demand, cached by ETag: the same 304 economy as the original.
+
+    Only ``_THUMB_SIZES`` are served (anything else snaps to the nearest), only raster images
+    are scaled, and a file that is not one — or that Pillow cannot decode — answers the
+    original bytes, so an ``<img>`` still draws *something* rather than a broken icon.
+    """
+    service = FileService(ctx)
+    stored = await service.get_or_404(file_id)
+    _company_horizon_guard(ctx, stored)
+    _portal_guard(service, stored)
+    if stored.content_type not in _THUMB_SOURCE_TYPES:
+        return await _file_response(stored, request, ctx=ctx)
+    size = min(_THUMB_SIZES, key=lambda candidate: abs(candidate - size))
+    etag = f'"{stored.id}-t{size}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    raw = await asyncio.to_thread((await _open_stored(stored, ctx)).read)
+    try:
+        body, media_type = await asyncio.to_thread(_thumbnail, raw, size)
+    except Exception:  # noqa: BLE001 — a bad image degrades to the original, never a 500
+        logger.warning("thumbnail for %s could not be rendered; serving original", stored.id)
+        return await _file_response(stored, request, ctx=ctx)
+    return Response(
+        body,
+        media_type=media_type,
+        headers={
+            "ETag": etag,
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+        },
+    )
 
 
 def _company_horizon_guard(ctx: RequestContext, stored: StoredFile) -> None:

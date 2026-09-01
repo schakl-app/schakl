@@ -80,7 +80,9 @@ async def test_kinds_follow_the_org_modules(client_for) -> None:
         )
         assert switched.status_code == 200, switched.text
         body = (await c.get("/api/v1/settings/email/templates", headers=headers)).json()
-        assert [k["key"] for k in body["kinds"]] == ["invite", "reset"]
+        # Core's two, plus the one the still-enabled tasks module sends to a client (#454);
+        # invoicing's three are gone with the module.
+        assert [k["key"] for k in body["kinds"]] == ["invite", "reset", "tasks.assigned_contact"]
         refused = await c.put(
             "/api/v1/settings/email/templates",
             json={"kind": "invoicing.invoice", "locale": "nl", "subject": "x"},

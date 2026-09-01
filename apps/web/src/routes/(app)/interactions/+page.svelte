@@ -60,6 +60,8 @@
     kindIcon,
     kindLabel,
     localDay,
+    participantNames,
+    reviewIds,
     withBody,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
@@ -273,6 +275,14 @@
    * page where three of them are threads.
    */
   const messageCount = (item: InteractionItem) => item.conversation_count ?? 1;
+  /** The badge's words: on the queue a fold is what still waits, on the timeline what was said. */
+  const countText = (item: InteractionItem) =>
+    tn(
+      item.status === "pending"
+        ? "interactions.thread_pending_count"
+        : "interactions.conversation_count",
+      messageCount(item),
+    );
 
   /**
    * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
@@ -303,13 +313,16 @@
   let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const selectedItems = $derived(items.filter((item) => bulkSelected.includes(item.id)));
+  // A ticked row on the queue is a folded conversation, so the ids the batch is handed are the
+  // thread's (`reviewIds`): one tick, every waiting message of it. The bar's count says how many
+  // messages that is, and the API still refuses per row whatever it refuses.
   const bulkFilableIds = $derived(
-    selectedItems.filter((item) => isGmailRow(item) && isOwner(item)).map((item) => item.id),
+    selectedItems.filter((item) => isGmailRow(item) && isOwner(item)).flatMap(reviewIds),
   );
   const bulkPendingIds = $derived(
     selectedItems
       .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
-      .map((item) => item.id),
+      .flatMap(reviewIds),
   );
   /**
    * The rows a delete would actually remove — `mayDelete`, which is the API's own rule, over
@@ -791,6 +804,7 @@
 {/if}
 
 {#snippet subjectCell(item: InteractionItem)}
+  {@const who = reviewIds(item).length > 1 ? participantNames(item) : null}
   <span class="block min-w-0">
     <span class="flex items-center gap-2">
       <span class="truncate font-medium text-text">
@@ -799,14 +813,12 @@
       {#if (item.conversation_count ?? 1) > 1}
         <!-- The email folds a conversation (#272): a small message-count badge. -->
         <span
-          title={tn("interactions.conversation_count", item.conversation_count ?? 1)}
+          title={countText(item)}
           class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
         >
           <Mail size={10} aria-hidden="true" />
           {item.conversation_count}
-          <span class="sr-only"
-            >{tn("interactions.conversation_count", item.conversation_count ?? 1)}</span
-          >
+          <span class="sr-only">{countText(item)}</span>
         </span>
       {/if}
       {#if item.status === "pending" && !reviewing}
@@ -821,12 +833,20 @@
         </span>
       {/if}
     </span>
-    {#if item.snippet}
+    {#if who?.names.length || item.snippet}
       <!-- A teaser, not the mail (#263): Gmail's snippet arrives HTML-escaped and two hundred
            characters long, so it is decoded and cut at a word boundary before `truncate` ever
-           gets to fit it to the column. -->
+           gets to fit it to the column. A folded queue row stands for a conversation, so its
+           line says who it is with before what was last said — the newest message's snippet
+           alone reads as one message, which is the thing the fold exists to stop. -->
       <span class="mt-0.5 block truncate text-xs text-text-muted">
-        {snippetPreview(item.snippet)}
+        {#if who?.names.length}
+          <span class="text-text"
+            >{who.names.join(", ")}{#if who.more > 0}
+              {t("interactions.linked_more", { count: who.more })}{/if}</span
+          >{#if item.snippet}&nbsp;·&nbsp;{/if}
+        {/if}
+        {#if item.snippet}{snippetPreview(item.snippet)}{/if}
       </span>
     {/if}
   </span>
@@ -911,14 +931,12 @@
         </span>
         {#if (item.conversation_count ?? 1) > 1}
           <span
-            title={tn("interactions.conversation_count", item.conversation_count ?? 1)}
+            title={countText(item)}
             class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
           >
             <Mail size={10} aria-hidden="true" />
             {item.conversation_count}
-            <span class="sr-only"
-              >{tn("interactions.conversation_count", item.conversation_count ?? 1)}</span
-            >
+            <span class="sr-only">{countText(item)}</span>
           </span>
         {/if}
         {#if item.status === "pending" && !reviewing}
@@ -1119,6 +1137,13 @@
         <input type="checkbox" name="suppress_thread" value="1" />
         {t("interactions.reject_thread")}
       </label>
+      {#if reviewIds(rejecting).length > 1}
+        <!-- Ignoring the conversation takes the rest of the queue for it along: said here,
+             because a checkbox that quietly does more than its label is a broken control. -->
+        <p class="pl-6 text-xs text-text-muted">
+          {tn("interactions.reject_thread_pending", reviewIds(rejecting).length - 1)}
+        </p>
+      {/if}
       <div class="flex justify-end gap-2">
         <button
           type="button"

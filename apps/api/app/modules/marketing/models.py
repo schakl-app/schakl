@@ -266,3 +266,11 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: ``per_website``: one named block per property inside each section, because that is the
     #: only answer that never quietly adds together two things a reader would have kept apart.
     report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: What a **client** is told each source is called (#446), ``{source: label}``. The vendor's
+    #: name is the agency's supplier and not the client's business — "SE Ranking" on a client's
+    #: dashboard is a name they never chose and a login they do not hold — so a portal login
+    #: reads this label where a colleague reads the product name. Absent means the code's own
+    #: vendor-free default for a keyed source and the product name for a Google source (the
+    #: client's own account, which they know by that name). Never "Breik. Analytics" in code:
+    #: the brand is the tenant's (§2, rule 4), so the tenant types it here.
+    portal_source_labels: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

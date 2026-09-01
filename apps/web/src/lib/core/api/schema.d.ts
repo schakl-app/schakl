@@ -2198,6 +2198,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files/inline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload File Inline
+         * @description The same upload as ``POST /files``, carried as base64 inside a JSON body.
+         *
+         *     This is the route an MCP tool, an n8n node or any JSON-only automation can actually call
+         *     (docs/MCP.md): a generated tool sends a JSON document, and a ``multipart/form-data`` route
+         *     answers that with ``422 file: field required`` however the bytes were meant. Same
+         *     guardrails, same de-duplication, same activity line — only the envelope differs.
+         */
+        post: operations["upload_file_inline_api_v1_files_inline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/{file_id}": {
         parameters: {
             query?: never;
@@ -2219,7 +2244,13 @@ export interface paths {
         delete: operations["delete_file_api_v1_files__file_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update File
+         * @description Tick or untick "the client may see this" on one attachment (the model's
+         *     ``client_visible``). The only editable fact about a stored file: its bytes are immutable
+         *     by construction (content-addressed) and its name is what the uploader gave it.
+         */
+        patch: operations["update_file_api_v1_files__file_id__patch"];
         trace?: never;
     };
     "/api/v1/files/{file_id}/public": {
@@ -2242,6 +2273,32 @@ export interface paths {
          *     a degraded icon rather than a broken install.
          */
         get: operations["serve_public_file_api_v1_files__file_id__public_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Thumbnail
+         * @description A scaled-down preview of a stored raster image, so an attachment strip shows the
+         *     screenshot rather than its filename and a client card shows the logo proof rather than a
+         *     paperclip. Computed on demand, cached by ETag: the same 304 economy as the original.
+         *
+         *     Only ``_THUMB_SIZES`` are served (anything else snaps to the nearest), only raster images
+         *     are scaled, and a file that is not one — or that Pillow cannot decode — answers the
+         *     original bytes, so an ``<img>`` still draws *something* rather than a broken icon.
+         */
+        get: operations["serve_thumbnail_api_v1_files__file_id__thumbnail_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20565,6 +20622,33 @@ export interface components {
             /** Row */
             row: number;
         };
+        /**
+         * InlineUpload
+         * @description A file carried **inside a JSON body** rather than as a multipart part.
+         *
+         *     The multipart route is the right one for a browser, and the wrong one for everything the
+         *     generated MCP surface and a JSON-only automation can send (docs/MCP.md): a tool call is a
+         *     JSON document, so a route whose body is ``multipart/form-data`` answers every agent with
+         *     ``422 file: field required``. Base64 costs a third more bytes and buys a file any JSON
+         *     client can post — the shape Gmail, Drive and every other JSON API use for the same reason.
+         */
+        InlineUpload: {
+            /**
+             * Client Visible
+             * @default false
+             */
+            client_visible: boolean;
+            /** Content Type */
+            content_type: string;
+            /** Data */
+            data: string;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Filename */
+            filename: string;
+        };
         /** InstanceApiKeyCreate */
         InstanceApiKeyCreate: {
             /** Expires At */
@@ -20724,6 +20808,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Whole Thread
+             * @default false
+             */
+            whole_thread: boolean;
         };
         /**
          * InteractionBulkApprove
@@ -21038,6 +21127,8 @@ export interface components {
             project_id?: string | null;
             /** Project Name */
             project_name?: string | null;
+            /** Review Ids */
+            review_ids?: string[];
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];
@@ -22887,6 +22978,10 @@ export interface components {
              * @default false
              */
             env_ads_token_configured: boolean;
+            /** Portal Source Labels */
+            portal_source_labels?: {
+                [key: string]: string;
+            };
             rankings?: components["schemas"]["RankingSettingsRead"];
             report?: components["schemas"]["ReportSplitSettingsRead"];
             /**
@@ -22900,6 +22995,10 @@ export interface components {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
+            /** Portal Source Labels */
+            portal_source_labels?: {
+                [key: string]: string;
+            } | null;
             rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             report?: components["schemas"]["ReportSplitSettingsWrite"] | null;
             /** Seranking Api Key */
@@ -27909,6 +28008,8 @@ export interface components {
             kpis?: {
                 [key: string]: components["schemas"]["KpiValue"];
             };
+            /** Label */
+            label?: string | null;
             /** Last Error */
             last_error?: string | null;
             /** Last Synced At */
@@ -28078,6 +28179,11 @@ export interface components {
         StoredFileRead: {
             /** Backend */
             backend: string;
+            /**
+             * Client Visible
+             * @default false
+             */
+            client_visible: boolean;
             /** Content Id */
             content_id?: string | null;
             /** Content Type */
@@ -28109,6 +28215,14 @@ export interface components {
             size_bytes: number;
             /** Storage Key */
             storage_key: string;
+        };
+        /**
+         * StoredFileUpdate
+         * @description The one editable fact about a stored file: whether the client may read it.
+         */
+        StoredFileUpdate: {
+            /** Client Visible */
+            client_visible: boolean;
         };
         /** SubscriptionCreate */
         SubscriptionCreate: {
@@ -28848,6 +28962,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -28961,6 +29077,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -29159,6 +29277,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
+            /** Assignee Contact Name */
+            assignee_contact_name?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -29945,6 +30065,8 @@ export interface components {
         TimeEntryDraftPayload: {
             /** Billable */
             billable?: boolean | null;
+            /** Billable Touched */
+            billable_touched?: boolean | null;
             /** Break Minutes */
             break_minutes?: number | null;
             /** Company Id */
@@ -37325,6 +37447,39 @@ export interface operations {
             };
         };
     };
+    upload_file_inline_api_v1_files_inline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InlineUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     serve_file_api_v1_files__file_id__get: {
         parameters: {
             query?: never;
@@ -37385,12 +37540,80 @@ export interface operations {
             };
         };
     };
+    update_file_api_v1_files__file_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredFileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     serve_public_file_api_v1_files__file_id__public_get: {
         parameters: {
             query?: {
                 size?: number | null;
                 maskable?: boolean;
                 bg?: string;
+            };
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_thumbnail_api_v1_files__file_id__thumbnail_get: {
+        parameters: {
+            query?: {
+                size?: number;
             };
             header?: never;
             path: {
@@ -54871,6 +55094,8 @@ export interface operations {
                 assignee_contact_id?: string | null;
                 /** @description A configured status key */
                 status?: string | null;
+                /** @description Only tasks in a non-terminal status — the working set, any status key */
+                open?: boolean;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week" | "later") | null;
                 /** @description Deadline window start (the Agenda feed) */

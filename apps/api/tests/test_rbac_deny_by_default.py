@@ -56,6 +56,8 @@ _EXEMPT_OPERATIONS = frozenset(
         # Any signed-in member may fetch their tenant's files (#123); the row is RLS-scoped,
         # so a random id 404s here rather than 403s.
         ("get", "/api/v1/files/{file_id}"),
+        # A scaled preview of the same bytes: the same gate, the same 404 on a random id.
+        ("get", "/api/v1/files/{file_id}/thumbnail"),
         # Listing is the same exposure as fetching each one; filtered to one entity, RLS-scoped.
         ("get", "/api/v1/files"),
         # The code-defined impex registry (which entities support CSV) — no tenant data; each

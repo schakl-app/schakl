@@ -92,6 +92,48 @@ The sweep holds the blob's row lock **across** the byte delete. A background job
 the race: a concurrent write either wins the lock and clears the stamp (the sweep re-reads it
 and skips), or waits, finds the row gone, and reserves a fresh blob it is then told to upload.
 
+## Attachments on a record: images, the JSON upload, and the client's view
+
+The generic upload (`POST /files?entity_type=…&entity_id=…`) hangs a file off a **task, a
+project or a client**, and the first year of it taught four things (the image-attachment
+research task, where a screenshot on a task took three steps through Drive).
+
+**A browser uploads multipart; nothing else can.** The generated MCP tools and every JSON-only
+automation send a JSON document, and a `multipart/form-data` route answers that with
+`422 file: field required` however the bytes were meant. So `POST /files/inline` carries the same
+upload as base64 inside JSON — same guardrails, same de-duplication, same activity line — and the
+multipart routes are **off the MCP surface by method** (`core/mcp/server.py`, `_ROUTE_MAPS`): a
+tool that can only refuse is worse than no tool (#253). The size ceiling is checked on the
+*encoded* length before the decode, the "check the cap before the work it bounds" rule §17
+already states for the import parser.
+
+**An image is shown, not spelled out.** `GET /files/{id}/thumbnail?size=160|480|1200` scales a
+raster down (long edge, aspect kept, EXIF orientation honoured, alpha kept as PNG, opaque as
+JPEG) on demand and caches it by ETag exactly like the original. A closed size set, like the app
+icons — this is a preview, never a general resizing proxy — and a file that is not a raster
+(a PDF, an SVG, a decode failure) answers the original bytes so an `<img>` still draws
+something. The **original is kept untouched**: a screenshot is evidence, and re-encoding at
+upload would trade a few megabytes on the volume for a fact nobody can get back. Compression is
+the thumbnail's job, and 10 MB stays the ceiling.
+
+**A client reads an attachment only when the agency says so.** `files.client_visible` is a
+per-file bit, off by default, mirrored on `Task.visible_to_client` one level down: a client who
+may see the task must not thereby see every screenshot the team pinned to it. It is applied on
+**every path** — the list, the bytes and the thumbnail — for a portal login
+(`ctx.is_portal`, #274) on the three attachment hosts (`PORTAL_GATED_ENTITY_TYPES`), and on
+nothing else: a report's PDF is gated by `reporting`, an avatar by nobody, and a closed set is
+what keeps this from ever meaning "everything but". The task page used to hide the strip with
+`!isPortal` while the API served the files to anyone who could see the task — the shape
+docs/UX.md warns about, and the reason the bit lives in the API. Flipping it is
+`PATCH /files/{id}` on `files.file.write`, and the record's trail says who showed the client
+what. The migration is additive (`NOT NULL DEFAULT false`), so an upgrade hides every existing
+attachment from the portal rather than guessing.
+
+**Documents are a core panel on the company hub** (`core/storage/panels.py`,
+`files.documents`), beside the activity trail, for the same reason: storing a file against a
+record is a platform capability. Tasks and projects keep their own strip; all three post through
+one set of host actions (`$lib/core/files/actions.server`).
+
 ## There is no refcount column
 
 The `files` rows *are* the reference count. A maintained counter would drift under an org

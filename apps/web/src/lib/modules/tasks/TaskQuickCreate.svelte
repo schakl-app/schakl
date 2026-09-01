@@ -21,10 +21,11 @@
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
-  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+
+  import TaskAssigneePicker from "./TaskAssigneePicker.svelte";
 
   let {
     open = $bindable(false),
@@ -79,6 +80,35 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // The client's contacts (#453), so a task can be *for* the client from the dialog rather than
+  // only from the task's own edit mode. Fetched when the dialog opens with a client pinned —
+  // the majority of opens (no client, or a colleague's task) never pay for it — and the same
+  // endpoint the task page reads in edit mode. Read-only callers (a client's own portal login)
+  // get an empty list and the picker stays employee-only, exactly as it was.
+  let contacts = $state<{ id: string; name: string }[]>([]);
+  let contactsFor = $state<string>("");
+  $effect(() => {
+    if (!open || !companyId || companyId === contactsFor) return;
+    const target = companyId;
+    void (async () => {
+      const response = await fetch(`/api/v1/contacts?limit=200&company_id=${target}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+      }
+      const rows: ContactRow[] = (await response.json()).items ?? [];
+      contacts = rows.map((c) => ({
+        id: c.id,
+        name: [c.first_name, c.last_name].filter(Boolean).join(" "),
+      }));
+      contactsFor = target;
+    })();
+  });
 </script>
 
 <Modal bind:open title={t("tasks.new")}>
@@ -119,11 +149,20 @@
         <DateInput name="due_date" id="qc-task-due" required />
       </div>
       <!-- Guarded on the roster, not on the opening list: a picker whose every option sits
-           behind the search is still a picker, and hiding it would take the search with it. -->
-      {#if members.length > 0}
+           behind the search is still a picker, and hiding it would take the search with it.
+           Employees, or — when the task has a client (#273/#453) — one of that client's
+           contacts: the same control the task page draws, posting `assignees` and
+           `assignee_contact_id` so the caller's body builder never has to guess which. -->
+      {#if members.length > 0 || contacts.length > 0}
         <div>
           <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.assignees")}</span>
-          <AssigneePicker {members} value={assignees} id="qc-task-assignees" />
+          <TaskAssigneePicker
+            employees={members}
+            {contacts}
+            contactsEnabled={!!companyId && contacts.length > 0}
+            {assignees}
+            id="qc-task-assignee"
+          />
         </div>
       {/if}
       {#if refusal ?? error}

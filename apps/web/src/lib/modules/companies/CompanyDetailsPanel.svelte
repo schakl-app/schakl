@@ -36,7 +36,7 @@
   import { formatPhone } from "$lib/core/phone";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import Markdown from "$lib/core/ui/Markdown.svelte";
+  import InlineText from "$lib/core/ui/InlineText.svelte";
   import PanelHeader from "$lib/core/ui/PanelHeader.svelte";
   import { toastSuccess } from "$lib/core/ui/toast.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
@@ -239,13 +239,24 @@
       </dd>
     </div>
 
-    {#if notes}
+    <!-- Edited in place (#455): notes are the one field on a client that changes between two
+         phone calls, and they used to live only inside the slide-over behind every other
+         field. Posts `notes` alone to `?/update`; drawn for a reader only when there is text. -->
+    {#if notes || onedit}
       <div class="sm:col-span-2">
         <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
           {t("companies.notes")}
         </dt>
         <dd class="mt-1 text-sm text-text">
-          <Markdown value={notes} />
+          <InlineText
+            name="notes"
+            value={notes ?? ""}
+            placeholder={t("companies.notes_placeholder")}
+            canEdit={!!onedit}
+            rows={3}
+            scope={{ companyId }}
+            id="company-notes-inline"
+          />
         </dd>
       </div>
     {/if}

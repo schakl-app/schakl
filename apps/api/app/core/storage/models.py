@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -97,6 +97,14 @@ class StoredFile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: from, and its mere presence is what keeps the logo out of the attachment chips on every
     #: message. ``GET /files`` hides these unless asked.
     content_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: May a **client-portal** login read this file? Mirrors ``Task.visible_to_client``, one
+    #: level down: a client who may see the task must not thereby see every screenshot the
+    #: team pinned to it. Off by default; only meaningful on the attachment hosts (task,
+    #: project, company) — a document the record *is* (a report's PDF, an invoice) is gated by
+    #: its own module, and a person's avatar by nothing at all. See ``service.PORTAL_GATED``.
+    client_visible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

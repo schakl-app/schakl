@@ -351,7 +351,13 @@ export const interactionActions = {
     // comparison naming one of them silently posts `false` for the other (CLAUDE.md §10).
     const body =
       form.get("assign") === "1"
-        ? { ...linkBody(form), enrich_task: checked(form, "enrich_task") }
+        ? {
+            ...linkBody(form),
+            enrich_task: checked(form, "enrich_task"),
+            // The thread's other waiting messages, with these same links (the queue folds a
+            // thread to the row this approve was opened from). Presence, like its siblings.
+            whole_thread: checked(form, "whole_thread"),
+          }
         : undefined;
     const api = apiFor(event);
     const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {
@@ -371,6 +377,63 @@ export const interactionActions = {
       if (closeError) {
         return fail(400, { error: apiErrorKey(closeError).key, approvedButCloseFailed: true });
       }
+    }
+    // The review dialog made this task while reading this message (`review_task=1`), so the
+    // reviewer's next act is checking it: hand the id back and the dialog opens the task for
+    // review beside the message, rather than redirecting onto its page and losing the inbox
+    // and the e-mail both. Not a redirect any more, so the close above needs no ordering rule.
+    if (form.get("review_task") === "1" && task_id) {
+      return { ok: true, reviewTaskId: task_id };
+    }
+    return { ok: true };
+  },
+
+  /**
+   * The review slide-over's save (`TaskReviewDialog`): the task's defining fields, patched
+   * through the task's own endpoint with exactly what the form carried — partial, like every
+   * update action here. The roster and the due-date rules mirror the task page's `update`:
+   * `assignees` is one JSON field or absent, an emptied deadline is refused before the API
+   * says the same less clearly, and a later deadline carries its reason.
+   */
+  updateReviewTask: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const task_id = String(form.get("task_id") ?? "").trim();
+    if (!task_id) return fail(400, { error: "errors.required" });
+    if (form.has("title") && !String(form.get("title") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
+    if (form.has("due_date") && !String(form.get("due_date") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
+    const body: Record<string, unknown> = {};
+    for (const field of [
+      "title",
+      "description",
+      "project_id",
+      "assignee_contact_id",
+      "due_date",
+      "due_change_reason",
+    ]) {
+      if (form.has(field)) {
+        const raw = String(form.get(field) ?? "").trim();
+        body[field] = raw || null;
+      }
+    }
+    const assignees = parseAssignees(form.get("assignees"));
+    if (assignees !== undefined) body.assignees = assignees;
+    const { error } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+      params: { path: { task_id } },
+      body,
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, {
+        error:
+          e.fields?.due_change_reason ??
+          e.fields?.due_date ??
+          e.fields?.assignee_contact_id ??
+          e.key,
+      });
     }
     return { ok: true };
   },

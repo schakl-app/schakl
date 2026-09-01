@@ -54,8 +54,19 @@ async def _projects_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict
                 "id": str(p.id),
                 "name": p.name,
                 "status": p.status,
-                "billable_default": p.billable_default,
-                "budget_hours": float(p.budget_hours) if p.budget_hours is not None else None,
+                # The agency's economics stay off a client's hub (#449): the hour budget and
+                # whether the work bills by default are what the agency agreed with itself,
+                # and the router's `_read` blanks the same fields on every other project read.
+                **(
+                    {}
+                    if ctx.is_portal
+                    else {
+                        "billable_default": p.billable_default,
+                        "budget_hours": (
+                            float(p.budget_hours) if p.budget_hours is not None else None
+                        ),
+                    }
+                ),
             }
             for p in projects
         ],

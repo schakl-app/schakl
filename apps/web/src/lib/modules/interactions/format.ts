@@ -110,7 +110,49 @@ export interface InteractionItem {
   /** How many messages this conversation folds — a badge shows only when it is > 1, and it
    *  decides whether the detail modal fetches the full thread. Defaults to 1. */
   conversation_count?: number;
+  /**
+   * The still-unreviewed messages this row stands for in the viewer's own mailbox — its whole
+   * pending Gmail thread, oldest first, itself included. The review queue folds a thread to one
+   * row exactly as the timeline folds a logged conversation, and this is what a thread-level
+   * approve / file / reject acts on. Empty on a logged or manual row.
+   */
+  review_ids?: string[];
   deep_link: string | null;
+}
+
+/**
+ * What a review acts on when it acts on this row: a pending row's whole pending thread, or the
+ * row itself. Every bulk selection expands through this, so ticking one folded row on the queue
+ * approves, files or rejects the conversation it stands for — which is what the row says it is.
+ */
+export function reviewIds(item: InteractionItem): string[] {
+  return item.status === "pending" && item.review_ids?.length ? item.review_ids : [item.id];
+}
+
+/**
+ * Who a folded conversation is with, for the queue row: the outside addresses (a colleague on
+ * Cc is not who a thread is *with*), by name where the header carried one, deduplicated, three
+ * at most — the rest are counted so a long Cc list reads as "+4" rather than a second line.
+ *
+ * "Outside" is decided by the contact match before the member match: a client's contact person
+ * with a portal login resolves as *both* (the member pass joins every membership, the `client`
+ * role's included), and a person the CRM files as a contact is who the thread is with whether
+ * or not they can sign in.
+ */
+export function participantNames(
+  item: InteractionItem,
+  max = 3,
+): { names: string[]; more: number } {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const p of item.participants ?? []) {
+    if (p.user_id && !p.contact_id) continue;
+    const key = p.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(p.name || p.email);
+  }
+  return { names: names.slice(0, max), more: Math.max(0, names.length - max) };
 }
 
 /**

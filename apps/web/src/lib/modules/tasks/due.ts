@@ -186,3 +186,27 @@ export function dueDistance(due: string, today: string): { key: string; count: n
   }
   return { key: "tasks.due.rel.in_days", count: days };
 }
+
+/** What is printed beside a deadline: a distance, or — on a finished task — the day it was done. */
+export type DueNote = { key: string; count: number } | { key: string; on: string };
+
+/**
+ * The note beside a deadline, for a task that may already be finished.
+ *
+ * `dueDistance` is a claim about *today*: "3 dagen te laat" says the work is still owed. On a
+ * finished task that sentence is false the day it is completed and gets one day falser every
+ * morning after — a task closed in March read *142 dagen te laat* in August, on a row whose title
+ * was struck through. What the reader wants to know about finished work is *when* it was finished,
+ * so a done task's note is its completion day (`completed_at`, an instant the caller formats in
+ * the tenant's zone), and a done row whose shape carries no `completed_at` says nothing rather
+ * than something wrong.
+ */
+export function dueNote(
+  due: string,
+  today: string,
+  done: boolean,
+  completedAt?: string | null,
+): DueNote | null {
+  if (done) return completedAt ? { key: "tasks.due.rel.completed", on: completedAt } : null;
+  return dueDistance(due, today);
+}

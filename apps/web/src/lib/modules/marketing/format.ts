@@ -16,10 +16,24 @@ import { t } from "$lib/core/i18n";
 import type { CompareWindow, ComparePeriod } from "./types";
 
 const MONEY_METRICS = new Set(["cost", "totalRevenue", "conversionsValue"]);
+/** The sources whose vendor a client is not told about by default (#446): the keyed ones. */
+const PORTAL_NEUTRAL_SOURCES = new Set(["seranking", "rankmath"]);
 const PERCENT_METRICS = new Set(["ctr", "engagementRate"]);
 
 export function sourceLabel(source: string): string {
   return t(`marketing.source.${source}`);
+}
+
+/**
+ * What a client sees a source called when the tenant has not named it (#446) — the same rule
+ * the API applies (`portal_source_label`): a keyed source is named for what it measures, a
+ * Google source for the product the client already knows. Printed as the settings field's
+ * placeholder only; the portal itself reads the API's resolved `label`.
+ */
+export function portalDefaultLabel(source: string): string {
+  return PORTAL_NEUTRAL_SOURCES.has(source)
+    ? t(`marketing.source.portal.${source}`)
+    : sourceLabel(source);
 }
 
 export function metricLabel(key: string): string {

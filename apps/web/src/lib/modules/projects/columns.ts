@@ -12,6 +12,8 @@ export const PROJECTS_TABLE_ID = "projects";
 
 /** The derived budget column; its presence is what makes the list pay for the aggregate. */
 export const HOURS_COLUMN = "hours";
+/** The columns a client-portal login is never drawn (#449): the API blanks these fields. */
+export const STAFF_COLUMNS = new Set([HOURS_COLUMN, "budget_hours"]);
 
 // Every non-primary column states a width, because the table is `table-fixed`: an undeclared
 // one is not "as wide as it needs", it is an equal share of the slack the primary column is

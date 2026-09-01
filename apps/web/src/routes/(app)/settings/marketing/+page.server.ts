@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -33,11 +34,20 @@ export const actions: Actions = {
     // read by presence (`checked`), never against a literal — a control that posts "true" and a
     // check for "on" is the silent-false bug this codebase has already paid for once.
     const source = String(form.get("rankings_source") ?? "");
+    // Every source the form draws is posted (#446): an empty value clears that source back to
+    // the default on the API, and a source this form does not draw is left as stored.
+    const portal_source_labels = Object.fromEntries(
+      PORTAL_LABEL_SOURCES.map((key) => [
+        key,
+        String(form.get(`portal_label_${key}`) ?? "").trim(),
+      ]),
+    );
     const { error } = await apiFor(event).PUT("/api/v1/marketing/settings", {
       body: {
         ads_developer_token: token,
         seranking_api_key: seranking,
         default_compare,
+        portal_source_labels,
         rankings: {
           source: (["auto", "seranking", "search_console", "off"].includes(source)
             ? source

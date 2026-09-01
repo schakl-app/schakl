@@ -13,6 +13,7 @@ from app.core.activity import register_auditable
 from app.core.events import subscribe
 from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.bulk import TASK_BULK
+from app.modules.tasks.emails import TASK_EMAIL_KINDS, tasks_send_contact_assigned
 from app.modules.tasks.impex import TASK_IMPEX
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
@@ -35,6 +36,13 @@ module = ModuleDescriptor(
     impex=[TASK_IMPEX],
     bulk=[TASK_BULK],
     mcp_tools=TASK_MCP_TOOLS,
+    # The mail a client's contact gets when a task is assigned to them (#454): a mail the
+    # agency's client reads is theirs to reword (docs/EMAIL.md), so it is a kind here rather
+    # than a string in the service.
+    email_templates=TASK_EMAIL_KINDS,
+    # Enqueued by name from the assignment, sent by the worker with its own session — never
+    # inside the transaction that made the assignment.
+    worker_functions=[tasks_send_contact_assigned],
     # 04:00 UTC is early morning across European zones; the job resolves each org's own local
     # date itself (CLAUDE.md §8), so the cron hour only has to be early enough for all of them.
     cron_jobs=[
@@ -65,3 +73,4 @@ subscribe("subscription.activated", on_subscription_activated)
 # Document attachments (#123 follow-up): validate the target task, write its activity trail.
 subscribe("file.attached", on_file_event)
 subscribe("file.removed", on_file_event)
+subscribe("file.visibility_changed", on_file_event)

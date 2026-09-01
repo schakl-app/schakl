@@ -399,6 +399,21 @@ that never had the surface — #253's "a link that always refuses is a broken co
 refusal happens somewhere the app cannot see it. When either flag is false the AI-assistant
 option is still *shown*, and says which of the two is missing; it just is not a button.
 
+## A multipart route is not a tool, and its JSON twin is
+
+A generated tool sends its arguments as a JSON body. A route whose body is `multipart/form-data`
+— the generic file upload, a client's logo, an HR dossier document, an `.eml` upload — therefore
+answers every agent with `422 file: field required`, whatever the caller meant (the image-
+attachment research task found this the hard way: `upload_file`, `upload_document` and the Drive
+upload session all failed from MCP). Those routes are excluded from the surface **by method**
+(`_ROUTE_MAPS`, `methods=["POST"]`), so `GET /files` — the list — stays a tool while the multipart
+`POST` does not; `_becomes_a_tool(path, method)` reads the same maps, so the section counts agree.
+
+What an agent calls instead is `POST /files/inline` (`upload_file_inline`): the same upload as
+base64 inside JSON, same guardrails, same de-duplication, same activity line. It accepts a bare
+base64 string or a `data:` URL, and attaches to a task, project or client with `entity_type` /
+`entity_id` exactly as the multipart route does. `docs/STORAGE.md` has the rest.
+
 ## Design notes
 
 - **Read-first is a key-scope decision, not a server one.** CLAUDE.md §12's read-first rule

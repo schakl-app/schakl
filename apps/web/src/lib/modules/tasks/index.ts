@@ -14,6 +14,7 @@ import { SquareCheckBig } from "@lucide/svelte";
 import { localDayTime } from "./schedule";
 import TasksPanel from "./TasksPanel.svelte";
 import MyTasksWidget from "./MyTasksWidget.svelte";
+import PortalTasksWidget from "./PortalTasksWidget.svelte";
 import TasksByGroupWidget from "./TasksByGroupWidget.svelte";
 
 registerWebModule({
@@ -40,6 +41,40 @@ registerWebModule({
     },
   ],
   dashboardWidgets: [
+    {
+      // The client's homepage tile (#450): first on the board, because what is asked of the
+      // client is the one thing on it they are expected to act on. Two reads — "mine" resolved
+      // to the contact behind the session (#453), and the rest of the open work on the account
+      // minus those — so a task is never listed twice.
+      key: "tasks.portal",
+      module: "tasks",
+      audience: "portal",
+      position: 5,
+      requiresPermission: "tasks.task.read",
+      descriptionKey: "dashboard.widget_desc.tasks.portal",
+      category: "dashboard.category.tasks",
+      size: "lg",
+      load: async (api) => {
+        const [mine, open] = await Promise.all([
+          api.GET("/api/v1/tasks/dashboard-mine", { params: { query: { limit: 20 } } }),
+          api.GET("/api/v1/tasks", {
+            params: {
+              query: { open: true, limit: 20, sort: "due_date", meta: false, count: true },
+            },
+          }),
+        ]);
+        const mineItems = mine.data?.items ?? [];
+        const mineIds = new Set(mineItems.map((item) => item.id));
+        const others = (open.data?.items ?? []).filter((item) => !mineIds.has(item.id));
+        return {
+          mine: mineItems,
+          mineTotal: mine.data?.total ?? mineItems.length,
+          others,
+          othersTotal: Math.max(0, (open.data?.total ?? others.length) - mineItems.length),
+        };
+      },
+      component: PortalTasksWidget,
+    },
     {
       key: "tasks.my_open",
       module: "tasks",

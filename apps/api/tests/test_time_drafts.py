@@ -65,6 +65,19 @@ async def test_draft_upsert_rides_day_and_timesheet(client_for) -> None:
         assert typed.status_code == 200, typed.text
         assert typed.json()["payload"]["entry_type_key"] == "work"
 
+        # ...and the same for `billable_touched` (#284): the form posts the *decision* beside
+        # the value, because a draft carries `billable` whether or not anyone touched the
+        # toggle, and reading its presence as a decision froze the flag — a non-billable
+        # project picked afterwards still billed. A closed shape that refuses the key would
+        # 422 every autosave again, silently.
+        settled = await c.put(
+            f"/api/v1/time/drafts/{day}",
+            json={"start": "09:00", "billable": False, "billable_touched": True},
+            headers=headers,
+        )
+        assert settled.status_code == 200, settled.text
+        assert settled.json()["payload"]["billable_touched"] is True
+
         # Discard, idempotently.
         assert (await c.delete(f"/api/v1/time/drafts/{day}", headers=headers)).status_code == 204
         assert (await c.delete(f"/api/v1/time/drafts/{day}", headers=headers)).status_code == 204

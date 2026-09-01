@@ -113,8 +113,8 @@
   function addWidget(key: string) {
     if (activeKeys.includes(key)) return;
     // Under the shorter column — where a new tile visually belongs, and the only placement that
-    // doesn't disturb what is already arranged.
-    const target = columns[0].length <= columns[1].length ? 0 : 1;
+    // doesn't disturb what is already arranged. The client's board is one column (#451).
+    const target = columns.length === 1 || columns[0].length <= (columns[1]?.length ?? 0) ? 0 : 1;
     columns = columns.map((column, i) => (i === target ? [...column, { id: key }] : column));
     // Its data is the one thing the page does not have — unless this widget was on the board
     // earlier in the session and its promise is still here.
