@@ -197,6 +197,41 @@ Three things about the web half:
   page reads its route params, the register reads the pressed row, and a request body may only
   be read once.
 
+## The numbers are the client's; the machinery is the agency's (#446–#449)
+
+The first client review of the portal came back with one sentence under ten points: *alles wat
+verwijst naar interne processen, leveranciers of medewerkers achter de schermen hoort niet thuis
+in het klantportal.* Four of the ten were the same rule seen from four screens, and the fix for
+each is on the **API**, keyed on `ctx.is_portal` (#274) — never on a permission that happens to
+exclude clients, and never on `!isPortal` in a component alone (§15: the web mirrors, the API is
+the boundary).
+
+* **A supplier's name is not the client's business** (#446). `SourceMetrics.label` is what *this
+  reader* calls a source: `None` for staff (the web prints the product name) and always set for
+  a portal login — the tenant's own client-facing name from Instellingen → Marketing
+  (`marketing_settings.portal_source_labels`), else a vendor-free default for the keyed sources
+  (`marketing.source.portal.<source>`: "Zoekmachineposities", "AI-zichtbaarheid") and the product
+  name for a Google source, which is the client's own account. "Breik. Analytics" is one tenant's
+  word and lives in that setting, never in code (§2, rule 4). Resolved in `_source_metrics`, so
+  the widget, the marketing tab and an MCP client answer with the same word.
+* **A link into the supplier's console is #253's control that always refuses** (#447), printed
+  beside the supplier's name. `deep_link` is empty for a portal reader on the source row *and* on
+  every drill-down, and a drill-down that could not be read answers one neutral reason
+  (`marketing.portal_unavailable`) — "reconnect" and "ask your administrator" are sentences for
+  the agency, and every stored reason names either the vendor or the fix.
+* **Whose Google grant feeds the numbers is a working-surface fact** (#448). `connection_owner`
+  is `None` for a portal reader, exactly as `connections` already were (#411).
+* **A budget is what the agency agreed with itself about the work** (#449). `projects/router._read`
+  blanks `budget_hours`, `budget_amount`, `hours` and `budget_sources` on every project read for a
+  portal login, the company-hub panel omits the same fields, and a task row's `allocated_minutes`
+  is `None` (its burn already was, gated on `time.entry.read`). The web draws no column, block,
+  pill or chip for what the API blanks — a dash headed "Budget" is a question the client should
+  not be holding. `budget_watch` had made this decision for the *mails* long before the screens
+  caught up.
+
+`tests/test_marketing_portal.py` and `tests/test_projects_portal.py` pin all four against a real
+portal session beside a staff one on the same endpoints.
+
 ## Adding a second kind of subject
 
 1. Implement `PortalSubjectProvider` in the module that owns the row (`load`, `for_user`,

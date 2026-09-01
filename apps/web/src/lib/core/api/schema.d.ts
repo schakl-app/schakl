@@ -22887,6 +22887,10 @@ export interface components {
              * @default false
              */
             env_ads_token_configured: boolean;
+            /** Portal Source Labels */
+            portal_source_labels?: {
+                [key: string]: string;
+            };
             rankings?: components["schemas"]["RankingSettingsRead"];
             report?: components["schemas"]["ReportSplitSettingsRead"];
             /**
@@ -22900,6 +22904,10 @@ export interface components {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
+            /** Portal Source Labels */
+            portal_source_labels?: {
+                [key: string]: string;
+            } | null;
             rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             report?: components["schemas"]["ReportSplitSettingsWrite"] | null;
             /** Seranking Api Key */
@@ -27909,6 +27917,8 @@ export interface components {
             kpis?: {
                 [key: string]: components["schemas"]["KpiValue"];
             };
+            /** Label */
+            label?: string | null;
             /** Last Error */
             last_error?: string | null;
             /** Last Synced At */
@@ -29945,6 +29955,8 @@ export interface components {
         TimeEntryDraftPayload: {
             /** Billable */
             billable?: boolean | null;
+            /** Billable Touched */
+            billable_touched?: boolean | null;
             /** Break Minutes */
             break_minutes?: number | null;
             /** Company Id */

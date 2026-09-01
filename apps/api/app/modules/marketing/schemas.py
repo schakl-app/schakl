@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.periods import ComparePeriod
 from app.modules.marketing.models import MarketingSource
@@ -193,10 +193,21 @@ class SourceMetrics(BaseModel):
     last_error: str | None = None
     last_synced_at: datetime | None = None
     #: Whose Google grant syncs this source (``None`` when its connection is gone) — the panel
-    #: and the tab name it, so "disconnected" points at a person instead of at nobody.
+    #: and the tab name it, so "disconnected" points at a person instead of at nobody. Never
+    #: sent to a portal login (#448): whose credential feeds a client's numbers is the agency's
+    #: working surface, exactly as ``connections`` already were (#411).
     connection_owner: ConnectionOwner | None = None
     currency: str | None = None
+    #: The vendor console, for a colleague. Empty for a portal login (#447): the link lands on
+    #: the *agency's* account in the supplier's product, which a client can neither open nor
+    #: should be told the name of — #253's control that always refuses, printed beside the
+    #: supplier's name.
     deep_link: str = ""
+    #: What this reader calls the source (#446). ``None`` for staff — the web prints the product
+    #: name — and always set for a portal login: the tenant's own label from Instellingen →
+    #: Marketing, else a vendor-free default. Resolved here rather than in the browser so the
+    #: widget, the tab and an MCP client all answer with the same word.
+    label: str | None = None
     primary_metric: str = ""
     kpis: dict[str, KpiValue] = Field(default_factory=dict)
     series: SeriesData = Field(default_factory=SeriesData)
@@ -441,6 +452,9 @@ class MarketingSettingsRead(BaseModel):
     rankings: RankingSettingsRead = Field(default_factory=RankingSettingsRead)
     #: The house rule for a client with several websites (#381). Always resolved, same reason.
     report: ReportSplitSettingsRead = Field(default_factory=ReportSplitSettingsRead)
+    #: The tenant's own client-facing source names (#446) — only the ones set; the defaults
+    #: are the code's and the screen prints them as placeholders.
+    portal_source_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class MarketingSettingsWrite(BaseModel):
@@ -456,6 +470,23 @@ class MarketingSettingsWrite(BaseModel):
     rankings: RankingSettingsWrite | None = None
     #: The house per-website rule (#381). Same rule again.
     report: ReportSplitSettingsWrite | None = None
+    #: What a client is told each source is called (#446), ``{source: label}``. Omitted keeps the
+    #: stored map; a present map is merged key by key, and an empty label clears that key back
+    #: to the default — so the settings form posts every source it draws and nothing else.
+    portal_source_labels: dict[str, str] | None = None
+
+    @field_validator("portal_source_labels")
+    @classmethod
+    def _known_sources_only(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        known = {source.value for source in MarketingSource}
+        out: dict[str, str] = {}
+        for key, label in value.items():
+            if key not in known:
+                raise ValueError(f"unknown marketing source: {key}")
+            out[key] = str(label or "").strip()[:80]
+        return out
 
 
 class DrilldownRowOut(BaseModel):

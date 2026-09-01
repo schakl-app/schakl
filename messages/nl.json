@@ -6638,5 +6638,10 @@
   "activity.change_many": "{field} en {count} andere velden",
   "activity.change_many_one": "{field} en 1 ander veld",
   "companies.section.identity": "Algemeen",
-  "companies.edit_all": "Alles bewerken"
+  "companies.edit_all": "Alles bewerken",
+  "marketing.source.portal.seranking": "Zoekmachineposities",
+  "marketing.source.portal.rankmath": "AI-zichtbaarheid",
+  "settings.marketing.portal_labels": "Namen in het klantportaal",
+  "settings.marketing.portal_labels_hint": "Zo ziet een klant elke bron genoemd. Laat een veld leeg voor de getoonde standaard — de naam van een leverancier komt nooit bij een klant terecht tenzij je die hier invult.",
+  "marketing.portal_unavailable": "deze cijfers zijn op dit moment niet op te halen."
 }

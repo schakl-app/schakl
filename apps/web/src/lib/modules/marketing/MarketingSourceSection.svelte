@@ -156,7 +156,7 @@
 >
   <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
     <div class="flex items-center gap-2">
-      <h2 class="text-base font-semibold text-text">{sourceLabel(src.source)}</h2>
+      <h2 class="text-base font-semibold text-text">{src.label ?? sourceLabel(src.source)}</h2>
       <span class="truncate text-sm text-text-muted">{src.display_name}</span>
       {#if src.connection_owner}
         <!-- Whose Google grant feeds this section. A colleague reading a client's dashboard
@@ -195,7 +195,7 @@
           rel="noopener noreferrer"
           class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
         >
-          {t("marketing.open_in", { source: sourceLabel(src.source) })}
+          {t("marketing.open_in", { source: src.label ?? sourceLabel(src.source) })}
           <ExternalLink size={12} />
         </a>
       {/if}

@@ -6638,5 +6638,10 @@
   "activity.change_many": "{field} and {count} other fields",
   "activity.change_many_one": "{field} and 1 other field",
   "companies.section.identity": "General",
-  "companies.edit_all": "Edit everything"
+  "companies.edit_all": "Edit everything",
+  "marketing.source.portal.seranking": "Search rankings",
+  "marketing.source.portal.rankmath": "AI visibility",
+  "settings.marketing.portal_labels": "Names in the client portal",
+  "settings.marketing.portal_labels_hint": "What a client sees each source called. Leave a field empty for the default shown — a supplier's name is never shown to a client unless you type it here.",
+  "marketing.portal_unavailable": "these figures cannot be read right now."
 }

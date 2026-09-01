@@ -111,7 +111,7 @@
             <li
               class="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-sm"
             >
-              <span class="text-text-muted">{sourceLabel(src.source)}:</span>
+              <span class="text-text-muted">{src.label ?? sourceLabel(src.source)}:</span>
               <span class="text-text">{src.display_name}</span>
               {#if src.website_name}
                 <span class="text-xs text-text-muted">· {src.website_name}</span>
@@ -206,7 +206,9 @@
         <div class="rounded-lg border border-border p-4">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
-              <span class="text-sm font-semibold text-text">{sourceLabel(src.source)}</span>
+              <span class="text-sm font-semibold text-text"
+                >{src.label ?? sourceLabel(src.source)}</span
+              >
               <span class="truncate text-xs text-text-muted">
                 {src.display_name}{#if src.website_name}&nbsp;· {src.website_name}{/if}
               </span>
@@ -228,7 +230,7 @@
                 rel="noopener noreferrer"
                 class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
               >
-                {t("marketing.open_in", { source: sourceLabel(src.source) })}
+                {t("marketing.open_in", { source: src.label ?? sourceLabel(src.source) })}
                 <ExternalLink size={12} />
               </a>
             {/if}
