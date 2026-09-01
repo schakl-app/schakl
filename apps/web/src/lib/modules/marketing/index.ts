@@ -38,7 +38,9 @@ registerWebModule({
       key: "marketing.portal",
       module: "marketing",
       audience: "portal",
-      position: 10,
+      // Last on the client's board (#451): the live dashboard is the longest tile and the one
+      // a client scrolls to, not the one that asks something of them.
+      position: 15,
       requiresPermission: "marketing.metrics.read",
       descriptionKey: "dashboard.widget_desc.marketing.portal",
       category: "dashboard.category.marketing",

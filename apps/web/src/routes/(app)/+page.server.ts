@@ -9,12 +9,21 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
-/** The board is two columns; a stored layout with fewer (or none) is padded out. */
+/** The staff board is two columns; a stored layout with fewer (or none) is padded out. */
 const COLUMN_COUNT = 2;
+/**
+ * The client's board is one (#451). Every portal widget is a `lg` tile — a KPI strip, a
+ * document, a task list — and in a 50 % column the marketing tiles wrapped three deep and the
+ * drill-down tables collapsed to two-character columns beside one empty card. `spec.size` was
+ * declared on every widget and applied nowhere but the gallery; one full-width stack, top down,
+ * is the layout that honours it.
+ */
+const PORTAL_COLUMN_COUNT = 1;
 
 /** Left column first, then right — the flat order a phone reads and the API stores. */
-function splitEvenly(keys: string[]): string[][] {
-  const half = Math.ceil(keys.length / COLUMN_COUNT);
+function splitEvenly(keys: string[], columnCount: number): string[][] {
+  if (columnCount === 1) return [keys];
+  const half = Math.ceil(keys.length / columnCount);
   return [keys.slice(0, half), keys.slice(half)];
 }
 
@@ -23,6 +32,7 @@ function splitEvenly(keys: string[]): string[][] {
 function resolveLayout(
   prefs: { widgets?: string[] | null; columns?: string[][] | null; source?: string } | undefined,
   available: DashboardWidgetSpec[],
+  columnCount = COLUMN_COUNT,
 ): { widgetKeys: string[]; columns: string[][]; prefsSource: string } {
   const known = (keys: string[]) =>
     keys
@@ -34,10 +44,16 @@ function resolveLayout(
   // Columns are stored since #325. A row that has none was saved before they were — or is the
   // org template, which is one ordered list by design — and it keeps rendering as the halfway
   // split it always did, rather than being invented into a layout nobody arranged.
+  // A layout stored with more columns than this board draws folds into the last one rather
+  // than dropping them (#451): a client who arranged two columns keeps every tile, in order.
   const stored = prefs?.columns ?? null;
-  const columns = stored
-    ? Array.from({ length: COLUMN_COUNT }, (_, i) => known(stored[i] ?? []))
-    : splitEvenly(flat);
+  const folded =
+    stored && stored.length > columnCount
+      ? [...stored.slice(0, columnCount - 1), stored.slice(columnCount - 1).flat()]
+      : stored;
+  const columns = folded
+    ? Array.from({ length: columnCount }, (_, i) => known(folded[i] ?? []))
+    : splitEvenly(flat, columnCount);
   // The columns are what the board draws, so they decide which tiles need data — not the flat
   // list, which a stored layout may disagree with once unknown keys have dropped out of both.
   return { widgetKeys: columns.flat(), columns, prefsSource: prefs?.source ?? "none" };
@@ -76,7 +92,7 @@ export const load: PageServerLoad = async (event) => {
     // Per-website view (owner feedback): a client with several sites reads them one at a
     // time; filtering is client-side, the payload already carries every link.
     const website = event.url.searchParams.get("website") || "";
-    const layout = resolveLayout(prefsRes.data, available);
+    const layout = resolveLayout(prefsRes.data, available, PORTAL_COLUMN_COUNT);
     const selectedWidgets = available.filter((w) => layout.widgetKeys.includes(w.key));
     // The marketing widget's data is URL-driven (company/website), so the page injects it
     // below; its registry `load` is a no-op and is skipped here.

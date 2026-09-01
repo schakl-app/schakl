@@ -46,7 +46,9 @@ registerWebModule({
       key: "reporting.latest",
       module: "reporting",
       audience: "portal",
-      position: 15,
+      // Second on the client's board (#451): what was asked of them, then what was written
+      // for them, then the live numbers.
+      position: 10,
       requiresPermission: "reporting.report.read",
       descriptionKey: "dashboard.widget_desc.reporting.latest",
       category: "dashboard.category.marketing",
