@@ -20724,6 +20724,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Whole Thread
+             * @default false
+             */
+            whole_thread: boolean;
         };
         /**
          * InteractionBulkApprove
@@ -21038,6 +21043,8 @@ export interface components {
             project_id?: string | null;
             /** Project Name */
             project_name?: string | null;
+            /** Review Ids */
+            review_ids?: string[];
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];

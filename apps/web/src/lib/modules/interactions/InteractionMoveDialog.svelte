@@ -43,12 +43,20 @@
     interaction,
     onsaved,
     approveAction = null,
+    threadPendingCount = 1,
   }: {
     interaction: InteractionItem;
     onsaved?: () => void;
     /** When set on a pending gmail row (#183), a second "Goedkeuren" button that assigns
      *  these same links and approves in one step; the plain save just re-links. */
     approveAction?: string | null;
+    /**
+     * How many messages of this row's Gmail thread still wait for review, the row included.
+     * Above one, the approve offers to take the whole thread with these same links — on by
+     * default, since the queue row the reviewer opened *is* the thread. The plain save stays
+     * one message: filing without approving is triage, and triage is per message.
+     */
+    threadPendingCount?: number;
   } = $props();
 
   // Assigning-while-approving only applies to a pending gmail row the owner is reviewing.
@@ -320,6 +328,10 @@
   // Approve succeeded but the close PATCH bounced (e.g. a status policy): say exactly that —
   // a plain error here would read as "the approve failed", which it did not.
   let closeFailedAfterApprove = $state(false);
+  // "Hele gesprek goedkeuren": the conversation is the unit of review, and a reply chain filed
+  // one message at a time was the whole complaint. Unticked, the approve is the single-message
+  // act it always was — which is also how one message of a thread is filed somewhere else.
+  let wholeThread = $state(true);
 
   const busy = new InFlight();
   // Save and approve share the form (#279): key off the clicked button.
@@ -491,6 +503,24 @@
           />
         </div>
       </div>
+
+      {#if canApprove && threadPendingCount > 1}
+        <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
+          <input
+            type="checkbox"
+            name="whole_thread"
+            value="1"
+            bind:checked={wholeThread}
+            class="mt-0.5"
+          />
+          <span>
+            {t("interactions.approve_thread", { count: threadPendingCount })}
+            <span class="mt-0.5 block text-xs text-text-muted"
+              >{t("interactions.approve_thread_hint")}</span
+            >
+          </span>
+        </label>
+      {/if}
 
       {#if canEnrichTask && taskId}
         <!-- Carry the email into the task while approving (#327) — the opening move to

@@ -459,6 +459,34 @@ agency tool — so, direct.
   **And it refuses to guess.** No contact matching, no company ranking: the caller says where
   the message is filed, exactly as an uploaded `.eml` does. Every matching rule that could have
   run here is a rule that already declined this message once.
+- **The conversation is the unit of review, and the queue folds it like the timeline does**
+  (`InteractionService.list` / `thread`, `docs/UX.md`). #272 gave logged e-mails a
+  `conversation_id` and left a pending row deliberately without one — it joins a conversation on
+  approval — so the review queue listed a twelve-message reply chain as twelve rows, each to be
+  read, filed and approved on its own, over a data model that already knew they were one thread.
+  Nothing was missing from the model; the *list* had never been asked. Four rules. **A pending row
+  folds on the one key it can honestly have**: the mailbox owner plus the Gmail thread, never the
+  logged conversation's key. A Gmail thread id means something only inside its mailbox, and an
+  unreviewed row is private to its owner (#172) — the fold runs *before* the privacy condition
+  narrows the timeline, so a merged group could elect a representative only one viewer may see.
+  The two keys therefore stay apart, and `/thread` on the pending row is where they meet: the
+  logged history anybody may read, with where it was filed, beside the caller's own waiting
+  messages. **The row carries what a thread-level act needs** (`review_ids`, the pending thread
+  oldest-first) because the bulk routes take ids and a queue row now stands for several — so the
+  screen expands a ticked fold into the batch, the bar prints the message count whenever it differs
+  from the row count, and no bulk route widens itself: a batch that quietly did more than its
+  selection said is the one way it could stop meaning what its selection means (§18). **A single
+  approve may take the thread with it** (`InteractionApprove.whole_thread`, on by default in the
+  review desk, off by default at the API so the generated MCP tool keeps approving exactly the row
+  it named), each sibling through the same `_approve_row` — the same trail, host mirrors and
+  conversation folding as fifty clicks, never a shortcut past them; unticking it is how one message
+  of a thread is filed somewhere else. And **"ignore this conversation" now takes the rest of the
+  queue for it**: `suppress_thread` rejects the owner's other pending messages of the thread in the
+  same step, said out loud under the checkbox, because a suppression that left four siblings in
+  the queue one click each was half an answer. The logged history is never touched by either —
+  somebody approved it. Inheritance for the *next* reply was already here (`gmail_thread_followup`,
+  `thread_mappings`): a follow-up in a filed thread inherits the filing, and
+  `inherit_approve` logs it without review.
 - **Searching your own mailbox is allowed; browsing it is not** (#372, `manual.search`). This
   section used to argue the other way: *"a **picker** means `messages.list` over arbitrary
   personal mail rendered inside the CRM … and it would make 'schakl only ever sees matched

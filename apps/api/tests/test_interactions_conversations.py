@@ -33,6 +33,7 @@ async def _seed(
     occurred_at: datetime,
     pending: bool = False,
     subject: str | None = None,
+    participants: list[dict] | None = None,
 ) -> str:
     """Insert a gmail-sourced interaction the way the poller does, with control over the thread,
     message id and timestamp so the fold's 'newest representative' is deterministic."""
@@ -47,7 +48,8 @@ async def _seed(
             subject=subject or f"Message {message_id}",
             snippet=f"snippet {message_id}",
             direction="inbound",
-            participants=[{"email": "klant@client.nl", "name": "Klant", "role": "from"}],
+            participants=participants
+            or [{"email": "klant@client.nl", "name": "Klant", "role": "from"}],
             gmail_message_id=message_id,
             gmail_thread_id=thread_id,
             rfc822_message_id=f"<{message_id}@mail.example>",

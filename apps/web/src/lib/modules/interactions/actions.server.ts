@@ -351,7 +351,13 @@ export const interactionActions = {
     // comparison naming one of them silently posts `false` for the other (CLAUDE.md §10).
     const body =
       form.get("assign") === "1"
-        ? { ...linkBody(form), enrich_task: checked(form, "enrich_task") }
+        ? {
+            ...linkBody(form),
+            enrich_task: checked(form, "enrich_task"),
+            // The thread's other waiting messages, with these same links (the queue folds a
+            // thread to the row this approve was opened from). Presence, like its siblings.
+            whole_thread: checked(form, "whole_thread"),
+          }
         : undefined;
     const api = apiFor(event);
     const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {

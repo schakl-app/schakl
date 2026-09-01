@@ -1295,6 +1295,21 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   silence. And **the reveal is repeated, not fired once**: arriving is a navigation, and SvelteKit's
   post-navigation `reset_focus()` and the editor's async mount each hand focus back to `<body>`
   after it is taken.
+- **A fold the timeline already has is a fold the queue was owed** (the conversation-review
+  research task, `docs/GOOGLE.md`). #272 folded logged e-mails into conversations and left the
+  review queue a flat list of messages, on the correct ground that a pending row has no
+  `conversation_id` yet — correct about the column and wrong about the screen: the reply chain
+  is one decision, and the queue asked for it twelve times. Three rules generalise. **A private
+  row folds on a private key**: pending rows group per mailbox owner + Gmail thread, a key that
+  can never merge with a team-visible conversation, because the fold runs before the privacy
+  condition narrows the list and a merged group could elect a representative only one viewer may
+  see. **A row that stands for several must say which** — `review_ids` — so that a bulk selection
+  can expand a tick into the batch and a button can print the number it will act on (the bar
+  shows a count whenever it differs from the selection, in either direction). And **a thread-level
+  act rides the single-row path per row** (`whole_thread`, `suppress_thread` taking the pending
+  siblings), never a second write path: fifty messages approved at once get fifty trails, fifty
+  host mirrors and one conversation, and the API default stays single-message so an existing
+  caller, the generated MCP tool included, does exactly what it did.
 - **A dedicated tool group is a router prefix, or it is a list that rots** (`google_analytics`,
   `docs/GOOGLE_ANALYTICS.md`). The ask was "give agents dedicated Google Analytics tools", and the
   tempting answer — a curated `/mcp/analytics` section naming GA tools out of `marketing` — is the
