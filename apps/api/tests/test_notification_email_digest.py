@@ -14,7 +14,7 @@ from app.core.models import Org
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications import external
 from app.modules.notifications.channel_admin import normalize_channel_input
-from app.modules.notifications.models import NotificationDelivery
+from app.modules.notifications.models import Notification, NotificationDelivery
 from tests.conftest import auth_cookie, leave_workday, make_tenant
 from tests.test_notification_channels import _member
 
@@ -281,6 +281,160 @@ async def test_digest_sweep_groups_one_mail_per_recipient(client_for, monkeypatc
         assert all(r.status == "sent" for r in rows)
         now = datetime.now(UTC)
         assert all(r.deliver_after is not None and r.deliver_after <= now for r in rows)
+
+
+async def _two_pending_email_notifications(client_for, slug: str):
+    """Owner opts into immediate leave e-mail; a member raises two requests → two deliveries."""
+    t = await make_tenant(slug)
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put(
+            "/api/v1/notifications/preferences",
+            json={
+                "email_events": [
+                    {"event_type": "leave.requested", "enabled": True, "digest": "immediate"}
+                ]
+            },
+            headers=owner,
+        )
+        member = await _member(c, owner, f"emp@{slug}.example")
+        mh = await auth_cookie(member)
+        types = (await c.get("/api/v1/leave/types", headers=owner)).json()
+        special = next(x["id"] for x in types if x["key"] == "special")
+        for offset in (0, 1):
+            start = leave_workday(offset)
+            res = await c.post(
+                "/api/v1/leave/requests",
+                json={
+                    "leave_type_id": special,
+                    "start_date": start.isoformat(),
+                    "end_date": start.isoformat(),
+                },
+                headers=mh,
+            )
+            assert res.status_code == 201, res.text
+    return t
+
+
+async def test_digest_skips_a_notification_already_read(client_for, monkeypatch) -> None:
+    """A notification read (or resolved) before its slot is dropped from the digest, not mailed.
+
+    A digest reports what still wants attention; a reminder the recipient has already dealt with
+    is not news. The read delivery settles ``skipped`` — terminal, never sent — and the mail that
+    goes out carries only the item that is still active.
+    """
+    t = await _two_pending_email_notifications(client_for, "digest-read")
+
+    sent: list[tuple[str, str, str, str | None]] = []
+
+    async def fake_send(session, org_id, message, **kwargs):  # noqa: ANN001
+        sent.append((message.to, message.subject, message.text, message.html))
+        return True, None
+
+    import app.core.email.service as email_service
+
+    monkeypatch.setattr(email_service, "send_org_email", fake_send)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        notes = (
+            (
+                await session.execute(
+                    select(Notification)
+                    .where(Notification.org_id == t.org.id, Notification.user_id == t.user.id)
+                    .order_by(Notification.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(notes) == 2
+        notes[0].read_at = datetime.now(UTC)  # handled in-app before the sweep
+        await session.flush()
+
+        org = await session.get(Org, t.org.id)
+        await external.dispatch_email_deliveries(session, org)
+        await session.commit()
+
+    # One item still active → one mail, one link, and its subject is the single sentence.
+    assert len(sent) == 1
+    _, _, text, html = sent[0]
+    assert text.count("http") == 1
+    assert html is not None and html.count("<a href=") == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.org_id == t.org.id,
+                        NotificationDelivery.channel == "email",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        statuses = sorted(r.status for r in rows)
+        assert statuses == ["sent", "skipped"]
+        # The skipped one never went out and never lingers pending for the next sweep.
+        skipped = next(r for r in rows if r.status == "skipped")
+        assert skipped.sent_at is None and skipped.last_error is None
+
+
+async def test_digest_of_only_read_notifications_sends_nothing(client_for, monkeypatch) -> None:
+    """When every item in a bundle has been read, the sweep mails nobody at all."""
+    t = await _two_pending_email_notifications(client_for, "digest-all-read")
+
+    sent: list[str] = []
+
+    async def fake_send(session, org_id, message, **kwargs):  # noqa: ANN001
+        sent.append(message.to)
+        return True, None
+
+    import app.core.email.service as email_service
+
+    monkeypatch.setattr(email_service, "send_org_email", fake_send)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        notes = (
+            (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.org_id == t.org.id, Notification.user_id == t.user.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for note in notes:
+            note.read_at = datetime.now(UTC)
+        await session.flush()
+
+        org = await session.get(Org, t.org.id)
+        await external.dispatch_email_deliveries(session, org)
+        await session.commit()
+
+    assert sent == []  # nothing left the building
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.org_id == t.org.id,
+                        NotificationDelivery.channel == "email",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert rows and all(r.status == "skipped" for r in rows)
 
 
 async def test_org_default_email_is_inherited(client_for) -> None:

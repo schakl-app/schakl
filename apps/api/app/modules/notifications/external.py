@@ -381,6 +381,38 @@ def _settle(
             delivery.status = "failed" if delivery.attempts >= MAX_ATTEMPTS else "pending"
 
 
+def _still_active(
+    ready: Sequence[tuple[NotificationDelivery, Notification]],
+) -> list[tuple[NotificationDelivery, Notification]]:
+    """Keep only deliveries whose notification is still unread, settling the rest ``skipped``.
+
+    A digest is a summary of what still wants the recipient's attention, so a notification the
+    recipient already **read** — or that was **resolved**, which marks it read for everyone it
+    was pending on (#170: a decided leave request, a finished-and-so-no-longer-overdue task) —
+    between its slot being scheduled and this sweep is no longer news. Mailing it tells someone
+    about something they have already dealt with, which is exactly the "several e-mails about
+    things I handled" a personal digest is supposed to spare them.
+
+    The window this closes is real: a daily row's in-app twin becomes visible at the same 08:00
+    its e-mail is due, but an ``immediate`` row carries a grace delay, and a resolve fires the
+    moment the underlying item is acted on — so between emit and send the twin is routinely read.
+
+    A skipped delivery is settled terminally (distinct from ``sent``: nothing left the building)
+    so it neither lingers ``pending`` for the next sweep nor reads as a message that went out.
+    Applied only where a delivery hangs off *the recipient's own* notification row — never a
+    shared room, whose message stands in for a whole audience and whose stand-in row's read
+    state says nothing about the room (see ``dispatch_external_deliveries``).
+    """
+    active: list[tuple[NotificationDelivery, Notification]] = []
+    for delivery, notification in ready:
+        if notification.read_at is not None:
+            delivery.status = "skipped"
+            delivery.last_error = None
+        else:
+            active.append((delivery, notification))
+    return active
+
+
 def _due(channel: str, org_id: uuid.UUID, now: datetime):  # noqa: ANN202
     """Every pending, not-exhausted, past-its-slot delivery on one channel, oldest first."""
     return (
@@ -426,6 +458,11 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
 
     for user_id, items in groups.items():
         ready = [pair for pair in items if _backoff_ready(pair[0], now)]
+        if not ready:
+            continue
+        # A personal inbox: drop what the recipient has already read/resolved (#170), and if the
+        # whole bundle is stale send nothing rather than a mail about handled work.
+        ready = _still_active(ready)
         if not ready:
             continue
         user = await session.get(User, user_id)
@@ -503,6 +540,15 @@ async def dispatch_external_deliveries(session, org) -> None:  # noqa: ANN001
                 delivery.status = "failed"
                 delivery.last_error = "channel no longer exists"
             continue
+
+        # A personal transport (someone's own Slack DM or e-mail) is an inbox, so a read/resolved
+        # notification is dropped exactly as the personal e-mail sweep drops it. A shared room is
+        # not: its message stands in for the whole audience and the row it hangs off is the first
+        # of the batch, whose read state says nothing about the room (#170).
+        if config.user_id is not None:
+            ready = _still_active(ready)
+            if not ready:
+                continue
 
         # Personal channel → the owner's locale; a shared room → the org default.
         locale = settings.default_locale

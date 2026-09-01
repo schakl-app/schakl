@@ -98,6 +98,26 @@ counted digest subject.
 is exactly how personal e-mail has behaved since #17 — but it is a real (intended) property, not
 an accident: two events emitted in the same second on an immediate channel arrive as one message.
 
+## A digest carries only what is still active
+
+A digest is a summary of what still wants the recipient's attention, so a **personal** sweep drops
+any delivery whose notification has been **read** — or **resolved**, which marks it read for
+everyone it was pending on (#170: a decided leave request, a finished-and-so-no-longer-overdue
+task) — in the window between its slot being scheduled and the sweep (`external._still_active`).
+Mailing it tells someone about work they have already handled, which is the "several e-mails about
+things I dealt with" a digest is meant to spare them; and when the *whole* bundle is stale the
+sweep sends **nothing** rather than a mail of struck-through items. The window is real: a daily
+row's in-app twin turns visible at the same 08:00 its mail is due, but an `immediate` row carries
+a grace delay and a resolve fires the instant the underlying item is acted on, so between emit and
+send the twin is routinely already read.
+
+A dropped delivery is settled `skipped` — a terminal status distinct from `sent` (nothing left the
+building) and outside the `pending` partial index, so it neither lingers for the next sweep nor
+reads as a message that went out. The filter is applied to the two personal sweeps
+(`dispatch_email_deliveries`, `dispatch_webpush_deliveries`) and to a **personal** external
+channel, but **never to a shared room**: a room's message stands in for its whole audience and the
+row it hangs off is the first of the batch, whose read state says nothing about the room.
+
 ## Failure handling
 
 A send failure keeps the whole bundle `pending`, records the provider's own error on every row of
