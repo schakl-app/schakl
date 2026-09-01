@@ -871,6 +871,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   task links were not decided against, they were added years after `spawn_next` was written and
   nobody was asked — so a client-visible recurring job spawned an internal clone. A column added to
   `tasks` without a repeat decision is a build break, not a silent drop next release.
+- **A screenshot is one gesture, and the API decides what a client may read** (the image-attachment
+  research task, `docs/STORAGE.md`). Attaching a PNG to a task took three steps through Drive, and
+  the direct upload could not be reached from MCP at all — a generated tool sends JSON and a
+  `multipart/form-data` route answers `422 file: field required`. Five rules generalise. **A
+  multipart route is excluded from the tool surface by method and given a JSON twin**
+  (`POST /files/inline`, base64, the encoded length checked before the decode): a tool that can
+  only refuse is worse than none (#253). **A preview is computed, never stored, and the original is
+  never re-encoded** — `GET /files/{id}/thumbnail` scales a raster on demand behind an ETag, from a
+  closed size set, and a file that is not a raster answers its own bytes so an `<img>` never
+  breaks; a screenshot is evidence, so 10 MB stays the ceiling and the upload keeps every byte.
+  **Ctrl+V is an upload** — the paste lands on the same `<input>` the button and the drop use, so
+  the server sees one kind of upload however it arrived, and it yields to text bound for a field.
+  **A client reads an attachment only when the agency ticked it** (`files.client_visible`, off by
+  default, additive migration): the task page hid the strip with `!isPortal` while `GET /files`
+  served the bytes to any login that could see the task, so the bit lives in the API and is
+  applied on the list, the bytes and the thumbnail alike, for the three attachment hosts and
+  nothing else — a closed set, or "hidden by default" would silently swallow a report's PDF. And
+  **the hub gets documents as a core panel** (`files.documents`), beside the trail, because storing
+  a file against a record is a platform capability. Its sibling finding is on the other route
+  (`docs/GOOGLE.md`): `can_provision: false` on a Drive that is enabled and connected is one unset
+  dropdown — the automation account — and every "file in the wrong folder" and "404 on a
+  colleague's file" the task reported follows from it.
 - **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
   `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
   `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'

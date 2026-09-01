@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-197 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+200 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -771,8 +771,11 @@ Antwoord: `200` · `EmailTestResult`
 | `GET` `/files` | _Bewust open_ |
 | `POST` `/files` | `files.file.write` |
 | `GET` `/files/{file_id}` | _Bewust open_ |
+| `PATCH` `/files/{file_id}` | `files.file.write` |
 | `DELETE` `/files/{file_id}` | `files.file.write` |
 | `GET` `/files/{file_id}/public` | _Bewust open_ |
+| `GET` `/files/{file_id}/thumbnail` | _Bewust open_ |
+| `POST` `/files/inline` | `files.file.write` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -820,6 +823,18 @@ Padparameters: `file_id`
 
 Antwoord: `200`
 
+#### `PATCH /api/v1/files/{file_id}`
+
+**Update File** — Tick or untick "the client may see this" on one attachment (the model's ``client_visible``). The only editable fact about a stored file: its bytes are immutable by construction (content-addressed) and its name is what the uploader gave it.
+
+Recht: `files.file.write`
+
+Padparameters: `file_id`
+
+Request body: `StoredFileUpdate`
+
+Antwoord: `200` · `StoredFileRead`
+
 #### `DELETE /api/v1/files/{file_id}`
 
 **Delete File** — Remove the row and its bytes. Branding/avatar files carry extra guards (service).
@@ -847,6 +862,32 @@ Queryparameters:
 | `bg` | string |  (default `#ffffff`) |
 
 Antwoord: `200`
+
+#### `GET /api/v1/files/{file_id}/thumbnail`
+
+**Serve Thumbnail** — A scaled-down preview of a stored raster image, so an attachment strip shows the screenshot rather than its filename and a client card shows the logo proof rather than a paperclip. Computed on demand, cached by ETag: the same 304 economy as the original.
+
+Recht: _Bewust open_
+
+Padparameters: `file_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `size` | integer |  (default `480`) |
+
+Antwoord: `200`
+
+#### `POST /api/v1/files/inline`
+
+**Upload File Inline** — The same upload as ``POST /files``, carried as base64 inside a JSON body.
+
+Recht: `files.file.write`
+
+Request body: `InlineUpload`
+
+Antwoord: `201` · `StoredFileRead`
 
 </details>
 

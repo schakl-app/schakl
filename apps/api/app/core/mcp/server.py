@@ -322,13 +322,26 @@ _ROUTE_MAPS = [
     # and the mapping it would have to invent is exactly the human judgement the wizard exists
     # for. `/columns` and `/export` stay — reading a shape and taking data out are both useful.
     RouteMap(pattern=r"^/api/v1/impex/[^/]+/(inspect|import)$", mcp_type=MCPType.EXCLUDE),
+    # The other multipart routes, for a different reason: a generated tool sends a JSON body,
+    # so a ``multipart/form-data`` route answers every agent with ``422 file: field required``
+    # however the bytes were meant — a tool that can only refuse (#253), listed. Each has a
+    # JSON twin or a JSON-only equivalent an agent *can* call: ``POST /files/inline`` carries
+    # the bytes as base64, which is the route to reach for. Method-scoped so ``GET /files``
+    # (the list) stays a tool.
+    RouteMap(
+        methods=["POST"],
+        pattern=r"^/api/v1/(files|hr/documents|interactions/upload-eml|companies/[^/]+/logo)$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     RouteMap(pattern=r"^/api/v1/.*", mcp_type=MCPType.TOOL),
     RouteMap(pattern=r".*", mcp_type=MCPType.EXCLUDE),
 ]
 
 
-def _becomes_a_tool(path: str) -> bool:
-    """Whether ``_ROUTE_MAPS`` turns this path into a tool — read from the maps, not restated.
+def _becomes_a_tool(path: str, method: str = "GET") -> bool:
+    """Whether ``_ROUTE_MAPS`` turns this operation into a tool — read from the maps, never
+    restated. ``method`` matters since the multipart exclusions: ``GET /files`` is a tool and
+    ``POST /files`` is not, and a path-only answer would drop or keep both.
 
     A section counts its tools, and a count is a number printed on a settings screen, so it has
     to be the number a client will actually receive. Restating the exclusions here would put a
@@ -336,7 +349,10 @@ def _becomes_a_tool(path: str) -> bool:
     on claiming 66 tools while serving 61, because ``/invoicing/public`` is excluded in one place
     and was not excluded in the other.
     """
+    verb = method.upper()
     for route_map in _ROUTE_MAPS:
+        if route_map.methods != "*" and verb not in route_map.methods:
+            continue
         pattern = route_map.pattern
         if re.search(pattern, path) if isinstance(pattern, str) else pattern.search(path):
             return route_map.mcp_type is MCPType.TOOL
@@ -395,18 +411,18 @@ def _tool_index(app: Any) -> tuple[dict[str, str], dict[str, str]]:
     mean reproducing the naming rule above and hoping the copy stays honest.
     """
     entries = [
-        (path, operation.get("operationId", ""))
+        (path, method, operation.get("operationId", ""))
         for path, operations in app.openapi().get("paths", {}).items()
-        for operation in operations.values()
+        for method, operation in operations.items()
         if isinstance(operation, dict)
     ]
-    short = {op_id: op_id.split("_api_v1_")[0] for _, op_id in entries if op_id}
+    short = {op_id: op_id.split("_api_v1_")[0] for _, _, op_id in entries if op_id}
     counts = Counter(short.values())
     names = {op_id: name for op_id, name in short.items() if counts[name] == 1}
     paths = {
         names.get(op_id, op_id): path
-        for path, op_id in entries
-        if op_id and _becomes_a_tool(path)
+        for path, method, op_id in entries
+        if op_id and _becomes_a_tool(path, method)
     }
     return names, paths
 

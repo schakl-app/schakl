@@ -10,6 +10,7 @@
  * looking at.
  */
 import "$lib/core/activity"; // core capability: the activity panel on every auditable entity (#67)
+import "$lib/core/files"; // core capability: documents on the company hub
 
 // --- Modules: what schakl itself does ------------------------------------- //
 import "./companies";

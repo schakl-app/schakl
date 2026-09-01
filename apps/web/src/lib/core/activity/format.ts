@@ -114,6 +114,14 @@ export function activityText(item: ActivityLike): string {
     const parts = changes.map(([field, change]) => changeText(item.entity_type, field, change));
     return t("activity.action.updated", { changes: parts.join(", ") });
   }
+  if (item.action === "file_visibility_changed") {
+    return t(
+      item.payload?.client_visible
+        ? "activity.action.file_shown_to_client"
+        : "activity.action.file_hidden_from_client",
+      { filename: String(item.payload?.filename ?? "") },
+    );
+  }
   if (
     item.action === "file_attached" ||
     item.action === "file_removed" ||

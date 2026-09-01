@@ -278,6 +278,21 @@ account should check, in order:
 5. A shared-drive file behaves as a My Drive one does — `supportsAllDrives=true` rides every
    call, but only a real shared drive proves it.
 
+### "Drive is enabled and I am connected, and nothing gets a folder"
+
+`can_provision` on `GET /google/drive/state` is four facts ANDed: Drive enabled, a settings row,
+an **automation connection** (`automation_connection_user_id`), a **root** (`drive_parent_folder_id`
+or `drive_shared_drive_id`) and the caller's `google.drive.write`. `viewer_connected` beside it
+is a different question — whether *this person's* Google account is linked — and it is the one
+an admin sees answered `true` and reads as "so provisioning should work". It does not: folders
+are created by the automation account so that ownership does not follow whoever happened to
+click, and with no automation account chosen (Instellingen → Google → *Automatiseringsaccount*)
+every record stays folder-less, every upload from the Drive browser lands in the root, and a file
+uploaded to a colleague's My Drive is a 404 for everyone else until it is shared. The fix is one
+dropdown, not a code path: pick the automation account (a Shared Drive as root, already
+configured on most installs, is what makes the result visible to the whole team), tick
+*Automatisch mappen aanmaken*, and run *Provision all* once for the existing clients.
+
 ### A Drive 403 is three different problems, and the body says which
 
 `scopes_for` only asks for `drive` when `drive_enabled` was **already on at consent time**, so

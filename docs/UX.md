@@ -1340,6 +1340,23 @@ contrast bug in dark mode rather than only an inconsistency.
   hatch does — and a control **says it takes a drop** (`common.drop_hint` beside the button),
   because an affordance nobody can see is one nobody uses. The highlight is one rule in `app.css`
   keyed on `data-filedrop`, not a hover class re-typed per site.
+- **A screenshot is pasted, an image is shown, and attaching is use-mode work** (the
+  image-attachment research task). A screenshot on a task took three steps through Drive because
+  the only way in was click-to-browse, in edit mode, and what came out was a filename. Three
+  things changed and each is a rule. **Ctrl+V uploads** — `FileAttachments` listens for a paste on
+  the document while it is mounted and editable, lands the image on the same `<input type="file">`
+  the button and the drop use (`filedrop`'s rule: one input, one form, one kind of upload), names
+  it on the org's clock, and steps aside when the paste is text bound for a field the user is
+  typing in. **An image is shown, not spelled out** (the `ImageField` rule, applied to a list):
+  raster attachments draw the API's thumbnail in a strip and open in a lightbox; anything else
+  stays a filename with a paperclip. And **attaching is use-mode work**, like a comment: a
+  screenshot is evidence of what happened on the task, not a change to its definition, so the
+  strip is drawn whenever the viewer holds `files.file.write`, in use mode too — a drop target that
+  only exists after ⋯ → Bewerken is the three-step route the strip exists to remove. Deleting stays
+  behind the per-row ⋯ and confirms. The strip's client-visibility eye follows the task's own
+  marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
+  applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
+  drop its `!isPortal` around the strip.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only

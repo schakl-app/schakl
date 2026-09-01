@@ -73,3 +73,4 @@ subscribe("subscription.activated", on_subscription_activated)
 # Document attachments (#123 follow-up): validate the target task, write its activity trail.
 subscribe("file.attached", on_file_event)
 subscribe("file.removed", on_file_event)
+subscribe("file.visibility_changed", on_file_event)

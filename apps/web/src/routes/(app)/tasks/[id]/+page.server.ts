@@ -2,7 +2,6 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 
 import { error, fail, redirect } from "@sveltejs/kit";
 
-import { apiBaseUrl } from "$lib/core/api/client";
 import { parseAssignees } from "$lib/core/assignees";
 import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
@@ -13,6 +12,7 @@ import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
+import { fileActions } from "$lib/core/files/actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import {
   createScheduleAction,
@@ -418,45 +418,8 @@ export const actions: Actions = {
     return { linkDeleted: true };
   },
 
-  /** Document attachment (#123): multipart through a plain fetch — the typed client has no
-   *  multipart serializer — with the same cookie + tenant host the client would send. */
-  uploadFile: async (event) => {
-    const form = await event.request.formData();
-    const upload = form.get("file");
-    if (!(upload instanceof File) || upload.size === 0) {
-      return fail(400, { fileError: "errors.required" });
-    }
-    const body = new FormData();
-    body.append("file", upload, upload.name);
-    const res = await event.fetch(
-      `${apiBaseUrl()}/api/v1/files?entity_type=task&entity_id=${event.params.id}`,
-      {
-        method: "POST",
-        headers: {
-          cookie: event.request.headers.get("cookie") ?? "",
-          "x-forwarded-host": event.request.headers.get("host") ?? "",
-        },
-        body,
-      },
-    );
-    if (!res.ok) {
-      return fail(400, {
-        fileError: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
-      });
-    }
-    return { fileUploaded: true };
-  },
-
-  deleteFile: async (event) => {
-    const form = await event.request.formData();
-    const file_id = String(form.get("file_id") ?? "");
-    if (file_id) {
-      await apiFor(event).DELETE("/api/v1/files/{file_id}", {
-        params: { path: { file_id } },
-      });
-    }
-    return { fileDeleted: true };
-  },
+  // Document attachments (#123): the shared strip actions, one copy per host record.
+  ...fileActions("task"),
 
   saveChecklistTemplate: async (event) => {
     const form = await event.request.formData();

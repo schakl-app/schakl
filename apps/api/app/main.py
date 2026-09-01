@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 import app.core.activity.panels  # noqa: F401  — registers the core activity panel on import
+import app.core.storage.panels  # noqa: F401  — registers the core documents panel on import
 from app.config import settings
 from app.core.activity.router import router as activity_router
 from app.core.addresslookup.router import router as addresslookup_router

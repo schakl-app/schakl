@@ -6,7 +6,9 @@ into the shared registry. ``main.py`` imports it for each enabled module.
 
 from __future__ import annotations
 
+from app.core.events import subscribe
 from app.core.scope import SCOPE_SOURCE_COMPANY_GROUPS, register_company_scope_resolver
+from app.modules.companies.attachments import on_file_event
 from app.modules.companies.bulk import COMPANY_BULK
 from app.modules.companies.groups import resolve_membership_company_scope
 from app.modules.companies.impex import COMPANY_IMPEX
@@ -34,3 +36,9 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# Documents pinned to a client (core storage, §6): the file row is core's, the activity line
+# is ours — and a client id that is not ours fails the upload rather than storing an orphan.
+subscribe("file.attached", on_file_event)
+subscribe("file.removed", on_file_event)
+subscribe("file.visibility_changed", on_file_event)

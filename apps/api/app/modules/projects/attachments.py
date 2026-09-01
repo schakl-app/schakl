@@ -20,7 +20,17 @@ async def on_file_event(ctx: EmitContext, payload: dict[str, Any]) -> None:
     project = await ctx.repo(Project).get(payload["entity_id"])
     if project is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
-    action = "file_attached" if payload["action"] == "attached" else "file_removed"
-    await ActivityService(ctx).record(
-        "project", project.id, action, {"filename": payload.get("filename")}
-    )
+    action = _ACTIONS[payload["action"]]
+    entry: dict[str, Any] = {"filename": payload.get("filename")}
+    if "client_visible" in payload:
+        entry["client_visible"] = payload["client_visible"]
+    await ActivityService(ctx).record("project", project.id, action, entry)
+
+
+_ACTIONS = {
+    "attached": "file_attached",
+    "removed": "file_removed",
+    # Ticking "the client may see this" is a change to what the client reads, and the trail
+    # is where "who showed the client that screenshot" is answered.
+    "visibility": "file_visibility_changed",
+}

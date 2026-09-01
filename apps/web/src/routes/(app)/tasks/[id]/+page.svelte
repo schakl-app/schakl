@@ -863,6 +863,14 @@
     if (a.action === "attachment_added" || a.action === "attachment_deleted") {
       return t(`tasks.activity.${a.action}`, { filename: String(a.payload.filename ?? "") });
     }
+    if (a.action === "attachment_visibility_changed") {
+      return t(
+        a.payload.client_visible
+          ? "tasks.activity.attachment_shown_to_client"
+          : "tasks.activity.attachment_hidden_from_client",
+        { filename: String(a.payload.filename ?? "") },
+      );
+    }
     // A contact-moment milestone mirrored onto this task from the core log (#152) — reuse the
     // shared activity.action.interaction.* strings the company/project panels already read.
     if (a.action.startsWith("interaction.")) {
@@ -2011,7 +2019,7 @@
     <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
            uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
            no files → no section, until you edit. -->
-    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
+    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode || canWriteFile}
       <!-- A register (#404): where the files are is looked up when somebody needs a file, and
            it is never the news on a task. Under a rule rather than in the eighth bordered box —
            and the Drive card directly under it declares the same, so the two now read as one
@@ -2094,15 +2102,21 @@
           </form>
         {/if}
 
-        {#if !isPortal && (data.files.length > 0 || editMode)}
-          <!-- Document uploads through the storage core (#123) — staff-only surface. -->
-          <div class={editMode ? "mt-4 border-t border-border pt-4" : ""}>
+        {#if data.files.length > 0 || canWriteFile}
+          <!-- Document uploads through the storage core (#123). Attaching is *use-mode* work,
+               like a comment: a screenshot is evidence of what happened on the task, not a change
+               to its definition, and a drop target that only exists after ⋯ → Bewerken is the
+               three-step route this strip exists to remove (docs/UX.md). Gated on the key the
+               API checks, never on `!isPortal`: a client holds no `files.file.write` and the API
+               hands it only the files ticked visible. -->
+          <div class={(task.links ?? []).length > 0 || editMode ? "mt-4 border-t border-border pt-4" : ""}>
             <FileAttachments
               files={data.files}
               uploadAction="?/uploadFile"
               deleteAction="?/deleteFile"
+              visibilityAction="?/setFileVisibility"
               error={form?.fileError ?? null}
-              readonly={!editMode || !canWriteFile}
+              readonly={!canWriteFile}
             />
           </div>
         {/if}

@@ -679,6 +679,7 @@
     files={data.files}
     uploadAction="?/uploadFile"
     deleteAction="?/deleteFile"
+    visibilityAction="?/setFileVisibility"
     readonly={!canWriteFile}
     error={form?.fileError ?? null}
   />

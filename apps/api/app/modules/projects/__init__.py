@@ -41,6 +41,7 @@ registry.register(module)
 # Document attachments (#123 follow-up): validate the target project, record on its trail.
 subscribe("file.attached", on_file_event)
 subscribe("file.removed", on_file_event)
+subscribe("file.visibility_changed", on_file_event)
 
 # A retainer already pays for the work (#284): a project an agreement covers stops defaulting
 # to billable — and with it, every new time entry logged against it.

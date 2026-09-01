@@ -7,7 +7,7 @@ sidebar:
 
 Everything cross-cutting: the tenant metadata a client fetches first, files, notifications, automation rules, AI, custom fields, spreadsheets and bulk edits.
 
-197 endpoints across 16 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+200 endpoints across 16 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `ai`
 
@@ -771,8 +771,11 @@ Returns: `200` · `EmailTestResult`
 | `GET` `/files` | _Deliberately open_ |
 | `POST` `/files` | `files.file.write` |
 | `GET` `/files/{file_id}` | _Deliberately open_ |
+| `PATCH` `/files/{file_id}` | `files.file.write` |
 | `DELETE` `/files/{file_id}` | `files.file.write` |
 | `GET` `/files/{file_id}/public` | _Deliberately open_ |
+| `GET` `/files/{file_id}/thumbnail` | _Deliberately open_ |
+| `POST` `/files/inline` | `files.file.write` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -820,6 +823,18 @@ Path parameters: `file_id`
 
 Returns: `200`
 
+#### `PATCH /api/v1/files/{file_id}`
+
+**Update File** — Tick or untick "the client may see this" on one attachment (the model's ``client_visible``). The only editable fact about a stored file: its bytes are immutable by construction (content-addressed) and its name is what the uploader gave it.
+
+Permission: `files.file.write`
+
+Path parameters: `file_id`
+
+Request body: `StoredFileUpdate`
+
+Returns: `200` · `StoredFileRead`
+
 #### `DELETE /api/v1/files/{file_id}`
 
 **Delete File** — Remove the row and its bytes. Branding/avatar files carry extra guards (service).
@@ -847,6 +862,32 @@ Query parameters:
 | `bg` | string |  (default `#ffffff`) |
 
 Returns: `200`
+
+#### `GET /api/v1/files/{file_id}/thumbnail`
+
+**Serve Thumbnail** — A scaled-down preview of a stored raster image, so an attachment strip shows the screenshot rather than its filename and a client card shows the logo proof rather than a paperclip. Computed on demand, cached by ETag: the same 304 economy as the original.
+
+Permission: _Deliberately open_
+
+Path parameters: `file_id`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `size` | integer |  (default `480`) |
+
+Returns: `200`
+
+#### `POST /api/v1/files/inline`
+
+**Upload File Inline** — The same upload as ``POST /files``, carried as base64 inside a JSON body.
+
+Permission: `files.file.write`
+
+Request body: `InlineUpload`
+
+Returns: `201` · `StoredFileRead`
 
 </details>
 
