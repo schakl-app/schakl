@@ -2361,6 +2361,7 @@
   "permissions.projects.project.read": "Projecten bekijken",
   "permissions.projects.project.write": "Projecten aanmaken en bewerken",
   "permissions.projects.project.delete": "Projecten verwijderen",
+  "permissions.projects.settings.manage": "Projectinstellingen beheren (budgetmeldingen)",
   "permissions.settings.roles.manage": "Rollen en rechten beheren",
   "permissions.settings.branding.write": "Huisstijl en modules wijzigen",
   "permissions.settings.domain.read": "Eigen domein bekijken",

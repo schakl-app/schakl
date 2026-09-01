@@ -242,13 +242,15 @@ async def test_a_caller_without_time_entry_read_is_omitted_not_refused(client_fo
         # Absent, never zero: "nobody may tell you" and "nothing logged" are different answers.
         assert row["logged_minutes"] is None
         assert row["remaining_minutes"] is None
-        # The allocation itself is on the task and stays where it was.
-        assert row["allocated_minutes"] == 120
+        # The allocation is redacted for a portal login too (#449): a client never reads
+        # the estimate, so the row carries no budget at all rather than a budget with no burn.
+        assert row["allocated_minutes"] is None
 
         card = await c.get(f"/api/v1/tasks/{task}", headers=client_headers)
         assert card.status_code == 200, card.text
         assert card.json()["logged_minutes"] is None
         assert card.json()["remaining_minutes"] is None
+        assert card.json()["allocated_minutes"] is None
 
         # The agency reads the same task and gets the burn.
         assert _row(

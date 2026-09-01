@@ -2361,6 +2361,7 @@
   "permissions.projects.project.read": "View projects",
   "permissions.projects.project.write": "Create and edit projects",
   "permissions.projects.project.delete": "Delete projects",
+  "permissions.projects.settings.manage": "Manage project settings (budget alerts)",
   "permissions.settings.roles.manage": "Manage roles and permissions",
   "permissions.settings.branding.write": "Change branding and enabled modules",
   "permissions.settings.domain.read": "View the custom domain",
