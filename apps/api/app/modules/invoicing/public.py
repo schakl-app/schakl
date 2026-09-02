@@ -293,6 +293,10 @@ class PublicInvoiceService:
             "payment_status": latest.status if latest is not None else None,
             "payment_settled": latest is not None and latest.settled_at is not None,
             "payment_pending": latest is not None and latest.status in IN_FLIGHT_STATUSES,
+            # The page frames the stored PDF rather than the HTML render for an imported
+            # invoice that holds its original (docs/INVOICING.md) — the render would draw
+            # a different document under the same number.
+            "has_original": invoice.original_file_id is not None,
         }
 
     async def _intents(self) -> list[InvoicePaymentIntent]:

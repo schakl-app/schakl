@@ -61,6 +61,7 @@ export const IMPEX_ENTITIES = [
   "website",
   "hosting",
   "uptime_monitor",
+  "invoice",
 ] as const satisfies readonly ImpexEntity[];
 
 type NoneMissing =

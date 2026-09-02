@@ -70,6 +70,21 @@ UpdateRow = Callable[["RequestContext", Any, dict[str, Any]], Awaitable[None]]
 #: validates as it would one from a form) without core learning the shape.
 FkResolver = Callable[["RequestContext", list[str]], Awaitable[dict[str, Any]]]
 
+#: A module's **cross-column** pre-check for one row: ``(ctx, values, existing)`` → the row's
+#: errors as ``(column key, i18n key)`` pairs, empty when the row is fine. ``existing`` is the
+#: row the upsert matched (``None`` for a create), so a rule may depend on what is already
+#: stored — "you may not lower a registered payment" needs the current figure.
+#:
+#: It exists for the same reason ``data_type="phone"`` does (#289): the engine's import is
+#: all-or-nothing, so a check that lives only in ``create_row`` fails as one request-level
+#: 422 naming no row, after the report was built. A rule stated here runs in the plan phase,
+#: on the dry run and the commit alike, and the preview names the row and the column. Being a
+#: *pre*-check it must never reject what the write would accept — share the rule with the
+#: service (call the same function) rather than restating it.
+RowValidator = Callable[
+    ["RequestContext", dict[str, Any], Any], Awaitable[Sequence[tuple[str, str]]]
+]
+
 
 @dataclass(frozen=True)
 class ImpexColumn:
@@ -228,6 +243,10 @@ class ImpexDescriptor:
     #: False = export-only: no import route is mounted (approval-bearing records like leave
     #: must be requested, never bulk-written).
     importable: bool = True
+    #: Optional cross-column pre-check per row (see :data:`RowValidator`). Runs after the
+    #: column coercions, the FK resolution and the custom-field check, only on rows that have
+    #: no error yet — a rule over values that failed to parse would report the same cell twice.
+    validate_row: RowValidator | None = None
 
 
 #: Write the extension's own columns for one imported host row. Runs **inside the import's

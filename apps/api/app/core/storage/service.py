@@ -39,6 +39,14 @@ PUBLIC_ENTITY_TYPES = frozenset({"branding"})
 #: avatar by nobody), so this list is a closed set and never "everything but".
 PORTAL_GATED_ENTITY_TYPES = frozenset({"task", "project", "company"})
 
+#: Hosts whose files read **exactly when the record does**, for every caller. An imported
+#: invoice's original document (docs/INVOICING.md) is the invoice, in another form: whoever
+#: may open the invoice may open the file, and nobody else — a restricted member outside that
+#: client's group, a portal login of another client. Answered by ``entity_visible``, which
+#: carries the model's own horizon and portal clause, so this list never has to restate either.
+#: A closed set, like the one above: the generic attachment hosts keep their own rules.
+RECORD_GATED_ENTITY_TYPES = frozenset({"invoice"})
+
 logger = logging.getLogger("schakl.storage")
 
 
@@ -242,6 +250,16 @@ class FileService:
         if stored.entity_type in PORTAL_GATED_ENTITY_TYPES:
             return stored.client_visible
         return True
+
+    async def record_may_read_serving(self, stored: StoredFile) -> bool:
+        """The serve-time answer for a record-gated host (``RECORD_GATED_ENTITY_TYPES``):
+        the file reads when its record does, and a file on such a host that names no record
+        reads for nobody — there is no record to be visible."""
+        if stored.entity_type not in RECORD_GATED_ENTITY_TYPES:
+            return True
+        if stored.entity_id is None:
+            return False
+        return await entity_visible(self.ctx, stored.entity_type, stored.entity_id)
 
     async def portal_may_read_serving(self, stored: StoredFile) -> bool:
         """The serve-time answer: :meth:`portal_may_read`, plus the body-content rule.

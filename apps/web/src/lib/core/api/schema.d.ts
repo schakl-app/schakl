@@ -5133,6 +5133,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/invoice/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Invoice
+         * @description Every column a invoice import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_invoice_api_v1_impex_invoice_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Invoice
+         * @description Export the current filtered invoice list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_invoice_api_v1_impex_invoice_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Invoice
+         * @description Import invoice rows from a spreadsheet, upserting on the first of `number` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_invoice_api_v1_impex_invoice_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Invoice
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_invoice_api_v1_impex_invoice_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/project/columns": {
         parameters: {
             query?: never;
@@ -6610,6 +6690,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/originals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Invoice Originals
+         * @description Attach the original documents of **imported** invoices in one go (docs/INVOICING.md).
+         *
+         *     Each PDF in the archive is matched to an imported invoice by its file name — exactly the
+         *     number, or a name containing it, separators and case ignored — and attached where that
+         *     invoice holds no original yet. The report names every file that matched, matched two
+         *     numbers, matched none, or was not a PDF, and every invoice left alone because it already
+         *     had one. Multipart, so off the MCP surface; the JSON twin is one ``POST /files/inline``
+         *     against the invoice plus ``PATCH {original_file_id}``.
+         */
+        post: operations["attach_invoice_originals_api_v1_invoicing_invoices_originals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/pdf": {
         parameters: {
             query?: never;
@@ -6732,6 +6839,31 @@ export interface paths {
          * @description Assign the number, freeze the bill-to, open the invoice.
          */
         post: operations["issue_invoice_api_v1_invoicing_invoices__invoice_id__issue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/original": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Invoice Original
+         * @description Attach (or replace) the original document of an **imported** invoice.
+         *
+         *     Stored untouched, fingerprinted on the invoice itself, and served in place of a render by
+         *     every reader — the download, the mail attachment, the public link and the portal. A native
+         *     invoice refuses (409): its document *is* its render. Multipart, so off the MCP surface; an
+         *     agent uploads through ``POST /files/inline`` and names the file in ``PATCH``.
+         */
+        post: operations["attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14303,6 +14435,22 @@ export interface components {
              */
             truncated: boolean;
         };
+        /** Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post */
+        Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post: {
+            /**
+             * File
+             * @description The PDF the client actually received
+             */
+            file: string;
+        };
+        /** Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post */
+        Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post: {
+            /**
+             * File
+             * @description A zip of PDFs, each named after its invoice number
+             */
+            file: string;
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -14485,6 +14633,45 @@ export interface components {
         };
         /** Body_impex_import_hosting_api_v1_impex_hosting_import_post */
         Body_impex_import_hosting_api_v1_impex_hosting_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_invoice_api_v1_impex_invoice_import_post */
+        Body_impex_import_invoice_api_v1_impex_invoice_import_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file; headers are the export's keys
@@ -14893,6 +15080,30 @@ export interface components {
         };
         /** Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post */
         Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post */
+        Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file
@@ -21368,6 +21579,41 @@ export interface components {
          */
         InvoiceKind: "invoice" | "credit_note";
         /**
+         * InvoiceOrigin
+         * @description Where a document was *issued*.
+         *
+         *     ``native`` is an invoice this platform raised; ``imported`` is one the agency issued in the
+         *     system it used before schakl and brought in as a record (docs/INVOICING.md, "Bringing the
+         *     back catalogue in"). The distinction decides three things and nothing else: whose totals
+         *     are the fact (an imported document's stored totals, never a recomputation from its one
+         *     summary line), whether the document may carry the original file the client received, and
+         *     whether the accounting push should offer it (it is already in the ledger over there).
+         * @enum {string}
+         */
+        InvoiceOrigin: "native" | "imported";
+        /**
+         * InvoiceOriginalRead
+         * @description The document an imported invoice was actually sent as — what the record holds.
+         */
+        InvoiceOriginalRead: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Filename */
+            filename: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
          * InvoicePaymentAccountRead
          * @description A payment credential this org has connected, as an invoice screen needs it (#267).
          *
@@ -21536,6 +21782,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Import Source */
+            import_source?: string | null;
+            /** Imported At */
+            imported_at?: string | null;
             /** Intents */
             intents?: components["schemas"]["InvoicePaymentIntentRead"][];
             /** Intro */
@@ -21563,6 +21813,9 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** @default native */
+            origin: components["schemas"]["InvoiceOrigin"];
+            original?: components["schemas"]["InvoiceOriginalRead"] | null;
             /**
              * Outstanding
              * @default 0
@@ -21654,6 +21907,8 @@ export interface components {
             locale?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Original File Id */
+            original_file_id?: string | null;
             /** Prices Include Tax */
             prices_include_tax?: boolean | null;
             /** Reference */
@@ -23949,6 +24204,34 @@ export interface components {
             www_proxied: boolean;
         };
         /**
+         * OriginalsBatchReport
+         * @description What a zip of originals did: one line per file, and the invoices it could not serve.
+         *
+         *     ``ambiguous`` names a file whose name matched more than one invoice number (an entry called
+         *     ``2024.pdf`` on a register full of ``2024-…`` numbers), ``unmatched`` one matching none, and
+         *     ``already_attached`` an invoice that had its original and was left alone — a batch never
+         *     replaces a document somebody attached on purpose.
+         */
+        OriginalsBatchReport: {
+            /** Already Attached */
+            already_attached?: components["schemas"]["OriginalsMatch"][];
+            /** Ambiguous */
+            ambiguous?: string[];
+            /** Matched */
+            matched?: components["schemas"]["OriginalsMatch"][];
+            /** Not Pdf */
+            not_pdf?: string[];
+            /** Unmatched */
+            unmatched?: string[];
+        };
+        /** OriginalsMatch */
+        OriginalsMatch: {
+            /** Filename */
+            filename: string;
+            /** Number */
+            number: string;
+        };
+        /**
          * OutstandingRead
          * @description Everything a client still has to be invoiced for, in one round trip.
          *
@@ -25488,6 +25771,11 @@ export interface components {
             customer_name: string;
             /** Due Date */
             due_date?: string | null;
+            /**
+             * Has Original
+             * @default false
+             */
+            has_original: boolean;
             /** Issue Date */
             issue_date?: string | null;
             /** @default invoice */
@@ -42918,6 +43206,132 @@ export interface operations {
             };
         };
     };
+    impex_columns_invoice_api_v1_impex_invoice_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_invoice_api_v1_impex_invoice_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                /** @description Status, as on the list */
+                status?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_invoice_api_v1_impex_invoice_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_invoice_api_v1_impex_invoice_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_invoice_api_v1_impex_invoice_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     impex_columns_project_api_v1_impex_project_columns_get: {
         parameters: {
             query?: never;
@@ -45856,6 +46270,39 @@ export interface operations {
             };
         };
     };
+    attach_invoice_originals_api_v1_invoicing_invoices_originals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OriginalsBatchReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_invoices_zip_api_v1_invoicing_invoices_pdf_get: {
         parameters: {
             query: {
@@ -46091,6 +46538,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["InvoiceIssue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post"];
             };
         };
         responses: {

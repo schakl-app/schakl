@@ -993,6 +993,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
   the subscription cron having grown a hand-written copy that already omitted `client_number`, so
   "which name does an invoice say?" would have depended on who raised it.
+- **A document somebody else issued states its totals, and the record carries its own
+  fingerprint** (`docs/INVOICING.md`, "Bringing the back catalogue in"). An agency arriving from
+  Moneybird or SnelStart brings years of invoices, and without them the client hub has no history
+  and the outstanding tile starts on migration day. They come in through the impex engine — the
+  same wizard, preview and permissions as every list — as ordinary `Invoice` rows with
+  `origin = imported`, and three rules generalise. **"Clients send lines, never totals" is the
+  rule for documents we price**; for one issued elsewhere the totals are the fact, stored
+  verbatim, with one summary line so the page has a row and every printed breakdown reading
+  `calc.stated_totals` through one `document_totals`, so the renderer, UBL and the detail read
+  cannot be a cent apart. **The payment columns describe a state and the import records what
+  makes it true** — an ordinary `InvoicePayment` for the difference, never a lower figure, never
+  a payment without a date — and every one of those rules runs in the *preview* through
+  `ImpexDescriptor.validate_row`, calling the same functions the write does (#289 again: a check
+  the row report cannot name is a check the preview does not have). And **a bulk write of history
+  emits nothing**: no `invoice.issued`, no `invoice.paid`, reminders paused unless the sheet says
+  otherwise, the accounting sweep skipping what was booked over there when it was issued. The
+  original PDF the client received is a file the invoice *names* (`original_file_id`) plus the
+  invoice's **own** `original_sha256`, served untouched by every reader in place of a render,
+  refused on a native invoice (its document *is* its render), attached one at a time or as a zip
+  matched by file name, and readable by exactly whoever may read the invoice
+  (`RECORD_GATED_ENTITY_TYPES`) — because a record that only points at a blob cannot say whether
+  it still holds what was attached.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

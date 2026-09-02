@@ -314,7 +314,12 @@ async def _portal_guard(service: FileService, stored: StoredFile) -> None:
     agency ticked it visible — 404, the same answer the list gives by leaving it out. A file
     that is part of the entity's *body* (``content_id`` — an image pasted into a description
     or a comment) follows the text that embeds it instead: readable exactly when the record
-    is, because the eye never governed what the words already show."""
+    is, because the eye never governed what the words already show.
+
+    A file on a **record-gated** host (an imported invoice's original) reads for anyone exactly
+    when the record does — the same ``entity_visible`` the upload was checked against."""
+    if not await service.record_may_read_serving(stored):
+        raise AppError("not_found", "errors.not_found", status_code=404)
     if not await service.portal_may_read_serving(stored):
         raise AppError("not_found", "errors.not_found", status_code=404)
 
