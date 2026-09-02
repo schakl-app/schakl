@@ -1071,38 +1071,47 @@ class TaskService:
                 )
             )
 
-        # The impersonator resolves like the actor — live name while the account exists, snapshot
-        # once it doesn't — on a second alias, so it costs no query per row (#296).
-        impersonator_user = aliased(User)
-        activity_rows = (
-            await self.ctx.session.execute(
-                select(TaskActivity, User, impersonator_user)
-                .outerjoin(User, User.id == TaskActivity.actor_user_id)
-                .outerjoin(
-                    impersonator_user,
-                    impersonator_user.id == TaskActivity.impersonator_user_id,
-                )
-                .where(
-                    TaskActivity.org_id == self.ctx.org.id,
-                    TaskActivity.task_id == task_id,
-                )
-                .order_by(TaskActivity.created_at.desc())
-                .limit(50)
-            )
-        ).all()
+        # A task keeps its own legacy trail (the #67 fold-in is still pending), so core's
+        # `ActivityService.feed` gate does not reach it and it has to say the same thing here.
+        # It is the worse of the two leaks, because these rows are *specific*: the card handed a
+        # client `attachment_added: photo.jpg` for every file on the task, including the ones
+        # nobody ticked `client_visible` — the one bit the file list, the bytes and the thumbnail
+        # are all gated on (docs/STORAGE.md). The page had already stopped drawing the section
+        # for a portal login; the payload it was drawing from went out regardless, and the API is
+        # the boundary (§15). Not queried at all rather than filtered, like the labels above it.
         detail.activities = []
-        for activity, actor, impersonator in activity_rows:
-            name, deleted = _attribution(actor, activity.actor_name)
-            via, _ = _attribution(impersonator, activity.impersonator_name)
-            detail.activities.append(
-                ActivityRead.model_validate(activity).model_copy(
-                    update={
-                        "actor_name": name,
-                        "actor_deleted": deleted,
-                        "impersonator_name": via,
-                    }
+        if not self.ctx.is_portal:
+            # The impersonator resolves like the actor — live name while the account exists,
+            # snapshot once it doesn't — on a second alias, so it costs no query per row (#296).
+            impersonator_user = aliased(User)
+            activity_rows = (
+                await self.ctx.session.execute(
+                    select(TaskActivity, User, impersonator_user)
+                    .outerjoin(User, User.id == TaskActivity.actor_user_id)
+                    .outerjoin(
+                        impersonator_user,
+                        impersonator_user.id == TaskActivity.impersonator_user_id,
+                    )
+                    .where(
+                        TaskActivity.org_id == self.ctx.org.id,
+                        TaskActivity.task_id == task_id,
+                    )
+                    .order_by(TaskActivity.created_at.desc())
+                    .limit(50)
                 )
-            )
+            ).all()
+            for activity, actor, impersonator in activity_rows:
+                name, deleted = _attribution(actor, activity.actor_name)
+                via, _ = _attribution(impersonator, activity.impersonator_name)
+                detail.activities.append(
+                    ActivityRead.model_validate(activity).model_copy(
+                        update={
+                            "actor_name": name,
+                            "actor_deleted": deleted,
+                            "impersonator_name": via,
+                        }
+                    )
+                )
         links = (
             await self.ctx.session.execute(
                 self.ctx.repo(TaskLink)

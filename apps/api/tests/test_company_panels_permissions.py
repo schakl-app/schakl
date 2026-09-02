@@ -29,7 +29,15 @@ from sqlalchemy import text
 
 from app.core.permissions.catalog import all_permissions
 from app.db import async_session_maker, set_current_org
-from app.registry import PROMINENCE_PRIMARY, PROMINENCE_REGISTER, SIZE_FULL, SIZE_HALF, registry
+from app.registry import (
+    AUDIENCE_EVERYONE,
+    AUDIENCE_STAFF,
+    PROMINENCE_PRIMARY,
+    PROMINENCE_REGISTER,
+    SIZE_FULL,
+    SIZE_HALF,
+    registry,
+)
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
@@ -69,6 +77,9 @@ def test_every_company_panel_declares_a_layout() -> None:
             f"{spec.key}: unknown prominence {spec.prominence!r}"
         )
         assert spec.size in (SIZE_FULL, SIZE_HALF), f"{spec.key}: unknown size {spec.size!r}"
+        assert spec.audience in (AUDIENCE_EVERYONE, AUDIENCE_STAFF), (
+            f"{spec.key}: unknown audience {spec.audience!r}"
+        )
 
 
 def test_the_client_s_own_details_are_a_working_surface() -> None:

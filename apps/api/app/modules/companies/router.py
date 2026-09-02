@@ -207,7 +207,7 @@ async def company_panels(
 
     enabled = await _enabled_modules(ctx)
     panels: list[PanelData] = []
-    for spec in registry.panels_for("company", enabled, ctx.can):
+    for spec in registry.panels_for("company", enabled, ctx.can, ctx.is_portal):
         data = await spec.provider(ctx, company_id)
         panels.append(
             PanelData(

@@ -178,6 +178,21 @@ PROMINENCE_REGISTER = "register"
 SIZE_FULL = "full"
 SIZE_HALF = "half"
 
+#: Who a panel's *subject* is for — a different axis from ``requires_permission`` (#274).
+#:
+#: A permission answers "may this caller read these rows"; this answers "is this thing a client
+#: surface at all". They come apart on exactly the panels a client legitimately holds the key
+#: to: the seeded ``client`` role holds ``activity.read``, so the change history rode the client's
+#: own company hub behind a gate that was working exactly as declared.
+#:
+#: ``everyone`` is the default because a panel's real fence is its permission and its provider,
+#: and defaulting the other way would blank the hub for the client on the day a panel forgot to
+#: opt in. ``staff`` is for a subject that is about the agency rather than about the record:
+#: filtered in :meth:`Registry.panels_for`, so the provider is never *called* — the same
+#: treatment ``requires_permission`` gets, and for the same reason (#365).
+AUDIENCE_EVERYONE = "everyone"
+AUDIENCE_STAFF = "staff"
+
 #: How many rows a panel provider reads before it hands over to the list it is a window onto
 #: (#407).
 #:
@@ -235,6 +250,8 @@ class PanelSpec:
     explicit_public: str | None = None
     #: Working surface vs register (#364) — see :data:`PROMINENCE_PRIMARY`.
     prominence: str = PROMINENCE_REGISTER
+    #: Whose surface this panel's subject is — see :data:`AUDIENCE_EVERYONE`.
+    audience: str = AUDIENCE_EVERYONE
     #: Preferred width in the hub's desktop grid (#364) — see :data:`SIZE_FULL`.
     size: str = SIZE_FULL
     #: ``(data) -> bool``: this payload is "nothing yet" (#364). See :data:`PanelEmptyCheck`.
@@ -447,6 +464,7 @@ class ModuleRegistry:
         entity_type: str,
         names: list[str],
         can: Callable[[str, str | None], bool] | None = None,
+        is_portal: bool = False,
     ) -> list[PanelSpec]:
         """The panels attached to ``entity_type`` **this viewer may read**, ordered (#365).
 
@@ -454,6 +472,12 @@ class ModuleRegistry:
         digest gathers facts for a caller it has already narrowed itself. Pass it and a panel the
         viewer may not read is never *called*: a permission check that still runs the query saves
         no round trip and answers the question anyway.
+
+        ``is_portal`` is ``ctx.is_portal`` and answers the *other* question (#274): a panel whose
+        subject is the agency's own business is dropped for a client however many permissions
+        they hold — see :data:`AUDIENCE_STAFF`. It defaults to ``False`` for the same reason
+        ``can`` defaults to ``None``: the callers without a request context are internal ones
+        that have already narrowed themselves.
         """
         panels: list[PanelSpec] = [p for p in self._core_panels if p.entity_type == entity_type]
         for module in self.enabled(names):
@@ -465,6 +489,8 @@ class ModuleRegistry:
                 if p.requires_permission is None
                 or can(p.requires_permission, p.requires_scope)
             ]
+        if is_portal:
+            panels = [p for p in panels if p.audience != AUDIENCE_STAFF]
         return sorted(panels, key=lambda p: (p.position, p.key))
 
     def summaries_for(

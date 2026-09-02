@@ -16,7 +16,7 @@ import uuid
 
 from app.core.activity.service import ActivityService
 from app.core.tenancy import RequestContext
-from app.registry import SIZE_HALF, PanelSpec, registry
+from app.registry import AUDIENCE_STAFF, SIZE_HALF, PanelSpec, registry
 
 #: A panel is a summary, not a paginated log — it says so when it truncates (docs/UX.md).
 PANEL_LIMIT = 10
@@ -68,6 +68,14 @@ def register_core_activity_panels() -> None:
             # change history, actor names included, rode the hub for anyone who could open the
             # client.
             requires_permission="activity.read",
+            # …and a permission was not enough, because the seeded `client` role holds this one
+            # (it is what draws the trail on the *staff* screens a restricted member opens). A
+            # client's own hub therefore printed the agency's change history — actor names and
+            # contactmoment subject lines included — behind a gate doing exactly what it said.
+            # Externality is its own axis (#274): the trail is a staff subject, so it is not
+            # composed for a client at all, rather than composed and folded away as "nothing
+            # here yet", which would leave a ＋ chip promising a card with nothing behind it.
+            audience=AUDIENCE_STAFF,
             size=SIZE_HALF,
             empty_when=lambda data: not data.get("items"),
         )

@@ -118,9 +118,14 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/files", {
       params: { query: { entity_type: "task", entity_id: task_id } },
     }),
-    api.GET("/api/v1/activity", {
-      params: { query: { entity_type: "task", entity_id: task_id, limit: 50 } },
-    }),
+    // …and never for a client: the trail is the agency's own record of the work, the page
+    // draws no section for one, and the API answers a portal login with an empty feed anyway
+    // (docs/PORTAL.md). A round trip whose answer is thrown away is a round trip.
+    event.locals.user?.isPortal
+      ? { data: [] }
+      : api.GET("/api/v1/activity", {
+          params: { query: { entity_type: "task", entity_id: task_id, limit: 50 } },
+        }),
     // Every planned block for this task (#188) — no date window, the panel wants the lot. A
     // viewer without schedule.read simply gets an empty list.
     api.GET("/api/v1/tasks/schedules", { params: { query: { task_id } } }),
