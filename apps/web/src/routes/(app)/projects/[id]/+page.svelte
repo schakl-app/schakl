@@ -495,6 +495,7 @@
             rows={3}
             value={project.description ?? ""}
             scope={{ projectId: project.id, companyId: project.company_id ?? null }}
+            upload={{ entityType: "project", entityId: project.id }}
           />
         </div>
         {#if data.definitions.length > 0}
@@ -555,7 +556,7 @@
           <div class="col-span-2">
             <dt class="text-text-muted">{t("projects.field.description")}</dt>
             <dd class="mt-0.5">
-              <Markdown value={project.description} />
+              <Markdown value={project.description} images />
             </dd>
           </div>
         {/if}

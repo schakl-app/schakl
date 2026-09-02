@@ -15,6 +15,7 @@ import DOMPurify from "dompurify";
 import { marked, type Tokens } from "marked";
 
 import { sourceHref } from "$lib/core/ai";
+import { FILE_IMAGE_SOURCE, clampImageWidth } from "$lib/core/richtext/images";
 
 // A deliberately small allow-list: the tags markdown itself produces, and nothing else. No
 // `<img>` by default (no remote content / tracking pixels in a note), no `<h1>`/`<h2>` (headings
@@ -100,8 +101,17 @@ function ensureConfigured(): void {
     // remote src is a request to somebody else's server, which for a received e-mail means
     // telling the sender the agency opened it. Removed outright rather than blanked — an
     // empty `<img>` is a broken-image icon in the middle of someone's message.
-    if (node.tagName === "IMG" && !(node.getAttribute("src") ?? "").startsWith(FILE_SRC)) {
-      node.remove();
+    if (node.tagName === "IMG") {
+      if (!(node.getAttribute("src") ?? "").startsWith(FILE_SRC)) {
+        node.remove();
+        return;
+      }
+      // The author's width (`![alt](file:… =50%)`) rides in `data-width` — a bare number the
+      // allow-list admits — and becomes the one style declaration an <img> may carry. Written
+      // *here*, after sanitization, so no stored style attribute ever survives on its own.
+      const width = clampImageWidth(node.getAttribute("data-width") ?? "");
+      if (width === null) node.removeAttribute("data-width");
+      else node.setAttribute("style", `width:${width}%`);
     }
   });
   // Ordinary markdown images never render — `![x](https://…)` degrades to its alt text, whatever
@@ -170,7 +180,7 @@ function ensureConfigured(): void {
         },
         tokenizer(src: string) {
           const m = _FILE_IMAGE.exec(src);
-          if (m) return { type: "fileimage", raw: m[0], alt: m[1], id: m[2] };
+          if (m) return { type: "fileimage", raw: m[0], alt: m[1], id: m[2], width: m[3] };
         },
         renderer(token: Tokens.Generic) {
           const alt = escapeHtml(String(token.alt ?? ""));
@@ -178,7 +188,11 @@ function ensureConfigured(): void {
           // says "Bureau" reads better than a body with a hole in it.
           if (!allowImages) return alt;
           const id = String(token.id ?? "");
-          return `<img src="/api/v1/files/${id}" alt="${alt}" loading="lazy" />`;
+          // The author's width (` =50%`), as data the DOMPurify hook turns into the one
+          // style declaration an <img> may carry. Absent = natural size, capped by CSS.
+          const width = clampImageWidth(String(token.width ?? ""));
+          const sized = width === null ? "" : ` data-width="${width}"`;
+          return `<img src="/api/v1/files/${id}" alt="${alt}"${sized} loading="lazy" />`;
         },
       },
       {
@@ -209,8 +223,10 @@ function ensureConfigured(): void {
   configured = true;
 }
 
-/** `![alt](file:<uuid>)` — an image the API stored for us (an e-mail's `cid:` part). */
-const _FILE_IMAGE = new RegExp(`^!\\[([^\\]]*)\\]\\(file:(${_UUID})\\)`);
+/** `![alt](file:<uuid>)`, optionally ` =NN%` wide — an image the API stored for us (an
+ *  e-mail's `cid:` part, or one pasted into a description/comment). Grammar shared with the
+ *  editor's serializer (`richtext/images.ts`), so the two cannot drift. */
+const _FILE_IMAGE = new RegExp(`^${FILE_IMAGE_SOURCE}`);
 
 export interface RenderOptions {
   /**
@@ -232,7 +248,9 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
   const html = marked.parse(source, { async: false, gfm: true, breaks: true }) as string;
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: options.images ? [...ALLOWED_TAGS, "img"] : ALLOWED_TAGS,
-    ALLOWED_ATTR: options.images ? [...ALLOWED_ATTR, "src", "alt", "loading"] : ALLOWED_ATTR,
+    ALLOWED_ATTR: options.images
+      ? [...ALLOWED_ATTR, "src", "alt", "loading", "data-width"]
+      : ALLOWED_ATTR,
     // Belt-and-suspenders on link protocols; DOMPurify blocks `javascript:` by default anyway.
     // A single leading `/` (never `//`, which is protocol-relative) admits the app's own routes —
     // the resolved crm:// references and file: images; a scheme can't hide in a path-relative URL.

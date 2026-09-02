@@ -64,6 +64,7 @@
     canComment,
     canDeleteAny,
     scope,
+    upload = null,
     busy,
     askDelete,
     sort = DEFAULT_COMMENT_SORT,
@@ -80,6 +81,8 @@
     /** `tasks.comment.write:any` — cleaning up somebody else's words. */
     canDeleteAny: boolean;
     scope: CandidateScope;
+    /** Where a pasted image lands (the task, as body content): absent → composers take none. */
+    upload?: { entityType: string; entityId: string } | null;
     busy: InFlight;
     askDelete: (action: string, fields: Record<string, string>, message: string) => void;
     sort?: CommentSort;
@@ -370,6 +373,7 @@
         required
         placeholder={t("tasks.comments.placeholder")}
         {scope}
+        {upload}
       />
     {/key}
     <div class="mt-2 flex justify-end">
@@ -465,7 +469,7 @@
         })}
       >
         <input type="hidden" name="comment_id" value={comment.id} />
-        <RichTextEditor name="body" rows={2} required value={comment.body} {scope} />
+        <RichTextEditor name="body" rows={2} required value={comment.body} {scope} {upload} />
         <div class="mt-1 flex gap-2">
           <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
           <button
@@ -476,7 +480,9 @@
         </div>
       </form>
     {:else}
-      <Markdown value={comment.body} />
+      <!-- `images`: a screenshot pasted into a comment renders where it was said. The marker
+           can only name our own storage, and the API gates a portal read on the task itself. -->
+      <Markdown value={comment.body} images />
       <!-- Answering is not "editing the definition", so it stays inline rather than hiding in
            the ⋯ menu (docs/UX.md). It gates on the same permission the POST declares — a client
            portal login holds it, and its own task comments are its whole write surface. -->
@@ -557,6 +563,7 @@
             value={replySeed}
             placeholder={t("tasks.comments.reply_placeholder")}
             {scope}
+            {upload}
           />
         {/key}
         <div class="mt-2 flex gap-2">

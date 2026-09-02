@@ -23,6 +23,7 @@ import { MarkdownSerializer } from "prosemirror-markdown";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { renderMarkdown } from "$lib/core/markdown";
+import { clampImageWidth, fileImageMarkdown } from "$lib/core/richtext/images";
 
 export interface Candidate {
   id: string;
@@ -143,6 +144,89 @@ const TaskrefNode = Node.create({
     return `#${node.attrs.label}`;
   },
 });
+
+const FileImageNode = Node.create({
+  name: "fileimage",
+  group: "inline",
+  inline: true,
+  atom: true,
+  // Selectable on purpose (unlike the mention chips): selecting the image is how the width
+  // controls know which one you mean, and Backspace-to-delete needs a node selection.
+  selectable: true,
+  draggable: true,
+
+  addAttributes() {
+    return {
+      id: { default: "" },
+      alt: { default: "" },
+      /** Percent of the text column, or null for natural size (see richtext/images.ts). */
+      width: { default: null },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "img[src]",
+        getAttrs: (el) => {
+          // Only the marker's own render parses back — an <img> naming anything but our own
+          // file store is not authorable here, exactly as it is not renderable.
+          const m = /^\/api\/v1\/files\/([0-9a-fA-F-]{36})$/.exec(el.getAttribute("src") ?? "");
+          if (!m) return false;
+          return {
+            id: m[1],
+            alt: el.getAttribute("alt") ?? "",
+            width: clampImageWidth(el.getAttribute("data-width") ?? ""),
+          };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ node }) {
+    const attrs: Record<string, string> = {
+      src: `/api/v1/files/${node.attrs.id}`,
+      alt: String(node.attrs.alt ?? ""),
+    };
+    const width = clampImageWidth(node.attrs.width);
+    if (width !== null) {
+      attrs["data-width"] = String(width);
+      attrs.style = `width:${width}%`;
+    }
+    return ["img", attrs];
+  },
+
+  renderText({ node }) {
+    return String(node.attrs.alt ?? "");
+  },
+});
+
+/**
+ * Upload image files and insert their markers — the one routine behind the paste, the drop
+ * and the toolbar button, so all three arrive as the same node with the same name. Uploads
+ * run sequentially (they share one connection anyway) and whatever landed is inserted in one
+ * chain: a refused file costs its own upload, never the batch.
+ */
+export async function insertUploadedImages(
+  editor: Editor,
+  files: File[],
+  upload: (file: File) => Promise<{ id: string; alt: string } | null>,
+  pos?: number,
+): Promise<void> {
+  const nodes: { type: "fileimage"; attrs: { id: string; alt: string; width: null } }[] = [];
+  for (const file of files) {
+    const stored = await upload(file);
+    if (stored) {
+      nodes.push({ type: "fileimage", attrs: { id: stored.id, alt: stored.alt, width: null } });
+    }
+  }
+  if (nodes.length === 0 || editor.isDestroyed) return;
+  if (pos !== undefined) {
+    editor.chain().insertContentAt(Math.min(pos, editor.state.doc.content.size), nodes).run();
+  } else {
+    editor.chain().focus().insertContent(nodes).run();
+  }
+}
 
 // --- suggestion wiring ---------------------------------------------------------
 // One plugin per trigger; both hand their state to the component through the bridge, which
@@ -294,6 +378,11 @@ const serializer = new MarkdownSerializer(
     taskref(state, node) {
       state.write(`#[${node.attrs.label}](mention:task:${node.attrs.id})`);
     },
+    fileimage(state, node) {
+      // `![alt](file:<uuid> =50%)` — the renderer's own marker (richtext/images.ts), so what
+      // the editor shows and what the reading view draws are one grammar.
+      state.write(fileImageMarkdown(node.attrs.id, String(node.attrs.alt ?? ""), node.attrs.width));
+    },
   },
   {
     bold: { open: "**", close: "**", mixable: true, expelEnclosingWhitespace: true },
@@ -341,10 +430,14 @@ export interface CreateOptions {
   /** A plain click landed on a link: the component opens its popover prefilled with the href.
    *  Clicking a blue label is the only discoverable way to reach a URL the text hides. */
   onLinkClick: (href: string) => void;
+  /** Store a pasted/dropped/picked image against the host record and answer its file id —
+   *  absent disables image handling entirely (an editor with no record to hang a file on).
+   *  Busy and error states live inside this function, owned by the component. */
+  uploadImage?: (file: File) => Promise<{ id: string; alt: string } | null>;
 }
 
 export function createRichTextEditor(options: CreateOptions): Editor {
-  return new Editor({
+  const instance: Editor = new Editor({
     element: options.element,
     extensions: [
       StarterKit.configure({
@@ -367,13 +460,17 @@ export function createRichTextEditor(options: CreateOptions): Editor {
       Placeholder.configure({ placeholder: options.placeholder ?? "" }),
       MentionNode,
       TaskrefNode,
+      FileImageNode,
       SuggestExtension.configure({
         people: options.people,
         tasks: options.tasks,
         bridge: options.bridge,
       }),
     ],
-    content: renderMarkdown(options.content),
+    // `images: true` unconditionally: a marker in a field whose *surface* draws no images must
+    // still survive an edit round-trip — parsed to alt text it would be silently destroyed on
+    // the next save. What a surface shows is the renderer's decision, never the serializer's.
+    content: renderMarkdown(options.content, { images: true }),
     editorProps: {
       attributes: {
         class: "rt-prose",
@@ -391,10 +488,39 @@ export function createRichTextEditor(options: CreateOptions): Editor {
         if (mark) options.onLinkClick(String(mark.attrs.href ?? ""));
         return false;
       },
+      // Pasting a screenshot uploads it and drops the image at the caret — only where the host
+      // wired an upload target. A paste that also carries text is the text: copying from a web
+      // page brings the words *and* a rendering of them, and the person meant the words (the
+      // same rule FileAttachments applies at the document level).
+      handlePaste: (_view, event) => {
+        const upload = options.uploadImage;
+        if (!upload) return false;
+        const data = event.clipboardData;
+        const files = Array.from(data?.files ?? []).filter((f) => f.type.startsWith("image/"));
+        if (files.length === 0 || data?.types.includes("text/plain")) return false;
+        event.preventDefault();
+        void insertUploadedImages(instance, files, upload);
+        return true;
+      },
+      // The same gesture minus the clipboard. `moved` is ProseMirror's own content being
+      // dragged within the document — a reorder, not an upload.
+      handleDrop: (view, event, _slice, moved) => {
+        const upload = options.uploadImage;
+        if (!upload || moved) return false;
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        const drop = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        void insertUploadedImages(instance, files, upload, drop?.pos);
+        return true;
+      },
     },
     onUpdate: ({ editor }) => options.onUpdate(serializeDoc(editor)),
     onTransaction: () => options.onTransaction(),
   });
+  return instance;
 }
 
 export type { Editor };

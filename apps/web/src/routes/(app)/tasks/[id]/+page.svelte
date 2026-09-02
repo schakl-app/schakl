@@ -1587,6 +1587,7 @@
           rows={4}
           value={task.description ?? ""}
           scope={candidateScope}
+          upload={{ entityType: "task", entityId: task.id }}
         />
       {:else}
         <!-- Edited in place (#455): the one field people change ten times a day should not cost
@@ -1598,6 +1599,8 @@
           placeholder={t("tasks.detail.description_placeholder")}
           canEdit={canEditTask}
           scope={candidateScope}
+          images
+          upload={{ entityType: "task", entityId: task.id }}
           id="task-description-inline"
         />
       {/if}
@@ -2137,6 +2140,7 @@
          the task's own edit form for room in one file. -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <TaskComments
+        upload={{ entityType: "task", entityId: task.id }}
         comments={task.comments ?? []}
         truncated={task.comments_truncated ?? false}
         members={data.members}

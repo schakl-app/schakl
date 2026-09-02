@@ -892,7 +892,14 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a file against a record is a platform capability. Its sibling finding is on the other route
   (`docs/GOOGLE.md`): `can_provision: false` on a Drive that is enabled and connected is one unset
   dropdown — the automation account — and every "file in the wrong folder" and "404 on a
-  colleague's file" the task reported follows from it.
+  colleague's file" the task reported follows from it. Its follow-up put the image **in the
+  words**: a paste into the shared editor uploads as *body* content (`inline=true` →
+  `content_id`, the e-mail `cid:` shape, so it never doubles up in the strip) and writes the
+  one image marker the platform renders — `![alt](file:<id> =50%)`, width the author's, grammar
+  shared between serializer and renderer (`richtext/images.ts`) so an edit round-trip can never
+  destroy what a different surface merely declines to draw. The portal rule follows the words,
+  not the eye: a body image reads exactly when the record that embeds it does
+  (`portal_may_read_serving`), while `client_visible` keeps gating attachments.
 - **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
   `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
   `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'

@@ -1362,6 +1362,22 @@ contrast bug in dark mode rather than only an inconsistency.
   marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
   applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
   drop its `!isPortal` around the strip.
+- **An image belongs where the words are, and its width is the author's** (the inline-images
+  follow-up). Ctrl+V *into a composer* — the task description, a comment, a reply — uploads the
+  screenshot as body content (`POST /files?inline=true`, so it never doubles up in the attachment
+  strip) and drops the picture at the caret as `![alt](file:<id>)`, exactly where it was being
+  talked about; Ctrl+V *outside* one still lands on the strip, and the editor's `preventDefault`
+  is how the strip knows to step aside — one paste always has exactly one destination. Drop and a
+  toolbar button are the same routine, so all three gestures produce the same node with the same
+  org-clock name. Selecting an image swaps **width presets** into the toolbar (25/50/75/100% ·
+  Auto, where Auto is natural size never wider than the column): a percent of the column rather
+  than pixels, because the same description is read on a phone, in a panel and on a desktop, and
+  stored in the marker itself (` =50%`) so the editor and the renderer read one grammar
+  (`richtext/images.ts`). A paste that also carries text is the text (copying from a web page
+  brings the words *and* a rendering of them). Rendered images open their original on click
+  (`cursor: zoom-in`) — a screenshot is drawn at column width and read at full size. And the
+  portal reads a body image exactly when it reads the record that embeds it: the per-file eye
+  gates attachments, never the words (`docs/STORAGE.md`).
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only

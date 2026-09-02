@@ -29,9 +29,8 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { pastedImageName } from "$lib/core/files/paste";
   import { t } from "$lib/core/i18n";
-  import { getTimeZone } from "$lib/core/timezone";
-  import { orgToday } from "$lib/core/today";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
@@ -103,25 +102,11 @@
     lightbox = null;
   }
 
-  /** A pasted image arrives named `image.png`; name it for the moment it was taken — on the
-   *  org's clock, like every date the app computes (CLAUDE.md §8, `$lib/core/today`). */
-  function pastedName(file: File): string {
-    const now = new Date();
-    const time = new Intl.DateTimeFormat("en-GB", {
-      timeZone: getTimeZone(),
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    })
-      .format(now)
-      .replaceAll(":", "");
-    const stamp = `${orgToday(now)}-${time}`;
-    const ext = file.type === "image/jpeg" ? "jpg" : (file.type.split("/")[1] ?? "png");
-    return `${t("files.pasted_name")}-${stamp}.${ext}`;
-  }
-
   function onPaste(event: ClipboardEvent) {
+    // A rich-text editor with an upload target already took this paste and put the image
+    // *inline* where the caret is (`richtext/editor.ts` prevents the default) — the person
+    // was writing, so the words get the picture, not the attachment strip.
+    if (event.defaultPrevented) return;
     if (readonly || !paste || uploading || !input) return;
     const data = event.clipboardData;
     if (!data) return;
@@ -139,7 +124,7 @@
     event.preventDefault();
     const transfer = new DataTransfer();
     for (const file of pasted) {
-      transfer.items.add(new File([file], pastedName(file), { type: file.type }));
+      transfer.items.add(new File([file], pastedImageName(file), { type: file.type }));
     }
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));

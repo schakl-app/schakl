@@ -277,6 +277,110 @@ async def test_client_portal_reads_only_files_ticked_visible(
         )
 
 
+async def test_a_body_image_follows_the_words_not_the_eye(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """An image pasted into a description or a comment is stored as *body* content
+    (``inline=true`` → ``content_id``, the e-mail ``cid:`` shape): it never doubles up in the
+    attachment strip, and a portal login reads it exactly when it reads the record that embeds
+    it — the per-file eye gates attachments, never the words."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-body")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Body",
+                    "last_name": "Klant",
+                    "email": "body-files@example.com",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        visible = (
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Zichtbaar",
+                    "company_id": company["id"],
+                    "visible_to_client": True,
+                },
+                headers=headers,
+            )
+        ).json()
+        internal = (
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "due_date": FAR_FUTURE_DUE,
+                    "title": "Intern",
+                    "company_id": company["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Both upload envelopes can say "body content", and both mean the same column.
+        body_img = (
+            await c.post(
+                f"/api/v1/files?entity_type=task&entity_id={visible['id']}&inline=true",
+                files={"file": ("plaatje.png", _png(), "image/png")},
+                headers=headers,
+            )
+        ).json()
+        assert body_img["content_id"] == "body"
+        internal_img = (
+            await c.post(
+                "/api/v1/files/inline",
+                json={
+                    "filename": "intern.png",
+                    "content_type": "image/png",
+                    "data": base64.b64encode(_png(10, 10)).decode(),
+                    "entity_type": "task",
+                    "entity_id": internal["id"],
+                    "inline": True,
+                },
+                headers=headers,
+            )
+        ).json()
+        assert internal_img["content_id"] == "body"
+
+        # Body content is not an attachment: the strip's default list leaves it out.
+        listed = (
+            await c.get(
+                f"/api/v1/files?entity_type=task&entity_id={visible['id']}", headers=headers
+            )
+        ).json()
+        assert body_img["id"] not in [f["id"] for f in listed]
+
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal = await auth_cookie(portal_user)
+
+        # The words of a client-visible task carry their images — bytes and thumbnail alike —
+        # with no eye ever ticked; an internal task's body image stays a 404.
+        assert (await c.get(f"/api/v1/files/{body_img['id']}", headers=portal)).status_code == 200
+        assert (
+            await c.get(f"/api/v1/files/{body_img['id']}/thumbnail", headers=portal)
+        ).status_code == 200
+        assert (
+            await c.get(f"/api/v1/files/{internal_img['id']}", headers=portal)
+        ).status_code == 404
+        assert (
+            await c.get(f"/api/v1/files/{internal_img['id']}/thumbnail", headers=portal)
+        ).status_code == 404
+
+
 async def test_documents_ride_the_company_hub(client_for, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     t = await make_tenant("files-hub")

@@ -38,6 +38,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.assignees import AssigneeLinkMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
+from app.core.scope import register_horizon_entity
 from app.db import Base
 
 #: The projects table as three columns, for the correlated EXISTS in
@@ -289,6 +290,15 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         )
         anchored = cls.company_id.in_(companies) | (cls.company_id.is_(None) & via_project)
         return anchored & cls.visible_to_client.is_(True)
+
+
+# The docstring above names ``entity_visible`` as one of this clause's seams — but the registry
+# behind that seam is filled by ``AuditableMixin``/``CustomizableMixin``, and ``Task`` carries
+# neither (its trail predates the core one, §16). So the entity-addressed surfaces (#285's
+# failure mode 4: the file list, the upload's attach check, a pasted body image's serve-time
+# gate) fell through ``entity_visible``'s "no model registered" default and answered ``True``
+# for every caller. Register it the way the mixins would have.
+register_horizon_entity("task", Task)
 
 
 class TaskAssignee(

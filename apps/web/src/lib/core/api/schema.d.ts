@@ -2190,6 +2190,11 @@ export interface paths {
         /**
          * Upload File
          * @description Multipart upload. Size and content type are bounded by instance config.
+         *
+         *     ``inline=true`` stores the file as part of its entity's **body** rather than as an
+         *     attachment (``content_id``, the e-mail ``cid:`` shape): an image pasted into a task's
+         *     description or a comment renders inside the text via its ``![alt](file:<id>)`` marker,
+         *     so it must not also appear in the attachment strip.
          */
         post: operations["upload_file_api_v1_files_post"];
         delete?: never;
@@ -20648,6 +20653,11 @@ export interface components {
             entity_type?: string | null;
             /** Filename */
             filename: string;
+            /**
+             * Inline
+             * @default false
+             */
+            inline: boolean;
         };
         /** InstanceApiKeyCreate */
         InstanceApiKeyCreate: {
@@ -37416,6 +37426,7 @@ export interface operations {
             query?: {
                 entity_type?: string | null;
                 entity_id?: string | null;
+                inline?: boolean;
             };
             header?: never;
             path?: never;
