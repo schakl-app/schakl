@@ -23,6 +23,7 @@
   "common.print": "Afdrukken",
   "common.delete": "Verwijderen",
   "common.edit": "Bewerken",
+  "common.edit_field": "{label} bewerken",
   "common.done": "Klaar",
   "common.create": "Aanmaken",
   "common.add": "Toevoegen",

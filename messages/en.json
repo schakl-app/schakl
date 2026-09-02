@@ -23,6 +23,7 @@
   "common.print": "Print",
   "common.delete": "Delete",
   "common.edit": "Edit",
+  "common.edit_field": "Edit {label}",
   "common.done": "Done",
   "common.create": "Create",
   "common.add": "Add",

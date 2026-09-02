@@ -243,6 +243,9 @@ export const actions: Actions = {
           e.fields?.status ??
           e.fields?.closing_interaction_id ??
           e.fields?.assignee_contact_id ??
+          // …and the missing reason for a moved deadline, which the in-place editor prints
+          // beside the date it refused.
+          e.fields?.due_change_reason ??
           e.fields?.log_time ??
           e.key,
       });

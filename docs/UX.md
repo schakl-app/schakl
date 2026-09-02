@@ -49,6 +49,24 @@
    page's edit mode mirrors, and without it an empty field is a dash, never a prompt that would
    refuse (#253). Reach for it for free text a person revises between two phone calls; not for
    anything that changes what the record *is*, which stays in edit mode with the others.
+   **…and a task's properties are things a person changes between two phone calls too.** The
+   line above was drawn at free text, and on the task page it left every other field — the
+   client, the roster, the project, the priority, the budget, the two policy checkboxes, the
+   labels, the deadline and the repeat rule — behind ⋯ → Bewerken and a save at the foot of the
+   page, for a change that is one pick. `InlineField` (`$lib/core/ui/`) is `InlineText`
+   generalised: the caller hands it the read view and the editor as snippets, the editor renders
+   inside a form posting the page's own action (`?/update`, or `?/setLabels` / `?/setRecurrence`
+   where the field has its own), and a select or a checkbox saves on change (`saveOnChange`) so
+   the pick is the save — the instant control the use-mode status select has always been. Four
+   rules keep it honest. **A refusal lands beside the field it refused** (the API's own field key,
+   not the page's generic line at the foot). **A pair travels as a pair**: the client editor also
+   posts the project it may have dropped and the project editor the client it backfilled, so an
+   in-place pick cannot leave the two disagreeing where edit mode would not. **What edit mode
+   lazily fetches, the field fetches too** — the client's contacts for the assignee picker are
+   read when either surface opens, never on every page view. And **the read view may carry a
+   link**, so the wrapper is not a button: a click on the client's name navigates, a click on the
+   value opens, and the pencil is a real button for the keyboard. Edit mode stays for the whole
+   definition at once, and for the title.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
