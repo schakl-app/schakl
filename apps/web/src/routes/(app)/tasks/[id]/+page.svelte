@@ -1814,6 +1814,7 @@
               project_id: task.project_id,
               company_id: task.company_id,
               assignee_user_id: task.assignee_user_id,
+              assignees: task.assignees,
               allocated_minutes: task.allocated_minutes,
               due_date: task.due_date,
             }}

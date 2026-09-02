@@ -2513,6 +2513,20 @@ contrast bug in dark mode rather than only an inconsistency.
   stays open because the user asked to plan and not to stop editing. Disabling the button was the
   rejected alternative: a padlock on the thing the user is most likely to want next (#253).
 
+  **A block is one person's, and planning is one act for everyone it is for.** Inplannen named
+  exactly one person, so a kick-off with three colleagues was the same modal three times over —
+  same task, same day, same start, same length, retyped — and the task's own roster (#375, a
+  list) was offered as its first name only. The new-block form now takes people the way the
+  assignee roster does: chips over a type-ahead (`MembersPicker`, `MemberPicker`'s plural,
+  without the ★ because here nobody is *the* one), prefilled with the whole roster, and one
+  block is written per chip by one call (`POST /tasks/schedules/batch`) — all of them or none,
+  since a member naming a colleague beside themselves is refused as a whole rather than booked
+  alone and then told no. Nothing about the *block* changed: each row is still one person's
+  calendar, one Google event, one "ingepland" notification, and editing one still names one —
+  the edit form keeps its single picker, because a reassignment moves *that* row. A member
+  holding only `:own` sees their own name and no chips: the list has one legal value, and a
+  picker that offers one choice is a label pretending to be a control.
+
   **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
   successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an
   ordinary task. Both ends now carry a dated, linked activity line, and the finish prompt is where

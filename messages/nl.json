@@ -3685,6 +3685,8 @@
   "tasks.schedule.search": "Zoek een taak…",
   "tasks.schedule.none": "Geen open taken om in te plannen.",
   "tasks.schedule.person": "Voor wie",
+  "tasks.schedule.add_person": "Collega toevoegen…",
+  "tasks.schedule.nobody": "Noem minstens één persoon.",
   "tasks.schedule.you": "Jij",
   "tasks.schedule.date": "Datum",
   "tasks.schedule.start": "Starttijd",

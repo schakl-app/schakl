@@ -24,6 +24,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
+  import MembersPicker from "$lib/core/ui/MembersPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { orgToday } from "$lib/core/today";
@@ -37,6 +38,8 @@
     project_id?: string | null;
     company_id?: string | null;
     assignee_user_id?: string | null;
+    /** The employee roster (#375), primary first — the people a new block is offered for. */
+    assignees?: { user_id: string; is_primary: boolean }[] | null;
     allocated_minutes?: number | null;
     due_date?: string | null;
   }
@@ -103,7 +106,11 @@
   let search = $state("");
 
   let selectedTask = $state<SchedTask | null>(null);
+  // A block belongs to one person, so an *edit* names one; a new block is one act for however
+  // many people share it (the kick-off, the review) and names a list — one row each, written by
+  // one call.
   let personId = $state("");
+  let personIds = $state<string[]>([]);
   let day = $state("");
   let startTime = $state("09:00");
   let durationMinutes = $state<number | null>(60);
@@ -127,9 +134,23 @@
       : pickerTasks,
   );
 
+  /**
+   * Who a new block is offered for: the task's whole roster (UX.md: show the inherited value —
+   * and since #375 the inherited value is a list), else its single assignee, else the scheduler
+   * themselves so a task with nobody on it is still plannable. A member holding only `:own` is
+   * always and only themselves.
+   */
+  function rosterOf(picked: SchedTask): string[] {
+    if (!canScheduleAny) return [currentUserId];
+    const roster = (picked.assignees ?? []).map((a) => a.user_id);
+    if (roster.length) return roster;
+    return [picked.assignee_user_id || currentUserId];
+  }
+
   function prefill(picked: SchedTask) {
     selectedTask = picked;
     personId = canScheduleAny && picked.assignee_user_id ? picked.assignee_user_id : currentUserId;
+    personIds = rosterOf(picked);
     durationMinutes =
       picked.allocated_minutes && picked.allocated_minutes > 0 ? picked.allocated_minutes : 60;
     day = defaultDate ?? todayIso();
@@ -330,13 +351,29 @@
 
       <div>
         <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.person")}</span>
-        {#if canScheduleAny}
-          <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
-        {:else}
-          <input type="hidden" name="user_id" value={currentUserId} />
+        {#if !canScheduleAny}
+          <!-- `:own` plans one calendar: the caller's. Posted under the same field either way, so
+               the action reads one shape. -->
+          <input type="hidden" name={editBlock ? "user_id" : "user_ids"} value={currentUserId} />
           <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
             {memberName.get(currentUserId) ?? t("tasks.schedule.you")}
           </p>
+        {:else if editBlock}
+          <!-- An existing block is one person's; editing it moves or reassigns *that* row. -->
+          <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
+        {:else}
+          <!-- A new block is one act for everyone it is for — chips, like the assignee roster it
+               is prefilled from; one block per chip, written together or not at all. -->
+          <MembersPicker
+            name="user_ids"
+            id="sched-people"
+            bind:value={personIds}
+            members={allMembers}
+            placeholder={t("tasks.schedule.add_person")}
+          />
+          {#if personIds.length === 0}
+            <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t("tasks.schedule.nobody")}</p>
+          {/if}
         {/if}
       </div>
 
@@ -395,7 +432,11 @@
           class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <Button type="submit" loading={busy.active}>
+        <Button
+          type="submit"
+          loading={busy.active}
+          disabled={!editBlock && canScheduleAny && personIds.length === 0}
+        >
           {t("tasks.schedule.submit")}
         </Button>
       </div>

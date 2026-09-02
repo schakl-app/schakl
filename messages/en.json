@@ -3685,6 +3685,8 @@
   "tasks.schedule.search": "Search a task…",
   "tasks.schedule.none": "No open tasks to schedule.",
   "tasks.schedule.person": "For whom",
+  "tasks.schedule.add_person": "Add a colleague…",
+  "tasks.schedule.nobody": "Name at least one person.",
   "tasks.schedule.you": "You",
   "tasks.schedule.date": "Date",
   "tasks.schedule.start": "Start",
