@@ -68,9 +68,7 @@ async def test_schedule_crud_move_and_log(client_for) -> None:
 
         # The range feed decorates with the task + person (one fetch).
         rows = (
-            await c.get(
-                f"/api/v1/tasks/schedules?date_from={_DAY}&date_to={_DAY}", headers=headers
-            )
+            await c.get(f"/api/v1/tasks/schedules?date_from={_DAY}&date_to={_DAY}", headers=headers)
         ).json()
         assert len(rows) == 1
         assert rows[0]["task_title"] == "Redesign homepage"
@@ -114,12 +112,14 @@ async def test_schedule_duration_validation(client_for) -> None:
     async with client_for(t.host) as c:
         task_id = await _make_task(c, headers, assignee=t.user.id)
         zero = await c.post(
-            "/api/v1/tasks/schedules", json=_block(task_id=task_id, duration_minutes=0),
+            "/api/v1/tasks/schedules",
+            json=_block(task_id=task_id, duration_minutes=0),
             headers=headers,
         )
         assert zero.status_code == 422
         too_long = await c.post(
-            "/api/v1/tasks/schedules", json=_block(task_id=task_id, duration_minutes=2000),
+            "/api/v1/tasks/schedules",
+            json=_block(task_id=task_id, duration_minutes=2000),
             headers=headers,
         )
         assert too_long.status_code == 422
@@ -262,3 +262,60 @@ async def test_feed_drops_a_deactivated_members_blocks_and_the_task_panel_keeps_
             await c.get(f"/api/v1/tasks/schedules?task_id={task_id}", headers=owner_headers)
         ).json()
         assert {row["user_id"] for row in panel} == {member_id, str(t.user.id)}
+
+
+async def test_schedule_batch_books_one_block_per_person_or_nobody(client_for) -> None:
+    """Scheduling a task for several people writes one personal block each, judged by the same
+    ``:own``/``:any`` rule as a single block — and a refusal for one person books nobody."""
+    t = await make_tenant("sched-batch")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _invite_member(c, owner_headers, "mel@example.com")
+        member_headers = await auth_cookie(member)
+        task_id = await _make_task(c, owner_headers, assignee=member.id)
+
+        # A member may name themselves — but a colleague beside them is refused as a whole, so
+        # the member's own row is not written either (all or nothing).
+        half = await c.post(
+            "/api/v1/tasks/schedules/batch",
+            json=_block(task_id=task_id, user_ids=[str(member.id), str(t.user.id)]),
+            headers=member_headers,
+        )
+        assert half.status_code == 403, half.text
+        none_yet = await c.get(f"/api/v1/tasks/schedules?task_id={task_id}", headers=owner_headers)
+        assert none_yet.json() == []
+
+        # Nobody named is a validation error, not an empty success.
+        empty = await c.post(
+            "/api/v1/tasks/schedules/batch",
+            json=_block(task_id=task_id, user_ids=[]),
+            headers=owner_headers,
+        )
+        assert empty.status_code == 422
+
+        # The owner (:any) books both — a person named twice is booked once — and the answer is
+        # every block written, in the order they were named.
+        both = await c.post(
+            "/api/v1/tasks/schedules/batch",
+            json=_block(
+                task_id=task_id,
+                user_ids=[str(t.user.id), str(member.id), str(t.user.id)],
+                note="kick-off",
+            ),
+            headers=owner_headers,
+        )
+        assert both.status_code == 201, both.text
+        blocks = both.json()
+        assert [b["user_id"] for b in blocks] == [str(t.user.id), str(member.id)]
+        assert len({b["id"] for b in blocks}) == 2
+        assert all(b["note"] == "kick-off" for b in blocks)
+        assert all(b["starts_at"] == blocks[0]["starts_at"] for b in blocks)
+
+        # Each person's block rides the same feed and the same notification as a single one:
+        # the member (not the actor) is told their task was planned.
+        panel = (
+            await c.get(f"/api/v1/tasks/schedules?task_id={task_id}", headers=owner_headers)
+        ).json()
+        assert {row["user_id"] for row in panel} == {str(t.user.id), str(member.id)}
+        feed = await c.get("/api/v1/notifications", headers=member_headers)
+        assert any(n["event_type"] == "task.scheduled" for n in feed.json()["items"])

@@ -126,9 +126,16 @@ async def upload_file(
     file: UploadFile,
     entity_type: str | None = None,
     entity_id: uuid.UUID | None = None,
+    inline: bool = False,
     ctx: RequestContext = Depends(require_context),
 ) -> StoredFileRead:
-    """Multipart upload. Size and content type are bounded by instance config."""
+    """Multipart upload. Size and content type are bounded by instance config.
+
+    ``inline=true`` stores the file as part of its entity's **body** rather than as an
+    attachment (``content_id``, the e-mail ``cid:`` shape): an image pasted into a task's
+    description or a comment renders inside the text via its ``![alt](file:<id>)`` marker,
+    so it must not also appear in the attachment strip.
+    """
     # You cannot attach a document to a record you cannot see (#285) — the same rule the
     # repository applies to ``company_id`` on an ordinary write, for the entity-reference pair.
     if entity_type and entity_id and not await entity_visible(ctx, entity_type, entity_id):
@@ -145,6 +152,7 @@ async def upload_file(
         size_bytes=size,
         entity_type=entity_type,
         entity_id=entity_id,
+        content_id="body" if inline else None,
     )
     return StoredFileRead.model_validate(stored)
 
@@ -202,6 +210,7 @@ async def upload_file_inline(
         size_bytes=len(raw),
         entity_type=body.entity_type,
         entity_id=body.entity_id,
+        content_id="body" if body.inline else None,
         client_visible=body.client_visible,
     )
     return StoredFileRead.model_validate(stored)
@@ -296,14 +305,17 @@ async def serve_file(
     service = FileService(ctx)
     stored = await service.get_or_404(file_id)
     _company_horizon_guard(ctx, stored)
-    _portal_guard(service, stored)
+    await _portal_guard(service, stored)
     return await _file_response(stored, request, ctx=ctx)
 
 
-def _portal_guard(service: FileService, stored: StoredFile) -> None:
+async def _portal_guard(service: FileService, stored: StoredFile) -> None:
     """A client-portal login reads an attachment on a task, project or company only when the
-    agency ticked it visible — 404, the same answer the list gives by leaving it out."""
-    if not service.portal_may_read(stored):
+    agency ticked it visible — 404, the same answer the list gives by leaving it out. A file
+    that is part of the entity's *body* (``content_id`` — an image pasted into a description
+    or a comment) follows the text that embeds it instead: readable exactly when the record
+    is, because the eye never governed what the words already show."""
+    if not await service.portal_may_read_serving(stored):
         raise AppError("not_found", "errors.not_found", status_code=404)
 
 
@@ -368,7 +380,7 @@ async def serve_thumbnail(
     service = FileService(ctx)
     stored = await service.get_or_404(file_id)
     _company_horizon_guard(ctx, stored)
-    _portal_guard(service, stored)
+    await _portal_guard(service, stored)
     if stored.content_type not in _THUMB_SOURCE_TYPES:
         return await _file_response(stored, request, ctx=ctx)
     size = min(_THUMB_SIZES, key=lambda candidate: abs(candidate - size))

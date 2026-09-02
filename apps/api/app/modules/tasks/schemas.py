@@ -764,6 +764,27 @@ class ScheduleCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class ScheduleBatchCreate(BaseModel):
+    """One block per person, sharing a day, a start and a length: "schedule the kick-off for the
+    three of us". A block is personal — one row, one calendar, one Google event — so several
+    people is several rows, and this is the single call that writes them together (§18's shape,
+    without the per-row reporting: every person is judged before anything is written, and a
+    refusal for one is a refusal for all — a half-planned meeting is not a plan).
+
+    Its own body rather than a ``user_ids`` on ``ScheduleCreate``, because that route answers
+    with *one* block and this one answers with the list; changing the shape of an answer under
+    an existing caller (the generated MCP tool included) is how a client comes to read the first
+    of three rows as the whole result.
+    """
+
+    task_id: uuid.UUID
+    user_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    day: date
+    start_time: time
+    duration_minutes: int = Field(ge=1, le=24 * 60)
+    note: str | None = Field(default=None, max_length=500)
+
+
 class ScheduleUpdate(BaseModel):
     """A partial edit / move: any omitted field keeps the block's current local value."""
 

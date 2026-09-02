@@ -36,6 +36,7 @@
     project_id?: string | null;
     company_id?: string | null;
     assignee_user_id?: string | null;
+    assignees?: { user_id: string; is_primary: boolean }[] | null;
     allocated_minutes?: number | null;
     due_date?: string | null;
   }

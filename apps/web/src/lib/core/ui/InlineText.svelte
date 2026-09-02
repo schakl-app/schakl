@@ -36,6 +36,8 @@
     canEdit = false,
     rows = 4,
     scope,
+    images = false,
+    upload = null,
     id = `inline-${name}`,
   }: {
     /** The stored text (markdown source). */
@@ -50,6 +52,10 @@
     rows?: number;
     /** Passed through to the editor's #task / @mention candidates. */
     scope?: { companyId?: string | null; projectId?: string | null };
+    /** Draw `file:<uuid>` images in the read view (see `Markdown.svelte`). */
+    images?: boolean;
+    /** Let the editor take a pasted/dropped image and store it against this record. */
+    upload?: { entityType: string; entityId: string } | null;
     id?: string;
   } = $props();
 
@@ -88,7 +94,7 @@
     })}
   >
     {#key session}
-      <RichTextEditor {id} {name} {rows} {value} {placeholder} {scope} />
+      <RichTextEditor {id} {name} {rows} {value} {placeholder} {scope} {upload} />
     {/key}
     <div class="flex items-center justify-end gap-2">
       <button
@@ -116,7 +122,7 @@
     }}
   >
     {#if value}
-      <Markdown {value} />
+      <Markdown {value} {images} />
     {:else}
       <p class="text-sm text-text-muted">{placeholder}</p>
     {/if}
@@ -128,7 +134,7 @@
     </span>
   </div>
 {:else if value}
-  <Markdown {value} />
+  <Markdown {value} {images} />
 {:else}
   <p class="text-sm text-text-muted">—</p>
 {/if}

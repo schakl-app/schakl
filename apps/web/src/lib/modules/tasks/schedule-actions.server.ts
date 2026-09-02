@@ -11,7 +11,12 @@ import { apiFor } from "$lib/core/session";
 
 type Result = { error?: string };
 
-/** Create a block. `user_id` omitted → the task's assignee (resolved server-side). */
+/**
+ * Create a block — or one per person. The modal posts the people it is for as `user_ids`
+ * (one field per chip), and the batch route writes them together or not at all; a form that
+ * still posts a single `user_id` (or nothing, → the task's assignee, resolved server-side) takes
+ * the single route, so the two never disagree about what one block means.
+ */
 export async function createScheduleAction(event: RequestEvent): Promise<Result> {
   const form = await event.request.formData();
   const taskId = String(form.get("task_id") ?? "");
@@ -21,8 +26,25 @@ export async function createScheduleAction(event: RequestEvent): Promise<Result>
   // decides what it means (#326); a bare number still reads as minutes.
   const durationMinutes = parsePostedMinutes(form.get("duration_minutes"));
   if (!taskId || !day || !startTime || !durationMinutes) return { error: "errors.required" };
-  const userId = String(form.get("user_id") ?? "");
   const note = String(form.get("note") ?? "");
+  const userIds = [...new Set(form.getAll("user_ids").map((value) => String(value).trim()))].filter(
+    Boolean,
+  );
+  if (form.has("user_ids") && userIds.length === 0) return { error: "tasks.schedule.nobody" };
+  if (userIds.length > 0) {
+    const { error } = await apiFor(event).POST("/api/v1/tasks/schedules/batch", {
+      body: {
+        task_id: taskId,
+        user_ids: userIds,
+        day,
+        start_time: startTime,
+        duration_minutes: durationMinutes,
+        note: note || null,
+      },
+    });
+    return error ? { error: apiErrorKey(error).key } : {};
+  }
+  const userId = String(form.get("user_id") ?? "");
   const { error } = await apiFor(event).POST("/api/v1/tasks/schedules", {
     body: {
       task_id: taskId,

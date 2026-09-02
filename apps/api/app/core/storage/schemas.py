@@ -53,4 +53,8 @@ class InlineUpload(BaseModel):
     data: str = Field(min_length=1)
     entity_type: str | None = None
     entity_id: uuid.UUID | None = None
+    #: Store as part of the entity's **body** rather than as an attachment (``content_id``):
+    #: an image referenced by an ``![alt](file:<id>)`` marker inside a description or comment
+    #: renders in the text and must not double up in the attachment strip.
+    inline: bool = False
     client_visible: bool = False

@@ -33,11 +33,29 @@
   });
 
   const html = $derived(mounted && value ? renderMarkdown(value, { images }) : null);
+
+  /** An inline image opens its original in a new tab — a description's screenshot is drawn at
+   *  column width, and the pixels somebody pasted as evidence deserve a full-size view. Only
+   *  for the one `src` the renderer can emit (our own file store). */
+  function openImage(event: MouseEvent) {
+    const target = event.target;
+    if (
+      target instanceof HTMLImageElement &&
+      new URL(target.src, location.origin).pathname.startsWith("/api/v1/files/")
+    ) {
+      window.open(target.src, "_blank", "noopener");
+    }
+  }
 </script>
 
 {#if html !== null}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions --
+       the click is a convenience on an <img> inside sanitized HTML; the same bytes stay
+       reachable per keyboard through the attachment strip / the document itself. -->
   <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized in renderMarkdown (issue #66) -->
-  <div class="markdown-body text-sm text-text {klass}">{@html html}</div>
+  <div class="markdown-body text-sm text-text {klass}" onclick={images ? openImage : undefined}>
+    {@html html}
+  </div>
 {:else if value}
   <p class="markdown-body whitespace-pre-wrap text-sm text-text {klass}">{value}</p>
 {/if}
@@ -140,6 +158,8 @@
     height: auto;
     max-height: 24rem;
     border-radius: 0.25rem;
+    /* Clicking opens the original (see openImage) — say so. */
+    cursor: zoom-in;
   }
   /* A received mail's table is data the sender laid out; it scrolls in its own box rather
      than pushing the page sideways (docs/PERFORMANCE.md / the artifact rule, same reason). */

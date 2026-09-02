@@ -49,6 +49,24 @@
    page's edit mode mirrors, and without it an empty field is a dash, never a prompt that would
    refuse (#253). Reach for it for free text a person revises between two phone calls; not for
    anything that changes what the record *is*, which stays in edit mode with the others.
+   **…and a task's properties are things a person changes between two phone calls too.** The
+   line above was drawn at free text, and on the task page it left every other field — the
+   client, the roster, the project, the priority, the budget, the two policy checkboxes, the
+   labels, the deadline and the repeat rule — behind ⋯ → Bewerken and a save at the foot of the
+   page, for a change that is one pick. `InlineField` (`$lib/core/ui/`) is `InlineText`
+   generalised: the caller hands it the read view and the editor as snippets, the editor renders
+   inside a form posting the page's own action (`?/update`, or `?/setLabels` / `?/setRecurrence`
+   where the field has its own), and a select or a checkbox saves on change (`saveOnChange`) so
+   the pick is the save — the instant control the use-mode status select has always been. Four
+   rules keep it honest. **A refusal lands beside the field it refused** (the API's own field key,
+   not the page's generic line at the foot). **A pair travels as a pair**: the client editor also
+   posts the project it may have dropped and the project editor the client it backfilled, so an
+   in-place pick cannot leave the two disagreeing where edit mode would not. **What edit mode
+   lazily fetches, the field fetches too** — the client's contacts for the assignee picker are
+   read when either surface opens, never on every page view. And **the read view may carry a
+   link**, so the wrapper is not a button: a click on the client's name navigates, a click on the
+   value opens, and the pencil is a real button for the keyboard. Edit mode stays for the whole
+   definition at once, and for the title.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
@@ -1362,6 +1380,22 @@ contrast bug in dark mode rather than only an inconsistency.
   marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
   applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
   drop its `!isPortal` around the strip.
+- **An image belongs where the words are, and its width is the author's** (the inline-images
+  follow-up). Ctrl+V *into a composer* — the task description, a comment, a reply — uploads the
+  screenshot as body content (`POST /files?inline=true`, so it never doubles up in the attachment
+  strip) and drops the picture at the caret as `![alt](file:<id>)`, exactly where it was being
+  talked about; Ctrl+V *outside* one still lands on the strip, and the editor's `preventDefault`
+  is how the strip knows to step aside — one paste always has exactly one destination. Drop and a
+  toolbar button are the same routine, so all three gestures produce the same node with the same
+  org-clock name. Selecting an image swaps **width presets** into the toolbar (25/50/75/100% ·
+  Auto, where Auto is natural size never wider than the column): a percent of the column rather
+  than pixels, because the same description is read on a phone, in a panel and on a desktop, and
+  stored in the marker itself (` =50%`) so the editor and the renderer read one grammar
+  (`richtext/images.ts`). A paste that also carries text is the text (copying from a web page
+  brings the words *and* a rendering of them). Rendered images open their original on click
+  (`cursor: zoom-in`) — a screenshot is drawn at column width and read at full size. And the
+  portal reads a body image exactly when it reads the record that embeds it: the per-file eye
+  gates attachments, never the words (`docs/STORAGE.md`).
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -2005,10 +2039,7 @@ contrast bug in dark mode rather than only an inconsistency.
   redirected into edit mode on it, which was Principle 8's navigation taken by default: it lost
   the inbox being worked, and it lost the message the task was written *from*, which is the one
   thing a reviewer checking what schakl filled in wants beside them. So the approve now hands
-  the task back (`review_task=1` → `reviewTaskId`, set by the dialog only when the picked task
-  is the one *it* created; filing onto an existing task stays where it is, because that is an
-  inbox being worked and a review per approve would be a dialog over every row) and the dialog
-  opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
+  the task back (`review_task=1` → `reviewTaskId`) and the dialog opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
   the top, title / description / project / assignees / deadline editable at once, Sluiten,
   Opslaan and a link to the full card — and the host is told to close only when the review is,
   whichever way out is taken. **It fills itself in the moment schakl is done, and never over
@@ -2019,6 +2050,24 @@ contrast bug in dark mode rather than only an inconsistency.
   because a modal over a slide-over is one dialog too many. Self-contained in the move dialog,
   so all three hosts (the inbox, every entity's contactmomenten panel, the detail modal) got it
   without being wired.
+  **Two things open it, and the third source got both a release late.** The first cut opened
+  the review only for a task the dialog had *created*, on the argument that filing onto an
+  existing task is an inbox being worked and a review per approve would be a dialog over every
+  row. Right about plain filing and wrong about the case the request was actually about:
+  "laat schakl deze taak invullen" ticked on an *existing* task is a task about to change under
+  the reviewer, and what needs checking is what schakl is about to write — as true of a task
+  that existed yesterday as of one made a minute ago. So the review opens when the task was
+  created here **or** the fill-in was ticked (`reviewAfterApprove`); an existing task filed
+  without it stays where it is. And the same rule now holds on the other way in
+  (`EmlUploadForm`, `reviewAfterSave`): an e-mail picked out of Gmail or dropped as a `.eml`
+  onto a new task closed the dialog and nothing more, so the one flow with no review desk was
+  the one that lost the task — which was the report on task 80a90bfd. The origin line says which
+  of the two it is ("aangemaakt vanuit" / "wordt aangevuld vanuit"), and on a task's *own* page
+  (the task pinned by the host) no review opens, because the page is the review and a slide-over
+  of the record it is drawn on would be the same task twice. Found by running it rather than
+  reading it: the `.eml` action had never forwarded the checkbox to the API at all, so on that
+  path the tick did nothing, silently — a control that cannot fail visibly (§10) — and the
+  review, whose strip would have said so, is what made it visible.
   Its other half is the strip above the card. `TaskAIStatus` (#327) said *"schakl leest de
   e-mail…"* beside a pulsing icon, which was the right amount of information for somebody who
   had not been sent to that page — and is not when somebody is looking straight at the task
@@ -2463,6 +2512,20 @@ contrast bug in dark mode rather than only an inconsistency.
   round trip ahead of the one the user asked for, through the same single save, and edit mode
   stays open because the user asked to plan and not to stop editing. Disabling the button was the
   rejected alternative: a padlock on the thing the user is most likely to want next (#253).
+
+  **A block is one person's, and planning is one act for everyone it is for.** Inplannen named
+  exactly one person, so a kick-off with three colleagues was the same modal three times over —
+  same task, same day, same start, same length, retyped — and the task's own roster (#375, a
+  list) was offered as its first name only. The new-block form now takes people the way the
+  assignee roster does: chips over a type-ahead (`MembersPicker`, `MemberPicker`'s plural,
+  without the ★ because here nobody is *the* one), prefilled with the whole roster, and one
+  block is written per chip by one call (`POST /tasks/schedules/batch`) — all of them or none,
+  since a member naming a colleague beside themselves is refused as a whole rather than booked
+  alone and then told no. Nothing about the *block* changed: each row is still one person's
+  calendar, one Google event, one "ingepland" notification, and editing one still names one —
+  the edit form keeps its single picker, because a reassignment moves *that* row. A member
+  holding only `:own` sees their own name and no chips: the list has one legal value, and a
+  picker that offers one choice is a label pretending to be a control.
 
   **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
   successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an

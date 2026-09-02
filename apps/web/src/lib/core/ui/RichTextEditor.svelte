@@ -19,6 +19,7 @@
     CircleStop,
     ExternalLink,
     Heading as HeadingIcon,
+    ImagePlus,
     Italic,
     Link as LinkIcon,
     List,
@@ -30,9 +31,11 @@
   import { browser } from "$app/environment";
   import { AI_CONTEXT_KEY, type AIContext } from "$lib/core/ai";
   import { streamAI } from "$lib/core/ai/stream";
+  import { pastedImageName } from "$lib/core/files/paste";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { renderMarkdown } from "$lib/core/markdown";
+  import { IMAGE_WIDTHS, clampImageWidth } from "$lib/core/richtext/images";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import {
     loadMentionCandidates,
@@ -54,6 +57,7 @@
     tasks = [],
     variables = [],
     scope,
+    upload = null,
     onchange,
   }: {
     value?: string;
@@ -82,6 +86,10 @@
     /** Host context for the default candidate fetch (#237): tasks of this project/company,
      *  contacts of this company. Only read where no explicit list is passed. */
     scope?: CandidateScope;
+    /** The record an image pasted, dropped or picked here is stored against (the inline-images
+     *  task): `POST /files?…&inline=true`, then an `![alt](file:<id>)` marker at the caret.
+     *  Absent → the editor handles no images, exactly as before. */
+    upload?: { entityType: string; entityId: string } | null;
     onchange?: (value: string) => void;
   } = $props();
 
@@ -157,6 +165,70 @@
     },
   };
 
+  // --- inline images (the inline-images task) ---------------------------------
+  // A pasted screenshot becomes body content of the host record (`inline=true`, so it never
+  // doubles up in the attachment strip) and an `![alt](file:<id>)` marker at the caret. The
+  // editor module owns the gestures; this component owns the upload, its busy line and its
+  // error — the same split the suggestion dropdown already uses.
+  const IMAGE_UPLOAD_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  let imageBusy = $state(0);
+  let imageError = $state<string | null>(null);
+  let imageInput: HTMLInputElement | undefined = $state();
+
+  async function uploadImage(file: File): Promise<{ id: string; alt: string } | null> {
+    if (!upload) return null;
+    if (!IMAGE_UPLOAD_TYPES.has(file.type)) {
+      imageError = "errors.upload_type";
+      return null;
+    }
+    // A clipboard image arrives as an anonymous `image.png`; name it for the moment it was
+    // taken, on the org's clock (`$lib/core/files/paste`). A picked or dropped file keeps
+    // the name somebody gave it.
+    const named = !file.name || /^image\.[a-z0-9]+$/i.test(file.name)
+      ? new File([file], pastedImageName(file), { type: file.type })
+      : file;
+    imageBusy += 1;
+    imageError = null;
+    try {
+      const body = new FormData();
+      body.append("file", named, named.name);
+      const query = new URLSearchParams({
+        entity_type: upload.entityType,
+        entity_id: upload.entityId,
+        inline: "true",
+      });
+      const res = await fetch(`/api/v1/files?${query}`, { method: "POST", body });
+      if (!res.ok) {
+        imageError = res.status === 413 ? "errors.upload_too_large" : "errors.upload_type";
+        return null;
+      }
+      const stored = (await res.json()) as { id: string };
+      return { id: stored.id, alt: named.name };
+    } catch {
+      imageError = "errors.server";
+      return null;
+    } finally {
+      imageBusy -= 1;
+    }
+  }
+
+  function pickedImages(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    if (editor && rt && files.length > 0) {
+      void rt.insertUploadedImages(editor, files, uploadImage);
+    }
+  }
+
+  function setImageWidth(width: number | null) {
+    if (!editor) return;
+    // Re-select the node after the update: replacing an atom's attrs drops the node
+    // selection, and with it the very preset group the user is in the middle of using.
+    const { from } = editor.state.selection;
+    editor.chain().focus().updateAttributes("fileimage", { width }).setNodeSelection(from).run();
+  }
+
   onMount(() => {
     if (!browser) return;
     let cancelled = false;
@@ -177,6 +249,7 @@
             kind: "task" as const,
           })),
         bridge,
+        uploadImage: upload ? uploadImage : undefined,
         onUpdate: (markdown) => {
           serialized = markdown;
           onchange?.(markdown);
@@ -224,6 +297,7 @@
         heading: false,
         bullet: false,
         ordered: false,
+        image: false,
       };
     }
     return {
@@ -233,7 +307,16 @@
       heading: editor.isActive("heading"),
       bullet: editor.isActive("bulletList"),
       ordered: editor.isActive("orderedList"),
+      // A selected image swaps the width presets into the toolbar below.
+      image: editor.isActive("fileimage"),
     };
+  });
+
+  /** The selected image's stored width, `null` for natural size — drives the preset group. */
+  const imageWidth = $derived.by(() => {
+    void tick;
+    if (!editor || !active.image) return null;
+    return clampImageWidth(editor.getAttributes("fileimage").width);
   });
 
   const toolbarButton =
@@ -413,7 +496,7 @@
   class="relative rounded-lg border border-border focus-within:border-brand {klass}"
   onfocusin={() => (armed = true)}
 >
-  <div class="flex items-center gap-1 border-b border-border px-1.5 py-1">
+  <div class="flex flex-wrap items-center gap-1 border-b border-border px-1.5 py-1">
     <button
       type="button"
       class={toolbarButton + (active.bold ? activeClass : "")}
@@ -535,6 +618,61 @@
     >
       <ListOrdered size={15} />
     </button>
+    {#if upload}
+      <!-- The toolbar's way in for whoever does not paste or drop: pick the file. All three
+           gestures land in the same upload and the same marker. -->
+      <button
+        type="button"
+        class={toolbarButton}
+        disabled={!ready || imageBusy > 0}
+        aria-label={t("richtext.image")}
+        title={t("richtext.image")}
+        onclick={() => imageInput?.click()}
+      >
+        <ImagePlus size={15} />
+      </button>
+      <input
+        bind:this={imageInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        tabindex="-1"
+        class="sr-only"
+        onchange={pickedImages}
+      />
+    {/if}
+    {#if active.image}
+      <!-- The selected image's width, as a percentage of the text column. "Auto" is natural
+           size (never wider than the column) — the state a fresh paste starts in. -->
+      <div
+        class="ml-1 inline-flex items-center overflow-hidden rounded border border-border text-[11px]"
+        role="group"
+        aria-label={t("richtext.image_width")}
+      >
+        {#each IMAGE_WIDTHS as width (width)}
+          <button
+            type="button"
+            aria-pressed={imageWidth === width}
+            class="px-1.5 py-1 {imageWidth === width
+              ? 'bg-brand/10 font-semibold text-text'
+              : 'text-text-muted hover:bg-surface hover:text-text'}"
+            onclick={() => setImageWidth(width)}
+          >
+            {width}%
+          </button>
+        {/each}
+        <button
+          type="button"
+          aria-pressed={imageWidth === null}
+          class="px-1.5 py-1 {imageWidth === null
+            ? 'bg-brand/10 font-semibold text-text'
+            : 'text-text-muted hover:bg-surface hover:text-text'}"
+          onclick={() => setImageWidth(null)}
+        >
+          {t("richtext.image_width_auto")}
+        </button>
+      </div>
+    {/if}
     {#if variables.length > 0}
       <div class="relative" data-var-menu>
         <button
@@ -633,6 +771,17 @@
       class="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 text-sm outline-none"
       >{value}</textarea
     >
+  {/if}
+
+  {#if imageBusy > 0}
+    <p class="border-t border-border px-3 py-1 text-xs text-text-muted" aria-live="polite">
+      {t("richtext.image_uploading")}
+    </p>
+  {/if}
+  {#if imageError}
+    <p class="border-t border-border px-3 py-1 text-xs text-red-600 dark:text-red-400" role="alert">
+      {t(imageError)}
+    </p>
   {/if}
 
   {#if assist}
@@ -845,6 +994,19 @@
     background: color-mix(in srgb, var(--color-text) 8%, transparent);
     color: var(--color-text);
     text-decoration: none;
+  }
+  /* An inline image (the inline-images task): natural size capped at the column, the stored
+     width riding in its own style attribute. Selection is the visible handle the width
+     presets act on. */
+  .rt-body :global(.rt-prose img) {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.375rem;
+  }
+  .rt-body :global(.rt-prose img.ProseMirror-selectednode) {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
   }
   /* Placeholder (from the Placeholder extension's data attribute). */
   .rt-body :global(.rt-prose p.is-editor-empty:first-child::before) {

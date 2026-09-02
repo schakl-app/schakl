@@ -244,11 +244,19 @@
    * find it — or, as it did before, redirecting them onto the task's page and losing the inbox
    * and the e-mail both (docs/UX.md Principle 8: a dialog is the default).
    *
-   * Only a task **created here** does that. Filing a message onto a task that already exists is
-   * the ordinary case and must stay where it is: the reviewer is working an inbox, and a review
-   * per approve would be a dialog over every row they file.
+   * Two things open it, and the same two open it on the upload / Gmail form (`EmlUploadForm`):
+   * a task **created here**, and a task — new or existing — that "laat schakl deze taak
+   * invullen" was ticked for. The second is the one the request was actually about: what
+   * needs checking is what schakl is about to write, and that is as true of a task that already
+   * existed as of one made a minute ago. Filing a message onto an existing task *without* the
+   * fill-in stays where it is: the reviewer is working an inbox, and a review per approve would
+   * be a dialog over every row they file.
    */
   let taskCreatedHere = $state("");
+  /** Whether the approve about to be posted should hand the task back for review (above). */
+  const reviewAfterApprove = $derived(
+    Boolean(taskId) && (taskId === taskCreatedHere || (canEnrichTask && enrichTask)),
+  );
   /** The task under review after the approve — while set, the host is not told to close. */
   let reviewTaskId = $state("");
   let reviewOpen = $state(false);
@@ -257,7 +265,12 @@
       interaction.participants?.find((p) => p.role === "from") ?? interaction.participants?.[0];
     const who = from?.name || from?.email || interaction.contact_name || "";
     return {
-      label: t("tasks.review.origin"),
+      // A task made here was *created* from this message; an existing one is being filled in.
+      label: t(
+        reviewTaskId && reviewTaskId !== taskCreatedHere
+          ? "tasks.review.origin_enriched"
+          : "tasks.review.origin",
+      ),
       title: interaction.subject || interaction.task_title || t("interactions.detail_title"),
       detail: [who, fmtDateTime(interaction.occurred_at)].filter(Boolean).join(" · "),
     };
@@ -595,10 +608,11 @@
       </Button>
       {#if canApprove}
         <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links.
-           `review_task` rides with it when the task on this message was created in this dialog:
-           a task that only exists because of this email is unfinished by definition, so the
-           approve hands it back and it opens for review beside the message. -->
-        {#if taskId && taskId === taskCreatedHere}
+           `review_task` rides with it when the task on this message was created in this dialog
+           or is about to be filled in by schakl (`reviewAfterApprove`): either way the reviewer's
+           next act is checking it, so the approve hands it back and it opens for review beside
+           the message. -->
+        {#if reviewAfterApprove}
           <input type="hidden" name="review_task" value="1" />
         {/if}
         <Button

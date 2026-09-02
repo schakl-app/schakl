@@ -152,7 +152,13 @@
   }
 
   const table = createTableLayout<Task>({
-    all: () => TASK_COLUMNS,
+    // The API hands a portal login rows with no labels on them — the chips are the agency's
+    // own filing (docs/PORTAL.md) — so the column would be a heading over nothing. The web
+    // draws no column for what the API blanks (#449's rule); the API is still the boundary.
+    all: () =>
+      page.data.user?.isPortal
+        ? TASK_COLUMNS.filter((column) => column.key !== "labels")
+        : TASK_COLUMNS,
     // A first visit folds the finished work away, exactly as the old board did. Once the user has
     // saved a layout their own collapsed set wins — including an empty one, which is why this
     // checks for the key's absence rather than for a falsy value.

@@ -32,6 +32,7 @@
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
+  import InlineField from "$lib/core/ui/InlineField.svelte";
   import InlineText from "$lib/core/ui/InlineText.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -456,12 +457,20 @@
   // to a colleague or to nobody.
   let editContacts = $state<{ id: string; name: string }[]>([]);
   let editContactsFor = $state<string>("");
+  // The assignee field is open in place (use mode): the one other moment the picker is drawn.
+  let assigneeInlineOpen = $state(false);
+  /** A cancelled in-place pick of the client or the project must not linger as the live pair. */
+  function resetRelationPicks() {
+    fCompany = task.company_id ?? "";
+    fProject = task.project_id ?? "";
+  }
   $effect(() => {
     const companyId = fCompany;
     if (!companyId) return;
-    // Edit mode only since #453: the read view prints `assignee_contact_name`, which the API
-    // resolves — a portal login cannot read `/contacts` and used to see "Contactpersoon".
-    if (!editMode) return;
+    // Edit mode only since #453 — or the assignee field opened in place: the read view prints
+    // `assignee_contact_name`, which the API resolves — a portal login cannot read `/contacts`
+    // and used to see "Contactpersoon".
+    if (!editMode && !assigneeInlineOpen) return;
     if (companyId === editContactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
@@ -1118,12 +1127,15 @@
         </div>
 
         <!-- The client comes before the two fields it narrows: the contact half of the assignee
-             picker, and the project list. -->
-        <div>
-          <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.company")}</label
-          >
-          {#if editMode}
+             picker, and the project list. In use mode every property below is edited in place
+             (`InlineField`): one field, its own save, the page's own `?/update` — the same shape
+             the description got in #455, because moving a deadline or handing a task to a
+             colleague should not cost the pencil and a save at the foot of the page. -->
+        {#if editMode}
+          <div>
+            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.company")}</label
+            >
             <Combobox
               items={companyItems}
               archived={companyPicker.retired}
@@ -1138,22 +1150,49 @@
                 qcCompanyOpen = true;
               }}
             />
-          {:else}
-            <p id="company" class="truncate text-sm text-text">
-              {#if task.company_id}
-                <a href={`/companies/${task.company_id}`} class="hover:text-brand"
-                  >{companyName(task.company_id) ?? "—"}</a
-                >
-              {:else}—{/if}
-            </p>
-          {/if}
-        </div>
-
-        <div>
-          <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.assignees")}</label
+          </div>
+        {:else}
+          <InlineField
+            id="company"
+            label={t("tasks.field.company")}
+            canEdit={canEditTask}
+            onclose={resetRelationPicks}
           >
-          {#if editMode}
+            {#snippet read()}
+              <p class="truncate text-sm text-text">
+                {#if task.company_id}
+                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
+                    >{companyName(task.company_id) ?? "—"}</a
+                  >
+                {:else}—{/if}
+              </p>
+            {/snippet}
+            {#snippet editor()}
+              <Combobox
+                items={companyItems}
+                archived={companyPicker.retired}
+                archivedLabel={companyArchivedLabel()}
+                name="company_id"
+                value={fCompany}
+                id="company"
+                onselect={onCompanyPicked}
+                oncreate={(name) => {
+                  qcCompanyName = name;
+                  qcCompanyOpen = true;
+                }}
+              />
+              <!-- The pair travels together: a project of another client is dropped by the pick
+                   above, exactly as edit mode does, and the API stores the pair as given. -->
+              <input type="hidden" name="project_id" value={fProject} />
+            {/snippet}
+          </InlineField>
+        {/if}
+
+        {#if editMode}
+          <div>
+            <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.assignees")}</label
+            >
             <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
                  contacts. -->
             <TaskAssigneePicker
@@ -1164,27 +1203,49 @@
               assignees={task.assignees ?? []}
               contactValue={task.assignee_contact_id ?? ""}
             />
-          {:else if task.assignee_contact_id}
-            <p class="text-sm text-text">
-              {task.assignee_contact_name ??
-                contactName(task.assignee_contact_id) ??
-                t("party.contact")}
-              <span class="text-xs text-text-muted">({t("party.contact")})</span>
-            </p>
-          {:else if (task.assignees ?? []).length > 0}
-            <!-- The whole roster, not the star alone: `max` is high because this is the record's own
-                 page, where "who is on this" is the question, not a column with 180px to spend. -->
-            <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
-          {:else}
-            <p class="text-sm text-text">—</p>
-          {/if}
-        </div>
-
-        <div>
-          <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.project")}</label
+          </div>
+        {:else}
+          <InlineField
+            id="assignee-employees"
+            label={t("tasks.field.assignees")}
+            canEdit={canEditTask}
+            onopen={() => (assigneeInlineOpen = true)}
+            onclose={() => (assigneeInlineOpen = false)}
           >
-          {#if editMode}
+            {#snippet read()}
+              {#if task.assignee_contact_id}
+                <p class="text-sm text-text">
+                  {task.assignee_contact_name ??
+                    contactName(task.assignee_contact_id) ??
+                    t("party.contact")}
+                  <span class="text-xs text-text-muted">({t("party.contact")})</span>
+                </p>
+              {:else if (task.assignees ?? []).length > 0}
+                <!-- The whole roster, not the star alone: `max` is high because this is the
+                     record's own page, where "who is on this" is the question, not a column
+                     with 180px to spend. -->
+                <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
+              {:else}
+                <p class="text-sm text-text">—</p>
+              {/if}
+            {/snippet}
+            {#snippet editor()}
+              <TaskAssigneePicker
+                employees={data.members}
+                contacts={assigneeContacts}
+                contactsEnabled={!!task.company_id}
+                assignees={task.assignees ?? []}
+                contactValue={task.assignee_contact_id ?? ""}
+              />
+            {/snippet}
+          </InlineField>
+        {/if}
+
+        {#if editMode}
+          <div>
+            <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.project")}</label
+            >
             <Combobox
               items={projectItems}
               archived={projectPicker.retired}
@@ -1199,31 +1260,75 @@
                 qcProjectOpen = true;
               }}
             />
-          {:else}
-            <p id="project" class="truncate text-sm text-text">
-              {#if task.project_id}
-                <a href={`/projects/${task.project_id}`} class="hover:text-brand"
-                  >{projectName(task.project_id) ?? "—"}</a
-                >
-              {:else}—{/if}
-            </p>
-          {/if}
-        </div>
-
-        <div>
-          <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.priority")}</label
+          </div>
+        {:else}
+          <InlineField
+            id="project"
+            label={t("tasks.field.project")}
+            canEdit={canEditTask}
+            onclose={resetRelationPicks}
           >
-          {#if editMode}
+            {#snippet read()}
+              <p class="truncate text-sm text-text">
+                {#if task.project_id}
+                  <a href={`/projects/${task.project_id}`} class="hover:text-brand"
+                    >{projectName(task.project_id) ?? "—"}</a
+                  >
+                {:else}—{/if}
+              </p>
+            {/snippet}
+            {#snippet editor()}
+              <Combobox
+                items={projectItems}
+                archived={projectPicker.retired}
+                archivedLabel={projectArchivedLabel()}
+                name="project_id"
+                value={fProject}
+                id="project"
+                onselect={onProjectPicked}
+                oncreate={(name) => {
+                  qcProjectName = name;
+                  qcProjectOpen = true;
+                }}
+              />
+              <!-- A picked project backfills its client, as everywhere the pair is picked. -->
+              <input type="hidden" name="company_id" value={fCompany} />
+            {/snippet}
+          </InlineField>
+        {/if}
+
+        {#if editMode}
+          <div>
+            <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.priority")}</label
+            >
             <select id="priority" name="priority" form="task-edit" class={inputClass}>
               {#each priorities as p (p)}
                 <option value={p} selected={task.priority === p}>{t(`tasks.priority.${p}`)}</option>
               {/each}
             </select>
-          {:else}
-            <p id="priority" class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
-          {/if}
-        </div>
+          </div>
+        {:else}
+          <InlineField
+            id="priority"
+            label={t("tasks.field.priority")}
+            canEdit={canEditTask}
+            saveOnChange
+          >
+            {#snippet read()}
+              <p class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
+            {/snippet}
+            {#snippet editor({ submit })}
+              <select id="priority" name="priority" class={inputClass} onchange={submit}>
+                {#each priorities as p (p)}
+                  <option value={p} selected={task.priority === p}
+                    >{t(`tasks.priority.${p}`)}</option
+                  >
+                {/each}
+              </select>
+            {/snippet}
+          </InlineField>
+        {/if}
 
         <!-- Not for a client (#449): the estimate is the agency's, the API blanks it, and a
              dash headed "Tijdbudget" is a question the client should not be holding. -->
@@ -1240,26 +1345,42 @@
               onchange={(minutes) => (liveAllocated = minutes)}
               class={inputClass}
             />
-          {:else if burn}
-            <!-- The figure opens the hours behind it (#443, Principle 7) — only for a viewer
-                 /overview will let in, never a link that bounces (#253). -->
-            <BudgetBar
-              spent={burn.spent}
-              budget={burn.budget}
-              label={t("tasks.field.allocated")}
-              remainingText={burn.remainingText}
-              spentText={burn.spentText}
-              href={can(page.data.user, "time.report.read")
-                ? `/overview?task_id=${task.id}`
-                : undefined}
-            />
           {:else}
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.allocated")}</span
+            <InlineField
+              id="allocated"
+              label={t("tasks.field.allocated")}
+              canEdit={canEditTask}
+              onclose={() => (liveAllocated = task.allocated_minutes ?? null)}
             >
-            <p class="text-sm tabular-nums text-text">
-              {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
-            </p>
+              {#snippet read()}
+                {#if burn}
+                  <!-- The figure opens the hours behind it (#443, Principle 7) — only for a
+                       viewer /overview will let in, never a link that bounces (#253). -->
+                  <BudgetBar
+                    spent={burn.spent}
+                    budget={burn.budget}
+                    remainingText={burn.remainingText}
+                    spentText={burn.spentText}
+                    href={can(page.data.user, "time.report.read")
+                      ? `/overview?task_id=${task.id}`
+                      : undefined}
+                  />
+                {:else}
+                  <p class="text-sm tabular-nums text-text">
+                    {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
+                  </p>
+                {/if}
+              {/snippet}
+              {#snippet editor()}
+                <DurationInput
+                  id="allocated"
+                  name="allocated_minutes"
+                  minutes={task.allocated_minutes ?? null}
+                  onchange={(minutes) => (liveAllocated = minutes)}
+                  class={inputClass}
+                />
+              {/snippet}
+            </InlineField>
           {/if}
         </div>
 
@@ -1289,18 +1410,43 @@
                 </span>
               </label>
             {:else}
-              <span class="mb-1 block text-xs font-medium text-text-muted"
-                >{t("tasks.field.visible_to_client")}</span
+              <InlineField
+                id="visible_to_client"
+                label={t("tasks.field.visible_to_client")}
+                canEdit={canEditTask}
+                saveOnChange
               >
-              <p class="flex items-center gap-1.5 text-sm text-text">
-                <ClientVisibilityIcon
-                  visible={task.visible_to_client}
-                  companyId={task.company_id}
-                  projectId={task.project_id}
-                  size={13}
-                />
-                {task.visible_to_client ? t("common.yes") : t("common.no")}
-              </p>
+                {#snippet read()}
+                  <p class="flex items-center gap-1.5 text-sm text-text">
+                    <ClientVisibilityIcon
+                      visible={task.visible_to_client}
+                      companyId={task.company_id}
+                      projectId={task.project_id}
+                      size={13}
+                    />
+                    {task.visible_to_client ? t("common.yes") : t("common.no")}
+                  </p>
+                {/snippet}
+                {#snippet editor({ submit })}
+                  <input type="hidden" name="visible_to_client" value="false" />
+                  <label class="flex items-start gap-2 text-sm text-text">
+                    <FormCheckbox
+                      id="visible_to_client"
+                      name="visible_to_client"
+                      value="true"
+                      checked={task.visible_to_client}
+                      class="mt-0.5 shrink-0"
+                      onchange={submit}
+                    />
+                    <span>
+                      <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
+                      <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                        >{t("tasks.field.visible_to_client_hint")}</span
+                      >
+                    </span>
+                  </label>
+                {/snippet}
+              </InlineField>
             {/if}
           </div>
         {/if}
@@ -1323,15 +1469,46 @@
                 >
               </span>
             </label>
-          {:else if task.requires_interaction}
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.requires_interaction")}</span
+          {:else if task.requires_interaction || canEditTask}
+            <!-- Read-only, the cell exists only when the policy is on; an editor sees it either
+                 way, because "off" is the state they switch it from. -->
+            <InlineField
+              id="requires_interaction"
+              label={t("tasks.field.requires_interaction")}
+              canEdit={canEditTask}
+              saveOnChange
             >
-            <span
-              class="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-            >
-              {t("tasks.field.requires_interaction_badge")}
-            </span>
+              {#snippet read()}
+                {#if task.requires_interaction}
+                  <span
+                    class="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                  >
+                    {t("tasks.field.requires_interaction_badge")}
+                  </span>
+                {:else}
+                  <p class="text-sm text-text">{t("common.no")}</p>
+                {/if}
+              {/snippet}
+              {#snippet editor({ submit })}
+                <input type="hidden" name="requires_interaction" value="false" />
+                <label class="flex items-start gap-2 text-sm text-text">
+                  <FormCheckbox
+                    id="requires_interaction"
+                    name="requires_interaction"
+                    value="true"
+                    checked={task.requires_interaction}
+                    class="mt-0.5 shrink-0"
+                    onchange={submit}
+                  />
+                  <span>
+                    <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
+                    <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                      >{t("tasks.field.requires_interaction_hint")}</span
+                    >
+                  </span>
+                </label>
+              {/snippet}
+            </InlineField>
           {/if}
         </div>
 
@@ -1439,6 +1616,97 @@
               </div>
             {/if}
           </div>
+        {:else if canEditTask}
+          <!-- In use mode the chips already sit under the title; this cell is where a writer
+               changes them without leaving the page. Posts `?/setLabels`, the whole set at once,
+               and minting a new label (`tasks.label.write`) is a second form *beside* it. -->
+          <InlineField
+            id="labels"
+            label={t("tasks.field.labels")}
+            action="?/setLabels"
+            canEdit={canEditTask}
+            class="sm:col-span-2 lg:col-span-3"
+          >
+            {#snippet read()}
+              {#if (task.labels ?? []).length === 0}
+                <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
+              {:else}
+                <div class="flex flex-wrap gap-1">
+                  {#each task.labels ?? [] as label (label.id)}
+                    <span
+                      class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
+                        label.color,
+                      )}">{label.name}</span
+                    >
+                  {/each}
+                </div>
+              {/if}
+            {/snippet}
+            {#snippet editor()}
+              <div class="space-y-1 rounded-lg border border-border p-3">
+                {#each data.labels as label (label.id)}
+                  <label
+                    class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface"
+                  >
+                    <FormCheckbox
+                      name="label_ids"
+                      value={label.id}
+                      checked={currentLabelIds.includes(label.id)}
+                      class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+                    />
+                    <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
+                    <span class="text-text">{label.name}</span>
+                  </label>
+                {:else}
+                  <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
+                {/each}
+              </div>
+            {/snippet}
+            {#snippet after({ close })}
+              {#if canWriteLabels}
+                <form
+                  method="POST"
+                  action="?/createLabel"
+                  use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+                    close();
+                    void update();
+                  })}
+                  class="mt-2 rounded-lg border border-dashed border-border p-3"
+                >
+                  {#each currentLabelIds as id (id)}
+                    <input type="hidden" name="current_label_ids" value={id} />
+                  {/each}
+                  <input
+                    name="name"
+                    placeholder={t("tasks.labels.new_placeholder")}
+                    required
+                    class="w-full rounded-lg border border-border px-2 py-1 text-sm"
+                  />
+                  <input type="hidden" name="color" value={newLabelColor} />
+                  <div class="mt-2 flex flex-wrap gap-1">
+                    {#each LABEL_COLORS as color (color)}
+                      <button
+                        type="button"
+                        aria-label={color}
+                        class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
+                          ? 'ring-2 ring-text ring-offset-1'
+                          : ''}"
+                        onclick={() => (newLabelColor = color)}
+                      ></button>
+                    {/each}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={busy.is("createLabel")}
+                    class="mt-2"
+                  >
+                    {t("tasks.labels.create")}
+                  </Button>
+                </form>
+              {/if}
+            {/snippet}
+          </InlineField>
         {/if}
       </div>
     </section>
@@ -1485,26 +1753,52 @@
               </p>
             {/if}
           {:else}
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.due_date")}</span
+            <!-- Moved in place: the date, its reason when it is an extension (the same modal edit
+                 mode uses, and the same hidden field), and the API's refusal beside the field. -->
+            <InlineField
+              id="due_date"
+              label={t("tasks.field.due_date")}
+              canEdit={canEditTask}
+              class="max-w-xs"
+              onclose={() => {
+                liveDue = task.due_date ?? "";
+                dueReason = "";
+              }}
             >
-            <p
-              class="text-sm tabular-nums {overdue
-                ? 'font-semibold text-red-600 dark:text-red-400'
-                : 'text-text'}"
-            >
-              {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
-              {#if distance && "on" in distance}
-                <span class="text-xs font-normal text-text-muted" title={fmtDateTime(distance.on)}
-                  >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
+              {#snippet read()}
+                <p
+                  class="text-sm tabular-nums {overdue
+                    ? 'font-semibold text-red-600 dark:text-red-400'
+                    : 'text-text'}"
                 >
-              {:else if distance}
-                <!-- The distance, muted: a date on its own asks the reader to subtract (#395). -->
-                <span class="text-xs font-normal text-text-muted"
-                  >{t(distance.key, { count: distance.count })}</span
-                >
-              {/if}
-            </p>
+                  {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
+                  {#if distance && "on" in distance}
+                    <span
+                      class="text-xs font-normal text-text-muted"
+                      title={fmtDateTime(distance.on)}
+                      >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
+                    >
+                  {:else if distance}
+                    <!-- The distance, muted: a date on its own asks the reader to subtract
+                         (#395). -->
+                    <span class="text-xs font-normal text-text-muted"
+                      >{t(distance.key, { count: distance.count })}</span
+                    >
+                  {/if}
+                </p>
+              {/snippet}
+              {#snippet editor()}
+                <DateInput
+                  id="due_date"
+                  name="due_date"
+                  value={task.due_date ?? ""}
+                  required
+                  onchange={onDueChanged}
+                />
+                <input type="hidden" name="due_change_reason" value={dueReason} />
+                <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+              {/snippet}
+            </InlineField>
           {/if}
         </div>
 
@@ -1520,6 +1814,7 @@
               project_id: task.project_id,
               company_id: task.company_id,
               assignee_user_id: task.assignee_user_id,
+              assignees: task.assignees,
               allocated_minutes: task.allocated_minutes,
               due_date: task.due_date,
             }}
@@ -1535,7 +1830,7 @@
         <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
              niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
              editor behind the pencil is where a rule gets made. -->
-        {#if editMode || recurrence}
+        {#if editMode || recurrence || canEditTask}
           <div class="border-t border-border pt-4">
             {#if editMode}
               <RecurrenceEditor
@@ -1552,21 +1847,48 @@
                 {canScheduleAny}
               />
             {:else}
-              <span class="mb-1 block text-xs font-medium text-text-muted"
-                >{t("tasks.recurrence.title")}</span
+              <!-- In place too, through `?/setRecurrence` — the rule alone, nothing else touched.
+                   A writer sees the row even without a rule ("Herhaalt niet"), because that is the
+                   state a rule is made from; a reader still sees it only when there is one. -->
+              <InlineField
+                id="recurrence"
+                label={t("tasks.recurrence.title")}
+                action="?/setRecurrence"
+                canEdit={canEditTask}
+                labelledEditor
               >
-              {#if recurrence}
-                <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
-                <p class="mt-0.5 text-[11px] text-text-muted">
-                  {#if task.recurrence_next_run}
-                    {t("tasks.recurrence.next")}: {fmtDayMonthYear(
-                      task.recurrence_next_run,
-                    )}{recurrence.plan ? `, ${clockOf(recurrence.plan.start_time)}` : ""}
+                {#snippet read()}
+                  {#if recurrence}
+                    <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
+                    <p class="mt-0.5 text-[11px] text-text-muted">
+                      {#if task.recurrence_next_run}
+                        {t("tasks.recurrence.next")}: {fmtDayMonthYear(
+                          task.recurrence_next_run,
+                        )}{recurrence.plan ? `, ${clockOf(recurrence.plan.start_time)}` : ""}
+                      {:else}
+                        {t("tasks.recurrence.next_on_completion")}
+                      {/if}
+                    </p>
                   {:else}
-                    {t("tasks.recurrence.next_on_completion")}
+                    <p class="text-sm text-text-muted">{t("tasks.recurrence.none")}</p>
                   {/if}
-                </p>
-              {/if}
+                {/snippet}
+                {#snippet editor({ formId })}
+                  <RecurrenceEditor
+                    {formId}
+                    previewUrl={`/tasks/${task.id}/recurrence-preview`}
+                    {recurrence}
+                    dueDate={task.due_date ?? ""}
+                    allocatedMinutes={task.allocated_minutes ?? null}
+                    assigneeUserId={task.assignee_user_id}
+                    {lastBlockStart}
+                    members={data.members}
+                    currentUserId={page.data.user?.id ?? ""}
+                    {canSchedule}
+                    {canScheduleAny}
+                  />
+                {/snippet}
+              </InlineField>
             {/if}
           </div>
         {/if}
@@ -1587,6 +1909,7 @@
           rows={4}
           value={task.description ?? ""}
           scope={candidateScope}
+          upload={{ entityType: "task", entityId: task.id }}
         />
       {:else}
         <!-- Edited in place (#455): the one field people change ten times a day should not cost
@@ -1598,6 +1921,8 @@
           placeholder={t("tasks.detail.description_placeholder")}
           canEdit={canEditTask}
           scope={candidateScope}
+          images
+          upload={{ entityType: "task", entityId: task.id }}
           id="task-description-inline"
         />
       {/if}
@@ -2116,7 +2441,11 @@
                three-step route this strip exists to remove (docs/UX.md). Gated on the key the
                API checks, never on `!isPortal`: a client holds no `files.file.write` and the API
                hands it only the files ticked visible. -->
-          <div class={(task.links ?? []).length > 0 || editMode ? "mt-4 border-t border-border pt-4" : ""}>
+          <div
+            class={(task.links ?? []).length > 0 || editMode
+              ? "mt-4 border-t border-border pt-4"
+              : ""}
+          >
             <FileAttachments
               files={data.files}
               uploadAction="?/uploadFile"
@@ -2137,6 +2466,7 @@
          the task's own edit form for room in one file. -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <TaskComments
+        upload={{ entityType: "task", entityId: task.id }}
         comments={task.comments ?? []}
         truncated={task.comments_truncated ?? false}
         members={data.members}

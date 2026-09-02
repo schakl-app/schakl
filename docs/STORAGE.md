@@ -129,6 +129,19 @@ docs/UX.md warns about, and the reason the bit lives in the API. Flipping it is
 what. The migration is additive (`NOT NULL DEFAULT false`), so an upgrade hides every existing
 attachment from the portal rather than guessing.
 
+**An image in the words is body content, not an attachment.** `inline=true` on either upload
+envelope stores the file with `content_id` (the e-mail `cid:` shape): the strip's default list
+excludes it, and the text carries `![alt](file:<id> =50%)` — the one image marker the web
+renders, which by construction can only name this instance's own store (`richtext/images.ts`
+holds the grammar, shared by the editor's serializer and the renderer's tokenizer). The portal
+rule follows the **words, not the eye**: a body file on an attachment host is served exactly
+when the record that embeds it is visible to that login (`FileService.portal_may_read_serving`,
+through `entity_visible` and the model's own `__portal_horizon_clause__`) — an image pasted
+into a client-visible task's description is part of what the client already reads, while the
+per-file `client_visible` bit keeps gating attachments. Deleting the marker from the text
+leaves the row behind, like an e-mail's `cid:` parts; the rows go with the record's org and the
+blob sweeper reclaims bytes nothing references.
+
 **Documents are a core panel on the company hub** (`core/storage/panels.py`,
 `files.documents`), beside the activity trail, for the same reason: storing a file against a
 record is a platform capability. Tasks and projects keep their own strip; all three post through

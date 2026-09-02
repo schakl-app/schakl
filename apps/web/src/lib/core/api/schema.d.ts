@@ -2190,6 +2190,11 @@ export interface paths {
         /**
          * Upload File
          * @description Multipart upload. Size and content type are bounded by instance config.
+         *
+         *     ``inline=true`` stores the file as part of its entity's **body** rather than as an
+         *     attachment (``content_id``, the e-mail ``cid:`` shape): an image pasted into a task's
+         *     description or a comment renders inside the text via its ``![alt](file:<id>)`` marker,
+         *     so it must not also appear in the attachment strip.
          */
         post: operations["upload_file_api_v1_files_post"];
         delete?: never;
@@ -11587,6 +11592,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/schedules/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Schedules
+         * @description Schedule one task for several people at once: one block per person, all or nothing.
+         */
+        post: operations["create_schedules_api_v1_tasks_schedules_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/schedules/{schedule_id}": {
         parameters: {
             query?: never;
@@ -20648,6 +20673,11 @@ export interface components {
             entity_type?: string | null;
             /** Filename */
             filename: string;
+            /**
+             * Inline
+             * @default false
+             */
+            inline: boolean;
         };
         /** InstanceApiKeyCreate */
         InstanceApiKeyCreate: {
@@ -27258,6 +27288,42 @@ export interface components {
             steps: unknown[];
             /** Trigger Event */
             trigger_event: string;
+        };
+        /**
+         * ScheduleBatchCreate
+         * @description One block per person, sharing a day, a start and a length: "schedule the kick-off for the
+         *     three of us". A block is personal — one row, one calendar, one Google event — so several
+         *     people is several rows, and this is the single call that writes them together (§18's shape,
+         *     without the per-row reporting: every person is judged before anything is written, and a
+         *     refusal for one is a refusal for all — a half-planned meeting is not a plan).
+         *
+         *     Its own body rather than a ``user_ids`` on ``ScheduleCreate``, because that route answers
+         *     with *one* block and this one answers with the list; changing the shape of an answer under
+         *     an existing caller (the generated MCP tool included) is how a client comes to read the first
+         *     of three rows as the whole result.
+         */
+        ScheduleBatchCreate: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** User Ids */
+            user_ids: string[];
         };
         /** ScheduleCreate */
         ScheduleCreate: {
@@ -37416,6 +37482,7 @@ export interface operations {
             query?: {
                 entity_type?: string | null;
                 entity_id?: string | null;
+                inline?: boolean;
             };
             header?: never;
             path?: never;
@@ -55589,6 +55656,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_schedules_api_v1_tasks_schedules_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"][];
                 };
             };
             /** @description Validation Error */

@@ -35,6 +35,7 @@ from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.tasks.models import Task, TaskSchedule
 from app.modules.tasks.schemas import (
+    ScheduleBatchCreate,
     ScheduleCreate,
     ScheduleItem,
     ScheduleLogTime,
@@ -203,7 +204,36 @@ class TaskScheduleService:
         self._ensure_write_for(user_id)
         zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
         starts_at, ends_at = _window(data.day, data.start_time, data.duration_minutes, zone)
+        return await self._book(task, user_id, starts_at, ends_at, data.note)
 
+    async def create_many(self, data: ScheduleBatchCreate) -> list[TaskSchedule]:
+        """The same block on several people's calendars — one row each, one call.
+
+        All-or-nothing: every person is checked against the caller's scope *before* the first
+        row is written, so a member naming a colleague beside themselves gets the 403 and books
+        nobody, rather than booking themselves and then being refused. The order is the
+        caller's (the chips, left to right); a person named twice is booked once.
+        """
+        task = await self.ctx.repo(Task).get_or_404(data.task_id)
+        user_ids = list(dict.fromkeys(data.user_ids))
+        for user_id in user_ids:
+            self._ensure_write_for(user_id)
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        starts_at, ends_at = _window(data.day, data.start_time, data.duration_minutes, zone)
+        return [
+            await self._book(task, user_id, starts_at, ends_at, data.note) for user_id in user_ids
+        ]
+
+    async def _book(
+        self,
+        task: Task,
+        user_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        note: str | None,
+    ) -> TaskSchedule:
+        """Write one block and announce it — the one place a block is born, so the mirror and the
+        notification cannot be forgotten by the next way of creating one."""
         # A background writer (the recurrence auto-plan's cron, #335) has no person behind it: its
         # ``system_context`` user is a placeholder that exists in no table, and
         # ``created_by_user_id``'s FK would refuse it — the same rule ``Task.ai_status`` already
@@ -215,7 +245,7 @@ class TaskScheduleService:
             user_id=user_id,
             starts_at=starts_at,
             ends_at=ends_at,
-            note=data.note,
+            note=note,
             created_by_user_id=None if by_system else self.ctx.user.id,
             created_by_name=None if by_system else _display_name(self.ctx.user),
         )
@@ -467,6 +497,21 @@ async def create_schedule(
 ) -> ScheduleRead:
     block = await TaskScheduleService(ctx).create(payload)
     return ScheduleRead.model_validate(block)
+
+
+@scheduling_router.post(
+    "/batch",
+    response_model=list[ScheduleRead],
+    status_code=201,
+    dependencies=[require_permission("tasks.schedule.write")],
+)
+async def create_schedules(
+    payload: ScheduleBatchCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> list[ScheduleRead]:
+    """Schedule one task for several people at once: one block per person, all or nothing."""
+    blocks = await TaskScheduleService(ctx).create_many(payload)
+    return [ScheduleRead.model_validate(block) for block in blocks]
 
 
 @scheduling_router.get(

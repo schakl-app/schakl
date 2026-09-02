@@ -18,6 +18,7 @@ from typing import BinaryIO
 
 from app.config import settings
 from app.core.events import emit
+from app.core.scope import entity_visible
 from app.core.storage import blobs
 from app.core.storage.backend import StorageUnavailableError, get_storage, storage_for
 from app.core.storage.models import StoredFile
@@ -167,6 +168,9 @@ class FileService:
         content_id: str | None = None,
         client_visible: bool = False,
     ) -> StoredFile:
+        # ``content_id`` marks the file as part of the entity's *body* (an inline image a
+        # description or comment embeds by marker) rather than an attachment — the e-mail
+        # ``cid:`` shape reused, so the strip's list keeps excluding it by construction.
         self.ctx.require("files.file.write")
         if entity_type in PUBLIC_ENTITY_TYPES:
             self.ctx.require("settings.branding.write")
@@ -238,6 +242,27 @@ class FileService:
         if stored.entity_type in PORTAL_GATED_ENTITY_TYPES:
             return stored.client_visible
         return True
+
+    async def portal_may_read_serving(self, stored: StoredFile) -> bool:
+        """The serve-time answer: :meth:`portal_may_read`, plus the body-content rule.
+
+        A file with a ``content_id`` on an attachment host is not an attachment — it is part
+        of the words (an image pasted into a description or a comment), and the words are
+        gated by the record's own portal horizon, not by the per-file eye. So it reads
+        exactly when the record does (``entity_visible`` applies the model's
+        ``__portal_horizon_clause__`` — for a task, ticked visible and inside the client's
+        own companies). Serve-time only: the attachment list keeps excluding body files by
+        ``content_id`` regardless.
+        """
+        if self.portal_may_read(stored):
+            return True
+        if (
+            stored.content_id is not None
+            and stored.entity_type in PORTAL_GATED_ENTITY_TYPES
+            and stored.entity_id is not None
+        ):
+            return await entity_visible(self.ctx, stored.entity_type, stored.entity_id)
+        return False
 
     async def list_for(
         self, entity_type: str, entity_id: uuid.UUID, *, include_inline: bool = False
