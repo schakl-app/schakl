@@ -43,6 +43,8 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
+  import TaskReviewDialog from "$lib/modules/tasks/TaskReviewDialog.svelte";
+  import { fmtDateTime } from "$lib/core/format";
   import { companyArchivedLabel } from "$lib/modules/companies/picker";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
@@ -234,6 +236,44 @@
   let enrichTask = $state(false);
   let taskCreateOpen = $state(false);
   let taskDraft = $state("");
+  /**
+   * The task this form made, if it made one — and, with it, whether the save should end with
+   * that task open for review beside the message (`TaskReviewDialog`), exactly as the approve
+   * in `InteractionMoveDialog` does. The rule is the same one: a task **created here** is
+   * unfinished by definition, and a task schakl was just asked to **fill in** is about to change
+   * — either way the next act is checking it, so the review opens here rather than closing over
+   * the page and leaving it to be found. It used to be wired into the review desk's approve
+   * only, so an e-mail picked out of Gmail (or dropped as a `.eml`) onto a new task closed the
+   * dialog and nothing more, which was the report on task 80a90bfd.
+   *
+   * Not when the task is the host's own (`showTask` false — the form is on that task's page):
+   * the page is the review, its strip already polls, and a slide-over of the record it is
+   * drawn on would be the same task twice.
+   */
+  let taskCreatedHere = $state("");
+  const reviewAfterSave = $derived(
+    showTask && Boolean(effTask) && (effTask === taskCreatedHere || (canEnrichTask && enrichTask)),
+  );
+  /** The task under review after the save — while set, the host is not told to close. */
+  let reviewTaskId = $state("");
+  let reviewOpen = $state(false);
+  let reviewOrigin = $state<{ label: string; title: string; detail?: string | null } | null>(null);
+  /** Where the task came from, as the review names it: the picked message, or the file. */
+  function originOf(): { label: string; title: string; detail?: string | null } {
+    const label = t(
+      effTask === taskCreatedHere ? "tasks.review.origin" : "tasks.review.origin_enriched",
+    );
+    if (gmail && picked) {
+      const who = picked.from_name || picked.from_email || "";
+      const when = picked.occurred_at ? fmtDateTime(picked.occurred_at) : "";
+      return {
+        label,
+        title: picked.subject || t("interactions.detail_title"),
+        detail: [who, when].filter(Boolean).join(" · "),
+      };
+    }
+    return { label, title: filename || t("interactions.eml.title") };
+  }
   let companyCreateOpen = $state(false);
   let projectCreateOpen = $state(false);
   let qcOpen = $state(false);
@@ -297,6 +337,8 @@
       roster.created(created.id, created.name || qcName || "—");
     } else if (created.slot === "eml_task") {
       handledCreate = created.id;
+      // Made here, on this message: the save that follows opens it for review (above).
+      taskCreatedHere = created.id;
       if (!tasks.some((task) => task.value === created.id)) {
         tasks = [
           ...tasks,
@@ -337,373 +379,413 @@
   });
 </script>
 
-{#if gmailOffered}
-  <!-- Which source, before anything else: the whole rest of the dialog is the same either way,
-       so this is the only decision the two paths do not share. Not tabs-as-navigation — the
-       form below is one form, and this switches where its message comes from. -->
-  <div class="mb-4 flex flex-wrap items-center gap-1">
-    <button
-      type="button"
-      onclick={() => (source = "file")}
-      class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'file'
-        ? 'bg-surface text-text ring-1 ring-inset ring-border'
-        : 'text-text-muted hover:text-text'}"
-    >
-      {t("interactions.eml.source_file")}
-    </button>
-    <button
-      type="button"
-      onclick={() => (source = "gmail")}
-      class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'gmail'
-        ? 'bg-surface text-text ring-1 ring-inset ring-border'
-        : 'text-text-muted hover:text-text'}"
-    >
-      {t("interactions.eml.source_gmail")}
-    </button>
-  </div>
-{/if}
-
-{#if gmail}
-  <!-- Its own form, and a sibling of the one below rather than a child: HTML has no nested
-       forms, and the two really are separate submissions — looking a message up reads, logging
-       it writes. A form action rather than a browser fetch, so the flow needs no edge route to
-       proxy `/api/v1` and behaves the same in every deployment. -->
-  <form
-    method="POST"
-    action="?/lookupGmailMessage"
-    class="mb-4 space-y-2"
-    use:enhance={busy.wrap("gmail-lookup", () => async ({ result, update }) => {
-      if (result.type === "failure") {
-        gmailError = String(result.data?.error ?? "errors.validation");
-        lookup = null;
-        picked = null;
-        return;
-      }
-      gmailError = "";
-      lookup =
-        result.type === "success"
-          ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
-          : null;
-      picked = null;
-      // `reset: false`: the reference is what the user must correct when nothing came back,
-      // and blanking it sends them to Gmail to copy the same link a second time.
-      await update({ reset: false });
-    })}
-  >
-    {#if threadId}
-      <input type="hidden" name="thread_id" value={threadId} />
-      <p class="text-sm font-medium text-text">{t("interactions.gmail.thread_results")}</p>
-      <p class="text-xs text-text-muted">{t("interactions.gmail.thread_hint")}</p>
-    {:else}
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.gmail.reference")}</span>
-        <input
-          type="text"
-          name="reference"
-          bind:value={reference}
-          placeholder={t("interactions.gmail.reference_placeholder")}
-          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-        />
-      </label>
-      <p class="text-xs text-text-muted">{t("interactions.gmail.reference_hint")}</p>
-    {/if}
-    <Button type="submit" variant="secondary" loading={busy.is("gmail-lookup")}>
-      <Search size={15} aria-hidden="true" />
-      {threadId ? t("interactions.gmail.thread_fetch") : t("interactions.gmail.search")}
-    </Button>
-  </form>
-
-  {#if !threadId}
-    <!-- The other way in (#372). A separate form for the same reason the lookup is one: two
-         submissions, two sets of inputs, one result list. Kept collapsed because a reference is
-         the faster route when you have one — but reachable in one click, because most of the
-         time nobody has one, and "go and copy an id out of Gmail" was the whole problem. -->
-    <details class="mb-4 rounded-lg border border-border">
-      <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-text">
-        {t("interactions.gmail.search_toggle")}
-      </summary>
-      <form
-        method="POST"
-        action="?/searchGmailMessages"
-        class="space-y-2 border-t border-border p-3"
-        use:enhance={busy.wrap("gmail-search", () => async ({ result, update }) => {
-          if (result.type === "failure") {
-            gmailError = String(result.data?.error ?? "errors.validation");
-            lookup = null;
-            picked = null;
-            return;
-          }
-          gmailError = "";
-          lookup =
-            result.type === "success"
-              ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
-              : null;
-          picked = null;
-          // `reset: false`: the fields describe a search somebody is refining, and blanking
-          // them after each attempt makes narrowing a result set impossible.
-          await update({ reset: false });
-        })}
-      >
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">
-            {t("interactions.gmail.search_participant")}
-          </span>
-          <input
-            type="email"
-            name="participant"
-            bind:value={searchParticipant}
-            placeholder={t("interactions.gmail.search_participant_placeholder")}
-            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-          />
-        </label>
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">
-            {t("interactions.gmail.search_subject")}
-          </span>
-          <input
-            type="text"
-            name="subject"
-            bind:value={searchSubject}
-            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-          />
-        </label>
-        <div class="grid gap-2 sm:grid-cols-2">
-          <label class="block text-sm">
-            <span class="mb-1 block font-medium text-text">
-              {t("interactions.gmail.search_after")}
-            </span>
-            <input
-              type="date"
-              name="after"
-              bind:value={searchAfter}
-              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-            />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block font-medium text-text">
-              {t("interactions.gmail.search_before")}
-            </span>
-            <input
-              type="date"
-              name="before"
-              bind:value={searchBefore}
-              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-            />
-          </label>
-        </div>
-        <p class="text-xs text-text-muted">{t("interactions.gmail.search_hint")}</p>
-        <Button type="submit" variant="secondary" loading={busy.is("gmail-search")}>
-          <Search size={15} aria-hidden="true" />
-          {t("interactions.gmail.search_submit")}
-        </Button>
-      </form>
-    </details>
-  {/if}
-
-  {#if gmailError}
-    <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(gmailError)}</p>
-  {/if}
-  {#if lookup}
-    <div class="mb-4">
-      {#if lookup.widened_to_thread}
-        <!-- "I pasted one link and got eight messages" is surprising unless it is said. -->
-        <p class="mb-2 text-xs text-text-muted">{t("interactions.gmail.widened")}</p>
-      {/if}
-      <GmailMessagePicker
-        messages={lookup.messages ?? []}
-        truncated={lookup.truncated ?? false}
-        selected={picked?.message_id ?? ""}
-        onpick={(message) => {
-          picked = message;
-          duplicate = false;
-          error = "";
-        }}
-      />
-    </div>
-  {/if}
-{/if}
-
-<form
-  method="POST"
-  action={gmail ? "?/importGmailMessage" : "?/uploadInteractionEml"}
-  enctype={gmail ? "application/x-www-form-urlencoded" : "multipart/form-data"}
-  class="space-y-4"
-  use:enhance={busy.wrap("", () => async ({ result, update }) => {
-    if (result.type === "failure") {
-      duplicate = Boolean(result.data?.emlDuplicate ?? result.data?.gmailDuplicate);
-      error = String(result.data?.error ?? "errors.validation");
-      return;
-    }
-    error = "";
-    duplicate = false;
-    const uploaded = (result.type === "success" ? result.data?.emlUploaded : null) as
-      { stored: number; skipped: number } | null | undefined;
-    skipped = uploaded?.skipped ?? 0;
-    await update({ reset: false });
-    // A skipped attachment is worth a sentence, so the modal stays open to say it.
-    if (!skipped) onsaved?.();
-  })}
->
-  {#if gmail}
-    <input type="hidden" name="message_id" value={picked?.message_id ?? ""} />
-  {/if}
-  {#each Object.entries(hidden) as [field, value] (field)}
-    <input type="hidden" name={field} {value} />
-  {/each}
-  <!-- Set only after the duplicate warning: the second press is the deliberate one. -->
-  <input type="hidden" name="allow_duplicate" value={duplicate ? "1" : "0"} />
-
-  {#if !gmail}
-    <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
-       screen exists for, so the whole block is the drop target. -->
-    <div use:filedrop={{ onerror: (key) => (error = key) }}>
-      <span class="mb-1 block text-sm font-medium text-text">{t("interactions.eml.file")}</span>
-      <label
-        class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand focus-within:border-brand hover:text-brand"
-      >
-        <Paperclip size={15} aria-hidden="true" />
-        {filename || t("interactions.eml.choose")}
-        <input
-          type="file"
-          name="file"
-          accept=".eml,message/rfc822"
-          required
-          class="sr-only"
-          onchange={(e) => {
-            filename = e.currentTarget.files?.[0]?.name ?? "";
-            duplicate = false;
-            error = "";
-            skipped = 0;
-          }}
-        />
-      </label>
-      <span class="ml-2 text-xs text-text-muted">{t("common.drop_hint")}</span>
-      <p class="mt-1 text-xs text-text-muted">{t("interactions.eml.hint")}</p>
-    </div>
-  {/if}
-
-  <div class="grid gap-4 sm:grid-cols-2">
-    {#if showCompany}
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
-        <Combobox
-          items={linkSplit.companies.live}
-          archived={linkSplit.companies.retired}
-          archivedLabel={companyArchivedLabel()}
-          name="company_id"
-          value={fCompany}
-          placeholder={t("common.none")}
-          onselect={(v) => (fCompany = v)}
-          oncreate={canCreateCompany
-            ? (query) => {
-                companyQuery = query;
-                companyCreateOpen = true;
-              }
-            : undefined}
-          id="eml-company"
-        />
-      </label>
-    {/if}
-    {#if showProject}
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
-        <Combobox
-          items={projectOptions}
-          archived={linkSplit.projects.retired}
-          archivedLabel={projectArchivedLabel()}
-          name="project_id"
-          value={fProject}
-          placeholder={t("common.none")}
-          onselect={onProjectPicked}
-          oncreate={canCreateProject
-            ? (query) => {
-                projectQuery = query;
-                projectCreateOpen = true;
-              }
-            : undefined}
-          id="eml-project"
-        />
-      </label>
-    {/if}
-    {#if showTask}
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-        <Combobox
-          items={taskOptions}
-          archived={linkSplit.tasks.retired}
-          archivedLabel={t("tasks.picker.archived")}
-          name="task_id"
-          value={fTask}
-          placeholder={t("common.none")}
-          onselect={onTaskPicked}
-          oncreate={canCreateTask
-            ? (query) => {
-                taskDraft = query;
-                taskCreateOpen = true;
-              }
-            : undefined}
-          id="eml-task"
-        />
-      </label>
-    {/if}
-    <div class="block text-sm">
-      <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
-      <ContactChips
-        {roster}
-        id="eml-contacts"
-        oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
-      />
-    </div>
-  </div>
-
-  {#if canEnrichTask}
-    <!-- The offer #342 unbundled from the review transition: it belongs to *filing an email
-         onto a task*, which is something all three sources do. Off by default — sending a
-         client's own words to a model is a decision, not an inheritance. -->
-    <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
-      <input
-        type="checkbox"
-        name="enrich_task"
-        value="1"
-        bind:checked={enrichTask}
-        class="mt-0.5"
-      />
-      <span>
-        {t("interactions.eml.enrich_task")}
-        <span class="mt-0.5 block text-xs text-text-muted"
-          >{t("interactions.eml.enrich_task_hint")}</span
-        >
-      </span>
-    </label>
-  {/if}
-
+{#if reviewTaskId}
+  <!-- Logged, and the task it was filed onto is open beside this for review. The form is done;
+       what is left of this dialog says so, and closes with the review. -->
+  <p class="text-sm text-text-muted">{t("interactions.logged_review")}</p>
   {#if skipped}
-    <p class="text-sm text-amber-700 dark:text-amber-400">
+    <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">
       {tn("interactions.eml.attachments_skipped", skipped)}
     </p>
   {/if}
-  {#if duplicate}
-    <p class="text-sm text-amber-700 dark:text-amber-400">{t("interactions.eml.duplicate")}</p>
-  {:else if error}
-    <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
+{:else}
+  {#if gmailOffered}
+    <!-- Which source, before anything else: the whole rest of the dialog is the same either way,
+       so this is the only decision the two paths do not share. Not tabs-as-navigation — the
+       form below is one form, and this switches where its message comes from. -->
+    <div class="mb-4 flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        onclick={() => (source = "file")}
+        class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'file'
+          ? 'bg-surface text-text ring-1 ring-inset ring-border'
+          : 'text-text-muted hover:text-text'}"
+      >
+        {t("interactions.eml.source_file")}
+      </button>
+      <button
+        type="button"
+        onclick={() => (source = "gmail")}
+        class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'gmail'
+          ? 'bg-surface text-text ring-1 ring-inset ring-border'
+          : 'text-text-muted hover:text-text'}"
+      >
+        {t("interactions.eml.source_gmail")}
+      </button>
+    </div>
   {/if}
 
-  <div class="flex justify-end gap-2">
-    {#if skipped}
-      <Button type="button" variant="secondary" onclick={() => onsaved?.()}>
-        {t("common.close")}
+  {#if gmail}
+    <!-- Its own form, and a sibling of the one below rather than a child: HTML has no nested
+       forms, and the two really are separate submissions — looking a message up reads, logging
+       it writes. A form action rather than a browser fetch, so the flow needs no edge route to
+       proxy `/api/v1` and behaves the same in every deployment. -->
+    <form
+      method="POST"
+      action="?/lookupGmailMessage"
+      class="mb-4 space-y-2"
+      use:enhance={busy.wrap("gmail-lookup", () => async ({ result, update }) => {
+        if (result.type === "failure") {
+          gmailError = String(result.data?.error ?? "errors.validation");
+          lookup = null;
+          picked = null;
+          return;
+        }
+        gmailError = "";
+        lookup =
+          result.type === "success"
+            ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+            : null;
+        picked = null;
+        // `reset: false`: the reference is what the user must correct when nothing came back,
+        // and blanking it sends them to Gmail to copy the same link a second time.
+        await update({ reset: false });
+      })}
+    >
+      {#if threadId}
+        <input type="hidden" name="thread_id" value={threadId} />
+        <p class="text-sm font-medium text-text">{t("interactions.gmail.thread_results")}</p>
+        <p class="text-xs text-text-muted">{t("interactions.gmail.thread_hint")}</p>
+      {:else}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.gmail.reference")}</span>
+          <input
+            type="text"
+            name="reference"
+            bind:value={reference}
+            placeholder={t("interactions.gmail.reference_placeholder")}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </label>
+        <p class="text-xs text-text-muted">{t("interactions.gmail.reference_hint")}</p>
+      {/if}
+      <Button type="submit" variant="secondary" loading={busy.is("gmail-lookup")}>
+        <Search size={15} aria-hidden="true" />
+        {threadId ? t("interactions.gmail.thread_fetch") : t("interactions.gmail.search")}
       </Button>
+    </form>
+
+    {#if !threadId}
+      <!-- The other way in (#372). A separate form for the same reason the lookup is one: two
+         submissions, two sets of inputs, one result list. Kept collapsed because a reference is
+         the faster route when you have one — but reachable in one click, because most of the
+         time nobody has one, and "go and copy an id out of Gmail" was the whole problem. -->
+      <details class="mb-4 rounded-lg border border-border">
+        <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-text">
+          {t("interactions.gmail.search_toggle")}
+        </summary>
+        <form
+          method="POST"
+          action="?/searchGmailMessages"
+          class="space-y-2 border-t border-border p-3"
+          use:enhance={busy.wrap("gmail-search", () => async ({ result, update }) => {
+            if (result.type === "failure") {
+              gmailError = String(result.data?.error ?? "errors.validation");
+              lookup = null;
+              picked = null;
+              return;
+            }
+            gmailError = "";
+            lookup =
+              result.type === "success"
+                ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+                : null;
+            picked = null;
+            // `reset: false`: the fields describe a search somebody is refining, and blanking
+            // them after each attempt makes narrowing a result set impossible.
+            await update({ reset: false });
+          })}
+        >
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_participant")}
+            </span>
+            <input
+              type="email"
+              name="participant"
+              bind:value={searchParticipant}
+              placeholder={t("interactions.gmail.search_participant_placeholder")}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">
+              {t("interactions.gmail.search_subject")}
+            </span>
+            <input
+              type="text"
+              name="subject"
+              bind:value={searchSubject}
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+          </label>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <label class="block text-sm">
+              <span class="mb-1 block font-medium text-text">
+                {t("interactions.gmail.search_after")}
+              </span>
+              <input
+                type="date"
+                name="after"
+                bind:value={searchAfter}
+                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+              />
+            </label>
+            <label class="block text-sm">
+              <span class="mb-1 block font-medium text-text">
+                {t("interactions.gmail.search_before")}
+              </span>
+              <input
+                type="date"
+                name="before"
+                bind:value={searchBefore}
+                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+              />
+            </label>
+          </div>
+          <p class="text-xs text-text-muted">{t("interactions.gmail.search_hint")}</p>
+          <Button type="submit" variant="secondary" loading={busy.is("gmail-search")}>
+            <Search size={15} aria-hidden="true" />
+            {t("interactions.gmail.search_submit")}
+          </Button>
+        </form>
+      </details>
     {/if}
-    <Button type="submit" loading={busy.is("")} disabled={busy.active || (gmail && !picked)}>
-      <Mail size={15} aria-hidden="true" />
-      {duplicate
-        ? t("interactions.eml.upload_anyway")
-        : gmail
-          ? t("interactions.gmail.submit")
-          : t("interactions.eml.submit")}
-    </Button>
-  </div>
-</form>
+
+    {#if gmailError}
+      <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(gmailError)}</p>
+    {/if}
+    {#if lookup}
+      <div class="mb-4">
+        {#if lookup.widened_to_thread}
+          <!-- "I pasted one link and got eight messages" is surprising unless it is said. -->
+          <p class="mb-2 text-xs text-text-muted">{t("interactions.gmail.widened")}</p>
+        {/if}
+        <GmailMessagePicker
+          messages={lookup.messages ?? []}
+          truncated={lookup.truncated ?? false}
+          selected={picked?.message_id ?? ""}
+          onpick={(message) => {
+            picked = message;
+            duplicate = false;
+            error = "";
+          }}
+        />
+      </div>
+    {/if}
+  {/if}
+
+  <form
+    method="POST"
+    action={gmail ? "?/importGmailMessage" : "?/uploadInteractionEml"}
+    enctype={gmail ? "application/x-www-form-urlencoded" : "multipart/form-data"}
+    class="space-y-4"
+    use:enhance={busy.wrap("", () => async ({ result, update }) => {
+      if (result.type === "failure") {
+        duplicate = Boolean(result.data?.emlDuplicate ?? result.data?.gmailDuplicate);
+        error = String(result.data?.error ?? "errors.validation");
+        return;
+      }
+      error = "";
+      duplicate = false;
+      const uploaded = (result.type === "success" ? result.data?.emlUploaded : null) as
+        { stored: number; skipped: number } | null | undefined;
+      skipped = uploaded?.skipped ?? 0;
+      // Decided before `update()` re-renders anything: the review's origin is the message that
+      // was just logged, and the picker it came from is about to be replaced by a sentence.
+      const review = reviewAfterSave ? effTask : "";
+      const origin = review ? originOf() : null;
+      await update({ reset: false });
+      if (review) {
+        // The save that made (or is filling in) a task hands it over: the review opens over
+        // this form and the host is told to close only when that review is done.
+        reviewOrigin = origin;
+        reviewTaskId = review;
+        reviewOpen = true;
+        return;
+      }
+      // A skipped attachment is worth a sentence, so the modal stays open to say it.
+      if (!skipped) onsaved?.();
+    })}
+  >
+    {#if gmail}
+      <input type="hidden" name="message_id" value={picked?.message_id ?? ""} />
+    {/if}
+    {#each Object.entries(hidden) as [field, value] (field)}
+      <input type="hidden" name={field} {value} />
+    {/each}
+    <!-- Set only after the duplicate warning: the second press is the deliberate one. -->
+    <input type="hidden" name="allow_duplicate" value={duplicate ? "1" : "0"} />
+
+    {#if !gmail}
+      <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
+       screen exists for, so the whole block is the drop target. -->
+      <div use:filedrop={{ onerror: (key) => (error = key) }}>
+        <span class="mb-1 block text-sm font-medium text-text">{t("interactions.eml.file")}</span>
+        <label
+          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand focus-within:border-brand hover:text-brand"
+        >
+          <Paperclip size={15} aria-hidden="true" />
+          {filename || t("interactions.eml.choose")}
+          <input
+            type="file"
+            name="file"
+            accept=".eml,message/rfc822"
+            required
+            class="sr-only"
+            onchange={(e) => {
+              filename = e.currentTarget.files?.[0]?.name ?? "";
+              duplicate = false;
+              error = "";
+              skipped = 0;
+            }}
+          />
+        </label>
+        <span class="ml-2 text-xs text-text-muted">{t("common.drop_hint")}</span>
+        <p class="mt-1 text-xs text-text-muted">{t("interactions.eml.hint")}</p>
+      </div>
+    {/if}
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      {#if showCompany}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+          <Combobox
+            items={linkSplit.companies.live}
+            archived={linkSplit.companies.retired}
+            archivedLabel={companyArchivedLabel()}
+            name="company_id"
+            value={fCompany}
+            placeholder={t("common.none")}
+            onselect={(v) => (fCompany = v)}
+            oncreate={canCreateCompany
+              ? (query) => {
+                  companyQuery = query;
+                  companyCreateOpen = true;
+                }
+              : undefined}
+            id="eml-company"
+          />
+        </label>
+      {/if}
+      {#if showProject}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
+          <Combobox
+            items={projectOptions}
+            archived={linkSplit.projects.retired}
+            archivedLabel={projectArchivedLabel()}
+            name="project_id"
+            value={fProject}
+            placeholder={t("common.none")}
+            onselect={onProjectPicked}
+            oncreate={canCreateProject
+              ? (query) => {
+                  projectQuery = query;
+                  projectCreateOpen = true;
+                }
+              : undefined}
+            id="eml-project"
+          />
+        </label>
+      {/if}
+      {#if showTask}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
+          <Combobox
+            items={taskOptions}
+            archived={linkSplit.tasks.retired}
+            archivedLabel={t("tasks.picker.archived")}
+            name="task_id"
+            value={fTask}
+            placeholder={t("common.none")}
+            onselect={onTaskPicked}
+            oncreate={canCreateTask
+              ? (query) => {
+                  taskDraft = query;
+                  taskCreateOpen = true;
+                }
+              : undefined}
+            id="eml-task"
+          />
+        </label>
+      {/if}
+      <div class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
+        <ContactChips
+          {roster}
+          id="eml-contacts"
+          oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
+        />
+      </div>
+    </div>
+
+    {#if canEnrichTask}
+      <!-- The offer #342 unbundled from the review transition: it belongs to *filing an email
+         onto a task*, which is something all three sources do. Off by default — sending a
+         client's own words to a model is a decision, not an inheritance. -->
+      <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
+        <input
+          type="checkbox"
+          name="enrich_task"
+          value="1"
+          bind:checked={enrichTask}
+          class="mt-0.5"
+        />
+        <span>
+          {t("interactions.eml.enrich_task")}
+          <span class="mt-0.5 block text-xs text-text-muted"
+            >{t("interactions.eml.enrich_task_hint")}</span
+          >
+        </span>
+      </label>
+    {/if}
+
+    {#if skipped}
+      <p class="text-sm text-amber-700 dark:text-amber-400">
+        {tn("interactions.eml.attachments_skipped", skipped)}
+      </p>
+    {/if}
+    {#if duplicate}
+      <p class="text-sm text-amber-700 dark:text-amber-400">{t("interactions.eml.duplicate")}</p>
+    {:else if error}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
+    {/if}
+
+    <div class="flex justify-end gap-2">
+      {#if skipped}
+        <Button type="button" variant="secondary" onclick={() => onsaved?.()}>
+          {t("common.close")}
+        </Button>
+      {/if}
+      <Button type="submit" loading={busy.is("")} disabled={busy.active || (gmail && !picked)}>
+        <Mail size={15} aria-hidden="true" />
+        {duplicate
+          ? t("interactions.eml.upload_anyway")
+          : gmail
+            ? t("interactions.gmail.submit")
+            : t("interactions.eml.submit")}
+      </Button>
+    </div>
+  </form>
+{/if}
+
+<!-- The task the save just filed onto, open for review beside the message (`reviewAfterSave`).
+     The project options are this form's own, already narrowed to the client the task was filed
+     under; every way out of the review closes the host with it. -->
+{#if reviewTaskId}
+  <TaskReviewDialog
+    bind:open={reviewOpen}
+    taskId={reviewTaskId}
+    origin={reviewOrigin}
+    projects={projectOptions}
+    archivedProjects={linkSplit.projects.retired}
+    members={(page.data.members as
+      { user_id: string; full_name: string | null; email: string }[] | undefined) ?? []}
+    action="?/updateReviewTask"
+    onclose={() => onsaved?.()}
+  />
+{/if}
 
 <ContactQuickCreate
   bind:open={qcOpen}

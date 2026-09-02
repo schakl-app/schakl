@@ -2005,10 +2005,7 @@ contrast bug in dark mode rather than only an inconsistency.
   redirected into edit mode on it, which was Principle 8's navigation taken by default: it lost
   the inbox being worked, and it lost the message the task was written *from*, which is the one
   thing a reviewer checking what schakl filled in wants beside them. So the approve now hands
-  the task back (`review_task=1` → `reviewTaskId`, set by the dialog only when the picked task
-  is the one *it* created; filing onto an existing task stays where it is, because that is an
-  inbox being worked and a review per approve would be a dialog over every row) and the dialog
-  opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
+  the task back (`review_task=1` → `reviewTaskId`) and the dialog opens it in `TaskReviewDialog`: a `SlideOver` docked beside the message, the origin named at
   the top, title / description / project / assignees / deadline editable at once, Sluiten,
   Opslaan and a link to the full card — and the host is told to close only when the review is,
   whichever way out is taken. **It fills itself in the moment schakl is done, and never over
@@ -2019,6 +2016,24 @@ contrast bug in dark mode rather than only an inconsistency.
   because a modal over a slide-over is one dialog too many. Self-contained in the move dialog,
   so all three hosts (the inbox, every entity's contactmomenten panel, the detail modal) got it
   without being wired.
+  **Two things open it, and the third source got both a release late.** The first cut opened
+  the review only for a task the dialog had *created*, on the argument that filing onto an
+  existing task is an inbox being worked and a review per approve would be a dialog over every
+  row. Right about plain filing and wrong about the case the request was actually about:
+  "laat schakl deze taak invullen" ticked on an *existing* task is a task about to change under
+  the reviewer, and what needs checking is what schakl is about to write — as true of a task
+  that existed yesterday as of one made a minute ago. So the review opens when the task was
+  created here **or** the fill-in was ticked (`reviewAfterApprove`); an existing task filed
+  without it stays where it is. And the same rule now holds on the other way in
+  (`EmlUploadForm`, `reviewAfterSave`): an e-mail picked out of Gmail or dropped as a `.eml`
+  onto a new task closed the dialog and nothing more, so the one flow with no review desk was
+  the one that lost the task — which was the report on task 80a90bfd. The origin line says which
+  of the two it is ("aangemaakt vanuit" / "wordt aangevuld vanuit"), and on a task's *own* page
+  (the task pinned by the host) no review opens, because the page is the review and a slide-over
+  of the record it is drawn on would be the same task twice. Found by running it rather than
+  reading it: the `.eml` action had never forwarded the checkbox to the API at all, so on that
+  path the tick did nothing, silently — a control that cannot fail visibly (§10) — and the
+  review, whose strip would have said so, is what made it visible.
   Its other half is the strip above the card. `TaskAIStatus` (#327) said *"schakl leest de
   e-mail…"* beside a pulsing icon, which was the right amount of information for somebody who
   had not been sent to that page — and is not when somebody is looking straight at the task

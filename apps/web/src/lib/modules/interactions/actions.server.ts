@@ -184,6 +184,11 @@ export const interactionActions = {
       else body.append(field, value);
     }
     if (form.get("allow_duplicate") === "1") body.append("allow_duplicate", "true");
+    // "Laat schakl deze taak invullen" (#327/#342). The API has taken it on this route since
+    // #342 and the form has drawn the box just as long — and this action never forwarded it,
+    // so the upload's tick did nothing, silently, on the one path with no review desk to
+    // notice (task 80a90bfd). Presence, never a literal (CLAUDE.md §10).
+    if (checked(form, "enrich_task")) body.append("enrich_task", "true");
     const res = await event.fetch(`${apiBaseUrl()}/api/v1/interactions/upload-eml`, {
       method: "POST",
       headers: {
