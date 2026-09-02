@@ -12,16 +12,30 @@ import { blobToBase64 } from "./encode";
 
 export type RecorderState = "idle" | "recording" | "working";
 
-/** A clip longer than this is a monologue, not a time entry. Also a cost ceiling. */
-export const MAX_RECORD_MS = 60_000;
+/** A time entry is one clause, said with a breath around it. Two minutes; also a cost ceiling. */
+export const MAX_RECORD_MS = 120_000;
 
 /**
  * What a dictated *task* gets (#382). A time entry is one clause; a task carries its steps,
- * and 60 s cut people off mid-checklist. Still a hard cap for #246's other reason, which has
- * nothing to do with cost: a forgotten microphone keeps the browser's recording indicator lit,
- * which reads as being spied on.
+ * and the first cap (120 s) cut people off mid-checklist — a real task dictation runs to five
+ * minutes. Still a hard cap for #246's other reason, which has nothing to do with cost: a
+ * forgotten microphone keeps the browser's recording indicator lit, which reads as being spied
+ * on. The cap is *shown* (`VoiceButton` prints elapsed against maximum) and reaching it is
+ * *said* (`stoppedAtLimit`), because a recording that ends on its own with no sentence about
+ * why looks exactly like the feature being broken.
  */
-export const MAX_TASK_RECORD_MS = 120_000;
+export const MAX_TASK_RECORD_MS = 300_000;
+
+/** A spoken message for the assistant: a question, or a whole instruction with its details. */
+export const MAX_CHAT_RECORD_MS = 300_000;
+
+/**
+ * Opus at 32 kbit/s is transparent for speech and keeps five minutes at ~1.2 MB — which is
+ * what lets a long dictation fit the API's cap (`core/ai/audio.py`) and the web server's body
+ * limit (`BODY_SIZE_LIMIT`, `apps/web/Dockerfile`) with room to spare. A hint the browser may
+ * ignore; the caps on the far side are sized for that too.
+ */
+const AUDIO_BITS_PER_SECOND = 32_000;
 
 /** MIME types worth asking for, best first. The API sniffs the container either way. */
 const PREFERRED_TYPES = [
@@ -70,6 +84,9 @@ export class Recorder {
   error = $state<string | null>(null);
   /** Seconds elapsed, so the control can show that it is still listening. */
   elapsed = $state(0);
+  /** True when the last capture was ended by the cap rather than by the user — the host says
+   *  so, because a recording that stops on its own and says nothing reads as broken. */
+  stoppedAtLimit = $state(false);
 
   #recorder: MediaRecorder | null = null;
   #stream: MediaStream | null = null;
@@ -100,6 +117,7 @@ export class Recorder {
     // never settles. Same check-then-act-across-an-await shape as the encode race, one await
     // earlier.
     this.state = "working";
+    this.stoppedAtLimit = false;
     const generation = ++this.#generation;
     let stream: MediaStream;
     try {
@@ -121,7 +139,10 @@ export class Recorder {
     this.#chunks = [];
     const mimeType = pickMimeType();
     try {
-      this.#recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      this.#recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+      });
     } catch {
       // `isTypeSupported` is advisory and may be missing entirely, so construction can still
       // fail. Hand the microphone back and return to idle: the state entered above is only
@@ -145,7 +166,10 @@ export class Recorder {
     this.#timer = setInterval(() => (this.elapsed += 1), 1000);
     // A forgotten microphone is both a privacy problem and a bill, so the cap is enforced
     // here rather than trusted to the user noticing.
-    this.#stopTimer = setTimeout(() => this.stop(), this.maxMs);
+    this.#stopTimer = setTimeout(() => {
+      this.stoppedAtLimit = true;
+      this.stop();
+    }, this.maxMs);
     return finished;
   }
 

@@ -7,7 +7,7 @@ sidebar:
 
 Everything cross-cutting: the tenant metadata a client fetches first, files, notifications, automation rules, AI, custom fields, spreadsheets and bulk edits.
 
-200 endpoints across 16 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+201 endpoints across 16 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `ai`
 
@@ -15,6 +15,7 @@ Everything cross-cutting: the tenant metadata a client fetches first, files, not
 | --- | --- |
 | `POST` `/ai/assist/write` | `ai.use` |
 | `POST` `/ai/assistant` | `ai.use` |
+| `POST` `/ai/assistant/transcribe` | `ai.use` |
 | `POST` `/ai/companies/{company_id}/digest` | `ai.use` |
 | `GET` `/ai/reports` | `ai.use` |
 | `POST` `/ai/reports` | `ai.use` |
@@ -56,6 +57,16 @@ Permission: `ai.use`
 Request body: `AssistantRequest`
 
 Returns: `200`
+
+#### `POST /api/v1/ai/assistant/transcribe`
+
+**Assistant Transcribe** — Speech to text for the assistant's composer.
+
+Permission: `ai.use`
+
+Request body: `AssistantTranscribeRequest`
+
+Returns: `200` · `TimeTranscribeResult`
 
 #### `POST /api/v1/ai/companies/{company_id}/digest`
 

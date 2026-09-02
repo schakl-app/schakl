@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-200 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+201 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -15,6 +15,7 @@ Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerst
 | --- | --- |
 | `POST` `/ai/assist/write` | `ai.use` |
 | `POST` `/ai/assistant` | `ai.use` |
+| `POST` `/ai/assistant/transcribe` | `ai.use` |
 | `POST` `/ai/companies/{company_id}/digest` | `ai.use` |
 | `GET` `/ai/reports` | `ai.use` |
 | `POST` `/ai/reports` | `ai.use` |
@@ -56,6 +57,16 @@ Recht: `ai.use`
 Request body: `AssistantRequest`
 
 Antwoord: `200`
+
+#### `POST /api/v1/ai/assistant/transcribe`
+
+**Assistant Transcribe** — Speech to text for the assistant's composer.
+
+Recht: `ai.use`
+
+Request body: `AssistantTranscribeRequest`
+
+Antwoord: `200` · `TimeTranscribeResult`
 
 #### `POST /api/v1/ai/companies/{company_id}/digest`
 

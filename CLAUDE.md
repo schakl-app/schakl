@@ -1073,6 +1073,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
   dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
   such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
+- **The assistant reaches what the MCP surface reaches, through a catalog, and writes only a
+  stated list** (`app/core/ai/apitools.py`, `docs/AI.md`). #127's assistant answered from six
+  curated lookups and said "you are read-only", while §12 already handed an external agent every
+  route — so the box built into the screen knew less than a connector. Four rules. **A read
+  surface is derived, never listed**: `api.find` / `api.get` search and call the operations the
+  caller may use, built from the OpenAPI document, each route's declared permission (§15's marker)
+  and the MCP route maps' exclusions — a route added tomorrow is searchable tomorrow, a route the
+  caller cannot call is not in their catalog. **A write is a closed list of named tools**
+  (`ASSISTANT_WRITES`: a task, a comment, hours, the timer), each carrying the route's own request
+  schema and permission, pinned against the route table by a test; widening it is a decision made
+  in one place. **Every call is the HTTP request it stands for** — an in-process re-entry with the
+  caller's own credential and host, the MCP proxy's shape — so tenant, RLS, permissions, horizon,
+  validation, trail and licence gate all apply by construction, and the outer connection is handed
+  back around it (§11). And **a spoken instruction lands in the composer, not in the model**:
+  dictation is the third `SPEECH_FEATURES` host, and `speech_config` now gates on the *host's*
+  toggle rather than on `time_assist` for everybody — the gate that drew a microphone (the
+  capability said yes) which then answered 409. Its sibling is about a number nobody had written
+  down: a five-minute task dictation met adapter-node's **512 kB default body limit** as a bare 413
+  before the proxy ran, and the client called it a provider failure. The web image now states
+  `BODY_SIZE_LIMIT` at what the API admits (`docs/DEPLOY.md`), the API's cap sits just under the
+  provider's, the browser prints the cap while it counts and says when it was reached, and a 413
+  is read as *too long* by status before body — a limit stated in one place and enforced in two
+  is a limit enforced at the lower one.
 - **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
   MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
   source adapter inside `marketing`, so a licensed module on top of it meant one of the two

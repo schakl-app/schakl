@@ -16,7 +16,7 @@
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
-  import { Recorder, recordingSupported, VoiceButton } from "$lib/core/voice";
+  import { Recorder, recordingSupported, transcribeClip, VoiceButton } from "$lib/core/voice";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -375,27 +375,23 @@
     aiBusy = true;
     aiStatus = "voice.transcribing";
     try {
-      const res = await fetch("/ai/time/transcribe", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ audio, language: page.data.locale ?? "nl" }),
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        if (payload?.error?.code === "ai_budget_reached") aiBudget = true;
-        else aiError = payload?.error?.message ?? "errors.ai_provider_error";
+      // The shared helper is what reads a 413 as "too long" whichever layer answered it.
+      const outcome = await transcribeClip(
+        "/ai/time/transcribe",
+        audio,
+        page.data.locale ?? "nl",
+      );
+      if (outcome.budget) {
+        aiBudget = true;
         return;
       }
-      const { text: transcript } = await res.json();
-      if (!transcript?.trim()) {
-        aiError = "voice.error_no_speech";
+      if (outcome.error || !outcome.text) {
+        aiError = outcome.error ?? "voice.error_no_speech";
         return;
       }
       // Into the field, not straight into a parse: Dutch proper nouns are the weak link and
       // a misheard client name is only fixable while the words are still visible.
-      aiText = aiText.trim() ? `${aiText.trim()} ${transcript.trim()}` : transcript.trim();
-    } catch {
-      aiError = "errors.ai_provider_error";
+      aiText = aiText.trim() ? `${aiText.trim()} ${outcome.text}` : outcome.text;
     } finally {
       aiBusy = false;
       aiStatus = null;

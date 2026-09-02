@@ -30,11 +30,19 @@ WORKDIR /app
 COPY --from=builder /repo/apps/web/build ./build
 COPY --from=builder /repo/apps/web/package.json ./package.json
 
+# BODY_SIZE_LIMIT: adapter-node refuses any request body over 512 kB by default, *before* a
+# route runs — and the one request this server proxies that carries real bytes is a dictated
+# clip (base64 in JSON, `routes/(app)/ai/[...path]`). A five-minute task dictation is ~1.6 MB
+# encoded and met that default as a bare 413 with no sentence on screen. Sized to admit what
+# the API itself admits (`MAX_AUDIO_BYTES` in `app/core/ai/audio.py`, 24 MB decoded → 32 MB
+# encoded) so the two limits can never disagree in the browser's disfavour. Overridable per
+# deployment; see docs/DEPLOY.md.
 ENV NODE_ENV=production \
     PORT=3000 \
     PROTOCOL_HEADER=x-forwarded-proto \
     HOST_HEADER=x-forwarded-host \
-    ADDRESS_HEADER=x-forwarded-for
+    ADDRESS_HEADER=x-forwarded-for \
+    BODY_SIZE_LIMIT=40M
 
 EXPOSE 3000
 CMD ["node", "build"]

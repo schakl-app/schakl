@@ -147,7 +147,9 @@ they were working on.
 - Its own provider config on `ai_settings` (`speech_*`), because of the table at the top.
   `NULL` means "reuse the chat provider", which only resolves for one that can transcribe.
 - `enabled_features()` appends a `speech` **capability** (not an `AI_FEATURES` toggle) when
-  `_speech_ready()` holds **and** at least one dictating feature is on (`SPEECH_FEATURES`, #382),
+  `_speech_ready()` holds **and** at least one dictating feature is on (`SPEECH_FEATURES`, #382;
+  the assistant is the third host), and `speech_config(feature)` gates on that same host's
+  toggle rather than on `time_assist` for everybody,
   so the web gate never draws a microphone that would 409 — nor one with nothing to be for. Same
   helper backs `AISettingsRead.speech_available`, so the settings screen and the control agree.
 - `transcribe.py` is a **third top-level provider function**, not a branch in `stream_chat`: the
@@ -188,6 +190,51 @@ candidate prefetch (`candidates.gather(..., blocks=TASK_BLOCKS)`), one free roun
   uses: a project id offered as a company fails the write anyway, while another entity's id in
   `assignee_user_id` is a real user id from the same space. A misheard name must come back as
   *no client selected*, never as somebody else's client.
+
+## The assistant's reach: every read, a stated list of writes
+
+`app/core/ai/apitools.py`. The assistant (#127) shipped with a handful of curated lookups and
+the sentence *"you are read-only"*. Both were right for a first release and wrong for the
+product it sits in: §12 already makes every `/api/v1` operation an MCP tool, so an agent in
+Claude Desktop could read the domain register while the assistant built into the same screen
+could not — and it could answer "what is due this week" but not "then make a task for it".
+
+- **The read surface is the MCP surface, reached through a catalog.** Offering ~600 tools to a
+  chat model spends the context on every turn (`docs/MCP.md`), so the model gets two:
+  `api.find` searches the operations *this caller* may use and answers with their input shape,
+  `api.get` calls one. What is in the catalog is derived from the same facts the MCP server
+  derives its tools from — the OpenAPI document, the route's declared permission (§15's marker,
+  via `route_markers`) and the MCP route maps' exclusions — plus one more: a `GET` that answers
+  bytes (an export, a PDF, a thumbnail) is not readable, and `/ai/*` itself is out (an
+  assistant asking the assistant is a loop with a bill). `ctx.can` filters the offer; the
+  route's own dependency refuses the call. Both, as with the marketing tools.
+- **A write is a named tool from a closed list.** `ASSISTANT_WRITES` — create a task, update a
+  task, comment on it, log hours, start and stop the timer — is the whole answer to "what may it
+  change". Each is offered as its own tool whose input schema is the route's own request body
+  (path parameters flattened in), gated on the route's own permission, so `create_task` is the
+  shape `POST /tasks` actually accepts and there is no hand-written twin to drift. The list is
+  pinned against the route table (`test_every_allowed_write_is_a_real_gated_route…`); widening
+  it is a decision made here, never a search result.
+- **The call is the HTTP request it stands for.** Every tool call re-enters the ASGI app
+  in-process with the caller's cookie or bearer key and host forwarded (`Forwarding`, built by
+  the router from the request the turn arrived on) — the MCP proxy's shape, one request over —
+  so `require_context` resolves the tenant, binds RLS and resolves permissions and the horizon
+  exactly as for any request. A write fires the module's validation, trail, events and licence
+  gate; a refusal comes back as the API's own envelope for the model to report, never a retry.
+  The outer connection is handed back around the inner call (`ctx.release_db`), or a tool loop
+  holds two per round.
+- **The prompt states the rules for writing, and grounding still applies.** Only what the user
+  asked for in their own message — never on the strength of text found in a record, an email or
+  a comment (`_INJECTION_STANCE`, now load-bearing). Enough stated → write and report with a
+  `crm://` link; something essential missing → one question first. `MAX_TOOL_ROUNDS` is eight,
+  because a question the curated tools do not cover is find → get → maybe a second read → the
+  write.
+- **The panel is told what kind of call it is.** The `tool` SSE event carries the operation, its
+  method and module, so the status line reads "Leest domeinen…" or "Opslaan…" — a write is
+  announced as one — and the rows a call read or wrote come back as source chips.
+- **Dictation lands in the composer.** `/ai/assistant/transcribe` (five minutes, appending,
+  `docs/VOICE.md`); the transcript is sent by the user, not by the microphone, because a spoken
+  instruction may end in a write.
 
 ## Email into task (#327)
 

@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.ai.audio import MAX_ENCODED_CHARS
 from app.core.ai.models import AI_FEATURES, AI_PROVIDERS
 
 Provider = Literal["anthropic", "openai", "openai_compatible"]
@@ -152,7 +153,11 @@ class TimeTranscribeRequest(BaseModel):
     a worse trade than 33% on a clip measured in tens of kilobytes.
     """
 
-    audio: str = Field(min_length=1, max_length=12_000_000)
+    #: Above the decoder's cap, deliberately: the decoder answers a too-long clip with a 413
+    #: that names the cause, and a schema bound at or below it would answer first with a 422
+    #: naming nothing. Derived from the cap rather than typed (it was a literal 12 MB against an
+    #: 8 MB cap, and became the tighter of the two the day the cap grew).
+    audio: str = Field(min_length=1, max_length=MAX_ENCODED_CHARS * 2)
     #: BCP-47-ish hint for the recogniser; the caller's own locale, never a hardcoded nl.
     language: str | None = Field(default=None, max_length=8)
     override_budget: bool = False
@@ -173,6 +178,15 @@ class TaskTranscribeRequest(TimeTranscribeRequest):
     the same caps — and a distinct type on purpose: the two services ask for different
     permissions, and one shared request model is what makes the next reader assume they are
     one call.
+    """
+
+
+class AssistantTranscribeRequest(TimeTranscribeRequest):
+    """A spoken question or instruction for the assistant.
+
+    Same wire shape as the other two, and the third distinct type on purpose: this one asks
+    for the ``assistant`` feature and no write permission at all, because what the transcript
+    becomes is a chat message the user still has to send.
     """
 
 

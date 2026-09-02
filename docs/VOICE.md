@@ -68,6 +68,10 @@ MediaRecorder ──base64 in JSON──▶ /ai/[...path] proxy ──▶ POST /
                                             POST /ai/time/parse · /ai/tasks/parse
 ```
 
+**The transcript goes into a field, not straight into a parse** — and, for the assistant,
+not straight to the model: a spoken instruction may end in a write (`docs/AI.md`, "The
+assistant's reach"), and the words are only correctable while they are still visible.
+
 **The transcript goes into a field, not straight into a parse.** Dutch proper nouns are the
 weak link — "Jansen" comes back as "Janssen" often enough to matter — and `companies.find` is a
 bare ILIKE with no fuzzy fallback, so a misheard client name yields a silent `null` id. That is
@@ -90,9 +94,27 @@ that forwards JSON (`routes/(app)/ai/[...path]/+server.ts`). A clip is tens of k
 
 | Limit | Value | Where |
 |---|---|---|
-| Recording length | 60 s (a time entry) · 120 s (a task) | `MAX_RECORD_MS` / `MAX_TASK_RECORD_MS`, browser side |
-| Upload size | 8 MB decoded | `MAX_AUDIO_BYTES`, `core/ai/audio.py` |
+| Recording length | 2 min (a time entry) · **5 min** (a task, the assistant) | `MAX_RECORD_MS` / `MAX_TASK_RECORD_MS` / `MAX_CHAT_RECORD_MS`, browser side |
+| Bitrate asked of the browser | 32 kbit/s Opus (≈ 1.2 MB for five minutes) | `AUDIO_BITS_PER_SECOND`, `recorder.svelte.ts` |
+| Web server request body | **40 MB** (`BODY_SIZE_LIMIT`, adapter-node) | `apps/web/Dockerfile`; overridable per deployment |
+| Upload size | 24 MB decoded (under OpenAI's 25 MB) | `MAX_AUDIO_BYTES`, `core/ai/audio.py` |
 | Monthly audio | tenant-set, in **seconds** | `monthly_audio_seconds_budget` |
+
+**The limit is shown while it counts, and reaching it is said.** `VoiceButton` prints the
+elapsed time against the maximum (`0:42 / 5:00`), and a capture the cap ended — rather than
+the speaker — sets `Recorder.stoppedAtLimit`, which every host turns into one sentence
+(`voice.limit_reached`) above the transcript it still uses. A recording that stops on its own
+and says nothing looks exactly like the feature being broken.
+
+**Every hop in front of the API has to admit the clip, and the first release forgot one.** A
+five-minute task dictation (1.1 MB of base64) answered `413 Content-length exceeds limit of
+524288 bytes` — from **adapter-node**, whose default body cap is 512 kB, before the proxy route
+ran and before the API saw a byte. Nothing on screen said "too long": the client read a
+non-JSON 413 as "the AI service did not answer". Two fixes, and both generalise. The image
+sets `BODY_SIZE_LIMIT` to what the API itself admits, so the two caps cannot disagree in the
+browser's disfavour (a limit stated in one place and enforced in two is a limit enforced at the
+lower one). And the client reads the **status** before the body (`transcribeFailureKey`): a
+413 is *too long* whichever layer answered it and whether or not an envelope came with it.
 
 `audio.py` follows `core/impex/parsing.py`'s stance exactly: **every cap is checked before the
 work it bounds** (encoded length before decoding, so a 40 MB payload is rejected without being
@@ -120,7 +142,14 @@ The route declares `ai.use` — that is what makes the surface enumerable (§15,
 `tests/test_rbac_deny_by_default.py`). The **service** additionally requires the permission the
 transcript exists to exercise: `time.entry.write` for `/ai/time/transcribe`, `tasks.task.create`
 for `/ai/tasks/transcribe`. AI access alone must not reach a microphone that bills the tenant's
-audio budget.
+audio budget. `/ai/assistant/transcribe` asks for none — its transcript is a chat message the
+user still has to send, and every tool that message can reach carries its own gate.
+
+**The speech gate reads the host's own toggle.** `speech_config(feature)` used to test
+`time_assist` for every caller, so a tenant with the time quick-add off and dictated tasks on
+was drawn a microphone (`SPEECH_FEATURES` said so) that answered 409 on the first press. The
+capability and the gate now read the same switch, per host; `test_ai_assistant_reach.py` pins
+it with the assistant on and the time quick-add off.
 
 The browser control mirrors both. `/time` and `/tasks` are client-reachable, so a write control
 there self-gates on the API's own key — **not** on `!isPortal` (`docs/UX.md`, client-portal
@@ -177,9 +206,14 @@ same-looking cell.
 `lib/core/voice/` is in `core/`, not in the time module — which is what let #382 reuse all of
 it. `VoiceButton` takes a `Recorder` and two callbacks; nothing in it is time- or task-specific.
 
+The **assistant panel** is the third host: a microphone beside its composer, five minutes,
+appending, through `/ai/assistant/transcribe`. It is the transcript-into-a-field shape with no
+parse at all — the model *is* the parse — which is what made it a morning's work and is the
+argument for the ordering below.
+
 The ordering worth keeping, by how much typing it removes: **contact moments** (a client call
 logged in the ten seconds after it ends — same parse shape, different schema, and the highest
 value left), then **dictating into a task that already exists** and a **task comment**, then the
-**rich-text editor** wherever it appears, then the **assistant panel**. The line: a
-transcript-into-a-field is nearly free and should be the default offer; a *parse* is only worth
-building where the record has more than three fields.
+**rich-text editor** wherever it appears. The line: a transcript-into-a-field is nearly free
+and should be the default offer; a *parse* is only worth building where the record has more
+than three fields.

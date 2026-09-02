@@ -72,6 +72,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/assistant/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assistant Transcribe
+         * @description Speech to text for the assistant's composer.
+         *
+         *     ``ai.use`` is the route permission and, unlike the other two dictation routes, the only
+         *     one: the transcript becomes a message the user still sends, and every tool that message
+         *     can reach carries its own gate.
+         */
+        post: operations["assistant_transcribe_api_v1_ai_assistant_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/companies/{company_id}/digest": {
         parameters: {
             query?: never;
@@ -13881,6 +13905,25 @@ export interface components {
             context?: components["schemas"]["AssistantContext"] | null;
             /** Messages */
             messages: components["schemas"]["AssistantMessage"][];
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * AssistantTranscribeRequest
+         * @description A spoken question or instruction for the assistant.
+         *
+         *     Same wire shape as the other two, and the third distinct type on purpose: this one asks
+         *     for the ``assistant`` feature and no write permission at all, because what the transcript
+         *     becomes is a chat message the user still has to send.
+         */
+        AssistantTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
             /**
              * Override Budget
              * @default false
@@ -32950,6 +32993,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_transcribe_api_v1_ai_assistant_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */

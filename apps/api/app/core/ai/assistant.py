@@ -13,26 +13,50 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from app.core.ai import prompts
+from app.core.ai.apitools import (
+    Forwarding,
+    api_tools,
+    describe_call,
+    modules_summary,
+    usable,
+)
 from app.core.ai.providers import ChatMessage
 from app.core.ai.schemas import AssistantRequest
 from app.core.ai.service import AIService
 from app.core.ai.tools import available_tools, result_text, run_tool, tool_defs
 from app.core.timezone import org_today
 
-#: A typical answer costs 1–3 tool invocations (#127); the ceiling is a runaway guard.
-MAX_TOOL_ROUNDS = 5
+#: A typical answer costs 1–3 tool invocations (#127); the ceiling is a runaway guard. Eight
+#: rather than five since the catalog pair (``apitools``): a question the curated tools do not
+#: cover is ``api.find`` → ``api.get`` → maybe a second read → the write the user asked for.
+MAX_TOOL_ROUNDS = 8
 
 
 async def run_assistant(
-    service: AIService, payload: AssistantRequest
+    service: AIService,
+    payload: AssistantRequest,
+    *,
+    forwarding: Forwarding | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield ``{"event": ..., "data": ...}`` frames for one assistant turn.
 
-    Events: ``text`` (a delta), ``tool`` (a status line: "zoekt in uren…"),
-    ``sources`` (deduped chips, once at the end), ``done``.
+    Events: ``text`` (a delta), ``tool`` (a status line: "zoekt in uren…" — for an API call it
+    also names the operation, its method and module), ``sources`` (deduped chips, once at the
+    end), ``done``.
+
+    ``forwarding`` is the request the turn arrived on (``apitools.forwarding_from``); with it the
+    model reaches the whole read surface and the stated writes, without it only the curated
+    lookups — which is what an in-process caller with no HTTP request gets.
     """
     ctx = service.ctx
     specs = available_tools(ctx)
+    surface: str | None = None
+    if forwarding is not None:
+        specs = [*specs, *api_tools(ctx, forwarding)]
+        surface = prompts.assistant_surface(
+            modules=modules_summary(ctx, forwarding.app),
+            writes=[op.name for op in usable(ctx, forwarding.app) if op.write],
+        )
     by_name = {spec.name: spec for spec in specs}
 
     context_line = None
@@ -48,6 +72,7 @@ async def run_assistant(
         brand=ctx.org.name,
         today=await org_today(ctx.session, ctx.org.id),
         context_line=context_line,
+        surface=surface,
     )
 
     history: list[ChatMessage] = [
@@ -81,7 +106,12 @@ async def run_assistant(
         )
         for call in calls:
             spec = by_name.get(call.name)
-            yield {"event": "tool", "data": {"name": call.name}}
+            detail = (
+                describe_call(forwarding.app, call.name, call.input)
+                if forwarding is not None
+                else {"name": call.name}
+            )
+            yield {"event": "tool", "data": detail}
             if spec is None:
                 content = '{"error": "unknown tool"}'
             else:

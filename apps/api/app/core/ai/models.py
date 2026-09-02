@@ -53,7 +53,8 @@ AI_FEATURES: tuple[str, ...] = (
 #: an org whose every dictating feature is off would draw a microphone with no host. A tuple
 #: rather than the single ``"time_assist"`` this used to be spelled as inline, because #382 added
 #: the second host and the single-name version made task dictation die with the time quick-add.
-SPEECH_FEATURES: tuple[str, ...] = ("time_assist", "task_assist")
+#: The assistant is the third host: a spoken question or instruction lands in its composer.
+SPEECH_FEATURES: tuple[str, ...] = ("time_assist", "task_assist", "assistant")
 
 
 class AISettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

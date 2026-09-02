@@ -19,9 +19,16 @@ from dataclasses import dataclass
 
 from app.errors import AppError
 
-#: A quick-add line is a sentence. 60 s of Opus is ~120 kB; the cap is generous against that
-#: and still far below anything that would tie up a worker.
-MAX_AUDIO_BYTES = 8 * 1024 * 1024
+#: A dictated task may run to five minutes (the browser caps at ``MAX_TASK_RECORD_MS``), and a
+#: browser's MediaRecorder is asked for 32 kbit/s Opus, so that clip is ~1.2 MB — but a browser
+#: that ignores the bitrate hint records at four times that, and Safari's AAC more still. The
+#: cap therefore sits just **under OpenAI's own 25 MB ceiling** for ``/audio/transcriptions``:
+#: a clip we accepted and the provider then refused would surface as a 502 that reads as an
+#: outage, when the honest answer is the 413 with its own sentence. Every hop in front of this
+#: has to admit the encoded size too — the web image sets ``BODY_SIZE_LIMIT`` for exactly this
+#: (``apps/web/Dockerfile``), because adapter-node's default is 512 kB and the first five-minute
+#: dictation met it there, before the API ever saw a byte.
+MAX_AUDIO_BYTES = 24 * 1024 * 1024
 #: Base64 inflates by 4/3; reject the *encoded* size first so we never decode 40 MB to find out
 #: it was too big.
 MAX_ENCODED_CHARS = (MAX_AUDIO_BYTES * 4) // 3 + 1024
