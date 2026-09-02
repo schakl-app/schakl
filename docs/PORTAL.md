@@ -228,9 +228,18 @@ the boundary).
   pill or chip for what the API blanks — a dash headed "Budget" is a question the client should
   not be holding. `budget_watch` had made this decision for the *mails* long before the screens
   caught up.
+* **A label is the agency's filing, stuck on a task the client may read.** "Moeilijke klant",
+  "wacht op betaling", a colleague's queue: the words an agency sorts its own work by, and the
+  visibility checkbox says nothing about them — it decides that the *task* is the client's to
+  see. `_list_items` never queries the label links for a portal login (so the row, the card,
+  `/mine` and the dashboard tile all carry an empty `labels`), and `/tasks/labels` — the one
+  lookup on `tasks.task.read` that is about the agency rather than the task — answers `[]`, which
+  is what lets the board's label filter and the card's picker fold away on their own. The web
+  drops the labels column for the same reader.
 
-`tests/test_marketing_portal.py` and `tests/test_projects_portal.py` pin all four against a real
-portal session beside a staff one on the same endpoints.
+`tests/test_marketing_portal.py`, `tests/test_projects_portal.py` and
+`tests/test_tasks_portal_labels.py` pin all five against a real portal session beside a staff
+one on the same endpoints.
 
 ## The client's board: what is asked of them, then what was written for them (#450–#453)
 

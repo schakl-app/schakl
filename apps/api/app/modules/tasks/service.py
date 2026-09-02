@@ -427,20 +427,26 @@ class TaskService:
         for item in items:
             item.assignees = assignees_by_task.get(item.id, [])
 
-        label_rows = (
-            await self.ctx.session.execute(
-                select(TaskLabelLink.task_id, TaskLabel)
-                .join(TaskLabel, TaskLabel.id == TaskLabelLink.label_id)
-                .where(
-                    TaskLabelLink.org_id == self.ctx.org.id,
-                    TaskLabelLink.task_id.in_(task_ids),
-                )
-                .order_by(TaskLabel.position.asc(), TaskLabel.name.asc())
-            )
-        ).all()
+        # A label is the agency's own filing — "moeilijke klant", "wacht op betaling", the name
+        # of a colleague's queue — stuck on a task the client may read. The visibility checkbox
+        # decides that the *task* is theirs to see; it says nothing about the words the agency
+        # sorts it by, so a portal login gets the row with no chips on it (docs/PORTAL.md, the
+        # #446–#449 rule). Not queried at all rather than filtered: nothing to leak later.
         labels_by_task: dict[uuid.UUID, list[LabelRead]] = {}
-        for task_id, label in label_rows:
-            labels_by_task.setdefault(task_id, []).append(LabelRead.model_validate(label))
+        if not self.ctx.is_portal:
+            label_rows = (
+                await self.ctx.session.execute(
+                    select(TaskLabelLink.task_id, TaskLabel)
+                    .join(TaskLabel, TaskLabel.id == TaskLabelLink.label_id)
+                    .where(
+                        TaskLabelLink.org_id == self.ctx.org.id,
+                        TaskLabelLink.task_id.in_(task_ids),
+                    )
+                    .order_by(TaskLabel.position.asc(), TaskLabel.name.asc())
+                )
+            ).all()
+            for task_id, label in label_rows:
+                labels_by_task.setdefault(task_id, []).append(LabelRead.model_validate(label))
 
         checklist_rows = (
             await self.ctx.session.execute(
@@ -1806,6 +1812,13 @@ class TaskService:
     # Labels
     # ------------------------------------------------------------------ #
     async def list_labels(self) -> Sequence[TaskLabel]:
+        # The vocabulary itself is the agency's process laid out as a list ("wacht op
+        # leverancier", "spoed", a colleague's name): a client holds `tasks.task.read` for the
+        # filter bar and the card, and this is the one lookup on that key that is about the
+        # agency rather than the task. Empty for a portal login, so the filter and the picker
+        # fold away on their own — the same answer `_list_items` gives per row.
+        if self.ctx.is_portal:
+            return []
         return await self.ctx.repo(TaskLabel).list(
             limit=200, order_by=TaskLabel.position.asc()
         )
