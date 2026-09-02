@@ -36,6 +36,11 @@ for (const entityType of ["project", "contact", "invoice", "quote", "domain", "w
     entityType,
     titleKey: "activity.title",
     position: POSITION,
+    // The trail is the agency's record of its own work on the record, and the API answers a
+    // portal login with an empty feed — so without this the client got the heading and *Nog
+    // geen activiteit* on four of their pages. The web draws no block for what the API blanks
+    // (docs/PORTAL.md); the API stays the boundary, and this is what stops the round trip.
+    audience: "staff",
     // `GET /api/v1/activity` declares `activity.read`. Without this the trail rendered as an
     // empty "Geschiedenis" block for every viewer who does not hold it — and cost a 403 per
     // detail page to say so.

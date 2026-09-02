@@ -253,6 +253,28 @@ Two related edges came out of the same read:
   run was the one thing guaranteed not to work. The id now carries the interaction too: two
   emails are two runs, the same email twice is still one.
 
+**And a fifth, found by driving the three sources against a real key: the offer is a race
+the request can lose, and the Gmail import was the one that lost it.** The offer flips the task
+to `queued` and enqueues the job with a ten-second head start, but the row it claims only
+becomes visible when the request commits — and the manual Gmail import made the offer *before*
+its in-request body fetch, a Google round trip per attachment. On a mail with a few attachments
+the first attempt arrived before the commit, found no `queued` row, and stood down in silence;
+the task read "in de wachtrij" until the quarter-hourly reaper called it failed. The `.eml`
+upload had already stated the rule at its own call ("last, so the worker's claim is made over a
+row that is already complete"); the Gmail path now keeps the same order through
+`interactions/system.offer_task_enrichment`, made after the fetch. And because the approve can
+be inside its transaction too (a whole thread of siblings, #372), the job itself grew a grace:
+a **first** attempt that cannot claim re-defers itself once, on a fresh id and without writing
+any status — the status is the request's to write — while a later one that still cannot claim
+is a duplicate or a reaped run and stands down as before. Every exit here logs which it was.
+The retry ids were also keyed on the task alone, which is the "second email onto one task"
+bug above one step later: two emails' first re-defers shared an id, and the second was declined.
+The same run found the review slide-over's other half broken too: type a note while the mail is
+read, and "Toon wat is aangevuld" dropped the button and merged nothing, because the unforced
+reveal had advanced the description's baseline to the very text it declined to show. The rule
+is a pure function now (`tasks/review.ts`, `adoptRun`): a field the run did not get to adopt
+keeps its baseline until it does.
+
 Three things make it different from every other feature here, and all three follow from one
 fact: **its input is written by someone outside the organisation.**
 

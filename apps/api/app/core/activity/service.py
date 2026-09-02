@@ -131,7 +131,21 @@ class ActivityService:
     async def feed(
         self, entity_type: str, entity_id: uuid.UUID, limit: int = 20
     ) -> list[dict[str, Any]]:
-        """The trail for one entity, newest first, with the actor resolved per issue #64."""
+        """The trail for one entity, newest first, with the actor resolved per issue #64.
+
+        Empty for a client (#274). The trail is the *agency's* record of how a record came to
+        look the way it does — who edited what, which colleague was signed in, the subject line
+        of a contactmoment, the filename of an attachment nobody ticked ``client_visible`` — and
+        none of that becomes the client's business because the record it hangs off is. The gate
+        lives here rather than at the endpoint because there are two readers and only one of
+        them remembered: ``/api/v1/activity`` refused a portal login from the start, while the
+        company hub's core panel (``activity/panels.py``) composed the same service behind
+        ``activity.read``, which the seeded ``client`` role holds — so a client's own hub printed
+        fifteen lines of the agency's paper trail with the staff actor names on them. One answer,
+        both readers, and the next reader inherits it (§15: the API is the boundary).
+        """
+        if self.ctx.is_portal:
+            return []
         # The impersonator resolves exactly like the actor — live name while the account exists,
         # snapshot once it doesn't — so it rides the same statement on a second alias rather than
         # costing a query per row (docs/PERFORMANCE.md).
@@ -191,7 +205,12 @@ class ActivityService:
         The panel could say *"de 10 meest recente worden getoond"* and never *of how many*, so
         a record with eleven changes and one with eleven hundred read identically. One indexed
         count over ``(org_id, entity_type, entity_id)`` — the index the feed already uses.
+
+        Zero for a client, for the same reason :meth:`feed` is empty: *how many* changes the
+        agency made to a record is the same fact one number down.
         """
+        if self.ctx.is_portal:
+            return 0
         return int(
             await self.ctx.session.scalar(
                 select(func.count())

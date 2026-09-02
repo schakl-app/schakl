@@ -213,6 +213,21 @@ export interface EntityPanelSpec {
   entityType: string;
   position?: number;
   /**
+   * Whose surface this panel's subject is — the mirror of the API's `PanelSpec.audience`.
+   *
+   * `requiresPermission` answers "may this viewer read these rows"; this answers "is this thing
+   * a client surface at all", and they come apart on exactly the panels a client legitimately
+   * holds the key to. The activity trail is the case that named it: the seeded `client` role
+   * holds `activity.read`, so a client's project, contact, domain and website pages each drew
+   * an "Activiteit" heading over *Nog geen activiteit* — the API blanks the feed for them, and
+   * a heading over what the API blanks is the screen answering a question the client should not
+   * be holding (docs/PORTAL.md, the #446–#449 rule).
+   *
+   * `everyone` is the default, so a panel that has not thought about it draws exactly what it
+   * drew before.
+   */
+  audience?: "everyone" | "staff";
+  /**
    * What this panel *is* on this host (#404) — the same question the API already answers for a
    * company panel (`PanelSpec.prominence`, #364), asked on this side because an entity panel is
    * registered in web code and there is no API descriptor to put it on.
@@ -596,6 +611,10 @@ export function entityPanelsFor(
   return [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
     .filter((p) => p.entityType === entityType)
     .filter((p) => !p.requiresPermission || can(user, p.requiresPermission, p.requiresScope))
+    // The other axis (#274): a staff subject is not drawn for a client however many permissions
+    // they hold. Filtered here rather than in each host page, so a detail page added tomorrow
+    // inherits it — the same argument that put `requiresPermission` in this function.
+    .filter((p) => p.audience !== "staff" || !user?.isPortal)
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
 

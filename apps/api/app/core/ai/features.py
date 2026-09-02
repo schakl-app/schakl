@@ -479,10 +479,14 @@ async def gather_company_facts(
     ctx = service.ctx
     ctx.require("companies.company.read")
     facts: dict[str, Any] = {}
-    # Narrowed to what *this* caller may read (#365): the digest is assembled from the same
-    # providers the hub composes, so an unfiltered gather would be the leak with a model in
-    # front of it.
-    for spec in registry.panels_for("company", settings.enabled_modules, ctx.can):
+    # Narrowed to what *this* caller may read (#365) and to what their kind of login is for
+    # (#274): the digest is assembled from the same providers the hub composes, so an
+    # unfiltered gather would be the leak with a model in front of it — and a model is the
+    # worst place for it, because it paraphrases rather than quoting and nothing on the answer
+    # says which panel a sentence came from.
+    for spec in registry.panels_for(
+        "company", settings.enabled_modules, ctx.can, ctx.is_portal
+    ):
         try:
             facts[spec.key] = await spec.provider(ctx, company_id)
         except AppError:

@@ -2056,7 +2056,15 @@ async def test_manual_gmail_refuses_a_mailbox_that_is_not_ours_to_read(client_fo
 
 
 async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch) -> None:
-    """#342's point: the enrichment offer hangs off filing onto a task, not off review."""
+    """#342's point: the enrichment offer hangs off filing onto a task, not off review.
+
+    And it is made **after the body has landed**, the order the ``.eml`` upload keeps: the
+    offer enqueues the worker with a fixed head start, so an offer made before the Google
+    round trips let a mail with a few attachments outrun it — the job found no ``queued`` row
+    to claim and the task sat on "in de wachtrij" until the reaper failed it.
+    """
+    from app.modules.interactions import system as interactions_system
+
     t = await make_tenant("gmail-manual-enrich")
     await _seed(t)
     headers = await auth_cookie(t.user)
@@ -2065,12 +2073,22 @@ async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch
     monkeypatch.setattr("app.integrations.google.gmail.service.acting_as", _stub_acting_as(stub))
 
     offered: list[tuple[str, str]] = []
+    body_at_offer: list[str | None] = []
 
     async def _capture(ctx, interaction_id, task_id):  # noqa: ANN001, ARG001
         offered.append((str(interaction_id), str(task_id)))
         return object()
 
+    real_offer = interactions_system.offer_task_enrichment
+
+    async def _offer(ctx, row):  # noqa: ANN001
+        body_at_offer.append(row.body_text)
+        await real_offer(ctx, row)
+
     monkeypatch.setattr("app.modules.interactions.jobs.schedule_enrichment", _capture)
+    monkeypatch.setattr(
+        "app.integrations.google.gmail.manual.interactions_system.offer_task_enrichment", _offer
+    )
     monkeypatch.setattr(
         "app.modules.interactions.enrich.available",
         lambda ctx: _true(),  # noqa: ARG005
@@ -2098,6 +2116,8 @@ async def test_manual_import_reaches_the_ai_task_fill_in(client_for, monkeypatch
         )
         assert created.status_code == 201, created.text
         assert offered == [(created.json()["interaction_id"], task["id"])]
+        # The offer saw the body: it was made after the fetch, not before it.
+        assert body_at_offer == ["Graag een offerte voor een nieuwe website."]
 
 
 async def _true() -> bool:

@@ -374,10 +374,25 @@ async def record_manual_gmail_email(ctx, **fields) -> Interaction:  # noqa: ANN0
     The boundary the licensed ``google`` module writes through, exactly like
     :func:`record_email` above — except this one runs as a **person**, not as the poller, so it
     takes a ``RequestContext`` and goes through the ordinary service: the caller's permissions,
-    the link validation, the contact roster, the activity trail and the "let schakl fill the
-    task in" offer are all things a system actor has no business skipping just because the
-    bytes happen to arrive over the same API.
+    the link validation, the contact roster and the activity trail are all things a system
+    actor has no business skipping just because the bytes happen to arrive over the same API.
+    The "let schakl fill the task in" offer is the caller's *next* call
+    (:func:`offer_task_enrichment`), once the body it will read has landed.
     """
     from app.modules.interactions.service import InteractionService
 
     return await InteractionService(ctx).create_from_gmail_message(**fields)
+
+
+async def offer_task_enrichment(ctx, row: Interaction) -> None:  # noqa: ANN001
+    """"Laat schakl deze taak invullen" for a row another module just logged (#327/#342).
+
+    Published separately from :func:`record_manual_gmail_email` so the caller can make the
+    offer **after** whatever it still has to fetch: the offer enqueues the worker job with a
+    fixed head start, and the row it claims only becomes visible when the request commits, so
+    a Google round trip between the two is a race the job loses silently. Same three refusals
+    as every other source (no task, AI off, caller may not write the task), all no-ops.
+    """
+    from app.modules.interactions.service import InteractionService
+
+    await InteractionService(ctx).offer_task_enrichment(row)

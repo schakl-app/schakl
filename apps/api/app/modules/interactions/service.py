@@ -822,7 +822,6 @@ class InteractionService:
         deep_link: str | None,
         links: dict[str, Any],
         allow_duplicate: bool = False,
-        enrich_task: bool = False,
     ) -> Interaction:
         """Log a message the poller decided not to, named by its owner (#342).
 
@@ -844,7 +843,10 @@ class InteractionService:
         The body is **not** read here. It is the caller's next call (the same
         ``_fetch_body_with`` the auto path uses after approval), because it is an HTTP round
         trip per attachment and this transaction should not be holding a database connection
-        for it (CLAUDE.md §11).
+        for it (CLAUDE.md §11). And the "let schakl fill the task in" offer is **not** made
+        here either, for the reason the upload path states at its own call: the offer
+        enqueues a job with a fixed head start, so it belongs *after* the body fetch, where
+        the caller makes it through :func:`~app.modules.interactions.system.offer_task_enrichment`.
         """
         self.ctx.require("interactions.interaction.write")
         # Same mailbox, same message: this is not a duplicate to confirm, it is the row the
@@ -905,8 +907,6 @@ class InteractionService:
             ENTITY_TYPE, row.id, {"source": "gmail_manual"}
         )
         await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
-        if enrich_task:
-            await self.offer_task_enrichment(row)
         return row
 
     async def _upload_direction(self, from_email: str | None) -> str:

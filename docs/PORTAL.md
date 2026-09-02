@@ -236,10 +236,34 @@ the boundary).
   lookup on `tasks.task.read` that is about the agency rather than the task — answers `[]`, which
   is what lets the board's label filter and the card's picker fold away on their own. The web
   drops the labels column for the same reader.
+* **The trail is how the record came to look this way, and that is the agency's story.** Who
+  edited which field, which colleague was signed in as whom, the subject line of a
+  contactmoment, the filename of an attachment nobody ticked `client_visible` — none of it
+  becomes the client's business because the record it hangs off is. What makes this one worth
+  reading twice is *where* the gate had been put: `GET /api/v1/activity` refused a portal login
+  from the first commit, and there were three readers. The company hub's **core panel** composes
+  `ActivityService` behind `activity.read`, a permission the seeded `client` role holds, so a
+  client's own hub printed fifteen lines of the agency's history under a heading called
+  Activiteit. The tasks module's **legacy** `task_activities` trail rode `GET /tasks/{id}` in
+  full — `attachment_added: photo.jpg` for files the file list, the bytes and the thumbnail all
+  refuse them (docs/STORAGE.md) — invisible on screen, because the page had already stopped
+  drawing the section, and shipped in the payload regardless. Three rules come out of it. **A
+  gate written at one reader is a gate at one reader**: it lives in `ActivityService.feed` and
+  `.count` now, so the endpoint, the panel and whatever is written next all inherit one answer,
+  and the route's own copy is gone rather than kept as a second opinion. **Externality is its
+  own axis, and a panel needed a word for it** — `PanelSpec.audience` / `EntityPanelSpec
+  .audience`, filtered in `panels_for` and `entityPanelsFor` exactly where `requires_permission`
+  already is, because a permission answers *may this caller read these rows* and this answers
+  *is this thing a client surface at all*, and they come apart on precisely the panels a client
+  legitimately holds the key to. And **absent beats empty**: folding the trail away with
+  `empty_when` would have left a ＋ chip headed Activiteit under *Nog niets vastgelegd* (#364),
+  which is the same question asked in one word instead of ten — so the hub does not compose it,
+  and the project, contact, domain and website pages, which drew the heading over *Nog geen
+  activiteit*, draw nothing.
 
-`tests/test_marketing_portal.py`, `tests/test_projects_portal.py` and
-`tests/test_tasks_portal_labels.py` pin all five against a real portal session beside a staff
-one on the same endpoints.
+`tests/test_marketing_portal.py`, `tests/test_projects_portal.py`,
+`tests/test_tasks_portal_labels.py` and `tests/test_portal_activity.py` pin all six against a
+real portal session beside a staff one on the same endpoints.
 
 ## The client's board: what is asked of them, then what was written for them (#450–#453)
 
