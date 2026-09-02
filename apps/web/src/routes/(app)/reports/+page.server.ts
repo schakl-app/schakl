@@ -59,6 +59,11 @@ export const load: PageServerLoad = async (event) => {
     canWrite,
     canSend: can(event.locals.user, "reporting.report.send"),
     canSeeInternal: can(event.locals.user, "reporting.internal.read"),
+    // Which *layout* to draw, exactly as the detail page decides it (#373): a client reads
+    // their finished documents, and the status pill, the warning count and the "nakijken"
+    // link are our workflow, not theirs. Nothing here depends on it for safety — the API
+    // already withholds the warnings from a portal caller and serves only published rows.
+    isPortal: event.locals.user?.isPortal ?? false,
     locale: event.locals.locale,
   };
 };

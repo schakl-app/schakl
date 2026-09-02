@@ -330,6 +330,19 @@ draft-invoice leak came through, and a predicate that lives in one place cannot 
 somebody forgot. `ReportService._PortalReportRepository` overrides `horizon_condition`, so the
 list, its total, the detail and the PDF download all take one answer.
 
+**A client reads the document, never our notes about making it.** The run's warnings — a stale
+source, a truncated table, a phrase the tone bans — are the agency's, and `ReportService` hands a
+portal caller an empty list on the detail *and* a `warning_count` of zero on every row, because
+"3 waarschuwingen" in amber beside a finished document is a note about it however few words it
+is. The status is the same kind of fact: *ready* is a state in our workflow, and a client reading
+"Klaar om na te kijken" on their own report learns that somebody here has not looked at it yet —
+true, none of their business, and alarming (#373). So every surface that draws a report to a
+portal login — the register, the company panel, the detail header — draws no status pill, no
+audience label, no warning count and no "nakijken" link. That is the **layout** following
+`is_portal`, which is the one question it is the right signal for; nothing depends on it for
+safety, since the API already serves a portal login nothing but published client reports with the
+warnings withheld, and a test pins both halves against a staff read of the same row.
+
 ## What the model is handed is the document, not the row
 
 `present.py`. The prose and the tables describe the same figures *by construction* — that was

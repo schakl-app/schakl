@@ -35,6 +35,14 @@
   const busy = new InFlight();
   const reports = $derived(data.reports);
   const locale = $derived(data.locale ?? "nl");
+  /**
+   * A client reads their finished documents; staff review a queue. The status pill, the
+   * amber warning count and the "nakijken" link are the queue's vocabulary — a client seeing
+   * "3 waarschuwingen" beside a report they were told was finished learns something that is
+   * true, none of their business, and alarming (the detail page's rule, #373). Layout only:
+   * every control on this page stays gated on its own API key.
+   */
+  const reader = $derived(data.isPortal);
 
   /**
    * "Genereer alles" queues a job per client and returns immediately, so the whole point of
@@ -171,8 +179,12 @@
         <tr>
           <th class="px-4 py-3 font-medium">{t("reporting.list.client")}</th>
           <th class="px-4 py-3 font-medium">{t("reporting.list.period")}</th>
-          <th class="px-4 py-3 font-medium">{t("reporting.list.audience")}</th>
-          <th class="px-4 py-3 font-medium">{t("reporting.list.status")}</th>
+          {#if !reader}
+            <!-- "Klantrapportage" names the other kind of document, which a client has never
+                 seen; the status is a state in our workflow. Neither column is theirs. -->
+            <th class="px-4 py-3 font-medium">{t("reporting.list.audience")}</th>
+            <th class="px-4 py-3 font-medium">{t("reporting.list.status")}</th>
+          {/if}
           <th class="px-4 py-3 font-medium">{t("reporting.list.sent")}</th>
         </tr>
       </thead>
@@ -183,23 +195,25 @@
               <a href={`/reports/${report.id}`} class="font-medium text-text hover:underline">
                 {report.company_name}
               </a>
-              {#if report.warning_count > 0}
+              {#if !reader && report.warning_count > 0}
                 <span class="ml-2 text-xs text-amber-600 dark:text-amber-400">
                   {t("reporting.list.warnings", { count: String(report.warning_count) })}
                 </span>
               {/if}
             </td>
             <td class="px-4 py-3 text-text-muted">{periodLabel(report, locale)}</td>
-            <td class="px-4 py-3 text-text-muted">{audienceLabel(report.audience)}</td>
-            <td class="px-4 py-3">
-              <ReportStatusPill status={report.status} size="xs" />
-              {#if report.status === "generating"}
-                <RefreshCw size={13} class="ml-1 inline animate-spin text-text-muted" />
-              {/if}
-            </td>
+            {#if !reader}
+              <td class="px-4 py-3 text-text-muted">{audienceLabel(report.audience)}</td>
+              <td class="px-4 py-3">
+                <ReportStatusPill status={report.status} size="xs" />
+                {#if report.status === "generating"}
+                  <RefreshCw size={13} class="ml-1 inline animate-spin text-text-muted" />
+                {/if}
+              </td>
+            {/if}
             <td class="px-4 py-3 text-text-muted">
               {report.sent_at ? fmtDate(report.sent_at, locale) : "—"}
-              {#if needsAttention(report.status) && !report.sent_at}
+              {#if !reader && needsAttention(report.status) && !report.sent_at}
                 <a href={`/reports/${report.id}`} class="ml-2 text-brand hover:underline">
                   {t("reporting.list.review")}
                 </a>

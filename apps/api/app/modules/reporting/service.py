@@ -652,7 +652,8 @@ class ReportService:
             if audience is not None:
                 count_stmt = count_stmt.where(Report.audience == audience)
             total = await self.ctx.session.scalar(count_stmt)
-        return ReportList(items=[_row(row) for row in rows], total=total)
+        portal = self.ctx.is_portal
+        return ReportList(items=[_row(row, portal=portal) for row in rows], total=total)
 
     async def _get(self, report_id: uuid.UUID) -> Report:
         report = await self.repo.get_or_404(report_id)
@@ -667,7 +668,7 @@ class ReportService:
 
     async def _read(self, report: Report) -> ReportDetail:
         payload = ReportDetail.model_validate(report)
-        payload.warning_count = len(report.warnings or [])
+        payload.warning_count = _warning_count(report, portal=self.ctx.is_portal)
         titles = {
             spec.key: translate(spec.title_key, report.locale)
             for spec in registry.report_sections_for(
@@ -680,7 +681,8 @@ class ReportService:
         ]
         if self.ctx.is_portal:
             # A client reads the finished document, never the agency's working notes about
-            # how it was made.
+            # how it was made. The count went to zero above for the same reason: "3
+            # waarschuwingen" beside a document is a note about it, however few words.
             payload.warnings = []
         return payload
 
@@ -1010,9 +1012,20 @@ class ReportService:
         await self.repo.delete(report)
 
 
-def _row(report: Report) -> ReportRow:
+def _warning_count(report: Report, *, portal: bool) -> int:
+    """How many of the agency's notes about this run the caller may know exist.
+
+    A client never reads the warnings (``_read`` blanks them), and a count of notes they
+    cannot read is still a note — the list drew "3 waarschuwingen" in amber beside a
+    document the client had been told was finished. Zero for a portal caller, on the list
+    row and the detail alike, so the two cannot disagree.
+    """
+    return 0 if portal else len(report.warnings or [])
+
+
+def _row(report: Report, *, portal: bool) -> ReportRow:
     payload = ReportRow.model_validate(report)
-    payload.warning_count = len(report.warnings or [])
+    payload.warning_count = _warning_count(report, portal=portal)
     return payload
 
 
