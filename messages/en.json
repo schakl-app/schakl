@@ -747,7 +747,7 @@
   "tasks.ai.done": "schakl filled this task in.",
   "tasks.ai.show": "Show what was added",
   "tasks.review.title": "Review task",
-  "tasks.review.hint": "Check what was filled in and adjust where needed. Checklists, links, comments and planning live on the full task.",
+  "tasks.review.hint": "Check what was filled in and adjust where needed. Comments and planning live on the full task.",
   "tasks.review.origin": "Created from this contact moment",
   "tasks.review.origin_enriched": "Being filled in from this contact moment",
   "tasks.review.open_card": "Open full task",

@@ -747,7 +747,7 @@
   "tasks.ai.done": "schakl heeft deze taak aangevuld.",
   "tasks.ai.show": "Toon wat is aangevuld",
   "tasks.review.title": "Taak nakijken",
-  "tasks.review.hint": "Controleer wat er is ingevuld en stuur bij waar nodig. Checklists, links, reacties en planning staan op de volledige taak.",
+  "tasks.review.hint": "Controleer wat er is ingevuld en stuur bij waar nodig. Reacties en planning staan op de volledige taak.",
   "tasks.review.origin": "Aangemaakt vanuit dit contactmoment",
   "tasks.review.origin_enriched": "Wordt aangevuld vanuit dit contactmoment",
   "tasks.review.open_card": "Volledige taak openen",
