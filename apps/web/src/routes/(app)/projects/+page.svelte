@@ -31,6 +31,11 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
+  import {
+    BURN_GROUPS,
+    burnFilterToken,
+    burnGroupLabelKey,
+  } from "$lib/modules/projects/burn-groups";
   import { HOURS_COLUMN, PROJECT_COLUMNS, STAFF_COLUMNS } from "$lib/modules/projects/columns";
   import type { ProjectFilterKey } from "$lib/modules/projects/filters";
   import {
@@ -180,12 +185,13 @@
       key: "unnamed",
       options: [{ value: "1", label: t("projects.filter.unnamed") }],
     },
-    // Over budget (#437) — the dashboard donut's aggregate opens exactly this. A filter you
-    // can arrive at by link must be visible and clearable, so it is a pill like the rest.
+    // The burn band (#437) — the dashboard's budget tile headings open exactly these, in the
+    // same words. A filter you can arrive at by link must be visible and clearable, so it is a
+    // pill like the rest.
     {
       kind: "pills",
       key: "burn",
-      options: [{ value: "over", label: t("projects.filter.over_budget") }],
+      options: BURN_GROUPS.map((level) => ({ value: level, label: t(burnGroupLabelKey(level)) })),
     },
   ]);
   // Not for a client (#449): the budget is what the over-budget pill filters on, and the API
@@ -388,7 +394,7 @@
         status: data.statusQuery,
         mine: data.mine,
         sort: data.table.sort,
-        burn: page.url.searchParams.get("burn") === "over" ? "over" : null,
+        burn: burnFilterToken(page.url.searchParams.get("burn")) ?? null,
       }}
       locale={data.locale}
       {form}

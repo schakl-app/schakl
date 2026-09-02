@@ -16641,6 +16641,11 @@ export interface components {
          *     seventeen is a different sentence, and only the count can say which one the tile means.
          */
         DashboardBudgets: {
+            /**
+             * Almost Budget
+             * @default 0
+             */
+            almost_budget: number;
             /** Items */
             items: components["schemas"]["DashboardBudgetProject"][];
             /**
@@ -16648,6 +16653,11 @@ export interface components {
              * @default 0
              */
             over_budget: number;
+            /**
+             * Over Budget Hours
+             * @default 0
+             */
+            over_budget_hours: number;
             /**
              * Tail Budget Hours
              * @default 0
@@ -16660,6 +16670,11 @@ export interface components {
             tail_spent_hours: number;
             /** Total */
             total: number;
+            /**
+             * Within Budget
+             * @default 0
+             */
+            within_budget: number;
         };
         /**
          * DashboardMineSummary
@@ -52204,7 +52219,7 @@ export interface operations {
                 hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
-                /** @description 'over' keeps only projects at or past their budget; other tokens ignored */
+                /** @description 'over' (at or past budget), 'warn' (75-100 %) or 'ok' (under 75 %) keeps only that burn band; other tokens ignored */
                 burn?: string | null;
             };
             header?: never;

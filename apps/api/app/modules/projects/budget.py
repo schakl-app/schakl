@@ -96,3 +96,27 @@ def period_bound(
 ) -> datetime:
     """``period_start`` with ``total`` collapsed to ``EPOCH``, for queries that need a timestamp."""
     return period_start(budget_period, now=now, tz=tz) or EPOCH
+
+
+# --- the burn scale -------------------------------------------------------------------------- #
+# The one budget-burn scale, stated here for the API and in ``core/burn.ts`` for the web: a
+# project is **over** at or past its budget, **almost spent** from three quarters, and has
+# **room** below that. The two copies exist because one side draws bars and the other counts
+# rows, and they must agree — the dashboard's "4 over budget" opens ``?burn=over``, and a row
+# drawn amber under a heading counted as green is the disagreement docs/UX.md Principle 7
+# forbids. Deliberately *not* ``budget_alert_threshold``: that setting decides when a mail goes
+# out, and a tenant who mails at 90 % has not asked every bar in the app to stay green to 90 %.
+BURN_WARN_PCT = 75
+BURN_LEVELS: tuple[str, ...] = ("over", "warn", "ok")
+
+
+def burn_level(spent_hours: float, budget_hours: float | None) -> str | None:
+    """``over`` / ``warn`` / ``ok`` — or ``None`` where there is no budget to burn against."""
+    if not budget_hours or budget_hours <= 0:
+        return None
+    pct = spent_hours / budget_hours * 100
+    if pct >= 100:
+        return "over"
+    if pct >= BURN_WARN_PCT:
+        return "warn"
+    return "ok"

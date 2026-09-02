@@ -73,3 +73,35 @@ export function burnBarWidth(pct: number | null): number {
   if (pct == null) return 0;
   return Math.max(0, Math.min(100, pct));
 }
+
+/**
+ * The bar that can show *how far* over. A clamped bar (`burnBarWidth`) is right for a cell
+ * beside a number, and it is exactly wrong for a tile whose question is "which budgets are
+ * over, and by how much": every over-budget row draws the same full red bar, and 300 % looks
+ * like 101 %. So this scale puts the budget line at two thirds of the track (`mark`) and lets
+ * the fill run past it: `fill` is the spend up to the budget, `spill` is the spend beyond it,
+ * both as percentages of the track. A row inside its budget never reaches the mark; a row over
+ * it visibly spills past a line every other row also draws, which is what makes the line read
+ * as *the budget* rather than as decoration. Capped at 150 % of budget (the track's end) — the
+ * number beside the bar stays unclamped and says the rest (docs/UX.md: clamp the bar, never the
+ * number). `null` pct draws nothing, as every other bar here does.
+ */
+export const BURN_TRACK_PCT = 150;
+
+export interface BurnOverflowBar {
+  /** Spend up to the budget, as a percentage of the track (≤ `mark`). */
+  fill: number;
+  /** Spend past the budget, as a percentage of the track. Zero unless over. */
+  spill: number;
+  /** Where the budget line sits on the track. */
+  mark: number;
+}
+
+export function burnOverflowBar(pct: number | null): BurnOverflowBar | null {
+  if (pct == null) return null;
+  const mark = (100 / BURN_TRACK_PCT) * 100;
+  const clamped = Math.max(0, Math.min(BURN_TRACK_PCT, pct));
+  const fill = (Math.min(100, clamped) / BURN_TRACK_PCT) * 100;
+  const spill = (Math.max(0, clamped - 100) / BURN_TRACK_PCT) * 100;
+  return { fill, spill, mark };
+}

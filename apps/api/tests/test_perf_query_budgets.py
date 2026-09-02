@@ -854,8 +854,13 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         # so the donut's "overig" slice has 2 of its 8 hours to draw.
         assert res.json()["tail_spent_hours"] == 2.0
         assert res.json()["tail_budget_hours"] == 8.0
-        # Nothing here is past its budget, and the aggregate says so over the whole set.
+        # Nothing here is past its budget, and the aggregate says so over the whole set — as
+        # do the other two bands of the one burn scale: "Heet" (75 %) is the first amber step,
+        # the other two have room. Counted over all three, not over the two rows returned.
         assert res.json()["over_budget"] == 0
+        assert res.json()["almost_budget"] == 1
+        assert res.json()["within_budget"] == 2
+        assert res.json()["over_budget_hours"] == 0.0
 
 
 # --- the company hub: an umbrella budget over every panel ----------------------------------- #

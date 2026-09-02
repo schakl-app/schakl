@@ -118,6 +118,63 @@ def _row(payload: dict, entity_id: str) -> dict:
 
 
 # --- the project column -------------------------------------------------------- #
+
+
+async def test_dashboard_bands_and_the_list_filter_count_the_same_rows(client_for) -> None:
+    """The budget tile's three headings each open ``?burn=<level>``, so the count the tile
+    prints and the list it opens must be one number (docs/UX.md Principle 7). Both read
+    ``budget.burn_level``; this pins that they keep doing so, on every band and on the two
+    boundaries (75 % is amber, exactly on the budget is over), and that the hours past budget
+    are summed over the over-budget rows alone.
+    """
+    t = await make_tenant("bh-bands")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        started = datetime.now(UTC) - timedelta(hours=8)
+        # name → (budget, minutes): 300 %, exactly 100 %, exactly 75 %, just under, untouched.
+        plan = {
+            "Ver over": (4, 720),
+            "Precies op": (4, 240),
+            "Bijna": (4, 180),
+            "Net eronder": (4, 179),
+            "Ruimte": (4, 0),
+        }
+        ids = {}
+        for name, (budget, minutes) in plan.items():
+            ids[name] = await _project(c, headers, name=name, budget_hours=budget)
+            if minutes:
+                await _entry(c, headers, project_id=ids[name], started_at=started, minutes=minutes)
+        # A project with no budget is in no band and on no filtered list.
+        await _project(c, headers, name="Zonder budget")
+
+        res = await c.get("/api/v1/projects/dashboard-budgets?limit=2", headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["total"] == 5
+        assert body["over_budget"] == 2
+        assert body["almost_budget"] == 1
+        assert body["within_budget"] == 2
+        # 12 − 4 = 8 hours over on the first, 0 on the one sitting exactly on its budget.
+        assert body["over_budget_hours"] == 8.0
+        # And the cut does not change any of that: two rows returned, five counted.
+        assert [r["name"] for r in body["items"]] == ["Ver over", "Precies op"]
+
+        expected = {
+            "over": {"Ver over", "Precies op"},
+            "warn": {"Bijna"},
+            "ok": {"Net eronder", "Ruimte"},
+        }
+        for level, names in expected.items():
+            res = await c.get(f"/api/v1/projects?burn={level}&status=active", headers=headers)
+            assert res.status_code == 200, res.text
+            assert {r["name"] for r in res.json()["items"]} == names, level
+            # The total is counted over what survived the filter, never over the SQL page.
+            assert res.json()["total"] == len(names), level
+
+        # A token that names no band falls back to the unfiltered list (§9), which has six.
+        res = await c.get("/api/v1/projects?burn=hot&status=active", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["total"] == 6
 async def test_non_billable_hours_eat_the_budget(client_for) -> None:
     """Internal work on a client's project still consumes it (the decision taken on #25)."""
     t = await make_tenant("bh-billable")

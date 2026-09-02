@@ -1177,6 +1177,26 @@ contrast bug in dark mode rather than only an inconsistency.
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
+- **A tile about budgets answers "which, how badly, and which are fine" — a partition, not a
+  share** (the budget-status tile, replacing #437's donut). The donut sliced the hours *logged*
+  per project, so a project 300 % over its budget read `10,7 %` beside one comfortably inside
+  its budget reading `17,3 %`, and the only thing on the tile that said anything about budgets
+  was the chip under it. `ProjectBudgetsOverviewWidget` draws the three bands of the one burn
+  scale instead — over budget, almost spent, within budget — the way the tasks tile draws
+  urgency (§5 above: a band behind the two claims, a hairline under the quiet one, the heading
+  carrying the state), with one strip at the top that is the same partition as a single bar,
+  because "half the book is red" should arrive before a name is read. Three rules ride along.
+  **Every heading opens the list it counts**: the counts are the API's over the whole set
+  (`almost_budget` / `within_budget` beside `over_budget`), `?burn=` grew the same three tokens
+  (`budget.burn_level`, the API's copy of `core/burn.ts`), and the list page's pills say the same
+  words, so the destination confirms where you landed. **A verdict comes with its amount**:
+  `over_budget_hours` sums the overrun over the over-budget rows, and each over row leads with
+  its own remainder in words (#340) — "4 over budget" is *that*, `samen 46,5 u eroverheen` is
+  what the agency has to decide about. And **a bar may spill where the question is how far**:
+  `burnOverflowBar` puts the budget line at two thirds of the track so an over-budget row
+  visibly runs past a line every row draws, hatched as well as red (#404); the track still ends
+  at 150 % and the number beside it stays unclamped, which is the rule above, not an exception
+  to it. `BudgetBar` keeps clamping — a cell beside a figure has no room for a line.
 - **And exactly one block that draws it**: `core/ui/BudgetBar.svelte` (#313), `variant="block"` for
   a card, `variant="inline"` for a table cell. It exists because the scale being documented in one
   module did not stop a fourth surface from hand-rolling it: the task card had its own

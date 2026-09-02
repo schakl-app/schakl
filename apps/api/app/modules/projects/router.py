@@ -125,7 +125,10 @@ async def list_projects(
     burn: str | None = Query(
         None,
         max_length=20,
-        description="'over' keeps only projects at or past their budget; other tokens ignored",
+        description=(
+            "'over' (at or past budget), 'warn' (75-100 %) or 'ok' (under 75 %) keeps only "
+            "that burn band; other tokens ignored"
+        ),
     ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
