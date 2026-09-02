@@ -53,6 +53,10 @@ FIRST_DELAY_SECONDS = 10
 RETRY_DELAYS_SECONDS = (30, 90, 300)
 #: After the last delay the run gives up and says so. Four attempts spread over ~7 minutes.
 MAX_ATTEMPTS = 1 + len(RETRY_DELAYS_SECONDS)
+#: How long a first attempt that found no ``queued`` row waits before asking once more — the
+#: request that queued it is still committing (``_unclaimable``). One attempt of the ladder
+#: above is spent on it, which is the point: a claim that never becomes possible still ends.
+CLAIM_GRACE_SECONDS = 15
 
 #: A run still claimed after this is claimed by nobody. Comfortably longer than a slow provider
 #: call plus the retry ladder above, so the reaper never races a job that is simply working.
@@ -130,7 +134,9 @@ async def interactions_enrich_task(
             only_if=(TaskAIStatus.QUEUED, TaskAIStatus.RUNNING),
         )
         if not claimed:
+            outcome = await _unclaimable(org.id, interaction_uuid, task_uuid, attempt)
             await session.commit()
+            logger.info("interactions: enrichment for task %s %s", task_id, outcome)
             return
 
         if not await _body_ready(session, org.id, interaction_uuid):
@@ -170,6 +176,52 @@ async def _body_ready(session: AsyncSession, org_id: uuid.UUID, interaction_id: 
     return bool((row[1] or row[0] or "").strip())
 
 
+async def _unclaimable(
+    org_id: uuid.UUID, interaction_id: uuid.UUID, task_id: uuid.UUID, attempt: int
+) -> str:
+    """The row was not ours to claim. Once, on the first attempt, ask again; otherwise stop.
+
+    A first attempt that finds no ``queued`` row is, far more often than a duplicate
+    delivery, **the request that queued it not having committed yet**: the offer enqueues the
+    job with :data:`FIRST_DELAY_SECONDS` of head start, and the approve (a whole thread of
+    siblings, #372) or the manual import (a Google round trip per attachment, before #342's
+    offer moved behind them) can still be inside its transaction when that runs out. Standing
+    down there left the task on "in de wachtrij" until the reaper called it failed, twenty
+    minutes later, with nothing in the log about either.
+
+    So a *first* attempt re-defers itself once — on a fresh job id, and without touching the
+    status, which is the request's to write — and only a later one stands down. That later
+    one is a real duplicate or a reaped run, and both are right to stop: the claim is the
+    thing that keeps two deliveries from writing one description twice.
+    """
+    if attempt > 1:
+        return "not claimable; standing down"
+    queued = await enqueue(
+        "interactions_enrich_task",
+        str(org_id),
+        str(interaction_id),
+        str(task_id),
+        attempt + 1,
+        _defer_by=timedelta(seconds=CLAIM_GRACE_SECONDS),
+        _job_id=_retry_job_id(task_id, interaction_id, attempt + 1),
+    )
+    if queued is None:
+        return "not claimable and could not re-queue"
+    return f"not claimable yet; asking again in {CLAIM_GRACE_SECONDS}s"
+
+
+def _retry_job_id(task_id: uuid.UUID, interaction_id: uuid.UUID, attempt: int) -> str:
+    """A fresh id per attempt **and per email**.
+
+    Fresh per attempt because the previous one's result is still in Redis and a repeated id
+    is declined silently — a run that stops without ever saying so. Per email for the reason
+    the first attempt's id already carries it (:func:`schedule_enrichment`): keyed on the task
+    alone, the second email filed onto a task within the hour shared every retry id with the
+    first, so its first re-defer was declined and it settled as ``failed``.
+    """
+    return f"interactions-enrich-{task_id}-{interaction_id}-{attempt}"
+
+
 async def _defer_or_give_up(
     context, org_id: uuid.UUID, interaction_id: uuid.UUID, task_id: uuid.UUID, attempt: int
 ) -> str:  # noqa: ANN001
@@ -185,9 +237,7 @@ async def _defer_or_give_up(
         str(task_id),
         attempt + 1,
         _defer_by=timedelta(seconds=delay),
-        # A fresh id per attempt: the previous one's result is still in Redis and a repeated
-        # id would be declined silently, which is a run that stops without ever saying so.
-        _job_id=f"interactions-enrich-{task_id}-{attempt + 1}",
+        _job_id=_retry_job_id(task_id, interaction_id, attempt + 1),
     )
     if queued is None:
         await set_ai_status_system(context, task_id, TaskAIStatus.FAILED)

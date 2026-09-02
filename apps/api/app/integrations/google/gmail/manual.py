@@ -793,7 +793,19 @@ async def import_message(
     enrich_task: bool = False,
     allow_duplicate: bool = False,
 ) -> GmailImportResult:
-    """Log one named message, then fetch its body the way an approval does."""
+    """Log one named message, then fetch its body the way an approval does.
+
+    **The "let schakl fill the task in" offer is made last, after the body fetch** — the
+    order the ``.eml`` upload already keeps, and the one the worker's claim depends on. The
+    job is enqueued the moment the offer is made, with a fixed head start, while the row it
+    claims (``tasks.ai_status = queued``) only becomes visible when this request commits.
+    Offering *before* the fetch put a Gmail round trip per attachment inside that head
+    start: on a mail with a few attachments the first attempt arrived before the commit,
+    found no ``queued`` row to claim, and stood down — leaving the task on "in de wachtrij"
+    until the reaper called it failed twenty minutes later, with nothing in between saying
+    why. The job now also re-defers once rather than standing down on a first attempt it
+    cannot claim (``jobs.py``); this ordering is what makes that grace the exception.
+    """
     await _guard(
         ctx,
         bucket="gmail_manual_import",
@@ -837,7 +849,6 @@ async def import_message(
                 deep_link=deep_link(message_id),
                 links=links,
                 allow_duplicate=allow_duplicate,
-                enrich_task=enrich_task,
             )
             # The body in the same request, because a person is waiting and already decided
             # this message belongs on the timeline — the privacy reason for holding it back
@@ -865,6 +876,11 @@ async def import_message(
     except Exception as exc:  # noqa: BLE001
         await _handle_google_error(ctx, connection, exc)
         raise
+
+    if enrich_task:
+        # After the Google round trips (see the docstring), and outside the ``acting_as``
+        # block: the offer touches only our own rows and the queue.
+        await interactions_system.offer_task_enrichment(ctx, row)
 
     return GmailImportResult(
         interaction_id=row.id, subject=row.subject, body_fetched=body_fetched

@@ -713,6 +713,65 @@ async def test_a_body_that_never_lands_ends_as_skipped_not_as_a_run_that_waits_f
     assert (await _task_row(t, task["id"])).ai_status == TaskAIStatus.SKIPPED.value
 
 
+async def test_a_first_attempt_that_cannot_claim_asks_once_more_before_standing_down(
+    client_for, monkeypatch
+) -> None:
+    """The race the manual Gmail import lost: the job's head start ran out before the request
+    that queued it committed, so the first attempt found no ``queued`` row and stood down —
+    leaving the task on "in de wachtrij" for the reaper. A first attempt now re-defers once,
+    on a fresh id that names the email, and writes no status of its own; a later attempt that
+    still cannot claim is a duplicate or a reaped run and stops."""
+    from app.modules.interactions import jobs
+
+    t = await make_tenant("enrich-unclaimable")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_email(t, t.user.id, message_id="msg-unclaimable")
+    await _set_body(t, row_id, _BODY)
+    async with client_for(t.host) as c:
+        await _configure_ai(c, headers)
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
+
+    queued: list[tuple[tuple, dict]] = []
+
+    async def _capture(function, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        queued.append(((function, *args), kwargs))
+        return object()
+
+    monkeypatch.setattr(jobs, "enqueue", _capture)
+
+    # No approve, no offer: the row was never flipped to `queued` — from the job's side this
+    # is exactly what "the request has not committed yet" looks like.
+    await jobs.interactions_enrich_task({}, str(t.org.id), row_id, task["id"], 1)
+    assert (await _task_row(t, task["id"])).ai_status is None, "a grace re-defer writes no status"
+    assert len(queued) == 1
+    (function, org_id, interaction_id, task_id, attempt), kwargs = queued[0]
+    assert function == "interactions_enrich_task"
+    assert (org_id, interaction_id, task_id, attempt) == (str(t.org.id), row_id, task["id"], 2)
+    assert kwargs["_defer_by"] == timedelta(seconds=jobs.CLAIM_GRACE_SECONDS)
+    assert row_id in kwargs["_job_id"] and task["id"] in kwargs["_job_id"]
+
+    # Still not claimable on the second attempt: stand down, and queue nothing more.
+    await jobs.interactions_enrich_task({}, str(t.org.id), row_id, task["id"], 2)
+    assert len(queued) == 1
+    assert (await _task_row(t, task["id"])).ai_status is None
+
+
+def test_retry_job_ids_name_the_email_as_well_as_the_task() -> None:
+    """The first attempt's id already carried the interaction (two emails are two runs); the
+    retries were keyed on the task alone, so a second email's first re-defer collided with the
+    first's and was declined silently."""
+    from app.modules.interactions.jobs import _retry_job_id
+
+    task = uuid.uuid4()
+    first, second = uuid.uuid4(), uuid.uuid4()
+    assert _retry_job_id(task, first, 2) != _retry_job_id(task, second, 2)
+    assert _retry_job_id(task, first, 2) != _retry_job_id(task, first, 3)
+
+
 async def test_the_reaper_ends_a_run_whose_worker_is_gone(client_for) -> None:
     """#300's lesson: a status a process owns needs a process-independent way back."""
     from app.modules.interactions.jobs import STALE_AFTER_MINUTES, _reap_org

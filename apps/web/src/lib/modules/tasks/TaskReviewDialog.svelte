@@ -44,6 +44,7 @@
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
+  import { adoptRun } from "./review";
   import TaskAIStatus from "./TaskAIStatus.svelte";
   import TaskAssigneePicker from "./TaskAssigneePicker.svelte";
 
@@ -167,7 +168,9 @@
    * The run landed. Take the server's answer for every field the reader left alone; keep
    * theirs where they did not, and say whether that left anything unshown. `forced` is the
    * button — the reader asked — and the one field that can be half-typed is merged, not
-   * replaced.
+   * replaced. The rule itself is `adoptRun` (`review.ts`), pure and tested: the baseline of a
+   * field the run did *not* get to adopt has to stay put, or the button that is offered next
+   * has nothing left to diff against and visibly does nothing.
    */
   async function reveal(forced: boolean): Promise<boolean> {
     let row: TaskRow | null;
@@ -178,34 +181,24 @@
     }
     if (!row) return false;
     task = row;
-    const serverDescription = row.description ?? "";
-    let shown = true;
-    if (description === baseline.description) {
-      description = serverDescription;
-      descriptionKey += 1;
-    } else if (serverDescription && serverDescription !== baseline.description) {
-      if (forced) {
-        // What the run added is the part past what the form started from: it appends under a
-        // rule, and the reader's own words go first.
-        const added = serverDescription.startsWith(baseline.description)
-          ? serverDescription.slice(baseline.description.length).replace(/^\s*---\s*/, "")
-          : serverDescription;
-        description = added.trim() ? `${description.trim()}\n\n${added.trim()}` : description;
-        descriptionKey += 1;
-      } else {
-        shown = false;
-      }
-    }
-    if (title === baseline.title) title = row.title;
-    if (projectId === baseline.project_id) projectId = row.project_id ?? "";
-    if (dueDate === baseline.due_date) dueDate = row.due_date ?? "";
-    baseline = {
-      title: row.title,
-      description: serverDescription,
-      project_id: row.project_id ?? "",
-      due_date: row.due_date ?? "",
-    };
-    return shown;
+    const outcome = adoptRun(
+      { title, description, project_id: projectId, due_date: dueDate },
+      baseline,
+      {
+        title: row.title,
+        description: row.description ?? "",
+        project_id: row.project_id ?? "",
+        due_date: row.due_date ?? "",
+      },
+      forced,
+    );
+    title = outcome.form.title;
+    description = outcome.form.description;
+    projectId = outcome.form.project_id;
+    dueDate = outcome.form.due_date;
+    baseline = outcome.baseline;
+    if (outcome.remountDescription) descriptionKey += 1;
+    return outcome.shown;
   }
 
   $effect(() => {
