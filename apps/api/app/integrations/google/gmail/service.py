@@ -577,6 +577,14 @@ class Internals:
     #: Users whose own mailbox is genuinely being polled: active, opted in, holding the Gmail
     #: scope. Deferring to a mailbox that will never poll would lose the email outright.
     syncing_user_ids: frozenset[uuid.UUID] = frozenset()
+    #: Logins this org issued to somebody **outside** it (#274) — the answer the rest of this
+    #: dataclass is built by removing. Kept rather than discarded because it is also a fact
+    #: about a *contact*: a client the agency happens to file on its own company is still a
+    #: client (:func:`~…gmail.matching.is_internal_match`). Both halves, for the same reason
+    #: #274 needed both: the contact link names the portal invitation, and the address is what
+    #: a client invited straight from Instellingen → Gebruikers has instead of one.
+    external_user_ids: frozenset[uuid.UUID] = frozenset()
+    external_emails: frozenset[str] = frozenset()
 
     @property
     def ours(self) -> frozenset[str]:
@@ -628,6 +636,7 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
     pairs = [(row[0], row[1]) for row in rows]
     external = await external_user_ids(session, org_id, {uid for uid, _ in pairs})
     member_emails = frozenset(email for uid, email in pairs if uid not in external)
+    external_emails = frozenset(email for uid, email in pairs if uid in external)
     # The mailboxes that actually poll, and the addresses that reach them. Same predicate the
     # cron offers on (``jobs.google_gmail_poll``) — stated once there and once here is already
     # one copy too many, but the alternative is the cron importing this module to ask.
@@ -657,6 +666,8 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
             company_ids=frozenset(),
             owner_by_email=owner_by_email,
             syncing_user_ids=syncing_user_ids,
+            external_user_ids=frozenset(external),
+            external_emails=external_emails,
         )
     company_rows = await session.execute(
         text(
@@ -671,6 +682,8 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
         company_ids=frozenset(row[0] for row in company_rows),
         owner_by_email=owner_by_email,
         syncing_user_ids=syncing_user_ids,
+        external_user_ids=frozenset(external),
+        external_emails=external_emails,
     )
 
 
@@ -732,12 +745,12 @@ async def _match_contacts(
     addresses = sorted(roles)
     contact_rows = await session.execute(
         text(
-            "SELECT id, lower(email) FROM contacts "
+            "SELECT id, lower(email), user_id FROM contacts "
             "WHERE org_id = :oid AND lower(email) = ANY(:addrs) ORDER BY created_at"
         ),
         {"oid": org_id, "addrs": addresses},
     )
-    found = [(row[0], row[1]) for row in contact_rows]
+    found = [(row[0], row[1], row[2]) for row in contact_rows]
     if not found:
         return []
     # One query for every match's companies — per-contact would be N+1 in the poll loop.
@@ -746,7 +759,7 @@ async def _match_contacts(
             "SELECT contact_id, company_id FROM company_contacts "
             "WHERE org_id = :oid AND contact_id = ANY(:cids) ORDER BY created_at"
         ),
-        {"oid": org_id, "cids": [contact_id for contact_id, _ in found]},
+        {"oid": org_id, "cids": [contact_id for contact_id, _, _ in found]},
     )
     companies: dict[uuid.UUID, list[uuid.UUID]] = {}
     for contact_id, company_id in link_rows:
@@ -761,8 +774,15 @@ async def _match_contacts(
             company_ids=companies.get(contact_id, []),
             role=roles.get(email, "to"),
             is_staff=email in ours,
+            # A login this org handed out to somebody outside it — which stops the company
+            # rule calling a client a colleague on the strength of where they are filed. Both
+            # halves of #274, for the reason #274 needs both: the contact's own link is what a
+            # portal invitation writes, and the address is all a client invited straight from
+            # Instellingen → Gebruikers ever has (no link is ever created for them).
+            is_client_login=email in internals.external_emails
+            or (user_id is not None and user_id in internals.external_user_ids),
         )
-        for contact_id, email in found
+        for contact_id, email, user_id in found
     ]
 
 

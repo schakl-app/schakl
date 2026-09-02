@@ -358,6 +358,23 @@ agency tool — so, direct.
   `app.core.portal.external_user_ids` answers both halves in one place; the notification fan-out
   and the cloud domain-health recipients keep an inline copy only because each folds it into a
   statement it already runs.
+- **A statement outranks an inference, and a client login is a statement.** Taking external
+  logins out of `ours` fixed `is_staff` and left the *other* half of `is_internal_match`
+  standing: "every company this contact is on is the agency's own". That rule is an inference
+  from where somebody is filed, and it is a good one — it is what covers `administratie@` and
+  the colleagues who hold no login at all. But an agency keeps more than colleagues on its own
+  company: a freelancer, a subsidiary's contact person, the client whose record was made before
+  their company was. Invite one of them to the portal and the two answers disagree — the
+  platform issued them a **client** login (#274, the definition of not-a-colleague) while the
+  company rule called them staff — and the gate believed the inference. Their whole
+  correspondence was dropped as `no_external_match`, on an instance where the portal they were
+  invited to was visibly working, and the review screen's only explanation was *"de afzender is
+  nog geen contactpersoon buiten het bureau"* about somebody who plainly was. So
+  `ContactMatch.is_client_login` short-circuits `is_internal_match`, read the two ways #274
+  already needs — the contact's own `user_id` link (the portal invitation) and the address
+  (a client invited straight from Instellingen → Gebruikers, who has no link to read). It
+  reopens nothing #324 closed: a newsletter to a colleague still matches a colleague, and no
+  colleague holds a client login.
 - **What about the rows already in the queue?** Nothing retroactive ships, deliberately. The
   mis-ingested rows are indistinguishable from wanted ones by anything the server knows — a
   pending row filed on the agency's own company is also exactly what an opted-in internal mail

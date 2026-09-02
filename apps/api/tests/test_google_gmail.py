@@ -217,6 +217,13 @@ def test_the_gate_asks_for_an_outsider_not_merely_a_match() -> None:
     assert matching.has_external_match([staff, office, customer], internal)
     assert matching.has_external_match([unattached], internal)
 
+    # …and a client login outranks the company inference: the agency said this person is not
+    # one of us when it invited them to the portal (#274). Same row as ``office`` otherwise —
+    # filed on the agency's own company, holding no staff address.
+    guest = matching.ContactMatch(house, [ours], role="from", is_client_login=True)
+    assert not matching.is_internal_match(guest, internal)
+    assert matching.has_external_match([staff, guest], internal)
+
 
 def test_body_extraction_prefers_plain_text() -> None:
     def _b64(value: str) -> str:
@@ -628,6 +635,67 @@ async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
         row = (await session.execute(select(Interaction))).scalar_one()
         assert row.status == "pending"
         assert row.company_id == uuid.UUID(company["id"])
+
+
+async def test_a_client_login_is_external_however_it_is_filed(client_for, monkeypatch) -> None:
+    """A contact carrying a client login is outside the agency — whatever company they sit on.
+
+    ``is_staff`` was already right (``ours`` excludes external logins), but the *company* half
+    of ``is_internal_match`` was not: an agency that keeps itself in its own client list has a
+    company whose contacts are colleagues, so a client invited to the portal and filed there —
+    a freelancer, a subsidiary's contact, anyone the agency happens to keep on its own record —
+    read as "every company they are on is ours" and every mail they wrote was dropped as
+    ``no_external_match``, silently. The platform already knows the answer: it issued that
+    person a *client* login (#274), which is the definition of not being a colleague.
+    """
+    t = await make_tenant("gmail-portal-own")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        agency = (
+            await c.post("/api/v1/companies", json={"name": "Bureau"}, headers=headers)
+        ).json()
+        # A colleague as its contact is what makes this company read as the agency's own.
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Collega",
+                "email": t.user.email,
+                "company_ids": [agency["id"]],
+            },
+            headers=headers,
+        )
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Joost",
+                    "email": "joost@elders.nl",
+                    "company_ids": [agency["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        ).status_code == 200
+
+    stub = _StubGmail(
+        history=["msg-own"],
+        messages={
+            "msg-own": _message(
+                "msg-own", sender="Joost <joost@elders.nl>", to=t.user.email
+            )
+        },
+        history_id="9400",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.status == "pending"
+        assert row.contact_id == uuid.UUID(contact["id"])
 
 
 async def test_a_directly_invited_client_is_not_a_colleague(client_for, monkeypatch) -> None:
