@@ -1400,6 +1400,23 @@ contrast bug in dark mode rather than only an inconsistency.
   marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
   applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
   drop its `!isPortal` around the strip.
+- **A stored image has one viewer, and it is never a new tab** (`lightbox.svelte.ts`,
+  `LightboxHost`). The strip and the rendered markdown each grew their own answer to a click on a
+  picture: the strip a bare `<dialog>` with the bytes in it, an inline `![alt](file:…)` a
+  `window.open` — the browser's default image page, black, with no way back to the record and no
+  way to the next screenshot. Both now call `openLightbox(images, index)` on a module store (the
+  toast pattern: the click happens inside sanitized `{@html}` five components below anything that
+  could own a dialog), and one host in the app shell draws it. Three rules. **The caller hands over
+  the set, not the picture** — every raster in the strip, every stored image in the body — so ← →,
+  a swipe and the thumbnail rail walk the screenshots in the order the page shows them. **A native
+  `<dialog>` in the top layer**, because the commonest place an inline picture is clicked is inside
+  the e-mail detail `Modal`, and a z-index war is not a design; the cost is that Escape must be
+  answered *and stopped* at the dialog, or the window listeners in `Modal` and `SlideOver` close the
+  record along with the picture. And **the thumbnail the page already had opens the viewer** —
+  drawn blurred under a spinner until the original lands — so a 4 MB screenshot opens instantly and
+  sharpens rather than opening black. Zoom follows the cursor (wheel, pinch, `+` `-` `0`), a
+  double-click toggles fit and actual size, and the two things a new tab was good for — the
+  original in its own tab, a download — stay as buttons in the bar.
 - **An image belongs where the words are, and its width is the author's** (the inline-images
   follow-up). Ctrl+V *into a composer* — the task description, a comment, a reply — uploads the
   screenshot as body content (`POST /files?inline=true`, so it never doubles up in the attachment
