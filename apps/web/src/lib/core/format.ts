@@ -256,3 +256,14 @@ export function weekdayNames(): string[] {
   return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(Date.UTC(2024, 0, 1 + i))));
 }
 
+/**
+ * A file size the way a file listing prints it — `1.2 MB`, `340 kB`, `12 B`.
+ *
+ * Binary steps and one decimal above a megabyte: what the attachment strip has always shown,
+ * lifted here so the invoice's original PDF and any later listing say a size the same way.
+ */
+export function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`;
+  return `${bytes} B`;
+}

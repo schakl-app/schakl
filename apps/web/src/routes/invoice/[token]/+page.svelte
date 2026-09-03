@@ -32,6 +32,7 @@
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
+  import PdfFrame from "$lib/core/ui/PdfFrame.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
@@ -175,12 +176,22 @@
     </div>
   </section>
 
-  <DocumentFrame
-    src="/invoice/{data.token}/preview"
-    version={invoice.status + invoice.paid_total}
-    title={t("invoicing.public.document")}
-    class="rounded-2xl border border-border bg-white"
-  />
+  {#if invoice.has_original}
+    <!-- An imported invoice shows the PDF the client was actually sent, not a rendering of
+         its totals — the same bytes the download button hands over (docs/INVOICING.md). -->
+    <PdfFrame
+      src="/invoice/{data.token}/pdf?inline=1"
+      title={t("invoicing.public.document")}
+      class="rounded-2xl border border-border bg-white"
+    />
+  {:else}
+    <DocumentFrame
+      src="/invoice/{data.token}/preview"
+      version={invoice.status + invoice.paid_total}
+      title={t("invoicing.public.document")}
+      class="rounded-2xl border border-border bg-white"
+    />
+  {/if}
 
   <p class="mt-6 text-center text-xs text-text-muted">
     {t("invoicing.public.footer", { brand })}

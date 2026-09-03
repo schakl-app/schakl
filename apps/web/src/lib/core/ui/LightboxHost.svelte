@@ -29,6 +29,7 @@
   } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
+  import { fmtBytes } from "$lib/core/format";
   import {
     closeLightbox,
     lightbox,
@@ -295,12 +296,6 @@
     }
   }
 
-  function fmtSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`;
-    return `${bytes} B`;
-  }
-
   // The ± pair is a keyboard-and-mouse convenience; a phone pinches and double-taps, and the
   // bar there has no room for two buttons the thumb never reaches for.
   const buttonClass =
@@ -327,7 +322,7 @@
             <span class="text-white">{image.label}</span>
           {/if}
           {#if image.sizeBytes != null}
-            <span class="ml-2 text-xs text-white/60">{fmtSize(image.sizeBytes)}</span>
+            <span class="ml-2 text-xs text-white/60">{fmtBytes(image.sizeBytes)}</span>
           {/if}
         </div>
         {#if total > 1}

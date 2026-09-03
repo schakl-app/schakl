@@ -679,6 +679,25 @@ for any other (the note mirrors the summary line at the effective rate), but the
 native document whose totals *are* recomputed from that line, so on a large mixed-rate source
 its draft may be a cent off the original — it is a draft, and you edit it before issuing.
 
+**On screen** it is three surfaces and one component. The invoice list carries the shared
+`ImpexBar` (§17 — Export is handed the *resolved* filters, `overdue` included, which is why that
+pill joined `FILTER_PARAMS`) plus an **Originelen (zip)** dialog beside it, gated on
+`invoicing.invoice.write` and nothing more: attaching forty PDFs you may each attach is the same
+act repeated (§18), and the dialog prints the API's whole report, counts first and then every
+file that did not land by name. The detail page says once where the document came from, frames
+the **original** where one is attached and the reconstructed render where none is, and carries an
+**Origineel** card in the aside — filename, size, when, the SHA-256 whole (a fingerprint you can
+only read half of is decoration), and attach / replace / remove on one `<input>` the button and
+the drop share. The card follows the register gate (`invoicing.invoice.read:any`), because the
+fingerprint and the replace control are the agency's; a client reads the document itself, framed,
+on the same page and on the public link. The component is `core/ui/PdfFrame`, and it is not
+`DocumentFrame` for two reasons that generalise: a `sandbox` attribute switches off the browser's
+PDF viewer (a plugin is what the flag blocks), and a browser with **no** viewer turns an `<iframe>`
+to a PDF into a download on page load — so it is an unsandboxed `<object>` over our own proxy,
+falling through to a sentence and the download link where nothing can draw it. The proxies serve
+the same bytes twice: `?inline=1` swaps `attachment` for `inline` and adds `frame-ancestors
+'self'`, and the download keeps the filename the API chose.
+
 ## Multi-currency & locale
 
 The org currency (#124) is the default; a document may carry any ISO 4217 currency with an

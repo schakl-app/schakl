@@ -21,6 +21,8 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
   import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
+  import PdfFrame from "$lib/core/ui/PdfFrame.svelte";
+  import OriginalCard from "$lib/modules/invoicing/OriginalCard.svelte";
   import PaymentIntentsCard from "$lib/modules/invoicing/PaymentIntentsCard.svelte";
   import { docMoney, docStatus } from "$lib/modules/invoicing/types";
 
@@ -30,6 +32,10 @@
   const isDraft = $derived(invoice.status === "draft");
   const isCredit = $derived(invoice.kind === "credit_note");
   const docState = $derived(docStatus(invoice));
+  // Issued elsewhere and brought in with its totals as stated (docs/INVOICING.md): the page
+  // says so once, offers the original PDF where one was attached, and draws the reconstructed
+  // document where none was — the same document the API mails and prints for it.
+  const isImported = $derived(invoice.origin === "imported");
   // A credit note the invoice could not absorb is money going back to the client, so the
   // whole payment affordance changes voice: you register a refund, not a payment.
   const owesRefund = $derived(isCredit && Number(invoice.outstanding) < 0);
@@ -258,6 +264,18 @@
 {#if form?.error}
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
+{#if isImported}
+  <p class="mb-4 text-xs text-text-muted" title={t("invoicing.imported_hint")}>
+    {invoice.import_source
+      ? t("invoicing.imported_from", {
+          source: invoice.import_source,
+          date: invoice.imported_at ? fmtNumericDate(invoice.imported_at) : "",
+        })
+      : t("invoicing.imported_on", {
+          date: invoice.imported_at ? fmtNumericDate(invoice.imported_at) : "",
+        })}
+  </p>
+{/if}
 {#if invoice.sent_at}
   <p class="mb-4 text-xs text-text-muted">
     {t("invoicing.sent_at", { date: fmtDateTime(invoice.sent_at) })}
@@ -296,6 +314,15 @@
              send only the process fields. -->
         <input type="hidden" name="_status" value={invoice.status} form="doc-form-invoice" />
       </div>
+    {:else if invoice.original}
+      <!-- The original is the document: the bytes the client received, not our rendering
+           of the totals. Same proxy as the download, shown inline. -->
+      <PdfFrame
+        src="/invoices/{invoice.id}/pdf?inline=1"
+        version={invoice.original.sha256}
+        title={`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`}
+        class="mx-auto max-w-3xl rounded-xl border border-border"
+      />
     {:else}
       <DocumentFrame
         src="/invoices/{invoice.id}/preview"
@@ -402,6 +429,18 @@
       publicUrl={invoice.public_url ?? ""}
       {form}
     />
+
+    {#if isImported && data.canReadRegister}
+      <!-- The agency's record of what was actually sent. A client reads the document itself
+           (framed above) and downloads it; the fingerprint and the replace control are the
+           agency's, so the card follows the register gate like the rest of the chrome (#266). -->
+      <OriginalCard
+        invoiceId={invoice.id}
+        original={invoice.original}
+        canWrite={data.canWrite}
+        error={form?.originalError ?? null}
+      />
+    {/if}
 
     <div class="rounded-xl border border-border bg-surface-raised p-4">
       <h2 class="mb-2 text-sm font-semibold text-text">{t("invoicing.payment.history")}</h2>

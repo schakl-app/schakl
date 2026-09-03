@@ -122,6 +122,9 @@ export const INVOICE_COLUMNS: ColumnMeta[] = [
   },
   { key: "reference", labelKey: "invoicing.field.reference", defaultVisible: false, width: 160 },
   { key: "reminders", labelKey: "invoicing.field.reminders", defaultVisible: false, width: 110 },
+  // Where the document came from: raised here, or issued elsewhere and imported with its
+  // totals as stated. Off by default — an agency that never imported has one value here.
+  { key: "origin", labelKey: "invoicing.field.origin", defaultVisible: false, width: 130 },
 ];
 
 export const QUOTE_COLUMNS: ColumnMeta[] = [

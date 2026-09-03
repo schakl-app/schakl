@@ -92,6 +92,7 @@ export const EXPORT_FILTERS = [
   "dns_provider_id",
   "invoiceable",
   "uptime_enabled",
+  "overdue",
   "sort",
 ] as const;
 

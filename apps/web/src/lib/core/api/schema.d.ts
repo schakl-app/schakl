@@ -43401,6 +43401,8 @@ export interface operations {
                 /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
+                /** @description Only rows past their due date */
+                overdue?: boolean;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };

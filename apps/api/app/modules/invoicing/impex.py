@@ -57,6 +57,7 @@ async def _fetch_page(
         status=filters.get("status"),
         company_id=filters.get("company_id"),
         q=filters.get("q"),
+        overdue=bool(filters.get("overdue")),
         sort=filters.get("sort"),
         lines=False,
     )
@@ -195,7 +196,7 @@ INVOICE_IMPEX = ImpexDescriptor(
     read_permission="invoicing.invoice.read",
     write_permission="invoicing.invoice.write",
     natural_keys=("number",),
-    filters=("q", "status", "company_id", "sort"),
+    filters=("q", "status", "company_id", "overdue", "sort"),
     columns=(
         ImpexColumn(
             "number", required=True, clearable=False,

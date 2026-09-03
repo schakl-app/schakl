@@ -281,8 +281,8 @@ async def test_export_round_trips_and_a_reimport_only_raises_the_payment_state(
         native = await _native_invoice(c, headers, company)
         content = _csv(
             HEADER,
-            [["2022-0009", "invoice", "K-7", "2022-09-01", "", "300.00", "63.00", "363.00",
-              "open", "", "", "Excel"]],
+            [["2022-0009", "invoice", "K-7", "2022-09-01", "2022-09-30", "300.00", "63.00",
+              "363.00", "open", "", "", "Excel"]],
         )
         assert (await _import(c, headers, content, dry_run=False))["applied"] is True
 
@@ -295,6 +295,14 @@ async def test_export_round_trips_and_a_reimport_only_raises_the_payment_state(
         assert by_number["2022-0009"]["company"] == "K-7"
         assert by_number[native["number"]]["origin"] == "native"
         assert by_number[native["number"]]["total"] == native["total"]
+
+        # The list's "te laat" pill reaches the file: a screen narrowed to what is overdue
+        # exports exactly that, not the whole register with the pill quietly dropped.
+        overdue = await c.get(
+            "/api/v1/impex/invoice/export", params={"overdue": "true"}, headers=headers
+        )
+        assert overdue.status_code == 200
+        assert {row["number"] for row in _rows(overdue.content)[1]} == {"2022-0009"}
 
         # The file goes straight back in: every row an update, nothing refused, nothing moved.
         again = await _import(c, headers, exported.content, dry_run=True)

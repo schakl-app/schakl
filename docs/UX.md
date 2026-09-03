@@ -2889,3 +2889,13 @@ contrast bug in dark mode rather than only an inconsistency.
   nobody chose goes back to following the project. Its sibling on the same form: discarding a
   concept reset `billable` to a flat `true` rather than to the day's own seed, which quietly
   billed a retainer client on a form that had just been emptied.
+- **A stored PDF is framed as an `<object>`, never sandboxed, never an `<iframe>`** (`core/ui/PdfFrame`,
+  the imported-invoice work). `DocumentFrame` is right for a page the API rendered — same-origin
+  HTML it measures, scales and sandboxes without scripts. A PDF fails both halves: the `sandbox`
+  attribute switches the browser's own viewer off (a plugin is exactly what the flag blocks), so the
+  frame showed a grey box; and where there is no viewer at all — headless, some mobile browsers —
+  an `<iframe>` pointed at a PDF *downloads it on page load*, which on a detail page is a file
+  landing in someone's folder every time they open the record. An `<object type="application/pdf">`
+  over our own proxy renders where it can and falls through to its content where it cannot: one
+  sentence and the download link, the same file offered on purpose instead of by accident. The
+  height is a viewport share, because nothing inside a PDF viewer can be measured from outside.

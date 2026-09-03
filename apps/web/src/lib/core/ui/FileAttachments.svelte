@@ -32,6 +32,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { pastedImageName } from "$lib/core/files/paste";
+  import { fmtBytes } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -85,12 +86,6 @@
   function askDelete(fileId: string) {
     confirmFileId = fileId;
     confirmOpen = true;
-  }
-
-  function fmtSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`;
-    return `${bytes} B`;
   }
 
   function open(index: number) {
@@ -180,7 +175,7 @@
         >
           {file.filename}
         </a>
-        <span class="shrink-0 text-xs text-text-muted">{fmtSize(file.size_bytes)}</span>
+        <span class="shrink-0 text-xs text-text-muted">{fmtBytes(file.size_bytes)}</span>
         {@render visibility(file)}
         {@render menu(file)}
       </li>
