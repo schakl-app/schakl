@@ -11768,6 +11768,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/schedules/busy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Busy Schedules
+         * @description When these people are already taken — every calendar the instance can read, in one
+         *     answer, for the block about to be planned. Declared before ``/{schedule_id}`` so the path
+         *     segment is never read as an id.
+         */
+        get: operations["busy_schedules_api_v1_tasks_schedules_busy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/schedules/{schedule_id}": {
         parameters: {
             query?: never;
@@ -15547,6 +15569,71 @@ export interface components {
             values: {
                 [key: string]: string | null;
             };
+        };
+        /**
+         * BusyFeedRead
+         * @description What the scheduling dialog draws beside the block it is about to book.
+         *
+         *     ``unavailable`` names the sources that could not answer: a calendar with a third missing
+         *     looks exactly like a free afternoon, and a conflict check may never look complete when it is
+         *     not (§17). ``sources`` is every provider that exists on this instance, so the legend can say
+         *     which calendars were consulted rather than leaving the viewer to guess.
+         */
+        BusyFeedRead: {
+            /** Items */
+            items: components["schemas"]["BusyItemRead"][];
+            /** Sources */
+            sources: string[];
+            /** Unavailable */
+            unavailable?: string[];
+        };
+        /**
+         * BusyItemRead
+         * @description One stretch of a person's time that is already taken (``app/core/busy.py``).
+         *
+         *     ``title``/``ref``/``href`` are present exactly when the caller may read the row behind it;
+         *     otherwise the window stands alone — the free/busy answer, Google's own rule for a
+         *     colleague's calendar.
+         */
+        BusyItemRead: {
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Href */
+            href?: string | null;
+            /**
+             * Kind
+             * @default busy
+             */
+            kind: string;
+            /** Ref */
+            ref?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Tentative
+             * @default false
+             */
+            tentative: boolean;
+            /** Title */
+            title?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** CalendarFeedItem */
         CalendarFeedItem: {
@@ -24891,6 +24978,50 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /**
+         * PlanBlock
+         * @description One block a spawned occurrence books itself — its **day** stated relative to the
+         *     occurrence, its clock and length absolute, its people optional.
+         *
+         *     A recurring job is rarely one sitting on the deadline: the newsletter is drafted on the
+         *     Tuesday before, reviewed on the Thursday, sent on the first. So the day is a *placement*:
+         *
+         *     * ``due`` — the occurrence's own due date (what every plan stored before this was);
+         *     * ``offset`` — ``days`` before (negative) or after the due date;
+         *     * ``weekday`` — a weekday: in the due date's own week when ``week`` is absent, else the
+         *       ``week``-th such weekday of the due date's month (``-1`` for the last one);
+         *     * ``day`` — day ``day`` of the due date's month, clamped like the anchors are.
+         *
+         *     ``user_ids`` omitted means *the occurrence's own roster*, resolved at spawn time rather than
+         *     frozen here — a recurring task whose assignees change must plan the new people's calendars,
+         *     not whoever happened to be on it when the rule was written.
+         */
+        PlanBlock: {
+            /** Day */
+            day?: number | null;
+            /** Days */
+            days?: number | null;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * On
+             * @default due
+             */
+            on: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Ids */
+            user_ids?: string[] | null;
+            /** Week */
+            week?: number | null;
+            /** Weekday */
+            weekday?: number | null;
+        };
         /** PlanUpdate */
         PlanUpdate: {
             /** Plan */
@@ -24899,6 +25030,38 @@ export interface components {
             trial_days?: number | null;
             /** Trial Ends At */
             trial_ends_at?: string | null;
+        };
+        /**
+         * PlannedBlockRead
+         * @description One block of the next occurrence, resolved: the placement turned into a date.
+         */
+        PlannedBlockRead: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * End Time
+             * Format: time
+             */
+            end_time: string;
+            /**
+             * In Past
+             * @default false
+             */
+            in_past: boolean;
+            /** On */
+            on: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Ids */
+            user_ids?: string[] | null;
         };
         /** PortalImpersonateRequest */
         PortalImpersonateRequest: {
@@ -26182,7 +26345,8 @@ export interface components {
          *     The anchors are **optional and absent by default**, which is what keeps every rule stored
          *     before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
          *     date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
-         *     maand op dag 1" rather than "a month after whatever the deadline happens to be".
+         *     maand op dag 1" rather than "a month after whatever the deadline happens to be", and since
+         *     the plan grew placements, "elke maand op de tweede dinsdag" (``on_weekday`` + ``on_week``).
          *
          *     Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
          *     422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
@@ -26201,6 +26365,8 @@ export interface components {
             on_day?: number | null;
             /** On Month */
             on_month?: number | null;
+            /** On Week */
+            on_week?: number | null;
             /** On Weekday */
             on_weekday?: number | null;
             plan?: components["schemas"]["RecurrencePlan"] | null;
@@ -26217,22 +26383,21 @@ export interface components {
         RecurrenceMode: "after_completion" | "schedule";
         /**
          * RecurrencePlan
-         * @description "Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+         * @description "Herhaal ook de planning" (#335): what a spawned occurrence books onto a calendar.
          *
-         *     The **day** comes from the occurrence — its due date, which the anchors below pin — so this
-         *     carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
-         *     *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
-         *     task whose assignee moves to a colleague must plan the colleague's calendar, not the person
-         *     who happened to write the rule.
+         *     Two shapes, one meaning. The original carried a single clock — ``user_id``, ``start_time``,
+         *     ``duration_minutes`` — for one block on the due date, and every rule stored that way keeps
+         *     working unchanged. ``blocks`` is the same idea with the day made explicit and the count
+         *     made plural (:class:`PlanBlock`); a plan with ``blocks`` ignores the legacy trio, and
+         *     ``app.modules.tasks.recurrence.plan_blocks`` is the one reader that folds both into a list.
          */
         RecurrencePlan: {
+            /** Blocks */
+            blocks?: components["schemas"]["PlanBlock"][];
             /** Duration Minutes */
-            duration_minutes: number;
-            /**
-             * Start Time
-             * Format: time
-             */
-            start_time: string;
+            duration_minutes?: number | null;
+            /** Start Time */
+            start_time?: string | null;
             /** User Id */
             user_id?: string | null;
         };
@@ -26251,6 +26416,8 @@ export interface components {
         };
         /** RecurrencePreviewRead */
         RecurrencePreviewRead: {
+            /** Blocks */
+            blocks?: components["schemas"]["PlannedBlockRead"][];
             /** Following */
             following?: string[];
             /**
@@ -56262,6 +56429,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduleRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    busy_schedules_api_v1_tasks_schedules_busy_get: {
+        parameters: {
+            query: {
+                user_ids: string[];
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusyFeedRead"];
                 };
             };
             /** @description Validation Error */

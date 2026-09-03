@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, column, func, or_, select, table
+from sqlalchemy import and_, bindparam, case, column, func, or_, select, table
 from sqlalchemy import false as sql_false
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
@@ -83,6 +83,7 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    PlannedBlockRead,
     RecurrencePreview,
     RecurrencePreviewRead,
     StatusCreate,
@@ -1399,19 +1400,32 @@ class TaskService:
         rec = data.recurrence.model_dump(mode="json")
         today = await org_today(self.ctx.session, self.ctx.org.id)
         dates = rec_mod.upcoming(data.due_date, rec, today=today, count=3)
-        planned_start = planned_end = None
-        if data.recurrence.plan is not None:
-            planned_start = data.recurrence.plan.start_time
-            planned_end = (
-                datetime.combine(dates[0], planned_start)
-                + timedelta(minutes=data.recurrence.plan.duration_minutes)
-            ).time()
+        # Every block the next occurrence would book, each on the day its placement resolves
+        # to — the whole answer; the single clock below is kept for the callers that read one.
+        blocks: list[PlannedBlockRead] = []
+        for day, block in rec_mod.planned_blocks(rec, dates[0]):
+            start = time.fromisoformat(str(block["start_time"]))
+            minutes = int(block["duration_minutes"])
+            blocks.append(
+                PlannedBlockRead(
+                    on=block.get("on") or "due",
+                    day=day,
+                    start_time=start,
+                    end_time=(datetime.combine(day, start) + timedelta(minutes=minutes)).time(),
+                    duration_minutes=minutes,
+                    user_ids=[uuid.UUID(str(u)) for u in block["user_ids"]]
+                    if block.get("user_ids")
+                    else None,
+                    in_past=day < today,
+                )
+            )
         return RecurrencePreviewRead(
             next_date=dates[0],
             following=dates[1:],
             on_completion=data.recurrence.mode is RecurrenceMode.AFTER_COMPLETION,
-            planned_start=planned_start,
-            planned_end=planned_end,
+            planned_start=blocks[0].start_time if blocks else None,
+            planned_end=blocks[0].end_time if blocks else None,
+            blocks=blocks,
         )
 
     async def _validate_recurrence_plan(self, rec: dict | None) -> None:
@@ -1427,29 +1441,37 @@ class TaskService:
         stored for months and spent by a cron, so a stale or foreign one would surface as a
         silently skipped occurrence rather than a 403 somebody could read.
         """
-        plan = (rec or {}).get("plan")
-        if not plan:
+        blocks = rec_mod.plan_blocks(rec)
+        if not blocks:
             return
-        target = plan.get("user_id")
-        target_id = uuid.UUID(str(target)) if target else None
-        if target_id is not None and target_id != self.ctx.user.id:
-            if not self.ctx.can("tasks.schedule.write", scope="any"):
-                raise AppError("forbidden", "errors.forbidden", status_code=403)
-            known = await self.ctx.session.scalar(
-                sql_text(
-                    "SELECT 1 FROM memberships WHERE org_id = :oid AND user_id = :uid"
-                ),
-                {"oid": self.ctx.org.id, "uid": target_id},
-            )
-            if not known:
-                raise AppError(
-                    "validation",
-                    "errors.validation",
-                    status_code=422,
-                    fields={"recurrence": "errors.invalid_assignee"},
-                )
-        elif not self.ctx.can("tasks.schedule.write"):
+        if not self.ctx.can("tasks.schedule.write"):
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+        # Every person any block names, judged once — a plan with three blocks for two
+        # colleagues is one decision about two calendars, not six checks.
+        named: list[uuid.UUID] = []
+        for block in blocks:
+            for user_id in block.get("user_ids") or []:
+                named.append(uuid.UUID(str(user_id)))
+        others = [user_id for user_id in dict.fromkeys(named) if user_id != self.ctx.user.id]
+        if not others:
+            return
+        if not self.ctx.can("tasks.schedule.write", scope="any"):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        known = (
+            await self.ctx.session.execute(
+                sql_text(
+                    "SELECT user_id FROM memberships WHERE org_id = :oid AND user_id IN :uids"
+                ).bindparams(bindparam("uids", expanding=True)),
+                {"oid": self.ctx.org.id, "uids": others},
+            )
+        ).scalars().all()
+        if set(known) != set(others):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"recurrence": "errors.invalid_assignee"},
+            )
 
     async def _next_position(self) -> float:
         result = await self.ctx.session.scalar(

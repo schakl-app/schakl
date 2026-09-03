@@ -8,7 +8,9 @@ re-approval then pushes the corrected span).
 
 from __future__ import annotations
 
+from app.core.busy import register_busy_provider
 from app.core.events import subscribe
+from app.integrations.google.calendar.busy import google_calendar_busy
 from app.integrations.google.calendar.push import (
     handle_availability_gone,
     handle_availability_saved,
@@ -36,3 +38,7 @@ subscribe("task_schedule.removed", handle_task_schedule_gone)
 # a save pushes or refreshes, a delete removes. Both halves of a move travel as their own row.
 subscribe("availability.saved", handle_availability_saved)
 subscribe("availability.gone", handle_availability_gone)
+
+# The scheduling dialog's conflict check (app/core/busy.py): the cached mirror of a person's
+# diary, titled only for its owner — Google's own free/busy rule.
+register_busy_provider("google.calendar", google_calendar_busy)

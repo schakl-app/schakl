@@ -925,6 +925,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **Being allowed to book somebody is the reason to see when they are taken, and only that**
+  (`app/core/busy.py`, `docs/UX.md`). The scheduling dialog draws the day beside the form — one
+  column per person, the block about to be booked as a ghost over what is already there — and the
+  answer it draws is composed across three modules that each hold a third of it: the tasks module
+  knows planned blocks, `leave` knows absences, the Google integration holds the cached mirror of a
+  diary. §6 forbids the dialog importing any of them, so the composition is a core seam with
+  registered providers (the `core/tagmanager.py` shape, applied to a calendar). Three rules.
+  **The route decides *that* the person is taken; the provider decides *what by*** — the feed
+  rides `tasks.schedule.write` (`:any` to ask about anyone), while a title travels only under each
+  source's own read key, so a planner who may book a colleague but not read their planning gets
+  the window unnamed, and a colleague's Google appointment is a window and nothing more whoever
+  asks: Google's free/busy rule, and the only cross-person Google read in the codebase, from the
+  cache and never with the colleague's credential. **The interval is never withheld** — an
+  unnamed block is honest, an invisible one is a double booking. And **a provider that fails is
+  named, not dropped**: each runs in its own SAVEPOINT (§18) and the feed returns `unavailable`
+  beside `items`, because a calendar with a third missing looks exactly like a free afternoon
+  (§17). Its sibling is on the recurrence rule: the auto-plan (#335) became **placed blocks** —
+  several per occurrence, each stating its day relative to the occurrence (`on: due | offset |
+  weekday | day`), each with its own people — and the anchor learned "the n-th weekday of the
+  month" (`on_weekday` + `on_week`). The legacy single clock still reads as one block on the due
+  date through the one reader both sides share (`recurrence.plan_blocks`), so no stored rule
+  changed meaning; a block whose day is already behind today is skipped rather than booked in the
+  past; and every person any block names is judged once, at save time, against the same
+  `tasks.schedule.write:any` Inplannen itself asks for (#335's "a stored decision is gated when it
+  is written").
 - **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
   SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
   outlive it. **A query parameter the server ignores is worse than one it rejects**: `$filter` is

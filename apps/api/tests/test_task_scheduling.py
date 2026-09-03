@@ -319,3 +319,162 @@ async def test_schedule_batch_books_one_block_per_person_or_nobody(client_for) -
         assert {row["user_id"] for row in panel} == {str(t.user.id), str(member.id)}
         feed = await c.get("/api/v1/notifications", headers=member_headers)
         assert any(n["event_type"] == "task.scheduled" for n in feed.json()["items"])
+
+
+# --------------------------------------------------------------------------- #
+# The conflict check behind Inplannen: `GET /tasks/schedules/busy` (app/core/busy.py)
+# --------------------------------------------------------------------------- #
+async def _membership_id(client, headers, user_id: uuid.UUID) -> str:
+    members = (await client.get("/api/v1/members", headers=headers)).json()
+    rows = members["items"] if isinstance(members, dict) else members
+    return next(row["membership_id"] for row in rows if row["user_id"] == str(user_id))
+
+
+async def _busy(client, headers, *user_ids: uuid.UUID, day: str = _DAY):
+    query = "&".join(f"user_ids={user_id}" for user_id in user_ids)
+    return await client.get(
+        f"/api/v1/tasks/schedules/busy?date_from={day}&date_to={day}&{query}", headers=headers
+    )
+
+
+async def test_busy_is_gated_on_the_write_and_titled_by_the_read(client_for) -> None:
+    """Being allowed to book someone is the reason to see when they are taken; being allowed
+    to *read* their planning is a different key, and only it names what takes the time."""
+    t = await make_tenant("sched-busy")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _invite_member(c, owner_h, "mel@example.com")
+        member_h = await auth_cookie(member)
+        task_id = await _make_task(c, owner_h, assignee=member.id)
+        assert (
+            await c.post(
+                "/api/v1/tasks/schedules",
+                json=_block(task_id=task_id, user_id=str(member.id)),
+                headers=owner_h,
+            )
+        ).status_code == 201
+
+        # A member may ask about themselves — and sees their own block by name.
+        own = await _busy(c, member_h, member.id)
+        assert own.status_code == 200, own.text
+        assert [row["title"] for row in own.json()["items"]] == ["Redesign homepage"]
+        assert own.json()["items"][0]["ref"] is not None
+        assert "tasks.schedule" in own.json()["sources"]
+        # …and about nobody else: no write:any, no answer, not even a window.
+        assert (await _busy(c, member_h, t.user.id)).status_code == 403
+
+        # A planner who may book anyone but read nobody's planning gets the window, unnamed.
+        planner = await _invite_member(c, owner_h, "plan@example.com")
+        planner_h = await auth_cookie(planner)
+        role = await c.post(
+            "/api/v1/roles",
+            json={
+                "key": "planner",
+                "name_i18n": {"en": "Planner"},
+                "permissions": [
+                    "tasks.task.read",
+                    "tasks.schedule.write:any",
+                    "tasks.schedule.read:own",
+                ],
+            },
+            headers=owner_h,
+        )
+        assert role.status_code == 201, role.text
+        mid = await _membership_id(c, owner_h, planner.id)
+        assert (
+            await c.put(
+                f"/api/v1/members/{mid}/roles",
+                json={"role_ids": [role.json()["id"]]},
+                headers=owner_h,
+            )
+        ).status_code == 200
+        seen = await _busy(c, planner_h, member.id)
+        assert seen.status_code == 200, seen.text
+        [item] = seen.json()["items"]
+        assert item["user_id"] == str(member.id)
+        assert item["starts_at"].startswith(_DAY)
+        assert item["title"] is None and item["ref"] is None and item["href"] is None
+
+        # The owner holds the read at :any and gets the name.
+        named = await _busy(c, owner_h, member.id)
+        assert named.json()["items"][0]["title"] == "Redesign homepage"
+
+        # A window is bounded: a month is a lot of calendar, a year is a dump.
+        too_wide = await c.get(
+            f"/api/v1/tasks/schedules/busy?date_from=2026-01-01&date_to=2026-03-01"
+            f"&user_ids={member.id}",
+            headers=owner_h,
+        )
+        assert too_wide.status_code == 422
+
+
+async def test_busy_folds_leave_and_the_google_mirror_in(client_for) -> None:
+    """Three modules, one answer: an absence is an ``away`` band, and a colleague's Google
+    appointment is a window with no title — the free/busy answer."""
+    from datetime import UTC, datetime
+
+    from app.core.crypto import encrypt
+    from app.db import async_session_maker, set_current_org
+    from app.integrations.google.calendar.models import GoogleCalendarEvent
+    from app.integrations.google.models import GoogleConnection
+    from app.integrations.google.oauth import SCOPE_CALENDAR
+    from tests.conftest import leave_workday
+
+    t = await make_tenant("sched-busy-mix")
+    owner_h = await auth_cookie(t.user)
+    day = leave_workday(3)
+    async with client_for(t.host) as c:
+        member = await _invite_member(c, owner_h, "mel@example.com")
+        member_h = await auth_cookie(member)
+        types = (await c.get("/api/v1/leave/types", headers=member_h)).json()
+        leave = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": types[0]["id"],
+                "start_date": day.isoformat(),
+                "end_date": day.isoformat(),
+            },
+            headers=member_h,
+        )
+        assert leave.status_code == 201, leave.text
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            connection = GoogleConnection(
+                org_id=t.org.id,
+                user_id=member.id,
+                google_sub="sub-mel",
+                email="mel@agency.nl",
+                scopes=["openid", "email", SCOPE_CALENDAR],
+                refresh_token_encrypted=encrypt("rt"),
+            )
+            session.add(connection)
+            await session.flush()
+            session.add(
+                GoogleCalendarEvent(
+                    org_id=t.org.id,
+                    connection_id=connection.id,
+                    google_event_id="evt-1",
+                    summary="Tandarts",
+                    start_at=datetime(day.year, day.month, day.day, 8, 0, tzinfo=UTC),
+                    end_at=datetime(day.year, day.month, day.day, 9, 0, tzinfo=UTC),
+                )
+            )
+            await session.commit()
+
+        seen = await _busy(c, owner_h, member.id, day=day.isoformat())
+        assert seen.status_code == 200, seen.text
+        by_source = {row["source"]: row for row in seen.json()["items"]}
+        assert set(by_source) == {"leave", "google.calendar"}
+        assert by_source["leave"]["kind"] == "away"
+        assert by_source["leave"]["all_day"] is True
+        assert by_source["leave"]["tentative"] is True  # still pending
+        # The owner may read the team's leave, so the *type* is named…
+        assert by_source["leave"]["title"]
+        # …while the colleague's diary is a window and nothing more, whoever asks.
+        assert by_source["google.calendar"]["title"] is None
+        assert by_source["google.calendar"]["href"] is None
+        # Its owner sees their own appointment by name.
+        mine = await _busy(c, member_h, member.id, day=day.isoformat())
+        own_google = next(r for r in mine.json()["items"] if r["source"] == "google.calendar")
+        assert own_google["title"] == "Tandarts"

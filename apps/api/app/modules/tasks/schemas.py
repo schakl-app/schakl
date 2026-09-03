@@ -16,20 +16,81 @@ from app.modules.tasks.models import (
 )
 from app.schemas import AssigneeRead, AssigneeWrite
 
+#: Where a planned block lands relative to the occurrence it belongs to (``PlanBlock.on``).
+PLAN_PLACEMENTS = ("due", "offset", "weekday", "day")
+
+
+class PlanBlock(BaseModel):
+    """One block a spawned occurrence books itself — its **day** stated relative to the
+    occurrence, its clock and length absolute, its people optional.
+
+    A recurring job is rarely one sitting on the deadline: the newsletter is drafted on the
+    Tuesday before, reviewed on the Thursday, sent on the first. So the day is a *placement*:
+
+    * ``due`` — the occurrence's own due date (what every plan stored before this was);
+    * ``offset`` — ``days`` before (negative) or after the due date;
+    * ``weekday`` — a weekday: in the due date's own week when ``week`` is absent, else the
+      ``week``-th such weekday of the due date's month (``-1`` for the last one);
+    * ``day`` — day ``day`` of the due date's month, clamped like the anchors are.
+
+    ``user_ids`` omitted means *the occurrence's own roster*, resolved at spawn time rather than
+    frozen here — a recurring task whose assignees change must plan the new people's calendars,
+    not whoever happened to be on it when the rule was written.
+    """
+
+    on: str = "due"
+    days: int | None = Field(default=None, ge=-60, le=60)
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    week: int | None = Field(default=None, ge=-1, le=4)
+    day: int | None = Field(default=None, ge=1, le=31)
+    user_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
+    start_time: time
+    duration_minutes: int = Field(ge=1, le=24 * 60)
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _placement_is_whole(self) -> PlanBlock:
+        if self.on not in PLAN_PLACEMENTS:
+            raise ValueError("errors.tasks_recurrence_plan:on")
+        needed: dict[str, set[str]] = {
+            "due": set(),
+            "offset": {"days"},
+            "weekday": {"weekday"},
+            "day": {"day"},
+        }[self.on]
+        for field in ("days", "weekday", "day"):
+            present = getattr(self, field) is not None
+            if present != (field in needed):
+                raise ValueError(f"errors.tasks_recurrence_plan:{field}")
+        if self.on == "offset" and self.days == 0:
+            raise ValueError("errors.tasks_recurrence_plan:days")
+        if self.week is not None and (self.on != "weekday" or self.week == 0):
+            raise ValueError("errors.tasks_recurrence_plan:week")
+        return self
+
 
 class RecurrencePlan(BaseModel):
-    """"Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+    """"Herhaal ook de planning" (#335): what a spawned occurrence books onto a calendar.
 
-    The **day** comes from the occurrence — its due date, which the anchors below pin — so this
-    carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
-    *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
-    task whose assignee moves to a colleague must plan the colleague's calendar, not the person
-    who happened to write the rule.
+    Two shapes, one meaning. The original carried a single clock — ``user_id``, ``start_time``,
+    ``duration_minutes`` — for one block on the due date, and every rule stored that way keeps
+    working unchanged. ``blocks`` is the same idea with the day made explicit and the count
+    made plural (:class:`PlanBlock`); a plan with ``blocks`` ignores the legacy trio, and
+    ``app.modules.tasks.recurrence.plan_blocks`` is the one reader that folds both into a list.
     """
 
     user_id: uuid.UUID | None = None
-    start_time: time
-    duration_minutes: int = Field(ge=1, le=24 * 60)
+    start_time: time | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=24 * 60)
+    blocks: list[PlanBlock] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _one_shape_or_the_other(self) -> RecurrencePlan:
+        if self.blocks:
+            return self
+        if self.start_time is None or self.duration_minutes is None:
+            raise ValueError("errors.tasks_recurrence_plan:blocks")
+        return self
 
 
 class Recurrence(BaseModel):
@@ -38,7 +99,8 @@ class Recurrence(BaseModel):
     The anchors are **optional and absent by default**, which is what keeps every rule stored
     before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
     date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
-    maand op dag 1" rather than "a month after whatever the deadline happens to be".
+    maand op dag 1" rather than "a month after whatever the deadline happens to be", and since
+    the plan grew placements, "elke maand op de tweede dinsdag" (``on_weekday`` + ``on_week``).
 
     Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
     422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
@@ -48,31 +110,51 @@ class Recurrence(BaseModel):
     freq: RecurrenceFreq
     interval: int = Field(default=1, ge=1, le=365)
     mode: RecurrenceMode = RecurrenceMode.AFTER_COMPLETION
-    #: Weekly only. ``date.weekday()`` numbering — Monday 0 … Sunday 6.
+    #: Weekly: the day. Monthly/quarterly/yearly: together with ``on_week``, the n-th such day
+    #: of the month. ``date.weekday()`` numbering — Monday 0 … Sunday 6.
     on_weekday: int | None = Field(default=None, ge=0, le=6)
     #: Monthly/quarterly/yearly. Clamped to the month's length, so 31 lands on 28/29/30 Feb.
     on_day: int | None = Field(default=None, ge=1, le=31)
-    #: Yearly only, and only together with ``on_day``.
+    #: Yearly only, and only together with ``on_day`` or with ``on_weekday`` + ``on_week``.
     on_month: int | None = Field(default=None, ge=1, le=12)
+    #: Which ``on_weekday`` of the month: 1–4, or -1 for the last one. Never weekly.
+    on_week: int | None = Field(default=None, ge=-1, le=4)
     #: Book each occurrence onto a calendar as it is created (#335, phase 5).
     plan: RecurrencePlan | None = None
 
     @model_validator(mode="after")
     def _anchors_match_freq(self) -> Recurrence:
-        allowed: dict[str, set[str]] = {
-            RecurrenceFreq.DAILY.value: set(),
-            RecurrenceFreq.WEEKLY.value: {"on_weekday"},
-            RecurrenceFreq.MONTHLY.value: {"on_day"},
-            RecurrenceFreq.QUARTERLY.value: {"on_day"},
-            RecurrenceFreq.YEARLY.value: {"on_day", "on_month"},
-        }[self.freq.value]
-        for field in ("on_weekday", "on_day", "on_month"):
-            if getattr(self, field) is not None and field not in allowed:
-                raise ValueError(f"errors.tasks_recurrence_anchor:{field}")
-        # A year needs both halves or neither: "on day 15" with no month is not a date, and a
-        # month with no day would have to invent one.
-        if self.freq is RecurrenceFreq.YEARLY and (self.on_day is None) != (self.on_month is None):
+        freq = self.freq.value
+        monthly = freq in (
+            RecurrenceFreq.MONTHLY.value,
+            RecurrenceFreq.QUARTERLY.value,
+            RecurrenceFreq.YEARLY.value,
+        )
+        if freq == RecurrenceFreq.DAILY.value:
+            for field in ("on_weekday", "on_day", "on_month", "on_week"):
+                if getattr(self, field) is not None:
+                    raise ValueError(f"errors.tasks_recurrence_anchor:{field}")
+            return self
+        if freq == RecurrenceFreq.WEEKLY.value:
+            for field in ("on_day", "on_month", "on_week"):
+                if getattr(self, field) is not None:
+                    raise ValueError(f"errors.tasks_recurrence_anchor:{field}")
+            return self
+        # Monthly, quarterly, yearly: a day-of-month *or* an n-th weekday, never both halves.
+        if self.on_week == 0:
+            raise ValueError("errors.tasks_recurrence_anchor:on_week")
+        if (self.on_weekday is None) != (self.on_week is None):
+            raise ValueError("errors.tasks_recurrence_anchor:on_week")
+        if self.on_weekday is not None and self.on_day is not None:
+            raise ValueError("errors.tasks_recurrence_anchor:on_day")
+        if monthly and freq != RecurrenceFreq.YEARLY.value and self.on_month is not None:
             raise ValueError("errors.tasks_recurrence_anchor:on_month")
+        if freq == RecurrenceFreq.YEARLY.value:
+            # A year needs a whole date or none: "on day 15" with no month is not a date, and a
+            # month with no day would have to invent one.
+            anchored = self.on_day is not None or self.on_weekday is not None
+            if anchored != (self.on_month is not None):
+                raise ValueError("errors.tasks_recurrence_anchor:on_month")
         return self
 
 
@@ -96,9 +178,26 @@ class RecurrencePreviewRead(BaseModel):
     following: list[date] = Field(default_factory=list)
     #: True for ``after_completion``: the next one appears when this one is finished, not on a day.
     on_completion: bool
-    #: The block the rule would book on ``next_date`` (#335 phase 5), when it carries a plan.
+    #: The first block the rule would book (#335 phase 5), when it carries a plan — kept for
+    #: the callers that read one clock; ``blocks`` is the whole answer.
     planned_start: time | None = None
     planned_end: time | None = None
+    #: Every block the next occurrence would book, each on the day its placement resolves to.
+    blocks: list[PlannedBlockRead] = Field(default_factory=list)
+
+
+class PlannedBlockRead(BaseModel):
+    """One block of the next occurrence, resolved: the placement turned into a date."""
+
+    on: str
+    day: date
+    start_time: time
+    end_time: time
+    duration_minutes: int
+    #: ``None`` means the occurrence's own roster, which the preview cannot know.
+    user_ids: list[uuid.UUID] | None = None
+    #: A day the rule cannot book: it falls before today, so a spawn today would skip it.
+    in_past: bool = False
 
 
 class TaskBase(BaseModel):
@@ -825,6 +924,40 @@ class ScheduleItem(ScheduleRead):
     company_id: uuid.UUID | None = None
     status: str
     allocated_minutes: int | None = None
+
+
+class BusyItemRead(BaseModel):
+    """One stretch of a person's time that is already taken (``app/core/busy.py``).
+
+    ``title``/``ref``/``href`` are present exactly when the caller may read the row behind it;
+    otherwise the window stands alone — the free/busy answer, Google's own rule for a
+    colleague's calendar.
+    """
+
+    user_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    source: str
+    kind: str = "busy"
+    all_day: bool = False
+    tentative: bool = False
+    title: str | None = None
+    ref: str | None = None
+    href: str | None = None
+
+
+class BusyFeedRead(BaseModel):
+    """What the scheduling dialog draws beside the block it is about to book.
+
+    ``unavailable`` names the sources that could not answer: a calendar with a third missing
+    looks exactly like a free afternoon, and a conflict check may never look complete when it is
+    not (§17). ``sources`` is every provider that exists on this instance, so the legend can say
+    which calendars were consulted rather than leaving the viewer to guess.
+    """
+
+    items: list[BusyItemRead]
+    sources: list[str]
+    unavailable: list[str] = Field(default_factory=list)
 
 
 class ScheduleLogTime(BaseModel):

@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 
 from app.core.auth.models import User
+from app.core.busy import BusyItem, busy_items, registered_busy_sources
 from app.core.events import emit
 from app.core.members import active_member_clause
 from app.core.permissions.deps import require_permission
@@ -35,6 +36,8 @@ from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.tasks.models import Task, TaskSchedule
 from app.modules.tasks.schemas import (
+    BusyFeedRead,
+    BusyItemRead,
     ScheduleBatchCreate,
     ScheduleCreate,
     ScheduleItem,
@@ -192,6 +195,38 @@ class TaskScheduleService:
 
     async def get(self, schedule_id: uuid.UUID) -> TaskSchedule:
         return await self._readable_or_404(schedule_id)
+
+    async def busy(
+        self, *, user_ids: list[uuid.UUID], date_from: date, date_to: date
+    ) -> BusyFeedRead:
+        """What is already on these people's calendars — the conflict check behind Inplannen.
+
+        Gated on the **write**: being allowed to put a block on somebody's calendar is the
+        reason to see what is already on it, which is also Google's free/busy rule. A member
+        holding ``:own`` may ask about themselves and nobody else; ``:any`` asks about anyone.
+        Whether the answer carries *titles* is each provider's own read rule (``core/busy.py``)
+        — this route decides that the person is taken, never what by.
+        """
+        if date_to < date_from or (date_to - date_from).days > 31:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"date_to": "errors.validation"},
+                details={"max_days": 31},
+            )
+        targets = list(dict.fromkeys(user_ids))
+        for user_id in targets:
+            self._ensure_write_for(user_id)
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        window_start = datetime.combine(date_from, time.min).replace(tzinfo=zone)
+        window_end = datetime.combine(date_to, time.min).replace(tzinfo=zone) + timedelta(days=1)
+        items, failed = await busy_items(self.ctx, targets, window_start, window_end)
+        return BusyFeedRead(
+            items=[BusyItemRead(**item.__dict__) for item in items],
+            sources=registered_busy_sources(),
+            unavailable=failed,
+        )
 
     # ------------------------------------------------------------------ #
     # Write
@@ -463,9 +498,77 @@ class TaskScheduleService:
 
 
 # --------------------------------------------------------------------------- #
+# The busy seam's tasks third (app/core/busy.py): planned blocks
+# --------------------------------------------------------------------------- #
+async def task_blocks_busy(
+    ctx: RequestContext,
+    user_ids: list[uuid.UUID],
+    window_start: datetime,
+    window_end: datetime,
+) -> list[BusyItem]:
+    """These people's planned blocks inside the window, titled where the caller may read them.
+
+    The read rule is the one ``list_in_range`` already states — ``tasks.schedule.read:any``
+    sees anyone's, ``:own`` only the caller's — so a manager who may book a colleague but not
+    read their planning sees "bezet 09:00–11:00" rather than which client the colleague is
+    working for. The window is never withheld: an unnamed block is honest, an invisible one is
+    a double booking.
+    """
+    rows = (
+        await ctx.session.execute(
+            select(TaskSchedule, Task.title)
+            .join(Task, Task.id == TaskSchedule.task_id)
+            .where(
+                TaskSchedule.org_id == ctx.org.id,
+                TaskSchedule.user_id.in_(user_ids),
+                TaskSchedule.starts_at < window_end,
+                TaskSchedule.ends_at > window_start,
+            )
+            .order_by(TaskSchedule.starts_at)
+        )
+    ).all()
+    read_any = ctx.can("tasks.schedule.read", scope="any")
+    read_own = ctx.can("tasks.schedule.read", scope="own")
+    items: list[BusyItem] = []
+    for block, title in rows:
+        readable = read_any or (read_own and block.user_id == ctx.user.id)
+        items.append(
+            BusyItem(
+                user_id=block.user_id,
+                starts_at=block.starts_at,
+                ends_at=block.ends_at,
+                source="tasks.schedule",
+                title=title if readable else None,
+                ref=str(block.id) if readable else None,
+                href=f"/tasks/{block.task_id}" if readable else None,
+            )
+        )
+    return items
+
+
+# --------------------------------------------------------------------------- #
 # Router — mounted under /api/v1/tasks/schedules (before /tasks/{task_id})
 # --------------------------------------------------------------------------- #
 scheduling_router = APIRouter(prefix="/schedules", tags=["tasks"])
+
+
+@scheduling_router.get(
+    "/busy",
+    response_model=BusyFeedRead,
+    dependencies=[require_permission("tasks.schedule.write")],
+)
+async def busy_schedules(
+    user_ids: list[uuid.UUID] = Query(..., min_length=1, max_length=50),
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> BusyFeedRead:
+    """When these people are already taken — every calendar the instance can read, in one
+    answer, for the block about to be planned. Declared before ``/{schedule_id}`` so the path
+    segment is never read as an id."""
+    return await TaskScheduleService(ctx).busy(
+        user_ids=user_ids, date_from=date_from, date_to=date_to
+    )
 
 
 @scheduling_router.get(

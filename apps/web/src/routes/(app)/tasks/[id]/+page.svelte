@@ -47,7 +47,7 @@
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
   import RecurrenceEditor from "$lib/modules/tasks/RecurrenceEditor.svelte";
-  import { clockOf, recurrenceSentence, type Recurrence } from "$lib/modules/tasks/recurrence";
+  import { planSummary, recurrenceSentence, type Recurrence } from "$lib/modules/tasks/recurrence";
   import { localDayTime } from "$lib/modules/tasks/schedule";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskComments from "$lib/modules/tasks/TaskComments.svelte";
@@ -1839,7 +1839,6 @@
                 {recurrence}
                 dueDate={liveDue}
                 allocatedMinutes={liveAllocated}
-                assigneeUserId={task.assignee_user_id}
                 {lastBlockStart}
                 members={data.members}
                 currentUserId={page.data.user?.id ?? ""}
@@ -1864,9 +1863,11 @@
                       {#if task.recurrence_next_run}
                         {t("tasks.recurrence.next")}: {fmtDayMonthYear(
                           task.recurrence_next_run,
-                        )}{recurrence.plan ? `, ${clockOf(recurrence.plan.start_time)}` : ""}
+                        )}{recurrence.plan ? ` · ${planSummary(recurrence)}` : ""}
                       {:else}
-                        {t("tasks.recurrence.next_on_completion")}
+                        {t("tasks.recurrence.next_on_completion")}{recurrence.plan
+                          ? ` · ${planSummary(recurrence)}`
+                          : ""}
                       {/if}
                     </p>
                   {:else}
@@ -1880,7 +1881,6 @@
                     {recurrence}
                     dueDate={task.due_date ?? ""}
                     allocatedMinutes={task.allocated_minutes ?? null}
-                    assigneeUserId={task.assignee_user_id}
                     {lastBlockStart}
                     members={data.members}
                     currentUserId={page.data.user?.id ?? ""}
@@ -2759,9 +2759,7 @@
            watching it. -->
       {#if recurrence?.plan && recurrence.mode === "after_completion"}
         <p class="mt-3 rounded-lg bg-surface px-3 py-2 text-sm text-text">
-          {t("tasks.finish_prompt.next_planned", {
-            time: clockOf(recurrence.plan.start_time),
-          })}
+          {t("tasks.finish_prompt.next_planned", { summary: planSummary(recurrence) })}
         </p>
       {/if}
 

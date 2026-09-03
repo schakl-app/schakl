@@ -10,6 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.activity import register_auditable
+from app.core.busy import register_busy_provider
 from app.core.events import subscribe
 from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.bulk import TASK_BULK
@@ -21,6 +22,7 @@ from app.modules.tasks.permissions import TASK_PERMISSIONS
 from app.modules.tasks.recurrence import spawn_scheduled_recurrences
 from app.modules.tasks.reminders import send_task_reminders
 from app.modules.tasks.router import router
+from app.modules.tasks.scheduling import task_blocks_busy
 from app.modules.tasks.summary import tasks_company_summary
 from app.modules.tasks.templates import on_company_status, on_subscription_activated
 from app.registry import ModuleDescriptor, registry
@@ -60,6 +62,10 @@ registry.register(module)
 # registered — so register it explicitly, purely to make those mirror entries readable. This does
 # not add a second activity panel (the core panel is wired for project/contact only).
 register_auditable("task", read_permission="tasks.task.read")  # trail read gate (audit F7)
+
+# The scheduling dialog's conflict check (app/core/busy.py): this module's third of "when is
+# this person already taken" is their planned blocks, titled under its own read rule.
+register_busy_provider("tasks.schedule", task_blocks_busy)
 
 # Client onboarding automation: instantiate matching templates when a company is created
 # with — or transitions into — a template's trigger status.

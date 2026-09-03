@@ -2564,6 +2564,51 @@ contrast bug in dark mode rather than only an inconsistency.
   holding only `:own` sees their own name and no chips: the list has one legal value, and a
   picker that offers one choice is a label pretending to be a control.
 
+  **A clash is seen before it is saved, and a colleague's diary is a shape, not a story.** Inplannen
+  asked for a day, a start and a length and answered with a Google event — so whether the block
+  landed on top of the client call, the dentist or somebody's Friday off was discovered afterwards,
+  on the Agenda, by the person it was done to. The dialog now draws the day beside the form: one
+  column per person named in the chips, the block about to be booked as a dashed ghost over
+  whatever is already there, red where they overlap, and a verdict chip ("Geen overlap" / "Overlap:
+  2") before any drawing — the sentence the view exists to produce, first. Four rules generalise.
+  **Being allowed to book somebody is the reason to see when they are taken**, and it is *only*
+  that: the feed rides `tasks.schedule.write` (`:own` asks about yourself, `:any` about anyone),
+  and whether an interval carries a *title* is each source's own read rule (`app/core/busy.py`,
+  the tag-manager seam applied to a calendar). A planner who may book a colleague but not read
+  their planning sees "Bezet 09:00–11:00"; a colleague's Google appointment is a window and
+  nothing more, whoever asks — Google's own free/busy rule, and the first time any cross-person
+  Google read exists here, deliberately from the cache the sync already keeps and never with the
+  colleague's credential. The interval is never withheld: an unnamed block is honest, an invisible
+  one is a double booking. **An absence is a band, not a block** — nothing can be planned *around*
+  a day off, so leave shades the whole column and a pending request is drawn tentative rather
+  than not at all. **The ghost moves without a round trip** and the calendars refetch only when
+  the day or the people change, debounced: the proposal changed, not the diaries. And **a view
+  with a third missing must never look complete**: the legend names which calendars were read
+  and, in amber, which could not be, because a free-looking afternoon and an unanswered source
+  are the same picture and only a sentence can tell them apart. The columns share the Agenda's
+  own geometry (`core/ui/timegrid-layout`, lifted out of `TimeGrid` rather than copied), so a
+  block sits here exactly where the day view draws it.
+
+  **A recurring job is rarely one sitting, so the plan is placed blocks, not a clock.** "Herhaal
+  ook de planning" booked one block on the deadline, which is right for "backup controleren" and
+  wrong for everything with a draft in it: the newsletter is written on the Tuesday before,
+  reviewed on the Thursday, sent on the first. The plan is a list now, each block stating *when
+  relative to the occurrence* it lands — on the deadline, N days before or after it, a weekday of
+  that week, the n-th weekday of the month, a day of the month — with its own people (chips, like
+  Inplannen; none named means everyone on the task, resolved when the occurrence is created rather
+  than frozen when the rule was written) and its own note. The anchor grew the same vocabulary:
+  "elke maand op de tweede dinsdag" is one control that pins a month by a day *or* by an n-th
+  weekday, never two boxes that could both be filled. Three rules. **The preview resolves every
+  block to a real date** for the next occurrence, in calendar order rather than typing order, and
+  strikes through the one that would land before today — because a placement that reads right
+  ("2 dagen ervoor") and lands wrong (the deadline is tomorrow) is exactly what a sentence cannot
+  show and a date can. **A list is one field**: the editor composes the blocks and posts them as
+  one JSON value (`plan_blocks`), since a list of placed blocks is not a shape a flat form can
+  post as fields, and the API validates every block so the action only has to be honest about the
+  shape. And **the stored shape is not rewritten**: a plan saved as one clock still reads as one
+  block on the due date, through the one reader both sides have (`plan_blocks`), so nothing an
+  agency stored changes its meaning on upgrade.
+
   **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
   successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an
   ordinary task. Both ends now carry a dated, linked activity line, and the finish prompt is where

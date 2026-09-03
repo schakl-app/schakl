@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.busy import register_busy_provider
+from app.modules.leave.busy import leave_busy
 from app.modules.leave.jobs import (
     generate_next_year_entitlements,
     generate_recurring_free_days,
@@ -43,3 +45,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# The scheduling dialog's conflict check (app/core/busy.py): who is away, as a band over the
+# day — nothing can be planned around an absence.
+register_busy_provider("leave", leave_busy)
