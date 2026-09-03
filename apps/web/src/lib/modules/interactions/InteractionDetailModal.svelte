@@ -36,7 +36,14 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
-  import { contactChips, type InteractionItem, isMailRow, reviewIds } from "./format";
+  import {
+    contactChips,
+    isMailRow,
+    mayReview,
+    reviewIds,
+    taskChips,
+    type InteractionItem,
+  } from "./format";
   import { cleanSnippet, snippetPreview } from "./snippet";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
   import { splitQuotedTrail } from "./quoted";
@@ -58,12 +65,11 @@
   const me = $derived(page.data.user?.id ?? null);
   const canReadActivity = $derived(can(page.data.user, "activity.read"));
   const isOwner = (i: InteractionItem) => i.owner_user_id !== null && i.owner_user_id === me;
-  // A pending gmail row I own is reviewed (assign + approve/reject) right here (#184). The row
-  // may stand for a whole pending thread now — the queue folds one — so the review form is told
-  // how many messages are waiting and offers to take them all in the one press.
-  const detailPending = $derived(
-    item != null && item.source === "gmail" && item.status === "pending" && isOwner(item),
-  );
+  // A pending gmail row I may review — my own mailbox's, or a colleague's that reached me too
+  // (`mayReview`) — is reviewed (assign + approve/reject) right here (#184). The row may stand
+  // for a whole pending thread now — the queue folds one — so the review form is told how many
+  // messages are waiting and offers to take them all in the one press.
+  const detailPending = $derived(item != null && mayReview(item, me));
 
   // --- the conversation (#272): [item] for an ordinary single email, the full thread for a fold //
   let messages = $state<InteractionItem[]>([]);
@@ -282,11 +288,9 @@
         >
           {t("interactions.closed_task")}
         </span>
-        {#if di.task_id && di.task_title}
-          <a href="/tasks/{di.task_id}" class="text-xs text-brand hover:underline"
-            >{di.task_title}</a
-          >
-        {/if}
+        {#each taskChips(di) as chip (chip.id)}
+          <a href={chip.href} class="text-xs text-brand hover:underline">{chip.label}</a>
+        {/each}
       </div>
     {/if}
 
@@ -296,13 +300,13 @@
            from the reply's own (matcher-derived) links, which may well disagree with it. -->
       <div class="flex flex-wrap items-center gap-1">
         <span class="text-[11px] text-text-muted">{t("interactions.thread_filed_under")}</span>
-        {#if di.task_id && di.task_title}
+        {#each taskChips(di) as chip (chip.id)}
           <a
-            href="/tasks/{di.task_id}"
+            href={chip.href}
             class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
-            >{di.task_title}</a
+            >{chip.label}</a
           >
-        {/if}
+        {/each}
         {#if di.project_id && di.project_name}
           <a
             href="/projects/{di.project_id}"
@@ -530,6 +534,12 @@
                Anchored on the opened row; with `threadPendingCount` the approve may take the
                thread's other waiting messages along (the queue folds them onto this row). -->
           <div class="border-t border-border pt-3">
+            {#if item && !isOwner(item)}
+              <!-- Somebody else's mailbox, and still mine to decide: say why the controls are here. -->
+              <p class="mb-3 text-xs text-text-muted">
+                {t("interactions.review.via_owner", { name: item.owner_name ?? "" })}
+              </p>
+            {/if}
             <InteractionMoveDialog
               interaction={item}
               {approveAction}

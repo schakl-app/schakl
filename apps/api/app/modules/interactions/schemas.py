@@ -71,6 +71,13 @@ class InteractionContactRef(BaseModel):
     name: str | None = None
 
 
+class InteractionTaskRef(BaseModel):
+    """One task on the roster, labelled — the contact ref's shape, one link over."""
+
+    id: uuid.UUID
+    title: str | None = None
+
+
 class InteractionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,7 +98,11 @@ class InteractionRead(BaseModel):
     direction: InteractionDirection
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
+    #: The **lead** task — the task roster's first chip; read ``tasks`` for all of them.
     task_id: uuid.UUID | None = None
+    #: Every task the moment is about, in the order they were picked, labelled in one batched
+    #: query over the page. Always contains ``task_id`` first, when there is one.
+    tasks: list[InteractionTaskRef] = Field(default_factory=list)
     #: The **lead** contact — the roster's first chip (#300). Kept because the ``contact`` sort
     #: column orders by it and the gmail thread-inheritance copies it forward; read ``contacts``
     #: for who the moment was actually with.
@@ -129,6 +140,11 @@ class InteractionRead(BaseModel):
     #: on: a bulk call takes ids, so the row carries them. Empty on a logged or manual row.
     #: Bounded by the queue, never by the thread — a logged history is not listed here.
     review_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: This pending gmail row is the **caller's** to decide on: their own mailbox's, or one a
+    #: colleague's mailbox logged with the caller on the message (``InteractionReviewer``). The
+    #: web draws the review controls off this rather than off ``owner_user_id == me``, which
+    #: was the only rule until the second case existed. Always ``False`` on a logged row.
+    reviewable: bool = False
     deep_link: str | None = None
     created_at: datetime
 
@@ -160,6 +176,17 @@ def _contact_ids_field() -> Any:  # noqa: ANN401 — a Pydantic FieldInfo, delib
     )
 
 
+#: The task pair reads exactly like the contact pair above: ``task_ids`` sent is the roster (its
+#: first entry the lead mirrored onto ``task_id``), a bare ``task_id`` is a one-task roster, and
+#: neither leaves the stored roster alone. Same contract, so a caller who learned one has learned
+#: the other — and so every pre-roster caller keeps writing what it always wrote.
+def _task_ids_field() -> Any:  # noqa: ANN401 — a Pydantic FieldInfo, deliberately untyped
+    return Field(
+        default=None,
+        description="Every task the moment is about. Wins over task_id; [] clears the roster.",
+    )
+
+
 class InteractionCreate(BaseModel):
     """A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail."""
 
@@ -177,6 +204,7 @@ class InteractionCreate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = _task_ids_field()
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
     participants: list[Participant] = Field(default_factory=list)
@@ -196,6 +224,7 @@ class InteractionUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = _task_ids_field()
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
     participants: list[Participant] | None = None
@@ -207,6 +236,7 @@ class InteractionRemap(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = _task_ids_field()
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
 
@@ -219,6 +249,7 @@ class InteractionApprove(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = _task_ids_field()
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
     #: "Laat schakl deze taak invullen" (#327): read this email into the task it is being filed
@@ -282,6 +313,7 @@ class InteractionBulkLinks(InteractionBulkIds):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = _task_ids_field()
     contact_id: uuid.UUID | None = None
     contact_ids: list[uuid.UUID] | None = _contact_ids_field()
 

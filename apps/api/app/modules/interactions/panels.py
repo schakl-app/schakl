@@ -39,12 +39,12 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 "company_id": str(i["company_id"]) if i["company_id"] else None,
                 "project_id": str(i["project_id"]) if i["project_id"] else None,
                 "task_id": str(i["task_id"]) if i["task_id"] else None,
+                # Every task the moment is about — the lead above is chip 0 of these.
+                "tasks": [{"id": str(t["id"]), "title": t["title"]} for t in i["tasks"]],
                 "contact_id": str(i["contact_id"]) if i["contact_id"] else None,
                 # Everyone the moment was with (#300) — the panel draws a chip per person and
                 # the edit/move dialogs prefill the roster from these.
-                "contacts": [
-                    {"id": str(c["id"]), "name": c["name"]} for c in i["contacts"]
-                ],
+                "contacts": [{"id": str(c["id"]), "name": c["name"]} for c in i["contacts"]],
                 "company_name": i["company_name"],
                 "project_name": i["project_name"],
                 "task_title": i["task_title"],
@@ -57,6 +57,9 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 # the badge and whether the detail modal fetches the whole thread.
                 "conversation_id": str(i["conversation_id"]) if i["conversation_id"] else None,
                 "conversation_count": i["conversation_count"],
+                # Mine to decide on — my mailbox's, or a colleague's I was on. The panel gates
+                # its review controls on this, never on ``owner_user_id == me``.
+                "reviewable": i["reviewable"],
                 "deep_link": i["deep_link"],
             }
             for i in items

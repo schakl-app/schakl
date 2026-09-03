@@ -78,7 +78,10 @@ export interface InteractionItem {
   direction: string;
   company_id?: string | null;
   project_id?: string | null;
+  /** The **lead** task — chip 0 of `tasks`. Read `tasks` for everything the moment is about. */
   task_id?: string | null;
+  /** Every task the moment is about, in chip order, titled by the API. */
+  tasks?: { id: string; title?: string | null }[];
   /** The **lead** contact — chip 0 of `contacts` (#300). Read `contacts` for who it was with. */
   contact_id?: string | null;
   /** Everyone the moment was with, in chip order, labelled by the API (#300). */
@@ -117,7 +120,46 @@ export interface InteractionItem {
    * approve / file / reject acts on. Empty on a logged or manual row.
    */
   review_ids?: string[];
+  /**
+   * This pending gmail row is the viewer's to decide on: their own mailbox's, or a colleague's
+   * that reached them too (the API names the reviewers at ingest). Every review control reads
+   * this through `mayReview`, never `owner_user_id === me` — which was the whole rule until a
+   * colleague on the email could review beside the owner.
+   */
+  reviewable?: boolean;
   deep_link: string | null;
+}
+
+/**
+ * May the viewer approve / file / reject this row? The API's `reviewable` where the payload
+ * carries it, else the owner rule it generalised — so a panel payload rendered by an older API
+ * build keeps gating exactly as it did.
+ */
+export function mayReview(item: InteractionItem, me: string | null): boolean {
+  if (item.reviewable !== undefined) return item.reviewable;
+  return (
+    item.source === "gmail" &&
+    item.status === "pending" &&
+    item.owner_user_id !== null &&
+    item.owner_user_id === me
+  );
+}
+
+/**
+ * The tasks a row hangs on, as chips — `contactChips`' twin, with the same fallback to the lead
+ * pair for a payload that predates the roster.
+ */
+export function taskChips(
+  item: Pick<InteractionItem, "tasks" | "task_id" | "task_title">,
+): { id: string; href: string; label: string }[] {
+  const tasks = item.tasks?.length
+    ? item.tasks
+    : item.task_id
+      ? [{ id: item.task_id, title: item.task_title }]
+      : [];
+  return tasks
+    .filter((task) => task.title)
+    .map((task) => ({ id: task.id, href: `/tasks/${task.id}`, label: task.title as string }));
 }
 
 /**

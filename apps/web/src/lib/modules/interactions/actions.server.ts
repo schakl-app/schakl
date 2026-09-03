@@ -29,14 +29,29 @@ function contactIds(form: FormData): string[] | null {
     .filter(Boolean);
 }
 
-/** The link fields plus the roster, as every write path sends them. */
+/**
+ * The task roster, the same way (`TaskChips`): one comma-separated hidden field in chip order,
+ * `null` when the form drew no chips at all. The lead still travels as `task_id` beside it —
+ * the close-task and review-task reads below key on it — and the API lets the roster win.
+ */
+function taskIds(form: FormData): string[] | null {
+  if (!form.has("task_ids")) return null;
+  return String(form.get("task_ids") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/** The link fields plus both rosters, as every write path sends them. */
 function linkBody(form: FormData): Record<string, string | string[] | null> {
   const roster = contactIds(form);
+  const tasks = taskIds(form);
   return {
     ...Object.fromEntries(
       LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
     ),
     ...(roster ? { contact_ids: roster } : {}),
+    ...(tasks ? { task_ids: tasks } : {}),
   };
 }
 
@@ -64,6 +79,8 @@ function links(form: FormData): Record<string, string | string[]> {
   }
   const roster = contactIds(form);
   if (roster) out.contact_ids = roster;
+  const tasks = taskIds(form);
+  if (tasks) out.task_ids = tasks;
   return out;
 }
 
@@ -96,6 +113,10 @@ async function bulkReview(event: RequestEvent, kind: "approve" | "assign" | "rej
       const value = String(form.get(field) ?? "").trim();
       if (value) body[field] = value;
     }
+    // A picked roster is sent whole; an empty one is *absent*, never `[]` — the bulk dialog
+    // opens blank over rows that disagree, so "nothing picked" must mean "leave alone" (§18).
+    const tasks = taskIds(form);
+    if (tasks?.length) body.task_ids = tasks;
   }
   const { data, error } = await apiFor(event).POST(`/api/v1/interactions/bulk/${kind}` as const, {
     body: body as never,
@@ -283,6 +304,7 @@ export const interactionActions = {
         project_id: (body.project_id as string | null) ?? null,
         task_id: (body.task_id as string | null) ?? null,
         ...(Array.isArray(body.contact_ids) ? { contact_ids: body.contact_ids } : {}),
+        ...(Array.isArray(body.task_ids) ? { task_ids: body.task_ids } : {}),
         allow_duplicate: form.get("allow_duplicate") === "1",
         enrich_task: checked(form, "enrich_task"),
       },

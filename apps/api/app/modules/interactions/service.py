@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import String, and_, bindparam, case, cast, func, or_, select, text
+from sqlalchemy import String, and_, bindparam, case, cast, delete, func, or_, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -54,8 +54,10 @@ from app.modules.interactions.models import (
     InteractionContact,
     InteractionDirection,
     InteractionKindDef,
+    InteractionReviewer,
     InteractionSource,
     InteractionStatus,
+    InteractionTask,
 )
 from app.modules.interactions.schemas import (
     InteractionApprove,
@@ -77,9 +79,10 @@ from app.modules.interactions.system import (
 logger = logging.getLogger("schakl.interactions")
 
 #: Fields whose edits land in the activity trail (§16) — the record's own definition, not body.
-#: The contact roster is audited too, as a ``contact_ids`` list each write path merges into the
-#: before/after snapshots: it is not a column, so ``snapshot()`` cannot reach it, and leaving it
-#: out would make "we added the technical contact" an untracked edit.
+#: The two rosters are audited too, as ``contact_ids`` / ``task_ids`` lists each write path
+#: merges into the before/after snapshots (``_roster_snapshot``): neither is a column, so
+#: ``snapshot()`` cannot reach them, and leaving them out would make "we added the technical
+#: contact" or "we also filed this on the invoice ticket" an untracked edit.
 _AUDITED_FIELDS = (
     "kind",
     "occurred_at",
@@ -97,6 +100,10 @@ _LINK_TABLES = {
     "task_id": "tasks",
     "contact_id": "contacts",
 }
+
+#: The link columns that are only the **lead** of a roster (models.py): the host-trail
+#: bookkeeping walks the roster for these and skips the column, or the lead would be told twice.
+_ROSTER_COLUMNS = frozenset({"contact_id", "task_id"})
 
 #: Must match ``notifications.events.INTERACTION_MENTIONED`` (#151) — a string on the bus,
 #: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
@@ -116,6 +123,8 @@ _contacts = sa_table(
     sa_column("first_name"),
     sa_column("last_name"),
 )
+# The task roster's label, the same way — only what the batched chip query reads.
+_tasks = sa_table("tasks", sa_column("id"), sa_column("org_id"), sa_column("title"))
 
 
 def _contact_display_name() -> Any:
@@ -201,6 +210,7 @@ class InteractionService:
         kind: str | None = None,
         status: str | None = None,
         owner_user_id: uuid.UUID | None = None,
+        mine: bool = False,
         include: str | None = None,
         q: str | None = None,
         date_from: date | None = None,
@@ -221,6 +231,11 @@ class InteractionService:
         ``body_text`` is a full e-mail body per row. Twenty of them is the bulk of the response
         for a column that shows ``snippet``. The key stays in the payload as ``None`` so the
         response shape never changes; the detail view fetches the row it opens.
+
+        ``mine`` is the review queue's filter and it is **not** ``owner_user_id == me``: a
+        pending row a colleague's mailbox logged with the caller on the message is the caller's
+        to decide on too (``InteractionReviewer``), so it is in their queue. On logged rows the
+        two coincide — the reviewer links go with the approval.
         """
         include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
@@ -228,10 +243,13 @@ class InteractionService:
         # read_all escape (owner feedback on #172: "rule 1, always private per account").
         # An unreviewed email is the mailbox owner's mail, not the org's record yet; it only
         # joins the team timeline when its owner approves it.
+        # …unless the caller was *on* the email: a colleague named on the message may decide
+        # on it beside the owner (``InteractionReviewer``), which is what the queue rule was
+        # always about — a mailbox kept from the team, not from the people it was sent to.
         conditions.append(
             or_(
                 Interaction.status != InteractionStatus.PENDING.value,
-                Interaction.owner_user_id == self.ctx.user.id,
+                self._mine_or_reviewing(),
             )
         )
         # The company data horizon (#191, #240) — as a plain condition rather than via
@@ -262,11 +280,17 @@ class InteractionService:
                     )
                 ).all()
                 own = Interaction.project_id == project_id
-                conditions.append(or_(own, Interaction.task_id.in_(task_ids)) if task_ids else own)
+                conditions.append(
+                    or_(own, self._task_link_clause(InteractionTask.task_id.in_(task_ids)))
+                    if task_ids
+                    else own
+                )
             else:
                 conditions.append(Interaction.project_id == project_id)
         if task_id is not None:
-            conditions.append(Interaction.task_id == task_id)
+            # Any task on the roster, not only the lead — the contact filter's rule one link
+            # over: an email that also answered this ticket is on this ticket's timeline.
+            conditions.append(self._task_link_clause(InteractionTask.task_id == task_id))
         if contact_id is not None:
             # Anyone on the roster, not only the lead (#300): a meeting this person attended
             # second is still their meeting, and their panel would otherwise omit it. An
@@ -287,6 +311,8 @@ class InteractionService:
             conditions.append(Interaction.status == status)
         if owner_user_id is not None:
             conditions.append(Interaction.owner_user_id == owner_user_id)
+        if mine:
+            conditions.append(self._mine_or_reviewing())
         if q:
             like = f"%{q}%"
             conditions.append(
@@ -383,9 +409,11 @@ class InteractionService:
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
         rosters = await self._contact_rosters(plain_rows)
+        task_rosters = await self._task_rosters(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
+        reviewing = await self._reviewing_ids(plain_rows)
         # The badge counts the **whole** conversation, not just the rows matching this filter
         # (#272): an entity panel filtered to one company/project/task still shows the true
         # message count and opens the full thread, even when only the representative is linked
@@ -413,13 +441,13 @@ class InteractionService:
                 rosters=rosters,
                 review_ids=pending_threads[row.id][0] if row.id in pending_threads else None,
                 participants=(pending_threads[row.id][1] if row.id in pending_threads else None),
+                task_rosters=task_rosters,
+                reviewing=reviewing,
             )
             for row, full_name, email in rows
         ], total
 
-    async def _conversation_counts(
-        self, rows: list[Interaction]
-    ) -> dict[uuid.UUID, int]:
+    async def _conversation_counts(self, rows: list[Interaction]) -> dict[uuid.UUID, int]:
         """How many logged messages each conversation on this page holds (#272) — one batched,
         org-scoped count over the page's distinct conversation ids, so the fold badge reflects
         the whole thread rather than only the rows that matched the current filter."""
@@ -443,10 +471,11 @@ class InteractionService:
 
         One batched, org-scoped read over the page's distinct threads, never per row
         (docs/PERFORMANCE.md), and skipped outright on a page with no pending rows — which is
-        every timeline page a colleague opens, since a pending row is only ever listed to its
-        owner. The owner filter is therefore ``self.ctx.user`` rather than each row's, and the
-        read carries the company horizon like ``_conversation_counts`` does: a sibling remapped
-        onto a client the caller may not see must not be approved through the fold.
+        every timeline page a colleague opens, since a pending row is only ever listed to the
+        people who may review it. The filter is therefore the **caller's** review set (their
+        own mailbox, plus the colleague rows they were named on) rather than each row's owner,
+        and the read carries the company horizon like ``_conversation_counts`` does: a sibling
+        remapped onto a client the caller may not see must not be approved through the fold.
 
         The participants are merged because the row stands for the conversation now: the
         representative is its newest message, and a reply's headers name whoever answered last,
@@ -463,7 +492,7 @@ class InteractionService:
         stmt = self._horizon(
             select(Interaction.id, Interaction.gmail_thread_id, Interaction.participants).where(
                 Interaction.org_id == self._org_id,
-                Interaction.owner_user_id == self.ctx.user.id,
+                self._mine_or_reviewing(),
                 Interaction.status == InteractionStatus.PENDING.value,
                 Interaction.gmail_thread_id.in_({row.gmail_thread_id for row in pending}),
             )
@@ -494,13 +523,15 @@ class InteractionService:
         """The caller's other still-pending messages of one Gmail thread, oldest first — what
         ``whole_thread`` approves and ``suppress_thread`` rejects. Through ``scoped_select`` so
         the horizon rides along, and pending-only: the thread's logged history is the team's
-        record and not this review's to touch."""
+        record and not this review's to touch. "The caller's" is the review set, not the
+        mailbox: a colleague on the thread decides on its waiting messages exactly as the
+        owner does."""
         if not gmail_thread_id:
             return []
         stmt = (
             self.repo.scoped_select()
             .where(
-                Interaction.owner_user_id == self.ctx.user.id,
+                self._mine_or_reviewing(),
                 Interaction.status == InteractionStatus.PENDING.value,
                 Interaction.gmail_thread_id == gmail_thread_id,
                 Interaction.id != exclude_id,
@@ -511,11 +542,13 @@ class InteractionService:
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
-        # A pending row is its owner's alone until approved — absent, not forbidden, so the
-        # id leaks nothing (§15). No read_all/admin escape (owner feedback on #172).
+        # A pending row is its reviewers' alone until approved — the owner, and whoever was on
+        # the email — absent, not forbidden, so the id leaks nothing (§15). No read_all/admin
+        # escape (owner feedback on #172).
         if (
             row.status == InteractionStatus.PENDING.value
             and row.owner_user_id != self.ctx.user.id
+            and not await self._reviewing_ids([row])
         ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return await self._present_one(row)
@@ -534,11 +567,12 @@ class InteractionService:
         conversation_id = anchor["conversation_id"]
         if anchor["status"] == InteractionStatus.PENDING.value and anchor["gmail_thread_id"]:
             # A pending anchor has no conversation yet, so its thread is its **Gmail** thread:
-            # the logged history anybody may read, plus the caller's own unreviewed messages in
-            # it — ``get()`` above already refused a pending row to anyone but its owner. That is
-            # the review desk the queue's folded row opens onto: what was said before, where it
-            # was filed, and what is waiting. A colleague's pending copy of the same thread is not
-            # theirs to see (#172) and is left out by the owner clause.
+            # the logged history anybody may read, plus the unreviewed messages in it the caller
+            # may decide on — ``get()`` above already refused a pending row to anyone outside its
+            # review set. That is the review desk the queue's folded row opens onto: what was
+            # said before, where it was filed, and what is waiting. A colleague's pending copy of
+            # the same thread that the caller was *not* on is not theirs to see (#172) and is
+            # left out by the clause.
             where = [
                 Interaction.org_id == self._org_id,
                 Interaction.gmail_thread_id == anchor["gmail_thread_id"],
@@ -546,7 +580,7 @@ class InteractionService:
                     Interaction.status == InteractionStatus.LOGGED.value,
                     and_(
                         Interaction.status == InteractionStatus.PENDING.value,
-                        Interaction.owner_user_id == self.ctx.user.id,
+                        self._mine_or_reviewing(),
                     ),
                 ),
             ]
@@ -569,9 +603,11 @@ class InteractionService:
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
         rosters = await self._contact_rosters(plain_rows)
+        task_rosters = await self._task_rosters(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
+        reviewing = await self._reviewing_ids(plain_rows)
         count = len(plain_rows)
         # Every pending member of the thread carries the same review set (oldest first), so
         # whichever one a client anchors a thread-level action on names the same messages.
@@ -590,6 +626,8 @@ class InteractionService:
                 conversation_count=count,
                 rosters=rosters,
                 review_ids=(pending_ids if row.status == InteractionStatus.PENDING.value else None),
+                task_rosters=task_rosters,
+                reviewing=reviewing,
             )
             for row, full_name, email in rows
         ]
@@ -600,13 +638,15 @@ class InteractionService:
         await self._require_manual_kind(data.kind)
         # The roster is resolved *before* the row exists, so an unseeable contact fails the
         # write instead of leaving a logged moment behind with half a roster on it.
-        roster = await self._requested_roster(data.model_dump(exclude_unset=True)) or []
+        sent = data.model_dump(exclude_unset=True)
+        roster = await self._requested_roster(sent) or []
+        tasks = await self._requested_tasks(sent) or []
         links = await self._resolve_links(
             {
                 "company_id": data.company_id,
                 "project_id": data.project_id,
-                "task_id": data.task_id,
-                # The lead is chip 0, never the field the caller happened to send (schemas.py).
+                # Both leads are chip 0, never the field the caller happened to send (schemas.py).
+                "task_id": tasks[0] if tasks else None,
                 "contact_id": roster[0] if roster else None,
             }
         )
@@ -632,8 +672,9 @@ class InteractionService:
             **links,
         )
         await self._set_contacts(row, roster)
+        await self._set_tasks(row, tasks)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
-        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster, task_ids=tasks)
         await self._notify_mentions(row, mentioned)
         if data.log_time is not None:
             await self._log_time(row, data.log_time)
@@ -737,16 +778,15 @@ class InteractionService:
                 )
             )
             if duplicate is not None:
-                raise AppError(
-                    "conflict", "errors.interactions_eml_duplicate", status_code=409
-                )
+                raise AppError("conflict", "errors.interactions_eml_duplicate", status_code=409)
         roster = await self._requested_roster(links) or []
+        tasks = await self._requested_tasks(links) or []
         resolved = await self._resolve_links(
-            {
-                field: links.get(field)
-                for field in ("company_id", "project_id", "task_id")
+            {field: links.get(field) for field in ("company_id", "project_id")}
+            | {
+                "task_id": tasks[0] if tasks else None,
+                "contact_id": roster[0] if roster else None,
             }
-            | {"contact_id": roster[0] if roster else None}
         )
         user = self.ctx.user
         # Conversation grouping by RFC 5322 headers (#272): the thread root is the oldest id in
@@ -788,8 +828,9 @@ class InteractionService:
             **resolved,
         )
         await self._set_contacts(row, roster)
+        await self._set_tasks(row, tasks)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
-        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster, task_ids=tasks)
         stored, skipped, inline = await self._store_eml_attachments(row.id, parsed.attachments)
         if inline:
             # The body pointed at parts that are now files. Rewriting here rather than at
@@ -860,9 +901,7 @@ class InteractionService:
             )
         )
         if existing is not None:
-            raise AppError(
-                "conflict", "errors.interactions_gmail_already_logged", status_code=409
-            )
+            raise AppError("conflict", "errors.interactions_gmail_already_logged", status_code=409)
         # A colleague's mailbox already logged it (the RFC-822 cross-mailbox dedup). A warning,
         # not a wall — the upload's rule (#262): the other row may have been rejected, or filed
         # somewhere this one belongs too — so the caller confirms and re-sends.
@@ -874,13 +913,15 @@ class InteractionService:
                 )
             )
             if duplicate is not None:
-                raise AppError(
-                    "conflict", "errors.interactions_eml_duplicate", status_code=409
-                )
+                raise AppError("conflict", "errors.interactions_eml_duplicate", status_code=409)
         roster = await self._requested_roster(links) or []
+        tasks = await self._requested_tasks(links) or []
         resolved = await self._resolve_links(
-            {field: links.get(field) for field in ("company_id", "project_id", "task_id")}
-            | {"contact_id": roster[0] if roster else None}
+            {field: links.get(field) for field in ("company_id", "project_id")}
+            | {
+                "task_id": tasks[0] if tasks else None,
+                "contact_id": roster[0] if roster else None,
+            }
         )
         row = await self.repo.create(
             kind=PROTECTED_KIND,
@@ -903,10 +944,11 @@ class InteractionService:
             **resolved,
         )
         await self._set_contacts(row, roster)
+        await self._set_tasks(row, tasks)
         await ActivityService(self.ctx).record_created(
             ENTITY_TYPE, row.id, {"source": "gmail_manual"}
         )
-        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster, task_ids=tasks)
         return row
 
     async def _upload_direction(self, from_email: str | None) -> str:
@@ -978,7 +1020,8 @@ class InteractionService:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
         self._reviewless_only(row)
         old_contacts = await self._contact_ids_of(row.id)
-        before = snapshot(row, _AUDITED_FIELDS) | {"contact_ids": [str(c) for c in old_contacts]}
+        old_tasks = await self._task_ids_of(row.id)
+        before = snapshot(row, _AUDITED_FIELDS) | self._roster_fields(old_contacts, old_tasks)
         sent = data.model_dump(exclude_unset=True)
         # Keeping the row's own kind is always allowed — a deactivated kind must not brick
         # editing the rows that already carry it (#174).
@@ -993,12 +1036,16 @@ class InteractionService:
                     fields={"kind": "errors.interactions_kind_not_manual"},
                 )
             await self._require_manual_kind(sent["kind"])
-        # The contact link is applied as a roster below, not as a column here (#300).
-        link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent and k != "contact_id"}
+        # The contact and task links are applied as rosters below, not as columns here (#300);
+        # the task lead still rides ``link_updates`` because it is what derives the client.
+        link_updates = {k: sent[k] for k in ("company_id", "project_id") if k in sent}
+        tasks = await self._requested_tasks(sent)
+        if tasks is not None:
+            link_updates["task_id"] = tasks[0] if tasks else None
         values: dict[str, Any] = {
             k: v
             for k, v in sent.items()
-            if k not in _LINK_TABLES and k not in ("participants", "contact_ids")
+            if k not in _LINK_TABLES and k not in ("participants", "contact_ids", "task_ids")
         }
         if values.get("direction") is not None:
             values["direction"] = values["direction"].value
@@ -1032,9 +1079,8 @@ class InteractionService:
         # Before the "after" snapshot, so a roster change is a diff on the trail and not a
         # silent edit — and before the host bookkeeping, which reads the roster it left.
         await self._apply_roster(row, await self._requested_roster(sent), old=old_contacts)
-        after = snapshot(row, _AUDITED_FIELDS) | {
-            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
-        }
+        await self._apply_tasks(row, tasks, old=old_tasks)
+        after = snapshot(row, _AUDITED_FIELDS) | await self._roster_snapshot(row.id)
         await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         await self._record_link_moves(row, old_links)
         await self._notify_mentions(row, newly_mentioned)
@@ -1104,13 +1150,11 @@ class InteractionService:
         self._pending_only(row)
         link_values: dict[str, Any] = {}
         roster: list[uuid.UUID] | None = None
+        tasks: list[uuid.UUID] | None = None
         if data is not None:
             sent = data.model_dump(exclude_unset=True)
             if sent:
-                link_values = await self._resolve_links(
-                    {k: v for k, v in sent.items() if k in _LINK_TABLES and k != "contact_id"},
-                    partial=True,
-                )
+                link_values, tasks = await self._partial_links(sent)
                 roster = await self._requested_roster(sent)
         # The siblings are read before the named row lands, in the order a batch asks its two
         # questions ("which rows", then "approve them"); each then goes through the same
@@ -1121,15 +1165,15 @@ class InteractionService:
             if data is not None and data.whole_thread
             else []
         )
-        row = await self._approve_row(row, link_values, roster)
+        row = await self._approve_row(row, link_values, roster, tasks)
         for sibling in siblings:
-            await self._approve_row(sibling, dict(link_values), roster)
+            await self._approve_row(sibling, dict(link_values), roster, tasks)
         if data is not None and data.enrich_task:
             await self.offer_task_enrichment(row)
         return await self._present_one(row)
 
     async def offer_task_enrichment(self, row: Interaction) -> None:
-        """"Laat schakl deze taak invullen" (#327): hand the email to the worker.
+        """ "Laat schakl deze taak invullen" (#327): hand the email to the worker.
 
         **This hangs off filing an email onto a task, not off the review transition** (#342).
         It used to be reachable only from :meth:`approve`, which is gated ``_owned_gmail_or_404``
@@ -1184,7 +1228,11 @@ class InteractionService:
             await set_ai_status_system(self.ctx, row.task_id, TaskAIStatus.FAILED)
 
     async def _approve_row(
-        self, row: Interaction, link_values: dict[str, Any], roster: list[uuid.UUID] | None
+        self,
+        row: Interaction,
+        link_values: dict[str, Any],
+        roster: list[uuid.UUID] | None,
+        tasks: list[uuid.UUID] | None = None,
     ) -> Interaction:
         """Approve one already-loaded, already-eligible row.
 
@@ -1196,15 +1244,17 @@ class InteractionService:
         ``roster`` is the batch's contact roster **already resolved** (#300), or ``None`` for
         "leave each row's own alone" — the same shape ``link_values`` has, and for the same
         reason: a bad id is the payload being wrong, so it is validated once for the call
-        rather than per row.
+        rather than per row. ``tasks`` is the task roster under the same contract.
+
+        Whoever reviews decides for everyone: the reviewer links are dropped here, so a
+        colleague who was also on the message loses the row from their queue the moment it is
+        logged, and the ``interaction.approved`` emit below retires their notification too.
         """
         # Optionally assign links in the same step as approval (#183) — no need to approve
         # then reopen and move. Applied before the row goes team-visible, so the "moved"
         # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
         # below fires on the *final* links.
-        before = snapshot(row, _AUDITED_FIELDS) | {
-            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
-        }
+        before = snapshot(row, _AUDITED_FIELDS) | await self._roster_snapshot(row.id)
         # A pending row becoming logged is the other moment it can join a conversation (#272):
         # inherit the newest logged sibling's id in this gmail thread, minting one if that
         # sibling has none yet, so the two fold together the instant this one lands.
@@ -1220,16 +1270,19 @@ class InteractionService:
         # No ``old=`` here on purpose: the row was pending, so nobody had been told it existed
         # yet — the host announce below fires on the *final* roster, once, like every link.
         await self._apply_roster(row, roster)
+        await self._apply_tasks(row, tasks)
         final_roster = await self._contact_ids_of(row.id)
+        final_tasks = await self._task_ids_of(row.id)
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
-        if link_values or roster is not None:
-            after = snapshot(row, _AUDITED_FIELDS) | {
-                "contact_ids": [str(c) for c in final_roster]
-            }
+        if link_values or roster is not None or tasks is not None:
+            after = snapshot(row, _AUDITED_FIELDS) | self._roster_fields(final_roster, final_tasks)
             await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         # Approval is the moment the email becomes team-visible — that is when the host
         # records hear about it (#152); a pending row must not announce itself.
-        await self._record_on_hosts(row, "interaction.logged", contact_ids=final_roster)
+        await self._record_on_hosts(
+            row, "interaction.logged", contact_ids=final_roster, task_ids=final_tasks
+        )
+        await self._clear_reviewers(row.id)
         # The google module fetches the body asynchronously — never inside this transaction.
         await emit(
             "interaction.approved",
@@ -1282,26 +1335,27 @@ class InteractionService:
         sent = data.model_dump(exclude_unset=True)
         if not sent:
             return await self._present_one(row)
-        values = await self._resolve_links(
-            {k: v for k, v in sent.items() if k in _LINK_TABLES and k != "contact_id"},
-            partial=True,
-        )
+        values, tasks = await self._partial_links(sent)
         roster = await self._requested_roster(sent)
-        return await self._present_one(await self._remap_row(row, values, roster))
+        return await self._present_one(await self._remap_row(row, values, roster, tasks))
 
     async def _remap_row(
-        self, row: Interaction, values: dict[str, Any], roster: list[uuid.UUID] | None
+        self,
+        row: Interaction,
+        values: dict[str, Any],
+        roster: list[uuid.UUID] | None,
+        tasks: list[uuid.UUID] | None = None,
     ) -> Interaction:
         """Re-file one already-loaded, already-eligible row — the shared path (see
-        ``_approve_row``, whose ``roster`` contract this shares)."""
+        ``_approve_row``, whose ``roster`` / ``tasks`` contract this shares)."""
         old_contacts = await self._contact_ids_of(row.id)
-        before = snapshot(row, _AUDITED_FIELDS) | {"contact_ids": [str(c) for c in old_contacts]}
+        old_tasks = await self._task_ids_of(row.id)
+        before = snapshot(row, _AUDITED_FIELDS) | self._roster_fields(old_contacts, old_tasks)
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await self._apply_roster(row, roster, old=old_contacts)
-        after = snapshot(row, _AUDITED_FIELDS) | {
-            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
-        }
+        await self._apply_tasks(row, tasks, old=old_tasks)
+        after = snapshot(row, _AUDITED_FIELDS) | await self._roster_snapshot(row.id)
         await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         await self._record_link_moves(row, old_links)
         # Remapping is the owner engaging with the row — enough to retire the "waiting on
@@ -1331,26 +1385,27 @@ class InteractionService:
     #    the message so a re-poll never brings it back. So the batch that needs the loud
     #    confirmation is bulk deny — the inverse of where the caution instinctively goes.
     async def bulk_approve(self, data: InteractionBulkApprove) -> dict[str, Any]:
-        link_values = await self._bulk_links(data)
+        link_values, tasks = await self._bulk_links(data)
         roster = await self._bulk_roster(data)
         rows, failed = await self._bulk_eligible(data.ids, pending_only=True)
         for row in rows:
-            await self._approve_row(row, dict(link_values), roster)
+            await self._approve_row(row, dict(link_values), roster, tasks)
         return {"succeeded": len(rows), "failed": failed}
 
     async def bulk_assign(self, data: InteractionBulkAssign) -> dict[str, Any]:
         """File a selection without approving it. Unlike approve, a *logged* row is fair game —
         this is the batch form of ``remap``, so it also re-files a mis-matched run of emails."""
-        link_values = await self._bulk_links(data)
+        link_values, tasks = await self._bulk_links(data)
         roster = await self._bulk_roster(data)
         rows, failed = await self._bulk_eligible(data.ids, pending_only=False)
         # A batch that names a roster and no links is still a real assignment (#300), so
         # "nothing to do" has to ask about both — testing links alone would silently drop
-        # "put these six emails on Jan and Piet".
+        # "put these six emails on Jan and Piet". (A task roster always lands in the links,
+        # as its lead, so it is covered by the first half.)
         if not link_values and roster is None:
             return {"succeeded": 0, "failed": failed}
         for row in rows:
-            await self._remap_row(row, dict(link_values), roster)
+            await self._remap_row(row, dict(link_values), roster, tasks)
         return {"succeeded": len(rows), "failed": failed}
 
     async def bulk_reject(self, data: InteractionBulkReject) -> dict[str, Any]:
@@ -1363,24 +1418,22 @@ class InteractionService:
             await self._reject_row(row, suppress_thread=data.suppress_thread)
         return {"succeeded": len(rows), "failed": failed}
 
-    async def _bulk_links(self, data: InteractionBulkLinks) -> dict[str, Any]:
+    async def _bulk_links(
+        self, data: InteractionBulkLinks
+    ) -> tuple[dict[str, Any], list[uuid.UUID] | None]:
         """Resolve the batch's shared links **once**, before any row is touched.
 
         A ``company_id`` that does not exist is the caller's payload being wrong, not any one
         row's problem — every row would fail on it identically. So this raises 422 for the
         whole call, while row-level trouble is reported instead (``InteractionBulkResult``).
+        Returns the column values and the task roster (``None`` = leave each row's own).
         """
-        sent = data.model_dump(
-            exclude_unset=True, exclude={"ids", "contact_id", "contact_ids"}
-        )
-        return await self._resolve_links(sent, partial=True) if sent else {}
+        return await self._partial_links(data.model_dump(exclude_unset=True, exclude={"ids"}))
 
     async def _bulk_roster(self, data: InteractionBulkLinks) -> list[uuid.UUID] | None:
         """The batch's shared roster, resolved once (see ``_bulk_links``) — ``None`` for
         "leave every row's own alone", which is what an absent field means here (#300)."""
-        return await self._requested_roster(
-            data.model_dump(exclude_unset=True, exclude={"ids"})
-        )
+        return await self._requested_roster(data.model_dump(exclude_unset=True, exclude={"ids"}))
 
     async def _bulk_eligible(
         self, ids: list[uuid.UUID], *, pending_only: bool
@@ -1403,6 +1456,9 @@ class InteractionService:
             .scalars()
             .all()
         }
+        # One batched read answers "which of these am I a reviewer on" for the whole
+        # selection, so the per-row eligibility check below stays a dictionary lookup.
+        reviewing = await self._reviewing_ids(list(found.values()))
         rows: list[Interaction] = []
         failed: list[dict[str, Any]] = []
         for interaction_id in unique:
@@ -1412,7 +1468,7 @@ class InteractionService:
                 # all three (§15): an id you cannot act on must not read as an id that exists.
                 failed.append({"id": interaction_id, "error": "errors.not_found"})
                 continue
-            reason = self._review_ineligible(row)
+            reason = self._review_ineligible(row, reviewing)
             if reason is None and pending_only and row.status != InteractionStatus.PENDING.value:
                 reason = ("invalid_state", "errors.interactions_not_pending", 409)
             if reason is not None:
@@ -1539,9 +1595,7 @@ class InteractionService:
         for position, contact_id in enumerate(ids):
             link = by_contact.pop(contact_id, None)
             if link is None:
-                await links.create(
-                    interaction_id=row.id, contact_id=contact_id, position=position
-                )
+                await links.create(interaction_id=row.id, contact_id=contact_id, position=position)
             elif link.position != position:
                 link.position = position
         for orphan in by_contact.values():
@@ -1621,6 +1675,221 @@ class InteractionService:
             rosters.setdefault(interaction_id, []).append({"id": contact_id, "name": name})
         return rosters
 
+    # --- the task roster -------------------------------------------------------- #
+    # The contact roster's machinery, one link over (models.py: ``InteractionTask``). Kept as
+    # a second set of small methods rather than one generic roster class on purpose: the two
+    # differ in exactly the places that matter — a contact is resolved through the reference
+    # seam (its client is a join away), a task through the bare table like the other links;
+    # a contact's lead orders a column, a task's lead derives the client — and a generic
+    # version would carry both sets of exceptions as flags.
+    @staticmethod
+    def _task_intent(sent: dict[str, Any]) -> list[uuid.UUID] | None:
+        """``_roster_intent`` for the task pair: ``task_ids`` wins, a bare ``task_id`` is a
+        one-task roster (``null`` empties it), neither leaves the stored roster alone."""
+        if sent.get("task_ids") is not None:
+            return list(sent["task_ids"])
+        if "task_id" in sent:
+            return [sent["task_id"]] if sent["task_id"] is not None else []
+        return None
+
+    async def _resolve_task_ids(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Validate a requested task roster: deduplicated, order kept, every id this org's.
+        One ``IN`` over the bare table (§6) for the whole list, never a lookup per chip."""
+        wanted = list(dict.fromkeys(ids))
+        if not wanted:
+            return []
+        stmt = text("SELECT id FROM tasks WHERE org_id = :oid AND id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        found = set(
+            (await self.ctx.session.scalars(stmt, {"oid": self._org_id, "ids": wanted})).all()
+        )
+        if any(task_id not in found for task_id in wanted):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"task_ids": "errors.not_found"},
+            )
+        return wanted
+
+    async def _task_ids_of(self, interaction_id: uuid.UUID) -> list[uuid.UUID]:
+        """The stored task roster, in chip order."""
+        stmt = (
+            select(InteractionTask.task_id)
+            .where(
+                InteractionTask.org_id == self._org_id,
+                InteractionTask.interaction_id == interaction_id,
+            )
+            .order_by(InteractionTask.position, InteractionTask.created_at)
+        )
+        return list((await self.ctx.session.execute(stmt)).scalars())
+
+    async def _set_tasks(self, row: Interaction, ids: list[uuid.UUID]) -> None:
+        """Make the task roster exactly ``ids`` and re-stamp the lead column (``_set_contacts``'
+        reconcile, for tasks). ``row.task_id`` is rewritten on every call: it is chip 0's
+        mirror and the two are never written apart (models.py)."""
+        links = self.ctx.repo(InteractionTask)
+        existing = list(
+            (
+                await self.ctx.session.execute(
+                    links.scoped_select().where(InteractionTask.interaction_id == row.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_task = {link.task_id: link for link in existing}
+        for position, task_id in enumerate(ids):
+            link = by_task.pop(task_id, None)
+            if link is None:
+                await links.create(interaction_id=row.id, task_id=task_id, position=position)
+            elif link.position != position:
+                link.position = position
+        for orphan in by_task.values():
+            await links.delete(orphan)
+        row.task_id = ids[0] if ids else None
+        await self.ctx.session.flush()
+
+    async def _requested_tasks(self, sent: dict[str, Any]) -> list[uuid.UUID] | None:
+        """This payload's task roster, validated — or ``None`` for "leave the stored one alone"
+        (``_requested_roster``'s contract)."""
+        requested = self._task_intent(sent)
+        return None if requested is None else await self._resolve_task_ids(requested)
+
+    async def _apply_tasks(
+        self,
+        row: Interaction,
+        resolved: list[uuid.UUID] | None,
+        *,
+        old: list[uuid.UUID] | None = None,
+    ) -> None:
+        """Write an already-resolved task roster onto a stored row, and tell the tasks it moved
+        between (``_apply_roster``'s contract)."""
+        if resolved is None:
+            return
+        await self._set_tasks(row, resolved)
+        if old is not None:
+            await self._record_task_moves(row, old, resolved)
+
+    async def _partial_links(
+        self, sent: dict[str, Any]
+    ) -> tuple[dict[str, Any], list[uuid.UUID] | None]:
+        """The column links of a partial write (remap, approve-with-links, a bulk batch): the
+        client and project as sent, plus the task **lead** whenever the payload names a task
+        roster — the lead is what derives the client, so it has to reach ``_resolve_links``
+        rather than only the roster table. The roster itself rides beside it for
+        ``_apply_tasks``; ``None`` means "leave each row's own alone"."""
+        tasks = await self._requested_tasks(sent)
+        raw = {k: v for k, v in sent.items() if k in ("company_id", "project_id")}
+        if tasks is not None:
+            raw["task_id"] = tasks[0] if tasks else None
+        values = await self._resolve_links(raw, partial=True) if raw else {}
+        return values, tasks
+
+    async def _task_rosters(self, rows: list[Interaction]) -> dict[uuid.UUID, list[dict[str, Any]]]:
+        """Every row's task roster on this page, titled, in **one** query — ``_contact_rosters``
+        for tasks, with the same "an all-``NULL`` page costs no query" invariant off the lead
+        column. This is also where ``task_title`` comes from now: the lead's title is chip 0's,
+        and asking the tasks table a second time per page would be the same lookup twice."""
+        ids = [row.id for row in rows if row.task_id is not None]
+        if not ids:
+            return {}
+        stmt = (
+            select(InteractionTask.interaction_id, InteractionTask.task_id, _tasks.c.title)
+            .join(
+                _tasks,
+                (_tasks.c.id == InteractionTask.task_id)
+                & (_tasks.c.org_id == InteractionTask.org_id),
+            )
+            .where(
+                InteractionTask.org_id == self._org_id,
+                InteractionTask.interaction_id.in_(ids),
+            )
+            .order_by(
+                InteractionTask.interaction_id,
+                InteractionTask.position,
+                InteractionTask.created_at,
+            )
+        )
+        rosters: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        for interaction_id, task_id, title in (await self.ctx.session.execute(stmt)).all():
+            rosters.setdefault(interaction_id, []).append({"id": task_id, "title": title})
+        return rosters
+
+    @staticmethod
+    def _task_link_clause(predicate: Any) -> Any:  # noqa: ANN401 — a SQLAlchemy clause
+        """``EXISTS`` over the task roster, correlated to the outer ``Interaction`` — one index
+        probe per row whatever the roster size, and never a join, which would multiply the
+        folded feed's rows (the ``?contact_id=`` filter's shape)."""
+        return (
+            select(InteractionTask.id)
+            .where(
+                InteractionTask.org_id == Interaction.org_id,
+                InteractionTask.interaction_id == Interaction.id,
+                predicate,
+            )
+            .exists()
+        )
+
+    @staticmethod
+    def _roster_fields(contacts: list[uuid.UUID], tasks: list[uuid.UUID]) -> dict[str, Any]:
+        """The two rosters as the trail records them, beside the audited columns."""
+        return {
+            "contact_ids": [str(c) for c in contacts],
+            "task_ids": [str(t) for t in tasks],
+        }
+
+    async def _roster_snapshot(self, interaction_id: uuid.UUID) -> dict[str, Any]:
+        return self._roster_fields(
+            await self._contact_ids_of(interaction_id), await self._task_ids_of(interaction_id)
+        )
+
+    # --- who may review a pending row --------------------------------------------- #
+    def _mine_or_reviewing(self) -> Any:  # noqa: ANN401 — a SQLAlchemy clause
+        """The caller's review set, as a clause: their own mailbox's rows, or a row a colleague's
+        mailbox logged with the caller on the message (``InteractionReviewer``, models.py).
+        Every place that used to ask ``owner_user_id == me`` about a *pending* row asks this."""
+        return or_(
+            Interaction.owner_user_id == self.ctx.user.id,
+            select(InteractionReviewer.id)
+            .where(
+                InteractionReviewer.org_id == Interaction.org_id,
+                InteractionReviewer.interaction_id == Interaction.id,
+                InteractionReviewer.user_id == self.ctx.user.id,
+            )
+            .exists(),
+        )
+
+    async def _reviewing_ids(self, rows: list[Interaction]) -> set[uuid.UUID]:
+        """Which of these rows the caller is a *named reviewer* on — one batched read over the
+        page, asked only about the pending rows somebody else owns (the only rows the answer
+        can matter for), so an ordinary timeline page costs nothing here."""
+        ids = [
+            row.id
+            for row in rows
+            if row.status == InteractionStatus.PENDING.value
+            and row.owner_user_id != self.ctx.user.id
+        ]
+        if not ids:
+            return set()
+        stmt = select(InteractionReviewer.interaction_id).where(
+            InteractionReviewer.org_id == self._org_id,
+            InteractionReviewer.user_id == self.ctx.user.id,
+            InteractionReviewer.interaction_id.in_(ids),
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def _clear_reviewers(self, interaction_id: uuid.UUID) -> None:
+        """The decision has been made: nobody else's queue lists this row any more."""
+        await self.ctx.session.execute(
+            delete(InteractionReviewer).where(
+                InteractionReviewer.org_id == self._org_id,
+                InteractionReviewer.interaction_id == interaction_id,
+            )
+        )
+        await self.ctx.session.flush()
+
     # --- helpers ---------------------------------------------------------------- #
     def _host_payload(self, row: Interaction) -> dict[str, Any]:
         # The host's trail quotes the subject (`activity.action.interaction.logged`), so an
@@ -1635,7 +1904,12 @@ class InteractionService:
         }
 
     async def _record_on_hosts(
-        self, row: Interaction, action: str, *, contact_ids: list[uuid.UUID] | None = None
+        self,
+        row: Interaction,
+        action: str,
+        *,
+        contact_ids: list[uuid.UUID] | None = None,
+        task_ids: list[uuid.UUID] | None = None,
     ) -> None:
         """Mirror a milestone onto every linked host record's trail (#152), in the same
         transaction. A mirror *event* carrying a pointer — the field-level diff stays on the
@@ -1649,14 +1923,17 @@ class InteractionService:
         activity = ActivityService(self.ctx)
         payload = self._host_payload(row)
         for field, entity_type in HOST_ENTITY.items():
-            if field == "contact_id":
-                continue  # the roster below is the authority, and the column is only its lead
+            if field in _ROSTER_COLUMNS:
+                continue  # the rosters below are the authority; the columns are only their leads
             target_id = getattr(row, field)
             if target_id is not None:
                 await activity.record(entity_type, target_id, action, payload)
         roster = contact_ids if contact_ids is not None else await self._contact_ids_of(row.id)
         for contact_id in roster:
             await activity.record(HOST_ENTITY["contact_id"], contact_id, action, payload)
+        tasks = task_ids if task_ids is not None else await self._task_ids_of(row.id)
+        for task_id in tasks:
+            await activity.record(HOST_ENTITY["task_id"], task_id, action, payload)
 
     async def _record_link_moves(
         self, row: Interaction, old_links: dict[str, uuid.UUID | None]
@@ -1664,15 +1941,16 @@ class InteractionService:
         """A moved contactmoment tells both sides (#152): the host it left and the one it
         joined. Only team-visible (logged) rows announce themselves.
 
-        The contact link is not read here: it is a roster now, and its own moves are recorded
-        by :meth:`_record_contact_moves` from the before/after lists the write already has.
+        The contact and task links are not read here: they are rosters now, and their own
+        moves are recorded by :meth:`_record_contact_moves` / :meth:`_record_task_moves` from
+        the before/after lists the write already has.
         """
         if row.status != InteractionStatus.LOGGED.value:
             return
         activity = ActivityService(self.ctx)
         payload = self._host_payload(row)
         for field, entity_type in HOST_ENTITY.items():
-            if field == "contact_id":
+            if field in _ROSTER_COLUMNS:
                 continue
             old, new = old_links[field], getattr(row, field)
             if old == new:
@@ -1699,6 +1977,24 @@ class InteractionService:
         for contact_id in new:
             if contact_id not in before:
                 await activity.record(entity_type, contact_id, "interaction.linked", payload)
+
+    async def _record_task_moves(
+        self, row: Interaction, old: list[uuid.UUID], new: list[uuid.UUID]
+    ) -> None:
+        """The task roster's half of the same bookkeeping: a ticket the moment was taken off,
+        and one it was filed onto, each hear about it on their own trail."""
+        if row.status != InteractionStatus.LOGGED.value:
+            return
+        activity = ActivityService(self.ctx)
+        payload = self._host_payload(row)
+        entity_type = HOST_ENTITY["task_id"]
+        before, after = set(old), set(new)
+        for task_id in old:
+            if task_id not in after:
+                await activity.record(entity_type, task_id, "interaction.unlinked", payload)
+        for task_id in new:
+            if task_id not in before:
+                await activity.record(entity_type, task_id, "interaction.linked", payload)
 
     async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Keep only the mentioned ids that are members of this org (#151, like #63)."""
@@ -1809,23 +2105,27 @@ class InteractionService:
         return row
 
     async def _owned_gmail_or_404(self, interaction_id: uuid.UUID) -> Interaction:
-        """Review actions: gmail-sourced and strictly the caller's own mailbox — no override."""
+        """Review actions: gmail-sourced and strictly the caller's to review — their own
+        mailbox's, or a pending row they were named a reviewer on. No admin override."""
         row = await self.repo.get_or_404(interaction_id)
-        reason = self._review_ineligible(row)
+        reason = self._review_ineligible(row, await self._reviewing_ids([row]))
         if reason is not None:
             raise AppError(*reason[:2], status_code=reason[2])
         return row
 
-    def _review_ineligible(self, row: Interaction) -> tuple[str, str, int] | None:
+    def _review_ineligible(
+        self, row: Interaction, reviewing: set[uuid.UUID]
+    ) -> tuple[str, str, int] | None:
         """Why this row is out of the review flow, or ``None`` when it is in it.
 
         One statement of the rule, asked two ways: ``_owned_gmail_or_404`` raises it for a
         single row, the bulk loader reports it per row. Splitting them is how a batch would
-        end up quietly reviewing a colleague's mailbox.
+        end up quietly reviewing a colleague's mailbox. ``reviewing`` is the caller's reviewer
+        set over the rows in hand (``_reviewing_ids``) — resolved once per call, never per row.
         """
         if row.source != InteractionSource.GMAIL.value:
             return ("invalid_state", "errors.interactions_manual_no_review", 409)
-        if row.owner_user_id != self.ctx.user.id:
+        if row.owner_user_id != self.ctx.user.id and row.id not in reviewing:
             return ("forbidden", "errors.interactions_owner_only", 403)
         return None
 
@@ -1884,13 +2184,12 @@ class InteractionService:
             )
 
     #: What each linked table calls its label — the batched name lookup below reads these.
-    #: No ``contact_id`` entry: the roster query (``_contact_rosters``) already labels every
-    #: chip, and the lead's name is chip 0's. Asking the contacts table twice per page would be
-    #: the same lookup, priced twice (docs/PERFORMANCE.md).
+    #: No ``contact_id`` or ``task_id`` entry: the roster queries (``_contact_rosters``,
+    #: ``_task_rosters``) already label every chip, and the lead's name is chip 0's. Asking a
+    #: table twice per page would be the same lookup, priced twice (docs/PERFORMANCE.md).
     _LINK_LABELS = {
         "company_id": ("companies", "name"),
         "project_id": ("projects", "name"),
-        "task_id": ("tasks", "title"),
     }
 
     async def _link_names(self, rows: list[Interaction]) -> dict[tuple[str, uuid.UUID], str]:
@@ -1942,9 +2241,11 @@ class InteractionService:
         )
         names = await self._link_names([row])
         rosters = await self._contact_rosters([row])
+        task_rosters = await self._task_rosters([row])
         contacts_by_email = await self._participant_contacts([row])
         members_by_email = await self._participant_members([row])
         closing_ids = await self._closing_task_ids([row])
+        reviewing = await self._reviewing_ids([row])
         # A single-row endpoint, not list-scale: one extra indexed count is fine here, only when
         # the row is actually in a conversation (docs/PERFORMANCE.md — the concern is per-row
         # lookups over a *page*, not one lookup for one record).
@@ -1982,6 +2283,8 @@ class InteractionService:
             rosters=rosters,
             review_ids=review_ids,
             participants=participants,
+            task_rosters=task_rosters,
+            reviewing=reviewing,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -2036,6 +2339,8 @@ class InteractionService:
         rosters: dict[uuid.UUID, list[dict[str, Any]]] | None = None,
         review_ids: list[uuid.UUID] | None = None,
         participants: list[dict[str, Any]] | None = None,
+        task_rosters: dict[uuid.UUID, list[dict[str, Any]]] | None = None,
+        reviewing: set[uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after.
 
@@ -2058,6 +2363,15 @@ class InteractionService:
         # here rather than read off the column so a read can never disagree with itself.
         roster = (rosters or {}).get(row.id, [])
         lead = roster[0] if roster else None
+        task_roster = (task_rosters or {}).get(row.id, [])
+        lead_task = task_roster[0] if task_roster else None
+        # Mine to decide on: my own mailbox's pending row, or a colleague's I was named on
+        # (``reviewing`` is the page's batched answer to the second half).
+        reviewable = (
+            row.status == InteractionStatus.PENDING.value
+            and row.source == InteractionSource.GMAIL.value
+            and (row.owner_user_id == self.ctx.user.id or row.id in (reviewing or set()))
+        )
         return {
             "id": row.id,
             "kind": row.kind,
@@ -2082,12 +2396,13 @@ class InteractionService:
             "direction": row.direction,
             "company_id": row.company_id,
             "project_id": row.project_id,
-            "task_id": row.task_id,
+            "task_id": lead_task["id"] if lead_task else None,
+            "tasks": task_roster,
             "contact_id": lead["id"] if lead else None,
             "contacts": roster,
             "company_name": names.get(("company_id", row.company_id)),
             "project_name": names.get(("project_id", row.project_id)),
-            "task_title": names.get(("task_id", row.task_id)),
+            "task_title": lead_task["title"] if lead_task else None,
             "contact_name": lead["name"] if lead else None,
             "closes_task": row.id in (closing_ids or set()),
             "owner_user_id": row.owner_user_id,
@@ -2112,6 +2427,7 @@ class InteractionService:
             "conversation_id": row.conversation_id,
             "conversation_count": conversation_count,
             "review_ids": review_ids or [],
+            "reviewable": reviewable,
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }
@@ -2219,9 +2535,9 @@ class InteractionKindService:
 async def count_for_entity(ctx: RequestContext, entity_field: str, entity_id: uuid.UUID) -> int:
     """How many interactions attach to one host entity — the panel's truncation counter.
 
-    A contact is counted off the roster, not the lead column (#300), so this answers the same
-    question ``?contact_id=`` does — a counter and its list disagreeing is the shape §15 calls
-    "a hand-built count".
+    A contact — and a task — is counted off its roster, not the lead column (#300), so this
+    answers the same question ``?contact_id=`` / ``?task_id=`` does — a counter and its list
+    disagreeing is the shape §15 calls "a hand-built count".
     """
     if entity_field == "contact_id":
         condition = (
@@ -2230,6 +2546,16 @@ async def count_for_entity(ctx: RequestContext, entity_field: str, entity_id: uu
                 InteractionContact.org_id == Interaction.org_id,
                 InteractionContact.interaction_id == Interaction.id,
                 InteractionContact.contact_id == entity_id,
+            )
+            .exists()
+        )
+    elif entity_field == "task_id":
+        condition = (
+            select(InteractionTask.id)
+            .where(
+                InteractionTask.org_id == Interaction.org_id,
+                InteractionTask.interaction_id == Interaction.id,
+                InteractionTask.task_id == entity_id,
             )
             .exists()
         )

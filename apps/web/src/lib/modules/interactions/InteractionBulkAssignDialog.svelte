@@ -27,6 +27,8 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
+
+  import TaskChips from "./TaskChips.svelte";
   import { companyArchivedLabel } from "$lib/modules/companies/picker";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
@@ -64,7 +66,10 @@
 
   let companyId = $state("");
   let projectId = $state("");
-  let taskId = $state("");
+  // A roster (`TaskChips`), sent whole; nothing picked means every row keeps its own (§18).
+  let taskIds = $state<string[]>([]);
+  const taskId = $derived(taskIds[0] ?? "");
+  const taskLabels: Record<string, string | null | undefined> = {};
   let contactId = $state("");
 
   /** Nothing picked = nothing to say; the API would answer "0 filed" and look broken. */
@@ -98,11 +103,13 @@
     projectId = id;
     const project = projects.find((p) => p.value === id);
     if (project?.company_id) companyId = project.company_id;
-    if (taskId && tasks.find((task) => task.value === taskId)?.project_id !== id) taskId = "";
+    taskIds = taskIds.filter(
+      (picked) => tasks.find((task) => task.value === picked)?.project_id === id,
+    );
   }
 
+  /** The lead changed (`TaskChips`' `onpick`): it fixes the levels above. */
   function onTaskPicked(id: string) {
-    taskId = id;
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
@@ -200,7 +207,8 @@
           },
         ];
       }
-      onTaskPicked(created.id);
+      if (!taskIds.includes(created.id)) taskIds = [...taskIds, created.id];
+      if (taskIds[0] === created.id) onTaskPicked(created.id);
     } else if (created.slot === "bulk_project") {
       handledCreate = created.id;
       if (!projects.some((option) => option.value === created.id)) {
@@ -323,25 +331,25 @@
           id="bulk-project"
         />
       </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-        <Combobox
+      <div class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.tasks")}</span>
+        <TaskChips
+          bind:picked={taskIds}
           items={taskOptions}
           archived={linkSplit.tasks.retired}
           archivedLabel={t("tasks.picker.archived")}
-          name="task_id"
-          value={taskId}
+          labels={taskLabels}
           placeholder={t("interactions.bulk.unchanged")}
-          onselect={onTaskPicked}
+          onpick={onTaskPicked}
           oncreate={canCreateTask
             ? (query) => {
                 taskDraft = query;
                 taskCreateOpen = true;
               }
             : undefined}
-          id="bulk-task"
+          id="bulk-tasks"
         />
-      </label>
+      </div>
       <label class="block text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
         <Combobox

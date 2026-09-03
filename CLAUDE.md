@@ -1492,6 +1492,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   from the hub, because a cutover ends and its queue is where a decision is actually made. On the
   web the composition runs the only direction §6 allows — an integration registers a
   `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
+- **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
+  them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
+  email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it
+  (the RFC-822 dedup, the deferral to the intended owner), and "a pending row is private to its
+  owner" (#172) then meant the *other* colleague — on the message, notified by nobody — could
+  neither see nor approve it until the owner got round to it. The privacy rule was written to
+  keep a mailbox from the **team**, not from the people the message was sent to, so the ingest
+  names them (`interaction_reviewers`) and every "is this mine to decide" question asks the
+  review set (`_mine_or_reviewing`) instead of the owner column; whoever decides first decides
+  for all, and the existing entity-level notification resolver (#170) retires everyone's row
+  because it always did — it had only ever been handed one recipient. Two things generalise.
+  **Replace a predicate, never a caller**: the owner check lived in eight places (the list's
+  privacy clause, `get`, `thread`, both pending-thread reads, the single and bulk review gates,
+  `mine`), and widening it in seven of them would have left the eighth as the one screen where a
+  reviewer's approval "did not work"; one clause, and a `reviewable` flag on the payload so the web
+  gates on the API's answer rather than re-deriving it (`mayReview`). And **the decision retires
+  the right, never the ownership**: the reviewer links are deleted on approve and cascade on
+  reject, while the body fetch, the deep link and the suppression keep using the mailbox the
+  message is actually in — a logged row is its owner's alone again, by construction. The second
+  ask is #300 one link over: `interaction_tasks` is the task roster, `task_id` its lead (chip 0,
+  what derives the client and what every single-task reader — the enrichment offer, the closing
+  check, a rolled-back release — keeps reading), `task_ids` the write contract beside `task_id`
+  with the contact pair's exact semantics, and `thread_mappings` carries the whole roster so a
+  reply lands on the same three tickets. A lead column beside a roster table is the shape to copy
+  for the next link that turns out to be plural.
+
 
 ## 11. Working agreement (for Claude Code)
 

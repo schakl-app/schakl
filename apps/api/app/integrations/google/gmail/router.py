@@ -64,6 +64,7 @@ class GmailImportRequest(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    task_ids: list[uuid.UUID] | None = None
     contact_ids: list[uuid.UUID] | None = None
     #: Log it even though a colleague's mailbox already did (the upload's rule, #262).
     allow_duplicate: bool = False
@@ -168,6 +169,7 @@ async def import_gmail_message(
             "project_id": payload.project_id,
             "task_id": payload.task_id,
             **({"contact_ids": payload.contact_ids} if payload.contact_ids is not None else {}),
+            **({"task_ids": payload.task_ids} if payload.task_ids is not None else {}),
         },
         enrich_task=payload.enrich_task,
         allow_duplicate=payload.allow_duplicate,

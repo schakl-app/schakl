@@ -19,6 +19,11 @@ Shape decisions, agreed with the user on the issue:
   sync on every write — because it is what the ``contact`` sort column orders by, what the
   gmail thread-inheritance copies forward, and what a rolled-back release still reads
   (``docs/WORKFLOW.md``, expand/contract). Never write one without the other.
+- **And the task link, for the same reason**: one email answers three tickets, so
+  ``interaction_tasks`` is the roster and ``Interaction.task_id`` its lead (chip 0), from
+  which the client is derived and which every single-task reader keeps reading.
+- **A pending row is private to its mailbox owner — and to the colleagues who were on the
+  email** (``interaction_reviewers``): whoever of them reviews first decides for all.
 - **Emails arrive ``pending``** (per-org configurable): the team sees metadata (participants,
   subject, snippet); the body is only fetched — and visible — after the mailbox owner
   approves. Rejection deletes the row and suppresses the message, so a re-poll never
@@ -121,6 +126,7 @@ class InteractionKindDef(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
     label_i18n: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
 
 #: Which activity-log entity type each link FK mirrors onto (#152): a contactmoment's
 #: milestones show on the records it hangs on, in the writing transaction (§16).
@@ -270,9 +276,7 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     #: row of one thread, so the list folds a conversation to a single row. Only ever set on
     #: **logged, email** rows — a ``NULL`` row is trivially its own singleton group, so nothing
     #: changes for manual/pending rows. Assigned by ``system.resolve_conversation_id``.
-    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), nullable=True
-    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     #: The RFC 5322 thread root of an uploaded ``.eml`` (#272): the oldest Message-ID in its
     #: ``References``/``In-Reply-To`` chain, or its own ``rfc822_message_id`` when it starts a
     #: thread. Only set on **upload** rows — gmail rows fold by ``gmail_thread_id`` instead. Two
@@ -319,3 +323,81 @@ class InteractionContact(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
         nullable=False,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class InteractionTask(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One task a contactmoment hangs on — the contact roster's shape, one link over.
+
+    A call about the site launch is also the call that settled the invoice question, and a
+    reply to a client often answers three tickets at once; with one ``task_id`` the logger
+    picked a winner and the other two tasks' timelines quietly omitted the conversation. So
+    the task link is a roster too: ``interaction_tasks`` is the authority, and
+    ``Interaction.task_id`` survives as the **lead** — chip 0, rewritten on every write —
+    because it is what derives ``company_id``, what the enrichment offer reads, what the
+    closing-moment check and every pre-roster reader (a rolled-back release, an older MCP
+    client) still expect. Never write one without the other.
+
+    ``CASCADE`` on both sides for the same reason the contact roster has it: deleting the task
+    takes its chip, never the moment; deleting the moment takes every chip.
+    """
+
+    __tablename__ = "interaction_tasks"
+    __table_args__ = (
+        UniqueConstraint("org_id", "interaction_id", "task_id", name="uq_interaction_tasks_link"),
+        Index("ix_interaction_tasks_org_interaction", "org_id", "interaction_id"),
+        Index("ix_interaction_tasks_org_task", "org_id", "task_id"),
+    )
+
+    interaction_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class InteractionReviewer(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A colleague who may review a **pending** gmail row beside its mailbox owner.
+
+    A pending row is private to the mailbox it came from (#172) — and an email addressed to
+    two colleagues arrives in two mailboxes, of which exactly one logs it (the RFC-822 dedup,
+    the deferral to the intended owner). The other colleague was *on the email* and yet had
+    no queue entry, no notification and no way to approve it: the message sat in the sender's
+    queue until the sender got round to it. The privacy rule was written to keep a mailbox
+    from the *team*, not from the people the message was sent to.
+
+    So the poller names, per pending row, every colleague whose address was on the message
+    (``gmail/service.py``, resolved through ``Internals.owner_by_email``) — the owner
+    excluded, external logins never. Whoever reviews first decides for all: approval logs the
+    row for the team and **deletes these links**, rejection deletes the row (and the links go
+    with it), and the ``interaction.approved`` / ``interaction.rejected`` bus events already
+    retire the "waiting on your review" notification for every recipient (#170). Nothing here
+    is authorization in the RBAC sense — the ``review`` permission still gates the route — it
+    is the *row-level* answer to "is this pending message mine to decide on".
+    """
+
+    __tablename__ = "interaction_reviewers"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "interaction_id", "user_id", name="uq_interaction_reviewers_link"
+        ),
+        # "My queue": one index probe per viewer, whatever the org's backlog.
+        Index("ix_interaction_reviewers_org_user", "org_id", "user_id", "interaction_id"),
+        Index("ix_interaction_reviewers_org_interaction", "org_id", "interaction_id"),
+    )
+
+    interaction_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )

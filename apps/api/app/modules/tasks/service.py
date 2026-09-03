@@ -341,9 +341,7 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Activity
     # ------------------------------------------------------------------ #
-    async def _record(
-        self, task_id: uuid.UUID, action: str, payload: dict | None = None
-    ) -> None:
+    async def _record(self, task_id: uuid.UUID, action: str, payload: dict | None = None) -> None:
         # Whoever is really at the keyboard, when the actor is an account they were handed
         # (#296). Snapshotted for the same reason the actor is.
         impersonator = self.ctx.impersonated_by
@@ -454,9 +452,7 @@ class TaskService:
                 select(
                     TaskChecklist.task_id,
                     func.count(TaskChecklistItem.id),
-                    func.count(TaskChecklistItem.id).filter(
-                        TaskChecklistItem.done.is_(True)
-                    ),
+                    func.count(TaskChecklistItem.id).filter(TaskChecklistItem.done.is_(True)),
                 )
                 .join(
                     TaskChecklistItem,
@@ -558,9 +554,7 @@ class TaskService:
         # through a list ordered by a date it does not have, and the bulk edit that can date a
         # whole selection has nothing to select.
         if undated is not None:
-            stmt = stmt.where(
-                Task.due_date.is_(None) if undated else Task.due_date.is_not(None)
-            )
+            stmt = stmt.where(Task.due_date.is_(None) if undated else Task.due_date.is_not(None))
         if company_id is not None:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
@@ -575,9 +569,7 @@ class TaskService:
             # "mijn taken" and the person switcher are both built on, so matching the mirrored
             # star alone would make every shared task invisible to everyone but its owner —
             # which is the whole complaint a roster exists to answer.
-            stmt = stmt.where(
-                Task.id.in_(self.assignees.entity_ids_for_user(assignee_user_id))
-            )
+            stmt = stmt.where(Task.id.in_(self.assignees.entity_ids_for_user(assignee_user_id)))
         if assignee_contact_id is not None:
             stmt = stmt.where(Task.assignee_contact_id == assignee_contact_id)
         if status is not None:
@@ -609,9 +601,7 @@ class TaskService:
         # the honest place for work nobody has committed to a day (``?undated=1``, #392, is how
         # you go looking for them on purpose).
         if due == "overdue":
-            stmt = stmt.where(
-                Task.due_date < today, Task.status.in_(non_terminal_keys(statuses))
-            )
+            stmt = stmt.where(Task.due_date < today, Task.status.in_(non_terminal_keys(statuses)))
         elif due == "today":
             stmt = stmt.where(Task.due_date == today)
         elif due == "week":
@@ -838,9 +828,7 @@ class TaskService:
             later=int(counts[4]),
         )
 
-    async def dashboard_groups(
-        self, *, limit: int = DASHBOARD_GROUP_ROWS
-    ) -> DashboardTaskGroups:
+    async def dashboard_groups(self, *, limit: int = DASHBOARD_GROUP_ROWS) -> DashboardTaskGroups:
         """Open task counts by project/company, ranked by urgency (#398, #407).
 
         Four figures, not one. A count says how much work a client is carrying and says
@@ -984,30 +972,36 @@ class TaskService:
         detail.assignee_contact_name = list_item.assignee_contact_name
 
         checklists = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskChecklist)
-                .scoped_select()
-                .where(TaskChecklist.task_id == task_id)
-                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskChecklist)
+                    .scoped_select()
+                    .where(TaskChecklist.task_id == task_id)
+                    .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         checklist_reads = [ChecklistRead.model_validate(c) for c in checklists]
         if checklists:
             items = (
-                await self.ctx.session.execute(
-                    self.ctx.repo(TaskChecklistItem)
-                    .scoped_select()
-                    .where(TaskChecklistItem.checklist_id.in_([c.id for c in checklists]))
-                    .order_by(
-                        TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc()
+                (
+                    await self.ctx.session.execute(
+                        self.ctx.repo(TaskChecklistItem)
+                        .scoped_select()
+                        .where(TaskChecklistItem.checklist_id.in_([c.id for c in checklists]))
+                        .order_by(
+                            TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc()
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for read in checklist_reads:
                 read.items = [
-                    ChecklistItemRead.model_validate(i)
-                    for i in items
-                    if i.checklist_id == read.id
+                    ChecklistItemRead.model_validate(i) for i in items if i.checklist_id == read.id
                 ]
 
         # Bounded like the activity trail below it: a long-running task's discussion is otherwise
@@ -1114,13 +1108,17 @@ class TaskService:
                     )
                 )
         links = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskLink)
-                .scoped_select()
-                .where(TaskLink.task_id == task_id)
-                .order_by(TaskLink.created_at.asc())
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskLink)
+                    .scoped_select()
+                    .where(TaskLink.task_id == task_id)
+                    .order_by(TaskLink.created_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         detail.links = [LinkRead.model_validate(link) for link in links]
 
         # Minutes booked on this task. Through the time module's published aggregate (#313)
@@ -1141,9 +1139,7 @@ class TaskService:
         # A ``javascript:``/``data:`` URL survives the "://" heuristic and would render as an
         # executable href (stored XSS). Refuse it at the source (security audit web-XSS-2).
         reject_dangerous_url(url, field="url")
-        return await self.ctx.repo(TaskLink).create(
-            task_id=task_id, url=url, title=data.title
-        )
+        return await self.ctx.repo(TaskLink).create(task_id=task_id, url=url, title=data.title)
 
     async def delete_link(self, task_id: uuid.UUID, link_id: uuid.UUID) -> None:
         await self._writable_task_or_403(task_id)
@@ -1244,9 +1240,7 @@ class TaskService:
             # Everyone on it is told, not only the star (#375): a colleague added as the second
             # assignee has exactly as much reason to hear about it as the first. Assigning
             # yourself stays silent — the fan-out drops the actor (issue #16).
-            await self._emit_task(
-                "task.assigned", task, [link.user_id for link in task.assignees]
-            )
+            await self._emit_task("task.assigned", task, [link.user_id for link in task.assignees])
         if task.assignee_contact_id is not None:
             await self._notify_contact_assigned(task)
         return task
@@ -1483,12 +1477,16 @@ class TaskService:
         self, task_id: uuid.UUID, interaction_id: uuid.UUID
     ) -> None:
         """The closing contact moment must be linked to *this* task and team-visible (#157).
-        Raw org-scoped SQL against the interactions table — never a cross-module import (§6);
-        a pending gmail row cannot close anything (its content isn't approved yet)."""
+        Raw org-scoped SQL against the interactions tables — never a cross-module import (§6);
+        a pending gmail row cannot close anything (its content isn't approved yet). Linked
+        means *on the roster* (``interaction_tasks``), not only the lead column: an email that
+        answered three tickets may close any of them."""
         linked = await self.ctx.session.scalar(
             sql_text(
-                "SELECT 1 FROM interactions WHERE id = :iid AND org_id = :oid"
-                " AND task_id = :tid AND status = 'logged'"
+                "SELECT 1 FROM interactions i WHERE i.id = :iid AND i.org_id = :oid"
+                " AND i.status = 'logged' AND (i.task_id = :tid OR EXISTS ("
+                "SELECT 1 FROM interaction_tasks it WHERE it.org_id = i.org_id"
+                " AND it.interaction_id = i.id AND it.task_id = :tid))"
             ),
             {"iid": interaction_id, "oid": self.ctx.org.id, "tid": task_id},
         )
@@ -1556,9 +1554,7 @@ class TaskService:
             # any other update inherits whatever is stored — so clearing the star on a two-person
             # task does not read as "no employees" and let a client contact in beside them.
             roster_size = (
-                len(new_links)
-                if replace_roster
-                else len(await self.assignees.for_entity(task.id))
+                len(new_links) if replace_roster else len(await self.assignees.for_entity(task.id))
             )
             await self._validate_assignee(
                 user_id=values.get("assignee_user_id", task.assignee_user_id),
@@ -1632,9 +1628,7 @@ class TaskService:
         if values.get("closing_interaction_id") is not None:
             await self._closing_interaction_or_422(task.id, values["closing_interaction_id"])
         requires_keys = {s.key for s in statuses if s.requires_interaction}
-        task_requires_interaction = values.get(
-            "requires_interaction", task.requires_interaction
-        )
+        task_requires_interaction = values.get("requires_interaction", task.requires_interaction)
         needs_closing_moment = new_status in requires_keys or (
             task_requires_interaction and new_status in terminal
         )
@@ -1678,9 +1672,7 @@ class TaskService:
                 today=await org_today(self.ctx.session, self.ctx.org.id),
             )
 
-        changed = [
-            f for f in _TRACKED_FIELDS if f in values and getattr(task, f) != values[f]
-        ]
+        changed = [f for f in _TRACKED_FIELDS if f in values and getattr(task, f) != values[f]]
         status_changed = "status" in values and old_status != new_status
         old_due = task.due_date
         # Read the old roster before the write; the diff drives who is told (issue #16, #375).
@@ -1718,9 +1710,7 @@ class TaskService:
                 # The trail says *what justified* the close, not only that it happened.
                 status_payload["closing_interaction_id"] = str(task.closing_interaction_id)
                 status_payload["closing_subject"] = await self.ctx.session.scalar(
-                    sql_text(
-                        "SELECT subject FROM interactions WHERE id = :iid AND org_id = :oid"
-                    ),
+                    sql_text("SELECT subject FROM interactions WHERE id = :iid AND org_id = :oid"),
                     {"iid": task.closing_interaction_id, "oid": self.ctx.org.id},
                 )
             await self._record(task.id, "status_changed", status_payload)
@@ -1850,9 +1840,7 @@ class TaskService:
         # fold away on their own — the same answer `_list_items` gives per row.
         if self.ctx.is_portal:
             return []
-        return await self.ctx.repo(TaskLabel).list(
-            limit=200, order_by=TaskLabel.position.asc()
-        )
+        return await self.ctx.repo(TaskLabel).list(limit=200, order_by=TaskLabel.position.asc())
 
     async def create_label(self, data: LabelCreate) -> TaskLabel:
         self.ctx.require("tasks.label.write")
@@ -1881,12 +1869,16 @@ class TaskService:
         labels = [await label_repo.get_or_404(label_id) for label_id in set(label_ids)]
 
         existing = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskLabelLink)
-                .scoped_select()
-                .where(TaskLabelLink.task_id == task_id)
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskLabelLink)
+                    .scoped_select()
+                    .where(TaskLabelLink.task_id == task_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         wanted = {label.id for label in labels}
         for link in existing:
             if link.label_id not in wanted:
@@ -1895,9 +1887,7 @@ class TaskService:
         for label in labels:
             if label.id not in current:
                 self.ctx.session.add(
-                    TaskLabelLink(
-                        org_id=self.ctx.org.id, task_id=task_id, label_id=label.id
-                    )
+                    TaskLabelLink(org_id=self.ctx.org.id, task_id=task_id, label_id=label.id)
                 )
         await self.ctx.session.flush()
         await self._record(task_id, "updated", {"changed": ["labels"]})
@@ -2036,22 +2026,28 @@ class TaskService:
 
         repo = self.ctx.repo(TaskChecklist)
         siblings = (
-            await self.ctx.session.execute(
-                repo.scoped_select()
-                .where(TaskChecklist.task_id == task_id)
-                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
-            )
-        ).scalars().all()
-        source_items = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskChecklistItem)
-                .scoped_select()
-                .where(TaskChecklistItem.checklist_id == checklist_id)
-                .order_by(
-                    TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc()
+            (
+                await self.ctx.session.execute(
+                    repo.scoped_select()
+                    .where(TaskChecklist.task_id == task_id)
+                    .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
+        source_items = (
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskChecklistItem)
+                    .scoped_select()
+                    .where(TaskChecklistItem.checklist_id == checklist_id)
+                    .order_by(TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         copy = await repo.create(
             task_id=task_id,
@@ -2155,9 +2151,7 @@ class TaskService:
         template = await repo.get_or_404(template_id)
         await repo.delete(template)
 
-    async def _checklist_or_404(
-        self, task_id: uuid.UUID, checklist_id: uuid.UUID
-    ) -> TaskChecklist:
+    async def _checklist_or_404(self, task_id: uuid.UUID, checklist_id: uuid.UUID) -> TaskChecklist:
         checklist = await self.ctx.repo(TaskChecklist).get_or_404(checklist_id)
         if checklist.task_id != task_id:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -2259,16 +2253,20 @@ class TaskService:
         """
         await self._writable_task_or_403(task_id)
         rows = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskChecklist)
-                .scoped_select()
-                .where(TaskChecklist.task_id == task_id)
-                # The order the card reads them in, so "what the payload did not name" is
-                # appended in the order the user was actually looking at.
-                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
-                .limit(_ORDER_CAP)
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskChecklist)
+                    .scoped_select()
+                    .where(TaskChecklist.task_id == task_id)
+                    # The order the card reads them in, so "what the payload did not name" is
+                    # appended in the order the user was actually looking at.
+                    .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+                    .limit(_ORDER_CAP)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         ordered = _renumber(rows, data.checklist_ids)
         await self.ctx.session.flush()
         return ChecklistOrderRead(ids=[row.id for row in ordered])
@@ -2280,14 +2278,18 @@ class TaskService:
         await self._writable_task_or_403(task_id)
         await self._checklist_or_404(task_id, checklist_id)
         rows = (
-            await self.ctx.session.execute(
-                self.ctx.repo(TaskChecklistItem)
-                .scoped_select()
-                .where(TaskChecklistItem.checklist_id == checklist_id)
-                .order_by(TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc())
-                .limit(_ORDER_CAP)
+            (
+                await self.ctx.session.execute(
+                    self.ctx.repo(TaskChecklistItem)
+                    .scoped_select()
+                    .where(TaskChecklistItem.checklist_id == checklist_id)
+                    .order_by(TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc())
+                    .limit(_ORDER_CAP)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         ordered = _renumber(rows, data.item_ids)
         await self.ctx.session.flush()
         return ChecklistOrderRead(ids=[row.id for row in ordered])

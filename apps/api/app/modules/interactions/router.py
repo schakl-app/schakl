@@ -140,7 +140,10 @@ async def list_interactions(
         contact_id=contact_id,
         kind=kind,
         status=status,
-        owner_user_id=ctx.user.id if mine else owner_user_id,
+        owner_user_id=owner_user_id,
+        # The queue's filter is the caller's *review set* — their mailbox plus the colleague
+        # rows they were named on — which the service states once (``list``'s docstring).
+        mine=mine,
         include=include,
         q=q,
         date_from=date_from,
@@ -179,6 +182,9 @@ async def upload_interaction_eml(
     company_id: uuid.UUID | None = Form(None),
     project_id: uuid.UUID | None = Form(None),
     task_id: uuid.UUID | None = Form(None),
+    task_ids: list[uuid.UUID] | None = Form(
+        None, description="Every task the message is about; wins over task_id"
+    ),
     contact_id: uuid.UUID | None = Form(None),
     contact_ids: list[uuid.UUID] | None = Form(
         None, description="Everyone the message was with; wins over contact_id"
@@ -216,8 +222,9 @@ async def upload_interaction_eml(
             "task_id": task_id,
             "contact_id": contact_id,
             # Only when the caller actually sent it: an absent key is what lets the service's
-            # one contact contract (schemas.py) fall back to ``contact_id`` for older callers.
+            # one roster contract (schemas.py) fall back to the singular for older callers.
             **({"contact_ids": contact_ids} if contact_ids is not None else {}),
+            **({"task_ids": task_ids} if task_ids is not None else {}),
         },
         allow_duplicate=allow_duplicate,
         enrich_task=enrich_task,

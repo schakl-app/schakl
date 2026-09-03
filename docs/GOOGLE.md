@@ -417,6 +417,26 @@ agency tool — so, direct.
   difference between deferring and *dropping*: standing aside for a mailbox that is
   disconnected, opted out or missing the Gmail scope would lose the email outright, so in that
   case the copy we hold is the only one there will ever be and it logs where it landed.
+- **Private to the mailbox is not private from the people it was sent to.** A pending row is
+  the owner's and nobody else's (#172) — which, taken with the rule above, meant that a colleague
+  in `To` or `Cc` had no queue entry, no notification and no way to approve an email that reached
+  them, because their own copy was exactly the one that stood aside. So the ingest names, per
+  pending row, every colleague whose address was on the message (`interaction_reviewers`, resolved
+  through `Internals.owner_by_email`, so an external login is never one), the pending notification
+  goes to all of them as **one** event, and every "is this pending row mine" question in the
+  service asks the *review set* (`_mine_or_reviewing`) rather than the owner column: the queue
+  (`?mine=true`), the single read, the thread desk, the fold, the approve / file / reject gates and
+  the bulk loader alike. Whoever decides first decides for all: approval drops the reviewer links
+  and `interaction.approved` retires the notification for every recipient (#170's resolver did
+  that already — it was only ever handed one recipient); rejection deletes the row and its links
+  go with it. Ownership never moves — the body fetch, the deep link and the suppression still use
+  the mailbox the message is actually in — and a *logged* row stays its owner's alone, because the
+  links are gone with the decision. The payload says so (`InteractionRead.reviewable`), and the
+  web's review controls read that rather than `owner_user_id === me`.
+- **The task link is a roster too**, for the same reason the contact link became one (#300): one
+  email answers three tickets. `interaction_tasks` is the authority and `task_id` its lead — what
+  derives the client, what the fill-in offer reads, and what `thread_mappings` now carries as the
+  whole roster (`task_ids`) so a reply lands on the same three tasks.
 - Store **metadata + a deep link** (`message-id`, `thread-id`, subject, snippet, participants,
   timestamp, `https://mail.google.com/mail/u/0/#all/<msgid>`) rather than full bodies by
   default. Pull the body on demand — lighter, faster, far less invasive.

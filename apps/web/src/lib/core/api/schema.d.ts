@@ -15416,6 +15416,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the message is about; wins over task_id
+             */
+            task_ids?: string[] | null;
         };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
@@ -18479,6 +18484,8 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /** Task Ids */
+            task_ids?: string[] | null;
         };
         /** GmailImportResult */
         GmailImportResult: {
@@ -21195,6 +21202,11 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
             /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
+            /**
              * Whole Thread
              * @default false
              */
@@ -21222,6 +21234,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionBulkAssign
@@ -21244,6 +21261,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionBulkFailure
@@ -21336,6 +21358,11 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionDirection
@@ -21515,6 +21542,11 @@ export interface components {
             project_name?: string | null;
             /** Review Ids */
             review_ids?: string[];
+            /**
+             * Reviewable
+             * @default false
+             */
+            reviewable: boolean;
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];
@@ -21525,6 +21557,8 @@ export interface components {
             task_id?: string | null;
             /** Task Title */
             task_title?: string | null;
+            /** Tasks */
+            tasks?: components["schemas"]["InteractionTaskRef"][];
         };
         /** InteractionReject */
         InteractionReject: {
@@ -21552,6 +21586,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionSource
@@ -21563,6 +21602,19 @@ export interface components {
          * @enum {string}
          */
         InteractionStatus: "pending" | "logged";
+        /**
+         * InteractionTaskRef
+         * @description One task on the roster, labelled — the contact ref's shape, one link over.
+         */
+        InteractionTaskRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title?: string | null;
+        };
         /** InteractionUpdate */
         InteractionUpdate: {
             /** Body Text */
@@ -21589,6 +21641,11 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /** InvoiceCreate */
         InvoiceCreate: {

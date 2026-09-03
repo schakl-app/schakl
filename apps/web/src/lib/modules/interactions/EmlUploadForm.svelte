@@ -51,6 +51,7 @@
   import { canWriteTask } from "$lib/modules/tasks/permissions";
 
   import ContactChips from "./ContactChips.svelte";
+  import TaskChips from "./TaskChips.svelte";
   import GmailMessagePicker from "./GmailMessagePicker.svelte";
   import {
     loadLinkLookups,
@@ -136,7 +137,10 @@
   // --- link pickers (#183's assign-while-logging, on an upload) ------------------------- //
   let fCompany = $state("");
   let fProject = $state("");
-  let fTask = $state("");
+  // A roster (`TaskChips`); the lead is what the fill-in offer and the review hand-back read.
+  let fTasks = $state<string[]>([]);
+  const fTask = $derived(fTasks[0] ?? "");
+  const taskLabels: Record<string, string | null | undefined> = {};
   let companies = $state<LinkOption[]>([]);
   let projects = $state<ProjectOption[]>([]);
   let tasks = $state<TaskOption[]>([]);
@@ -188,10 +192,13 @@
     fProject = id;
     const project = projects.find((p) => p.value === id);
     if (project?.company_id && showCompany) fCompany = project.company_id;
-    if (fTask && tasks.find((task) => task.value === fTask)?.project_id !== id) fTask = "";
+    // Every chip follows the project, not only the lead (`InteractionForm`'s rule).
+    fTasks = fTasks.filter(
+      (picked) => tasks.find((task) => task.value === picked)?.project_id === id,
+    );
   }
+  /** The lead changed (`TaskChips`' `onpick`): it fixes the levels above. */
   function onTaskPicked(id: string) {
-    fTask = id;
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
@@ -352,7 +359,8 @@
           },
         ];
       }
-      onTaskPicked(created.id);
+      if (!fTasks.includes(created.id)) fTasks = [...fTasks, created.id];
+      if (fTasks[0] === created.id) onTaskPicked(created.id);
     } else if (created.slot === "eml_company") {
       handledCreate = created.id;
       if (!companies.some((c) => c.value === created.id)) {
@@ -690,25 +698,24 @@
         </label>
       {/if}
       {#if showTask}
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-          <Combobox
+        <div class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.tasks")}</span>
+          <TaskChips
+            bind:picked={fTasks}
             items={taskOptions}
             archived={linkSplit.tasks.retired}
             archivedLabel={t("tasks.picker.archived")}
-            name="task_id"
-            value={fTask}
-            placeholder={t("common.none")}
-            onselect={onTaskPicked}
+            labels={taskLabels}
+            onpick={onTaskPicked}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;
                   taskCreateOpen = true;
                 }
               : undefined}
-            id="eml-task"
+            id="eml-tasks"
           />
-        </label>
+        </div>
       {/if}
       <div class="block text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
