@@ -179,6 +179,20 @@ class SeriesData(BaseModel):
     metrics: dict[str, list[float]] = Field(default_factory=dict)
 
 
+class SourceAiVisibility(BaseModel):
+    """What a source can say about the site's visibility in Google's generative AI features.
+
+    Search Console only, today. ``available`` is ``False`` while the Search Analytics API has no
+    search type for its Generative AI performance report (June 2026; the vocabulary is checked
+    against Google's discovery document in ``google_search_console.client``), and ``report_url``
+    is where the numbers are in the meantime. A state with a link rather than a tile with a
+    number, because a plausible figure here is one nothing on any screen could contradict.
+    """
+
+    available: bool = False
+    report_url: str = ""
+
+
 class SourceMetrics(BaseModel):
     link_id: uuid.UUID
     source: MarketingSource
@@ -225,6 +239,10 @@ class SourceMetrics(BaseModel):
     #: for a manager (the portal/client never receives a hidden source at all); it lets edit mode
     #: show the section with a re-enable toggle.
     hidden: bool = False
+    #: The AI-visibility card, for a source that has one (Search Console). ``None`` for every
+    #: other source and for a portal login: the link lands in the *agency's* Google account, the
+    #: same reason ``deep_link`` is blank for a client (#447).
+    ai_visibility: SourceAiVisibility | None = None
 
 
 class MarketingConnection(BaseModel):

@@ -209,6 +209,7 @@ Query parameters:
 | `unlinked` | boolean | Only tasks with no client and no project (default `false`) |
 | `assignee_user_id` | string |  |
 | `assignee_contact_id` | string |  |
+| `assigned_to` | `contact` · `agency` | Whose work it is: `contact` — assigned to one of the client's own people; `agency` — everything else (assigned to staff, or to nobody yet). The client's homepage draws the two as separate tiles, and a specific person is a different question (`assignee_contact_id` / `assignee_user_id`). |
 | `status` | string | A configured status key |
 | `open` | boolean | Only tasks in a non-terminal status — the working set, any status key (default `false`) |
 | `label_id` | string |  |
@@ -216,7 +217,6 @@ Query parameters:
 | `due_from` | string | Deadline window start (the Agenda feed) |
 | `due_to` | string | Deadline window end (inclusive) |
 | `q` | string |  |
-| `unnamed` | boolean | Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. |
 | `undated` | boolean | Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. |
 | `sort` | string | due \| title \| due_date \| priority \| status \| assignee \| …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. |
 | `meta` | boolean | Include label/checklist/comment aggregates (default `true`) |

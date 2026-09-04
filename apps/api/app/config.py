@@ -140,7 +140,7 @@ class Settings(BaseSettings):
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
             "interactions", "google", "marketing", "google_ads", "google_analytics",
-            "google_tag_manager", "hr",
+            "google_search_console", "google_tag_manager", "hr",
             "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
             "snelstart", "timeon",
         ]

@@ -862,8 +862,8 @@ Antwoord: `200` · `UninvoicedReport`
 | `GET` `/subscriptions/{subscription_id}/prices` | `subscriptions.subscription.read` |
 | `POST` `/subscriptions/price-increase` | `subscriptions.subscription.write` |
 | `POST` `/subscriptions/price-increase/preview` | `subscriptions.subscription.write` |
-| `GET` `/subscriptions/summary` | `subscriptions.subscription.read` |
-| `GET` `/subscriptions/templates` | `subscriptions.subscription.read` |
+| `GET` `/subscriptions/summary` | `subscriptions.subscription.read:any` |
+| `GET` `/subscriptions/templates` | `subscriptions.subscription.read:any` |
 | `POST` `/subscriptions/templates` | `subscriptions.template.manage` |
 | `PATCH` `/subscriptions/templates/{template_id}` | `subscriptions.template.manage` |
 | `DELETE` `/subscriptions/templates/{template_id}` | `subscriptions.template.manage` |
@@ -980,7 +980,7 @@ Antwoord: `200` · `PriceIncreaseResult`
 
 **Summary** — MRR/ARR + the invoices due within a month, for Overzicht → Omzet.
 
-Recht: `subscriptions.subscription.read`
+Recht: `subscriptions.subscription.read:any`
 
 Antwoord: `200` · `SubscriptionSummary`
 
@@ -988,7 +988,7 @@ Antwoord: `200` · `SubscriptionSummary`
 
 **List Subscription Templates**
 
-Recht: `subscriptions.subscription.read`
+Recht: `subscriptions.subscription.read:any`
 
 Antwoord: `200` · `SubscriptionTemplateRead[]`
 

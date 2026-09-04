@@ -75,6 +75,7 @@ apps/
       google/      # Workspace: Gmail, Calendar, Drive, Contacts
       google_ads/
       google_analytics/  # GA4, live and read-only
+      google_search_console/  # Search Console, live and read-only — and the AI-visibility seam
       cloudflare/
       oxxa/        # registrar
       uptime/      # Uptime Kuma
@@ -238,7 +239,7 @@ and it is worth having with every third-party account in the world cancelled: `c
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
-over there: `google` (Workspace), `google_ads`, `google_analytics`, `cloudflare`, `oxxa`,
+over there: `google` (Workspace), `google_ads`, `google_analytics`, `google_search_console`, `cloudflare`, `oxxa`,
 `uptime` (Uptime Kuma), `wordpress`, `mollie`, `timeon` (an outgoing time registration a
 cutover is still running on).
 
@@ -263,7 +264,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `timeon` → `time`.
+  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `google_search_console` →
+  `google`, `timeon` → `time`.
   Deliberately *not* "modules this
   is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
@@ -1525,6 +1527,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   would otherwise shift every column one to the left with every number still plausible; and a
   sampled or thresholded answer is reported as one, because a sampled number reads as a count on
   every screen it lands on.
+- **A report Google draws is not a number Google's API returns, and the honest tool says which**
+  (`google_search_console`, `docs/GOOGLE_SEARCH_CONSOLE.md`). Search Console was reachable from an
+  agent only as the marketing module's stored four-metric aggregate and three drill-downs, while
+  Analytics had seventeen routes and its own section — so it got the same shape: thirteen GET
+  routes under `/google-search-console` (sites, sitemaps, an overview, the search-type split, the
+  daily and hourly series, a breakdown, the movers, the URL inspection and a free-form query behind
+  its own `report.run`), derived into `/mcp/google-search-console` and the `growth` bundle. Three
+  rules generalise. **A `siteUrl` is a URL, so it is a query parameter**: a path parameter is
+  decoded before it is matched, `%2F` becomes `/`, and the route stops matching — Analytics puts its
+  property in the path because a property id is a number. **A vocabulary is read from the vendor's
+  discovery document and refused here before the round trip**, with the list that would have
+  worked in `details` (§9): Google's own 400 for an unknown dimension names neither the bad value
+  nor the good ones, and the document's revision is written into the module so the next reader
+  checks it rather than assumes. And the one the whole ask was about: Search Console gained a
+  **Generative AI performance report** in June 2026 — impressions in AI Overviews and AI Mode by
+  page, country, device and date — and as of discovery revision `20260902` the Search Analytics
+  API accepts exactly six search types and no generative-AI value; the numbers exist and the API
+  does not return them. So `GET /ai-visibility` answers **`available: false` with the report's own
+  URL** and never estimates the figure from the web totals, where AI Overviews are folded in with
+  no way to separate them; the marketing dashboard's Search Console section draws the same fact as
+  a dashed **card with a link, not a tile with a number** (withheld from a portal login for the
+  reason `deep_link` is, #447); and `client.GENERATIVE_AI_SEARCH_TYPES` is the seam — empty on
+  purpose, pinned by a test that fails the day it is populated, which is when the card, the reason
+  and the tool description want revisiting. A tool that answered a plausible number here would be
+  the worst kind of wrong, because nothing on any screen could contradict it. Its sibling finding
+  is in the web build: thirteen more operations pushed the generated client past TypeScript's
+  instantiation depth in the one place that handed `api.GET` to `Reflect.apply`, so the deduper
+  widens through `unknown` — the same assertion, the proof skipped.
 - **A tool the caller may never use must not be in the model's view, and the service must refuse it
   anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
   "how did this client do last month" was a question the platform could answer everywhere except

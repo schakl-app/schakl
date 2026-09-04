@@ -23,15 +23,21 @@ import type { ApiClient } from "$lib/core/api/client";
  */
 export function dedupeGets(api: ApiClient): ApiClient {
   const cache = new Map<string, Promise<unknown>>();
+  // Widened through `unknown` at both ends, on purpose. Handing `api.GET` to `Reflect.apply`
+  // makes TypeScript compare its overload over *every* path in the generated client against
+  // `Function`, and at ~630 operations that comparison exceeds the compiler's instantiation
+  // depth ("Type instantiation is excessively deep") — the thirteen Search Console routes were
+  // the ones that tipped it. The runtime is identical; only the proof is skipped.
+  const original = api.GET as unknown as (...args: unknown[]) => Promise<unknown>;
   const get = ((...args: unknown[]) => {
     const key = JSON.stringify(args);
     let request = cache.get(key);
     if (!request) {
-      request = Reflect.apply(api.GET, api, args) as Promise<unknown>;
+      request = original.apply(api, args);
       cache.set(key, request);
     }
     return request;
-  }) as ApiClient["GET"];
+  }) as unknown as ApiClient["GET"];
   return new Proxy(api, {
     get(target, property, receiver) {
       return property === "GET" ? get : Reflect.get(target, property, receiver);

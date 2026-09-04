@@ -45,9 +45,10 @@ the client is for:
 | A general-purpose agent / n8n | `https://<host>/mcp/agent` | ~127 |
 | A Google Ads agent | `https://<host>/mcp/google-ads` | ~45 |
 | A Google Analytics agent | `https://<host>/mcp/google-analytics` | 17, read-only |
+| A Search Console agent | `https://<host>/mcp/google-search-console` | 13, read-only |
 | Hosting & domains | `https://<host>/mcp/infra` | ~86 |
 | Invoicing | `https://<host>/mcp/finance` | ~83 |
-| Marketing & reporting | `https://<host>/mcp/growth` | ~137 |
+| Marketing & reporting | `https://<host>/mcp/growth` | ~150 |
 | One module on its own | `https://<host>/mcp/<module>` | varies |
 
 Instellingen → API en MCP lists every section this instance serves, with its live tool count,

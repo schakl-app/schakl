@@ -86,6 +86,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/api/app/integrations/google/`
 - `apps/api/app/integrations/google_ads/`
 - `apps/api/app/integrations/google_analytics/`
+- `apps/api/app/integrations/google_search_console/`
 - `apps/api/app/integrations/google_tag_manager/`
 - `apps/api/app/integrations/mollie/`
 - `apps/api/app/integrations/oxxa/`

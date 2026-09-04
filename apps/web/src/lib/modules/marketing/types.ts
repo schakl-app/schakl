@@ -180,6 +180,17 @@ export interface SourceMetrics {
   /** This source is hidden from the client's dashboard (#192) — only ever set for a manager,
    *  so edit mode can list it and offer to re-enable it. The portal never receives it. */
   hidden?: boolean;
+  /** The AI-visibility card (Search Console only, staff only). `available` is false while the
+   *  Search Analytics API has no search type for the console's Generative AI report, and
+   *  `report_url` is where the numbers are meanwhile. Absent for every other source and for a
+   *  portal login, whose link would land in the agency's Google account (#447). */
+  ai_visibility?: SourceAiVisibility | null;
+}
+
+/** What a source can say about the site's visibility in AI Overviews / AI Mode. */
+export interface SourceAiVisibility {
+  available: boolean;
+  report_url: string;
 }
 
 /** One source's stored layout (#192); `null`/absent fields mean "not curated". */

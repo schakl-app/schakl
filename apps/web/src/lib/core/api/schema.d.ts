@@ -3616,6 +3616,308 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google-search-console/ai-visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Ai Visibility
+         * @description How visible the site is in Google's generative AI features — AI Overviews and AI Mode —
+         *     as far as the Search Console API can say.
+         *
+         *     Read available first. Search Console has shown a Generative AI performance report since
+         *     June 2026 (impressions by page, country, device and date), and as of the API revision in
+         *     api_revision_checked the Search Analytics API has no search type for it: available is
+         *     false, reason names the state, and report_url opens the report in the console, which is
+         *     where those numbers live. Never estimate the missing figures from web totals — AI
+         *     Overviews are folded into web and cannot be separated. When Google adds the search type,
+         *     sources carries the same overview shape per generative feature.
+         */
+        get: operations["google_search_console_ai_visibility_api_v1_google_search_console_ai_visibility_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Breakdown
+         * @description One dimension, ranked — top queries, top pages, countries, devices, or the search
+         *     appearances (rich results, video, product snippets…) the site was shown with.
+         *
+         *     truncated says the answer is a page of a longer list, so a top-25 is never mistaken for
+         *     the whole. Filter with query=@brand to separate branded from unbranded.
+         */
+        get: operations["google_search_console_breakdown_api_v1_google_search_console_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/hourly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Hourly
+         * @description Hour by hour over the last few days, today included and still moving — for "what
+         *     happened this morning" and "did the launch land". Every row may still change; there is no
+         *     final hourly data, by Google's design.
+         */
+        get: operations["google_search_console_hourly_api_v1_google_search_console_hourly_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Inspect Url
+         * @description What Google's index holds for one URL: whether it is indexed (verdict PASS) and if not
+         *     why (coverage_state, indexing_state, robots_txt_state, page_fetch_state), which canonical
+         *     Google chose against the one the page declares, when it was last crawled, and the rich
+         *     results found. One URL per call — Google allows 2 000 inspections a day per property.
+         */
+        get: operations["google_search_console_inspect_url_api_v1_google_search_console_inspect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/movers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Movers
+         * @description Which queries or pages moved most in average position between this period and the one
+         *     it is compared against. change is positive for a climb. entered and dropped count what
+         *     appeared or vanished entirely, which the rows cannot show.
+         */
+        get: operations["google_search_console_movers_api_v1_google_search_console_movers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Overview
+         * @description How a property did over a period — clicks, impressions, CTR and average position —
+         *     against the same period a year earlier, with the change already computed, plus the split
+         *     by device.
+         *
+         *     ctr is a fraction (0.0432 is 4,32 %). position is an average and lower is better, which
+         *     the change says for itself. A null relative change means there was no baseline, which is
+         *     not the same as no change. fresh_from names the first day Google is still collecting.
+         */
+        get: operations["google_search_console_overview_api_v1_google_search_console_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Query
+         * @description Any dimensions crossed, with any filters, any aggregation and any data state — the
+         *     escape hatch for questions the curated reads do not answer (query by page, page by
+         *     country, branded queries by device…).
+         *
+         *     Read-only by construction: the Search Analytics API has no write verb, and the site is a
+         *     value this connection can already list. An unknown dimension, search type or filter
+         *     field is refused here with the list of ones that work, before Google is asked.
+         */
+        get: operations["google_search_console_query_api_v1_google_search_console_query_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/search-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Search Types
+         * @description The four metrics per Google surface — web, image, video, news, Discover, Google News —
+         *     so "where is this site actually seen" is one answer. AI Overviews sit inside web and the
+         *     API cannot split them out; see /ai-visibility for what it can say.
+         */
+        get: operations["google_search_console_search_types_api_v1_google_search_console_search_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/site": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Search Console Site
+         * @description One property's record: its kind (domain or URL prefix) and what this account may do there.
+         */
+        get: operations["get_google_search_console_site_api_v1_google_search_console_site_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/sitemap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Sitemap
+         * @description One sitemap by its URL.
+         */
+        get: operations["google_search_console_sitemap_api_v1_google_search_console_sitemap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/sitemaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Sitemaps
+         * @description The sitemaps submitted for a property: when Google last read each, how many URLs it
+         *     declares, and how many errors and warnings it carries. A sitemap nobody submitted, or one
+         *     with errors, is the usual answer to "why are the new pages not indexed".
+         */
+        get: operations["google_search_console_sitemaps_api_v1_google_search_console_sitemaps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Google Search Console Sites
+         * @description Every Search Console property the signed-in user's Google account can read. Start here.
+         *
+         *     Answers rather than refuses when there is no credential: `connected` false means nobody has
+         *     connected Google, `has_scope` false means the grant does not carry Search Console — different
+         *     states with different cures, and neither is an error about this request. A property with
+         *     permission_level SITE_UNVERIFIED_USER answers no data until somebody verifies it.
+         */
+        get: operations["list_google_search_console_sites_api_v1_google_search_console_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-search-console/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Search Console Timeseries
+         * @description The four metrics day by day, oldest first. A day with nothing shown is omitted by
+         *     Google rather than answered as zero.
+         */
+        get: operations["google_search_console_timeseries_api_v1_google_search_console_timeseries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/calendar/calendars": {
         parameters: {
             query?: never;
@@ -19965,6 +20267,427 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * GoogleSearchConsoleAiSource
+         * @description One generative AI search type's numbers, for the day the API answers them.
+         */
+        GoogleSearchConsoleAiSource: {
+            /** Change */
+            change?: {
+                [key: string]: components["schemas"]["GoogleSearchConsoleChange"] | null;
+            };
+            /** Previous Totals */
+            previous_totals?: {
+                [key: string]: number;
+            };
+            /** Top Pages */
+            top_pages?: components["schemas"]["GoogleSearchConsoleRow"][];
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * GoogleSearchConsoleAiVisibility
+         * @description How visible the site is in Google's generative AI features — and whether the API can say.
+         *
+         *     ``available`` is the whole answer today (see ``client.GENERATIVE_AI_SEARCH_TYPES``): the
+         *     report exists in the console, the numbers exist, and the Search Analytics API does not
+         *     return them. ``report_url`` is where they are. When Google adds the search type, ``sources``
+         *     fills in and nothing else about this shape changes.
+         */
+        GoogleSearchConsoleAiVisibility: {
+            /**
+             * Api Revision Checked
+             * @default
+             */
+            api_revision_checked: string;
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            compared_with?: components["schemas"]["GoogleSearchConsoleCompare"] | null;
+            /** Features */
+            features?: string[];
+            period?: components["schemas"]["GoogleSearchConsolePeriod"] | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Report Url
+             * @default
+             */
+            report_url: string;
+            /** Site Url */
+            site_url: string;
+            /** Sources */
+            sources?: {
+                [key: string]: components["schemas"]["GoogleSearchConsoleAiSource"];
+            };
+        };
+        /** GoogleSearchConsoleChange */
+        GoogleSearchConsoleChange: {
+            /** Absolute */
+            absolute: number;
+            /**
+             * Lower Is Better
+             * @default false
+             */
+            lower_is_better: boolean;
+            /** Relative */
+            relative?: number | null;
+            /** Value From */
+            value_from: number;
+            /** Value To */
+            value_to: number;
+        };
+        /** GoogleSearchConsoleCompare */
+        GoogleSearchConsoleCompare: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Mode */
+            mode: string;
+        };
+        /**
+         * GoogleSearchConsoleInspection
+         * @description What Google's index holds for one URL — the URL Inspection tool, as data.
+         */
+        GoogleSearchConsoleInspection: {
+            /** Amp */
+            amp?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Coverage State
+             * @default
+             */
+            coverage_state: string;
+            /**
+             * Crawled As
+             * @default
+             */
+            crawled_as: string;
+            /** Google Canonical */
+            google_canonical?: string | null;
+            /**
+             * Indexing State
+             * @default
+             */
+            indexing_state: string;
+            /** Inspected Url */
+            inspected_url: string;
+            /**
+             * Inspection Link
+             * @default
+             */
+            inspection_link: string;
+            /** Last Crawl Time */
+            last_crawl_time?: string | null;
+            /** Mobile Usability */
+            mobile_usability?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Page Fetch State
+             * @default
+             */
+            page_fetch_state: string;
+            /** Referring Urls */
+            referring_urls?: string[];
+            /** Rich Results */
+            rich_results?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Robots Txt State
+             * @default
+             */
+            robots_txt_state: string;
+            /** Site Url */
+            site_url: string;
+            /** Sitemaps */
+            sitemaps?: string[];
+            /** User Canonical */
+            user_canonical?: string | null;
+            /**
+             * Verdict
+             * @default
+             */
+            verdict: string;
+        };
+        /** GoogleSearchConsoleMover */
+        GoogleSearchConsoleMover: {
+            /** Change */
+            change: number;
+            /** Clicks */
+            clicks: number;
+            /** Impressions */
+            impressions: number;
+            /** Label */
+            label: string;
+            /** Position */
+            position: number;
+            /** Previous Position */
+            previous_position: number;
+        };
+        /**
+         * GoogleSearchConsoleMovers
+         * @description Which queries (or pages) moved most between this period and the one before it.
+         */
+        GoogleSearchConsoleMovers: {
+            compared_with: components["schemas"]["GoogleSearchConsoleCompare"];
+            /**
+             * Dimension
+             * @default query
+             */
+            dimension: string;
+            /**
+             * Dropped
+             * @default 0
+             */
+            dropped: number;
+            /**
+             * Entered
+             * @default 0
+             */
+            entered: number;
+            /**
+             * Min Impressions
+             * @default 0
+             */
+            min_impressions: number;
+            period: components["schemas"]["GoogleSearchConsolePeriod"];
+            /** Rows */
+            rows?: components["schemas"]["GoogleSearchConsoleMover"][];
+            /** Site Url */
+            site_url: string;
+        };
+        /**
+         * GoogleSearchConsoleOverview
+         * @description How a property did over a period, against what, and by how much.
+         */
+        GoogleSearchConsoleOverview: {
+            /** Change */
+            change?: {
+                [key: string]: components["schemas"]["GoogleSearchConsoleChange"] | null;
+            };
+            compared_with: components["schemas"]["GoogleSearchConsoleCompare"];
+            /** Devices */
+            devices?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Fresh From */
+            fresh_from?: string | null;
+            period: components["schemas"]["GoogleSearchConsolePeriod"];
+            /** Previous Totals */
+            previous_totals?: {
+                [key: string]: number;
+            };
+            /**
+             * Search Type
+             * @default web
+             */
+            search_type: string;
+            /** Site Url */
+            site_url: string;
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GoogleSearchConsolePeriod */
+        GoogleSearchConsolePeriod: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Days */
+            days: number;
+        };
+        /**
+         * GoogleSearchConsoleReport
+         * @description A Search Analytics query, flattened.
+         */
+        GoogleSearchConsoleReport: {
+            /**
+             * Data State
+             * @default all
+             */
+            data_state: string;
+            /** Dimensions */
+            dimensions?: string[];
+            /** Fresh From */
+            fresh_from?: string | null;
+            period?: components["schemas"]["GoogleSearchConsolePeriod"] | null;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /** Rows */
+            rows?: components["schemas"]["GoogleSearchConsoleRow"][];
+            /**
+             * Search Type
+             * @default web
+             */
+            search_type: string;
+            /** Site Url */
+            site_url: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GoogleSearchConsoleRow */
+        GoogleSearchConsoleRow: {
+            /** Dimensions */
+            dimensions?: {
+                [key: string]: string;
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * GoogleSearchConsoleSearchTypes
+         * @description The four metrics per search type — where on Google the site was actually seen.
+         */
+        GoogleSearchConsoleSearchTypes: {
+            /** By Type */
+            by_type?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Fresh From */
+            fresh_from?: string | null;
+            period: components["schemas"]["GoogleSearchConsolePeriod"];
+            /** Site Url */
+            site_url: string;
+        };
+        /**
+         * GoogleSearchConsoleSite
+         * @description One property the connected Google account can read.
+         */
+        GoogleSearchConsoleSite: {
+            /**
+             * Console Url
+             * @default
+             */
+            console_url: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Permission Level
+             * @default
+             */
+            permission_level: string;
+            /**
+             * Site Type
+             * @default
+             */
+            site_type: string;
+            /** Site Url */
+            site_url: string;
+        };
+        /**
+         * GoogleSearchConsoleSiteList
+         * @description The properties this caller's Google connection reaches — or why it reaches none.
+         *
+         *     ``connected`` / ``has_scope`` are reported rather than raised (#411): "connect Google" and
+         *     "allow Search Console" are different acts, and only the payload can say which is missing.
+         */
+        GoogleSearchConsoleSiteList: {
+            /**
+             * Connect Flag
+             * @default include_search_console
+             */
+            connect_flag: string;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Has Scope
+             * @default false
+             */
+            has_scope: boolean;
+            /** Sites */
+            sites?: components["schemas"]["GoogleSearchConsoleSite"][];
+        };
+        /**
+         * GoogleSearchConsoleSitemap
+         * @description One submitted sitemap, as Google last saw it.
+         */
+        GoogleSearchConsoleSitemap: {
+            /** Contents */
+            contents?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Is Pending
+             * @default false
+             */
+            is_pending: boolean;
+            /**
+             * Is Sitemaps Index
+             * @default false
+             */
+            is_sitemaps_index: boolean;
+            /** Last Downloaded */
+            last_downloaded?: string | null;
+            /** Last Submitted */
+            last_submitted?: string | null;
+            /** Path */
+            path: string;
+            /**
+             * Type
+             * @default
+             */
+            type: string;
+            /**
+             * Warnings
+             * @default 0
+             */
+            warnings: number;
+        };
+        /** GoogleSearchConsoleSitemapList */
+        GoogleSearchConsoleSitemapList: {
+            /** Site Url */
+            site_url: string;
+            /** Sitemaps */
+            sitemaps?: components["schemas"]["GoogleSearchConsoleSitemap"][];
+        };
         /** GoogleSettingsRead */
         GoogleSettingsRead: {
             /** Automation Connection User Id */
@@ -28686,8 +29409,31 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * SourceAiVisibility
+         * @description What a source can say about the site's visibility in Google's generative AI features.
+         *
+         *     Search Console only, today. ``available`` is ``False`` while the Search Analytics API has no
+         *     search type for its Generative AI performance report (June 2026; the vocabulary is checked
+         *     against Google's discovery document in ``google_search_console.client``), and ``report_url``
+         *     is where the numbers are in the meantime. A state with a link rather than a tile with a
+         *     number, because a plausible figure here is one nothing on any screen could contradict.
+         */
+        SourceAiVisibility: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Report Url
+             * @default
+             */
+            report_url: string;
+        };
         /** SourceMetrics */
         SourceMetrics: {
+            ai_visibility?: components["schemas"]["SourceAiVisibility"] | null;
             /** Channels */
             channels?: {
                 [key: string]: number;
@@ -40894,6 +41640,487 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAnalyticsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_ai_visibility_api_v1_google_search_console_ai_visibility_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description year (default — what seasonality survives) or previous. */
+                compare?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleAiVisibility"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_breakdown_api_v1_google_search_console_breakdown_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description query (default), page, country, device or searchAppearance. */
+                dimension?: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+                /** @description Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. */
+                filters?: string[];
+                limit?: number;
+                offset?: number;
+                /** @description Google ranks by clicks. Another metric (-impressions, -ctr, +position) is applied over the first thousand clicks-ranked rows, and the answer says so in warnings. */
+                order?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_hourly_api_v1_google_search_console_hourly_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description How many days back, today included. Google keeps ten days of hourly rows. */
+                days?: number;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_inspect_url_api_v1_google_search_console_inspect_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The page to inspect. Must be under the property. */
+                url: string;
+                /** @description BCP-47 code for the issue texts, e.g. nl. */
+                language?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleInspection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_movers_api_v1_google_search_console_movers_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description year (default — what seasonality survives) or previous. */
+                compare?: string | null;
+                /** @description query (default) or page. */
+                dimension?: string;
+                limit?: number;
+                /** @description Ignore anything shown fewer times than this in either span. */
+                min_impressions?: number;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleMovers"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_overview_api_v1_google_search_console_overview_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description year (default — what seasonality survives) or previous. */
+                compare?: string | null;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_query_api_v1_google_search_console_query_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description Repeatable, in row-key order: query, page, country, device, searchAppearance, date, hour. None is a total. hour forces data_state hourly_all. */
+                dimensions?: string[];
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+                /** @description Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. */
+                filters?: string[];
+                /** @description auto (default), byProperty, byPage or byNewsShowcasePanel. */
+                aggregation?: string | null;
+                /** @description all (default here: includes the fresh, still-changing days), final (Google's default: finalised data only, so the last days are missing) or hourly_all. */
+                data_state?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_search_types_api_v1_google_search_console_search_types_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleSearchTypes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_search_console_site_api_v1_google_search_console_site_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleSite"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_sitemap_api_v1_google_search_console_sitemap_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The sitemap's own URL, as /sitemaps lists it. */
+                feedpath: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleSitemap"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_sitemaps_api_v1_google_search_console_sitemaps_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleSitemapList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_google_search_console_sites_api_v1_google_search_console_sites_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by site URL. */
+                query?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleSiteList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_search_console_timeseries_api_v1_google_search_console_timeseries_get: {
+        parameters: {
+            query: {
+                /** @description The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. */
+                site: string;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. */
+                period?: string | null;
+                /** @description web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. */
+                search_type?: string | null;
+                /** @description Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. */
+                filters?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSearchConsoleReport"];
                 };
             };
             /** @description Validation Error */
