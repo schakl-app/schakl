@@ -968,12 +968,14 @@ async def test_task_import_is_create_only(client_for) -> None:
     t = await make_tenant("impex-task")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        header = ["title", "priority", "assignee", "due_date"]
+        # A task is always a client's (dev 8912eac4), so the sheet names one on every row.
+        await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        header = ["title", "company", "priority", "assignee", "due_date"]
         first = await c.post(
             "/api/v1/impex/task/import?dry_run=false",
             files=_file(_csv_bytes(header, [
-                ["Bellen", "high", t.user.email, "2026-08-01"],
-                ["Bellen", "low", "", "2026-08-02"],
+                ["Bellen", "Klant BV", "high", t.user.email, "2026-08-01"],
+                ["Bellen", "Klant BV", "low", "", "2026-08-02"],
             ])),
             headers=headers,
         )
@@ -988,7 +990,9 @@ async def test_task_import_is_create_only(client_for) -> None:
         # An unknown assignee is a row error, never a silent orphan.
         bad = await c.post(
             "/api/v1/impex/task/import",
-            files=_file(_csv_bytes(header, [["X", "normal", "ghost@niet.nl", "2026-08-01"]])),
+            files=_file(_csv_bytes(header, [
+                ["X", "Klant BV", "normal", "ghost@niet.nl", "2026-08-01"],
+            ])),
             headers=headers,
         )
         assert bad.json()["errors"][0]["message_key"] == "impex.errors.unresolved_reference"
@@ -997,7 +1001,7 @@ async def test_task_import_is_create_only(client_for) -> None:
         # request-level 422 the report cannot point at (CLAUDE.md §17, #289).
         undated = await c.post(
             "/api/v1/impex/task/import",
-            files=_file(_csv_bytes(header, [["Zonder datum", "normal", "", ""]])),
+            files=_file(_csv_bytes(header, [["Zonder datum", "Klant BV", "normal", "", ""]])),
             headers=headers,
         )
         assert undated.status_code == 200, undated.text
