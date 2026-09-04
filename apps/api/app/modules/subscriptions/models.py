@@ -193,7 +193,9 @@ class Subscription(
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: When the next ``subscription.due`` fires; the cron advances it by the interval. NULL on
     #: drafts (nothing to invoice yet). Left unset by the operator, the first activation
-    #: derives it as ``start_date`` + one period (#223) — the create form doesn't ask for it.
+    #: derives it as the first boundary of the ``start_date`` grid still ahead (#223, and the
+    #: rule that a derived cycle date never lands in the past) — the create form doesn't ask
+    #: for it. An explicit date is the operator's and is honoured wherever the cron would.
     next_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     #: How far the billing cron takes this agreement's invoice on its own, overriding the
     #: org's default. ``NULL`` means *inherit*, not *off* — the same three-state discipline

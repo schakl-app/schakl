@@ -17,21 +17,22 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 export const SUBSCRIPTIONS_TABLE_ID = "subscriptions";
 
 export const SUBSCRIPTION_COLUMNS: ColumnMeta[] = [
-  {
-    key: "name",
-    labelKey: "subscriptions.field.name",
-    sortKey: "name",
-    primary: true,
-    width: 220,
-  },
-  // The widest of the six: a client name is the only cell here that is free-form text.
+  // The client leads, and is the primary column: the list is sectioned by standard
+  // subscription, so inside a section the agreement's name is the heading repeated and the one
+  // thing that distinguishes a row is *whose* it is. The widest column too — a client name is
+  // the only free-form text a row prints.
   {
     key: "company",
     labelKey: "subscriptions.field.company",
     sortKey: "company",
-    defaultVisible: true,
-    width: 160,
+    primary: true,
+    width: 220,
   },
+  // Still on by default: an agreement that came from no standard subscription has only its
+  // name to say what it is, and inside a section the name is what says a row *stopped*
+  // following its preset (docs/UX.md: the grouped-by column loses its sort, not its place).
+  // No `sortKey`, because a sort orders rows within a section and the sections are the names.
+  { key: "name", labelKey: "subscriptions.field.name", defaultVisible: true, width: 200 },
   // Tenant-defined category labels (#142) — short by convention, but the tenant writes them.
   {
     key: "type",

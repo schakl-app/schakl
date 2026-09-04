@@ -1069,6 +1069,24 @@ contrast bug in dark mode rather than only an inconsistency.
       A short, closed, recognisable vocabulary is `pills`; anything a tenant defines, or anything
       past about six, is a `select` with the column's own label as its placeholder — which is
       also what stops the row wrapping to three lines on the instance that defines ten.
+    - **A list of instances is sectioned by what they are instances of, and a row says whose it
+      is.** `/subscriptions` listed "Hosting & onderhoud" thirteen times as its primary column,
+      with the client in a muted cell beside it — right for a list of one-off agreements and
+      wrong for the list an agency actually has, where most rows are a standard subscription
+      on a client and the name is fixed by the preset (it follows a rename). It takes the
+      contacts list's shape now: sections per standard subscription *on this page* (built from
+      the rows, never from the preset library, which a `:own` reader does not load), the
+      agreements that follow no preset last under *Overige abonnementen*, the **client as the
+      primary column** — the cell that opens the record, with the client's own page moved to
+      the ⋯ — and the name kept but muted and unsortable, because inside a section it repeats
+      the heading and outside one it is the only thing that says what the row is. The default
+      sort became the client for the same reason: the API's default (by name) orders every
+      section randomly, since inside a section every name is the same. A **next invoice date
+      that has passed is drawn as an overdue deadline**, in the late colour with a title that
+      says where the period is listed, and the strip gained *Factuurdatum verstreken* — a
+      figure that opens "nog te factureren" narrowed to agreements, for whoever may read the
+      org-wide backlog, and stays a number for whoever may not. Before it, the answer to "why
+      is this not on nog te factureren" was that nothing on this page said it should be.
     - **One selected treatment, whatever the chip's colour.** `FilterOption.class` exists for a
       vocabulary where the colour *is* information — a client's lifecycle, a project's status, a
       tenant's task label, all of which the table draws in the same colours — but it only sets

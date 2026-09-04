@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,52 +111,16 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
     ctx = SystemContext(org=org, session=session)
     advanced = skipped = 0
     for domain in due:
-        invoice_date = domain.next_invoice_date
-        if domain.id not in billing:
-            domain.next_invoice_date = add_months(invoice_date, 12)
-            skipped += 1
-            continue
-        price_row = None
-        if domain.tld:
-            price_row = await session.scalar(
-                select(DomainTldPrice)
-                .where(
-                    DomainTldPrice.org_id == org.id,
-                    DomainTldPrice.tld == domain.tld,
-                    DomainTldPrice.valid_from <= invoice_date,
-                )
-                .order_by(DomainTldPrice.valid_from.desc())
-                .limit(1)
-            )
-        if domain.price_override is not None:
-            amount = domain.price_override
-            currency = price_row.currency if price_row is not None else org_currency
-        elif price_row is not None:
-            amount = price_row.amount
-            currency = price_row.currency
-        else:
-            continue
-        await emit(
-            "domain.due",
-            ctx,
-            {
-                "domain_id": domain.id,
-                "company_id": domain.company_id,
-                "name": domain.name,
-                "tld": domain.tld,
-                # This domain's override of how far the consumer takes the invoice, or None
-                # to inherit the org default. Carried, not resolved: the vocabulary and the
-                # org setting belong to `invoicing` (§6). The cycle advances either way — an
-                # undrafted renewal stays outstanding and the editor's picker offers it.
-                "auto_invoice_mode": domain.auto_invoice_mode,
-                "amount": str(amount),
-                "currency": currency,
-                "period_start": add_months(invoice_date, -12).isoformat(),
-                "period_end": invoice_date.isoformat(),
-            },
-        )
-        domain.next_invoice_date = add_months(invoice_date, 12)
-        advanced += 1
+        # Catch up in one run, the subscriptions cron's rule: a cycle the calendar has passed
+        # by three years owes three renewals now, not one per night for three nights — and
+        # the backlog already lists all three (``period_boundaries(until=today)``).
+        while domain.next_invoice_date is not None and domain.next_invoice_date <= today:
+            if not await _advance_one(domain, today, billing, org, session, ctx, org_currency):
+                break
+            if domain.id in billing:
+                advanced += 1
+            else:
+                skipped += 1
     if advanced or skipped:
         logger.info(
             "advanced %s due domain renewals in org %s (%s not invoiced)",
@@ -164,6 +128,68 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
             org.slug,
             skipped,
         )
+
+
+async def _advance_one(
+    domain: Domain,
+    today: date,
+    billing: set[uuid.UUID],
+    org: Org,
+    session: AsyncSession,
+    ctx: SystemContext,
+    org_currency: str,
+) -> bool:
+    """One boundary of one domain: emit (if it bills) and roll the year forward.
+
+    ``False`` means the cycle was left where it was — a billable domain with no resolvable
+    price, which the next run picks up again from the same date once the org prices its TLD.
+    """
+    invoice_date = domain.next_invoice_date
+    assert invoice_date is not None
+    if domain.id not in billing:
+        domain.next_invoice_date = add_months(invoice_date, 12)
+        return True
+    price_row = None
+    if domain.tld:
+        price_row = await session.scalar(
+            select(DomainTldPrice)
+            .where(
+                DomainTldPrice.org_id == org.id,
+                DomainTldPrice.tld == domain.tld,
+                DomainTldPrice.valid_from <= invoice_date,
+            )
+            .order_by(DomainTldPrice.valid_from.desc())
+            .limit(1)
+        )
+    if domain.price_override is not None:
+        amount = domain.price_override
+        currency = price_row.currency if price_row is not None else org_currency
+    elif price_row is not None:
+        amount = price_row.amount
+        currency = price_row.currency
+    else:
+        return False
+    await emit(
+        "domain.due",
+        ctx,
+        {
+            "domain_id": domain.id,
+            "company_id": domain.company_id,
+            "name": domain.name,
+            "tld": domain.tld,
+            # This domain's override of how far the consumer takes the invoice, or None
+            # to inherit the org default. Carried, not resolved: the vocabulary and the
+            # org setting belong to `invoicing` (§6). The cycle advances either way — an
+            # undrafted renewal stays outstanding and the editor's picker offers it.
+            "auto_invoice_mode": domain.auto_invoice_mode,
+            "amount": str(amount),
+            "currency": currency,
+            "period_start": add_months(invoice_date, -12).isoformat(),
+            "period_end": invoice_date.isoformat(),
+        },
+    )
+    domain.next_invoice_date = add_months(invoice_date, 12)
+    return True
 
 
 async def advance_domain_renewals(ctx: dict) -> None:

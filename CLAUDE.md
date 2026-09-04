@@ -1112,6 +1112,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   matched by file name, and readable by exactly whoever may read the invoice
   (`RECORD_GATED_ENTITY_TYPES`) — because a record that only points at a blob cannot say whether
   it still holds what was attached.
+- **A cycle date the platform derives never lands in the past, and a backlog lists what the cron
+  will bill** (`app/core/billing.py`, `docs/INVOICING.md`). An audit of the demo instance found
+  every agreement with a `next_invoice_date` months back **absent** from "nog te factureren"
+  while the cron drafted one historic period for each of them a night. Two rules were each right
+  alone and wrong together: #223 derived a first invoice date as `start_date` + one period, so an
+  onboarded agreement's anchor sat years back and the cycle then billed every period since — the
+  back-billing the backlog's `created_at` floor (#250) exists to refuse — and that floor, applied
+  to the anchor as well as to the history behind it, hid from the backlog exactly the period the
+  cron was about to draft. So the derivation is the first grid boundary **still ahead**
+  (`first_boundary_ahead`, what `domains` already did for an anniversary); the floor bounds what
+  the walk *reaches* and never where the cycle *sits* — the anchor, and every boundary forward of
+  it up to today (`period_boundaries(until=…)`), is offered whatever the floor says, because it is
+  the cycle's own statement; and both crons **catch up in one run**, since "one period per fire"
+  applied to a lagging cycle trickles a historic draft a night for as many nights as the lag,
+  which reads as a daily fault rather than as arrears. An explicit date is the operator's and is
+  honoured everywhere. The screen half (`docs/UX.md`): the agreements list is sectioned by
+  standard subscription with the **client** as its primary column, a passed invoice date is drawn
+  as an overdue deadline, and the strip's *Factuurdatum verstreken* opens the backlog — before it,
+  the answer to "why is this not on nog te factureren" was that nothing on that page said it
+  should be.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

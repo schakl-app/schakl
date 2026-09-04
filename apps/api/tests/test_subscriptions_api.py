@@ -500,3 +500,97 @@ async def test_list_searches_by_name(client_for) -> None:
             )
         ).json()
         assert narrowed["total"] == 0
+
+
+async def test_a_derived_cycle_date_never_lands_in_the_past(client_for) -> None:
+    """An agreement entered with a start date years back is an existing arrangement being
+    onboarded, not years of arrears. ``start_date`` + one period put the anchor in the past
+    and the cron then drafted every historic period, one per night — #250's back-billing,
+    produced by the platform's own default. The derived date is the first boundary of the
+    start date's grid still ahead; an explicit date stays the operator's call."""
+    from app.core.billing import first_boundary_ahead
+    from tests.conftest import org_today
+
+    t = await make_tenant("subs-derive-ahead")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Onboard BV"}, headers=headers)
+        ).json()
+        for interval, months in (("monthly", 1), ("quarterly", 3), ("yearly", 12)):
+            start = add_months(today, -26)
+            sub = (
+                await c.post(
+                    "/api/v1/subscriptions",
+                    json={
+                        "company_id": company["id"],
+                        "name": f"Bestaand {interval}",
+                        "status": "active",
+                        "interval": interval,
+                        "start_date": _iso(start),
+                        "amount": "100.00",
+                    },
+                    headers=headers,
+                )
+            ).json()
+            expected = first_boundary_ahead(start, months, today)
+            assert sub["next_invoice_date"] == _iso(expected), (interval, sub)
+            assert expected >= today
+            # On the start date's own grid, one period at most ahead of today.
+            assert add_months(expected, -months) < today
+
+
+async def test_due_cron_catches_up_a_lagging_cycle_in_one_run(client_for) -> None:
+    """A cycle the calendar has passed by two months owes three periods **now** — the same
+    three the backlog lists — not one per night for three nights, which read as a daily
+    fault rather than as arrears."""
+    from app.modules.subscriptions.jobs import advance_subscriptions
+    from tests.conftest import org_today
+
+    t = await make_tenant("subs-cron-catchup")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Inhalen"}, headers=headers)
+        ).json()
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": "Achterstallig",
+                    "status": "active",
+                    "interval": "monthly",
+                    "start_date": _iso(add_months(today, -6)),
+                    "next_invoice_date": _iso(add_months(today, -2)),
+                    "amount": "250.00",
+                },
+                headers=headers,
+            )
+        ).json()
+
+    fired: list[dict] = []
+
+    async def listener(ctx, payload) -> None:
+        fired.append(payload)
+
+    from app.core import events
+
+    events.subscribe("subscription.due", listener)
+    try:
+        await advance_subscriptions({})
+    finally:
+        events._handlers["subscription.due"].remove(listener)
+
+    assert [p["period_end"] for p in fired] == [
+        _iso(add_months(today, -2)),
+        _iso(add_months(today, -1)),
+        _iso(today),
+    ]
+    async with client_for(t.host) as c:
+        after = (
+            await c.get(f"/api/v1/subscriptions/{sub['id']}", headers=headers)
+        ).json()
+        assert after["next_invoice_date"] == _iso(add_months(today, 1))

@@ -563,3 +563,37 @@ async def test_a_pre_split_renewal_line_still_holds_its_claim(client_for) -> Non
             )
         assert len(held) == 1, "the legacy guard released a claim the document still bills"
         assert held[0].period_end.isoformat() == offered["period_end"]
+
+
+async def test_an_agreement_the_calendar_has_passed_lists_every_period_up_to_today(
+    client_for,
+) -> None:
+    """The audit case: ``next_invoice_date`` three months back on a row made today.
+
+    Before this, the row was **absent** from the backlog — its anchor predated ``created_at``,
+    and the floor bounded the anchor along with the walk behind it — while the cycle cron
+    drafted precisely that period the same night. The anchor is the cycle's own statement of
+    what is billed next, so it is offered whatever the floor says, and every boundary the
+    calendar has passed since is outstanding too, whether the cron catches up tonight or
+    nobody ever drafts it. Nothing *behind* the anchor is invented: the floor still refuses
+    the seventeen months before it that nobody asked about.
+    """
+    tenant: Tenant = await make_tenant("inv-backlog-lagging")
+    headers = await auth_cookie(tenant.user)
+    today = _today()
+    async with client_for(tenant.host) as client:
+        company_id = await _company(client, headers, "Achterstand BV")
+        anchor = add_months(today, -3)
+        await _subscription(
+            client,
+            headers,
+            company_id,
+            name="Loopt achter",
+            start_date=add_months(today, -20).isoformat(),
+            next_invoice_date=anchor.isoformat(),
+        )
+        report = await _backlog(client, headers, source="subscription")
+        ends = [item["period_end"] for item in report["items"]]
+        assert ends == [add_months(anchor, k).isoformat() for k in range(4)], ends
+        assert all(item["future"] is False for item in report["items"])
+        assert report["total_count"] == 4
