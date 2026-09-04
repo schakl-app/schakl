@@ -22,8 +22,10 @@
    * **`register` is the one that carries the argument.** It is the only kind that is *not* a
    * box: a register is correct, occasionally consulted and never news, so it gets a rule and
    * the page's own background rather than a bordered rectangle competing with the working
-   * surfaces above it. That is what makes the client hub's two lanes look like two lanes
-   * (#364 already told the page which panels are which; it drew both identically).
+   * surfaces above it — a task's Drive card between Planning and Reacties. It is **not** what
+   * the client hub's register lane draws any more: that lane sits on a tinted band (#438), and
+   * a rule floating on a band read as a grey slab, so the band carries the partition alone and
+   * the cards on it are `panel` (`docs/UX.md` §3).
    *
    * **The heading is the card's, not the caller's.** It is `PANEL_HEADING` — 14 px, dark — and
    * the band above it is 16 px, so a container can never be quieter than its contents. That

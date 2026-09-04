@@ -3,8 +3,13 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
+  import { getLocale } from "$lib/paraglide/runtime";
+
+  import SubscriptionDialog from "./SubscriptionDialog.svelte";
 
   interface PanelSubscription {
     id: string;
@@ -16,20 +21,40 @@
     next_invoice_date: string | null;
   }
 
-  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let {
+    companyId,
+    data,
+    locale = getLocale(),
+  }: { companyId: string; data: Record<string, unknown>; locale?: string } = $props();
   const subscriptions = $derived((data.subscriptions ?? []) as PanelSubscription[]);
   // Capped and counted since #407: this read had no limit at all, so the card's length was the
   // client's — the agency's biggest client is exactly the page that became unreadable.
   const total = $derived((data.total as number | undefined) ?? subscriptions.length);
   const forbidden = $derived(Boolean(data.forbidden));
+  const canWrite = $derived(can(page.data.user, "subscriptions.subscription.write"));
+  /** The list narrowed to this client — the hand-over for the rows the card does not show. */
+  const listHref = $derived(`/subscriptions?company=${companyId}`);
 
-  function money(row: PanelSubscription): string {
-    if (row.amount == null) return "—";
+  // Record an agreement from where the client is, and *stay* there: the module's own form in
+  // a dialog (`SubscriptionDialog`), hosted by this panel exactly as the Uren panel hosts its
+  // log-hours dialog (#402). It used to be a link to `/subscriptions?company=…&new=1` — the
+  // client was carried through and the way back was not.
+  let adding = $state(false);
+
+  function money(row: PanelSubscription): string | null {
+    if (row.amount == null) return null;
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency: row.currency || "EUR",
       trailingZeroDisplay: "stripIfInteger",
     }).format(Number(row.amount));
+  }
+
+  function meta(row: PanelSubscription): string {
+    const interval = t(`subscriptions.interval.${row.interval}`);
+    return row.next_invoice_date
+      ? `${interval} · ${t("subscriptions.field.next_invoice")} ${fmtNumericDate(row.next_invoice_date)}`
+      : interval;
   }
 </script>
 
@@ -39,7 +64,7 @@
   <PanelRows
     rows={subscriptions}
     {total}
-    href={`/subscriptions?company=${companyId}`}
+    href={listHref}
     linkLabel={t("subscriptions.panel.view_all", { count: total })}
   >
     {#snippet children(shown)}
@@ -48,35 +73,27 @@
       {:else}
         <ul class="divide-y divide-border">
           {#each shown as sub (sub.id)}
-            <li class="flex flex-wrap items-center gap-2 py-2">
-              <a
-                href="/subscriptions"
-                class="min-w-0 flex-1 truncate text-sm font-medium text-brand hover:underline"
-                >{sub.name}</a
-              >
-              <span class="text-sm tabular-nums text-text"
-                >{money(sub)} · {t(`subscriptions.interval.${sub.interval}`)}</span
-              >
-              {#if sub.next_invoice_date}
-                <span class="text-xs text-text-muted">
-                  {t("subscriptions.field.next_invoice")}: {fmtNumericDate(sub.next_invoice_date)}
-                </span>
-              {/if}
-              <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-                >{t(`subscriptions.status.${sub.status}`)}</span
-              >
-            </li>
+            <PanelRow
+              href={fromHref(`/subscriptions/${sub.id}`, page.url)}
+              title={sub.name}
+              meta={meta(sub)}
+              value={money(sub)}
+              chip={t(`subscriptions.status.${sub.status}`)}
+            />
           {/each}
         </ul>
       {/if}
     {/snippet}
     {#snippet actions()}
-      {#if can(page.data.user, "subscriptions.subscription.write")}
-        <!-- Quick-create from the client page: opens the dialog with this client set. -->
-        <a href={`/subscriptions?company=${companyId}&new=1`} class="text-brand hover:underline">
+      {#if canWrite}
+        <button type="button" onclick={() => (adding = true)} class="text-brand hover:underline">
           ＋ {t("subscriptions.add")}
-        </a>
+        </button>
       {/if}
     {/snippet}
   </PanelRows>
+
+  {#if canWrite}
+    <SubscriptionDialog bind:open={adding} {companyId} {locale} />
+  {/if}
 {/if}

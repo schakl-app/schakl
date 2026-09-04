@@ -63,8 +63,10 @@ registerWebModule({
       module: "subscriptions",
       component: SubscriptionsPanel,
       position: 60,
-      // Nothing here yet folds into the hub's one ＋ strip (#364).
-      emptyHref: (id: string) => `/subscriptions?company=${id}`,
+      // Nothing here yet folds into the hub's one ＋ strip (#364), and the chip unfolds the
+      // card in place: the ＋ that records an agreement lives *in* the panel now (a dialog on
+      // this page), so a chip leading to the empty filtered list would lead away from the
+      // one control it exists to offer.
     },
   ],
   entityPanels: [

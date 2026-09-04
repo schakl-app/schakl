@@ -5,6 +5,7 @@
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   interface PanelDomain {
@@ -28,6 +29,18 @@
   const websitesEnabled = $derived(
     ((page.data.theme?.enabledModules ?? []) as string[]).includes("websites"),
   );
+
+  /** When it next bills, under the name; what it costs, as the row's figure (#250). */
+  function renewal(domain: PanelDomain): string | null {
+    return domain.next_invoice_date
+      ? `${t("domains.renewal")}: ${fmtNumericDate(domain.next_invoice_date)}`
+      : null;
+  }
+  function price(domain: PanelDomain): string | null {
+    return domain.resolved_price != null
+      ? t("domains.price_per_year", { amount: fmtMoney(Number(domain.resolved_price)) })
+      : null;
+  }
 </script>
 
 <!-- The card shows the first five; the register shows the rest. Same filter and same default
@@ -46,51 +59,35 @@
     {:else}
       <ul class="divide-y divide-border">
         {#each shown as domain (domain.id)}
-          <li class="flex items-center gap-2 py-2">
-            <div class="min-w-0 flex-1">
-              <a
-                href={fromHref(`/domains/${domain.id}`, page.url)}
-                class="block truncate text-sm font-medium text-brand hover:underline"
-                >{domain.name}</a
-              >
-              <!-- Renewal + resolved price (#250): what it costs and when it next bills. -->
-              {#if domain.next_invoice_date || domain.resolved_price != null}
-                <span class="mt-0.5 block truncate text-xs text-text-muted">
-                  {#if domain.resolved_price != null}
-                    {t("domains.price_per_year", {
-                      amount: fmtMoney(Number(domain.resolved_price)),
-                    })}
-                  {/if}
-                  {#if domain.next_invoice_date}
-                    {#if domain.resolved_price != null}·{/if}
-                    {t("domains.renewal")}: {fmtNumericDate(domain.next_invoice_date)}
-                  {/if}
-                </span>
+          <PanelRow
+            href={fromHref(`/domains/${domain.id}`, page.url)}
+            title={domain.name}
+            meta={renewal(domain)}
+            value={price(domain)}
+            chip={t(`domains.status.${domain.status}`)}
+          >
+            {#snippet trailing()}
+              {#if websitesEnabled}
+                {#if domain.website_id}
+                  <!-- Straight to the site's own page. The id was already resolved server-side,
+                       so this costs nothing the boolean did not. -->
+                  <a
+                    href={fromHref(`/websites/${domain.website_id}`, page.url)}
+                    class="shrink-0 text-xs text-text-muted hover:text-brand hover:underline"
+                  >
+                    {t("websites.title")}
+                  </a>
+                {:else if can(page.data.user, "websites.website.write")}
+                  <a
+                    href={`${fromHref(`/domains/${domain.id}`, page.url)}#website`}
+                    class="shrink-0 text-xs text-brand hover:underline"
+                  >
+                    ＋ {t("domains.panel.add_website")}
+                  </a>
+                {/if}
               {/if}
-            </div>
-            {#if websitesEnabled}
-              {#if domain.website_id}
-                <!-- Straight to the site's own page. The id was already resolved server-side, so
-                 this costs nothing the boolean did not. -->
-                <a
-                  href={fromHref(`/websites/${domain.website_id}`, page.url)}
-                  class="shrink-0 text-xs text-text-muted hover:text-brand hover:underline"
-                >
-                  {t("websites.title")}
-                </a>
-              {:else if can(page.data.user, "websites.website.write")}
-                <a
-                  href={`${fromHref(`/domains/${domain.id}`, page.url)}#website`}
-                  class="shrink-0 text-xs text-brand hover:underline"
-                >
-                  ＋ {t("domains.panel.add_website")}
-                </a>
-              {/if}
-            {/if}
-            <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-              >{t(`domains.status.${domain.status}`)}</span
-            >
-          </li>
+            {/snippet}
+          </PanelRow>
         {/each}
       </ul>
     {/if}

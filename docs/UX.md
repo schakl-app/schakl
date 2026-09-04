@@ -225,9 +225,24 @@ card to find out what kind of thing it was.
 **`register` is the kind that carries the argument, and it is the only one that is not a box.**
 Reference material is correct, occasionally consulted and never news, so it gets a rule and the
 page's own ground rather than a bordered rectangle competing with the working surfaces above it.
-That is what finally makes the client hub's two lanes look like two lanes: #364 had already told
-the page which panels are which, and it drew both identically, so the distinction lived in the
-data, was announced by one muted heading, and was invisible everywhere else.
+On a task's page, where a register sits *between* panels, that is still the right treatment.
+
+**On the client hub it was not, and the reason is worth keeping.** The hub's registers sit on a
+tinted band (§5), and a hairline rule on a tinted band is a rule floating on a grey slab: six of
+them at six different heights, a left lane that ended half-way down the right one with nothing
+but tint underneath, and card edges nobody could find — the team's word for it was *disgusting*.
+The band and the rule were both saying "different kind of thing", and two ways of saying one
+thing is one too many. So the hub's register lane draws **ordinary `panel` cards on the band**
+(`REGISTER_LANE` in the hub page): the band is the whole distinction, and inside it a register
+is the same white card every other list in the product is drawn in. The rule generalises: **a
+partition is drawn once, by the container, and the things inside it look like everything else.**
+
+**A row is one grammar, wherever it is drawn** (`core/ui/PanelRow.svelte`). Measured on the same
+lane: six cards, six row shapes — brand-coloured names on two, dark on four; the amount inline on
+one and right-aligned on the next; a status chipped beside a name that already *was* the status
+("Concept — Concept"). `PanelRow` states the order once — name, meta under it, value right and
+tabular, chip last — and a chip that is a claim (overdue, ready to review) is drawn through
+`StateMark`, so the register lane and the working lane above it read as one product.
 
 `stat` needed a third surface token. A figure card carries no border — a box drawn around one
 number is chrome around a fact — so it needs a fill that separates it from *both* the page
@@ -283,10 +298,11 @@ alone; #395/#397: the heading carries the colour and the rows stay quiet):
 - **Between the dashboard's two columns, a hairline column rule** (`sm:border-l` on the second
   stack): the board is two stacks of same-shaped cards, and the rule is what lets the card
   edges read as a grid at a glance instead of being recovered by parsing each card.
-- **The client hub's register lane sits on a `--surface-tint` band.** A register card is a
-  hairline rule on the page's own ground (#404), so the lane's *ground* is the thing that can
-  say "a different kind of thing starts here" — and `--surface-tint` is hueless by
-  construction, so it can never read as a state or collide with a brand.
+- **The client hub's register lane sits on a `--surface-tint` band.** The lane's *ground* is
+  the thing that says "a different kind of thing starts here" — and `--surface-tint` is hueless
+  by construction, so it can never read as a state or collide with a brand. The cards on it are
+  ordinary cards (§3): the band draws the partition, and drawing it twice — a wash *and* a
+  rule-on-ground card — is what made the lane read as a slab rather than a section.
 
 The panel-width loose end from the same issue is decided in code, with reasons beside the
 declarations: `marketing.overview` keeps `SIZE_FULL` (the one panel that is a dashboard rather

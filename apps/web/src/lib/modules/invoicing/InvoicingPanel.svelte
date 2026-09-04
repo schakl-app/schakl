@@ -3,9 +3,11 @@
    * (overdue loudly red — UX Principle 4) and recent quotes. Rendered from the API panel's
    * data; every number links to the document behind it (Principle 7). */
   import { page } from "$app/state";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -17,6 +19,8 @@
     status: string;
     issue_date: string | null;
     due_date: string | null;
+    /** When it was started — the one date a draft has. Absent from an older API. */
+    created_at?: string;
     overdue: boolean;
     total: string;
     outstanding: string;
@@ -48,7 +52,30 @@
       currency: currency || "EUR",
       trailingZeroDisplay: "stripIfInteger",
     }).format(Number(value));
-  const dmy = (iso: string | null) => (iso ? iso.split("-").reverse().join("-") : "—");
+  /** The issue date, or for a draft the day it was started — in the user's own date order. */
+  function invoiceDate(invoice: PanelInvoice): string | null {
+    if (invoice.issue_date) return fmtNumericDate(invoice.issue_date);
+    if (invoice.created_at) {
+      return t("invoicing.panel.created_on", { date: fmtNumericDate(invoice.created_at) });
+    }
+    return null;
+  }
+
+  // A draft has no number yet, so its status stands in as its name — and then it must not be
+  // chipped beside itself as well ("Concept — Concept" was five rows of one word twice over).
+  // Overdue is the one claim on this card, and it is drawn as a state rather than a status.
+  function invoiceTitle(invoice: PanelInvoice): string {
+    return invoice.number ?? t(`invoicing.status.${invoice.status}`);
+  }
+  function invoiceChip(invoice: PanelInvoice): string | null {
+    if (invoice.overdue) return t("invoicing.status.overdue");
+    return invoice.number ? t(`invoicing.status.${invoice.status}`) : null;
+  }
+  function outstanding(invoice: PanelInvoice): string | null {
+    if (invoice.status !== "open") return null;
+    if (Number(invoice.outstanding) === Number(invoice.total)) return null;
+    return `${money(invoice.outstanding, invoice.currency)} ${t("invoicing.panel.outstanding")}`;
+  }
 </script>
 
 {#snippet addInvoice()}
@@ -79,42 +106,22 @@
       {#snippet children(shown)}
         <ul class="divide-y divide-border">
           {#each shown as invoice (invoice.id)}
-            <li class="flex items-center justify-between gap-3 py-2 text-sm">
-              <div class="min-w-0">
-                <a href={fromHref(`/invoices/${invoice.id}`, page.url)} class="font-medium text-text hover:text-brand">
-                  {invoice.number ?? t(`invoicing.status.${invoice.status}`)}
-                </a>
-                <span class="ml-2 text-xs text-text-muted">{dmy(invoice.issue_date)}</span>
-                {#if invoice.overdue}
-                  <span
-                    class="ml-2 rounded-md bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                    >{t("invoicing.status.overdue")}</span
-                  >
-                {:else}
-                  <span class="ml-2 rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted"
-                    >{t(`invoicing.status.${invoice.status}`)}</span
-                  >
-                {/if}
-              </div>
-              <div class="shrink-0 text-right tabular-nums">
-                <span class="text-text">{money(invoice.total, invoice.currency)}</span>
-                {#if invoice.status === "open" && Number(invoice.outstanding) !== Number(invoice.total)}
-                  <span class="block text-xs text-text-muted">
-                    {money(invoice.outstanding, invoice.currency)}
-                    {t("invoicing.panel.outstanding")}
-                  </span>
-                {/if}
-              </div>
-            </li>
+            <PanelRow
+              href={fromHref(`/invoices/${invoice.id}`, page.url)}
+              title={invoiceTitle(invoice)}
+              meta={invoiceDate(invoice)}
+              value={money(invoice.total, invoice.currency)}
+              valueMeta={outstanding(invoice)}
+              chip={invoiceChip(invoice)}
+              chipState={invoice.overdue ? "late" : "neutral"}
+            />
           {/each}
         </ul>
       {/snippet}
     </PanelRows>
   {/if}
   {#if quotes.length > 0}
-    <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-      {t("invoicing.panel.quotes")}
-    </p>
+    <p class="mt-4 text-xs font-medium text-text-muted">{t("invoicing.panel.quotes")}</p>
     <PanelRows
       rows={quotes}
       collapsed={QUOTES_SHOWN}
@@ -126,19 +133,12 @@
       {#snippet children(shown)}
         <ul class="divide-y divide-border">
           {#each shown as quote (quote.id)}
-            <li class="flex items-center justify-between gap-3 py-2 text-sm">
-              <div class="min-w-0">
-                <a href={fromHref(`/quotes/${quote.id}`, page.url)} class="font-medium text-text hover:text-brand">
-                  {quote.number ?? t(`invoicing.quote_status.${quote.status}`)}
-                </a>
-                <span class="ml-2 rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted"
-                  >{t(`invoicing.quote_status.${quote.status}`)}</span
-                >
-              </div>
-              <span class="shrink-0 tabular-nums text-text"
-                >{money(quote.total, quote.currency)}</span
-              >
-            </li>
+            <PanelRow
+              href={fromHref(`/quotes/${quote.id}`, page.url)}
+              title={quote.number ?? t(`invoicing.quote_status.${quote.status}`)}
+              value={money(quote.total, quote.currency)}
+              chip={quote.number ? t(`invoicing.quote_status.${quote.status}`) : null}
+            />
           {/each}
         </ul>
       {/snippet}
