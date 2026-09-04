@@ -7,8 +7,10 @@
    * a Modus select, and one dense paragraph explaining both modes at once. Read in order that was
    * "Maandelijks · 1 · Na afronden"; the thought behind it is "elke maand, op dag 1, na afronden".
    * So every part is labelled, the interval and its unit are one phrase, the two modes are radios
-   * that each carry their own line of explanation, and the whole thing ends in a **real date** the
-   * API resolved — not a rule the user has to simulate in their head.
+   * that each carry their own line of explanation, and the cadence controls have a **real date**
+   * the API resolved beside them — not a rule the user has to simulate in their head. Beside,
+   * not at the foot: the date is the cadence's answer, and it used to sit below the mode and
+   * every planned block, a screen away from the controls that change it.
    *
    * The plan was one clock on the deadline. A recurring job is rarely one sitting: the newsletter
    * is drafted on the Tuesday before, reviewed on the Thursday, sent on the first — so the plan is
@@ -363,7 +365,7 @@
     "rounded-lg border border-border px-2 py-1.5 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<div class="space-y-3">
+<div class="@container space-y-3">
   <div>
     <label for="rec-freq" class="mb-1 block text-xs font-medium text-text-muted">
       {t("tasks.recurrence.title")}
@@ -377,161 +379,200 @@
   </div>
 
   {#if freq}
-    <!-- "Elke [1] maand" — the number and its unit read as one phrase, which is what the bare
+    <!-- The cadence and its answer, side by side: the controls that decide *when* on the left,
+         the date they resolve to on the right — under them where the card is too narrow, and the
+         split follows the *card* (`@container`), not the viewport: the same editor sits in a
+         half-width card on one screen and a full-width form on another. It used to sit at
+         the foot of the editor, below the mode and every planned block — so on a rule with three
+         blocks the one number the cadence controls exist to produce was a screen away from them,
+         and changing "op dag 1" to "op dag 15" showed nothing where the eye was. -->
+    <div
+      class="grid grid-cols-1 gap-3 @md:grid-cols-[minmax(0,1fr)_minmax(0,15rem)] @md:items-start"
+    >
+      <div class="space-y-3">
+        <!-- "Elke [1] maand" — the number and its unit read as one phrase, which is what the bare
          box could never do. The unit word follows the interval so the plural agrees with it. -->
-    <div class="flex flex-wrap items-end gap-2">
-      <div>
-        <label for="rec-interval" class="mb-1 block text-xs font-medium text-text-muted">
-          {t("tasks.recurrence.interval")}
-        </label>
-        <input
-          id="rec-interval"
-          name="interval"
-          type="number"
-          min="1"
-          max="365"
-          form={formId}
-          bind:value={interval}
-          class={numberClass}
-        />
-      </div>
-      <span class="pb-2 text-sm text-text">
-        {Number(interval) === 1
-          ? t(`tasks.recurrence.plain.${freq}_one`)
-          : t(`tasks.recurrence.plain.${freq}_other`)}
-      </span>
-    </div>
-
-    {#if kind === "weekday"}
-      <div>
-        <label for="rec-weekday" class="mb-1 block text-xs font-medium text-text-muted">
-          {t("tasks.recurrence.anchor.weekday")}
-        </label>
-        <select
-          id="rec-weekday"
-          name="on_weekday"
-          form={formId}
-          bind:value={onWeekday}
-          class={inputClass}
-        >
-          <option value="">{t("tasks.recurrence.anchor.follow_due")}</option>
-          {#each weekdays as name, index (name)}
-            <option value={String(index)}>{name}</option>
-          {/each}
-        </select>
-      </div>
-    {:else if kind === "day" || kind === "date"}
-      <!-- One control for *how* the month is pinned, then only the boxes that mode needs. The
-           posted anchor fields are rendered per mode, so a stale pair can never reach the API. -->
-      <div class="flex flex-wrap items-end gap-2">
-        <div class="min-w-[11rem] flex-1">
-          <label for="rec-anchor-mode" class="mb-1 block text-xs font-medium text-text-muted">
-            {t("tasks.recurrence.anchor.weekday")}
-          </label>
-          <select id="rec-anchor-mode" bind:value={anchorMode} class={inputClass}>
-            <option value="follow">{t("tasks.recurrence.anchor.follow_due")}</option>
-            <option value="day">
-              {t(
-                kind === "date"
-                  ? "tasks.recurrence.anchor.mode_date"
-                  : "tasks.recurrence.anchor.mode_day",
-              )}
-            </option>
-            <option value="nth">{t("tasks.recurrence.anchor.mode_nth")}</option>
-          </select>
-        </div>
-        {#if anchorMode === "day"}
+        <div class="flex flex-wrap items-end gap-2">
           <div>
-            <label for="rec-day" class="mb-1 block text-xs font-medium text-text-muted">
-              {t("tasks.recurrence.anchor.day")}
+            <label for="rec-interval" class="mb-1 block text-xs font-medium text-text-muted">
+              {t("tasks.recurrence.interval")}
             </label>
             <input
-              id="rec-day"
-              name="on_day"
+              id="rec-interval"
+              name="interval"
               type="number"
               min="1"
-              max="31"
+              max="365"
               form={formId}
-              bind:value={onDay}
+              bind:value={interval}
               class={numberClass}
             />
           </div>
-        {:else if anchorMode === "nth"}
+          <span class="pb-2 text-sm text-text">
+            {Number(interval) === 1
+              ? t(`tasks.recurrence.plain.${freq}_one`)
+              : t(`tasks.recurrence.plain.${freq}_other`)}
+          </span>
+        </div>
+
+        {#if kind === "weekday"}
           <div>
-            <label for="rec-week" class="mb-1 block text-xs font-medium text-text-muted">
-              {t("tasks.recurrence.anchor.week")}
-            </label>
-            <select
-              id="rec-week"
-              name="on_week"
-              form={formId}
-              bind:value={onWeek}
-              class={smallClass}
-            >
-              {#if onWeek === ""}
-                <option value="">—</option>
-              {/if}
-              {#each WEEKS as week (week)}
-                <option value={String(week)}>{weekLabel(week)}</option>
-              {/each}
-            </select>
-          </div>
-          <div>
-            <label for="rec-nth-weekday" class="mb-1 block text-xs font-medium text-text-muted">
+            <label for="rec-weekday" class="mb-1 block text-xs font-medium text-text-muted">
               {t("tasks.recurrence.anchor.weekday")}
             </label>
             <select
-              id="rec-nth-weekday"
+              id="rec-weekday"
               name="on_weekday"
               form={formId}
               bind:value={onWeekday}
-              class={smallClass}
+              class={inputClass}
             >
-              {#if onWeekday === ""}
-                <option value="">—</option>
-              {/if}
+              <option value="">{t("tasks.recurrence.anchor.follow_due")}</option>
               {#each weekdays as name, index (name)}
                 <option value={String(index)}>{name}</option>
               {/each}
             </select>
           </div>
-        {/if}
-        {#if kind === "date" && anchorMode !== "follow"}
-          <div class="min-w-[8rem] flex-1">
-            <label for="rec-month" class="mb-1 block text-xs font-medium text-text-muted">
-              {t("tasks.recurrence.anchor.month")}
-            </label>
-            <select
-              id="rec-month"
-              name="on_month"
-              form={formId}
-              bind:value={onMonth}
-              class={inputClass}
-            >
-              <option value="">—</option>
-              {#each months as name, index (name)}
-                <option value={String(index + 1)}>{name}</option>
-              {/each}
-            </select>
+        {:else if kind === "day" || kind === "date"}
+          <!-- One control for *how* the month is pinned, then only the boxes that mode needs. The
+           posted anchor fields are rendered per mode, so a stale pair can never reach the API. -->
+          <div class="flex flex-wrap items-end gap-2">
+            <div class="min-w-[11rem] flex-1">
+              <label for="rec-anchor-mode" class="mb-1 block text-xs font-medium text-text-muted">
+                {t("tasks.recurrence.anchor.weekday")}
+              </label>
+              <select id="rec-anchor-mode" bind:value={anchorMode} class={inputClass}>
+                <option value="follow">{t("tasks.recurrence.anchor.follow_due")}</option>
+                <option value="day">
+                  {t(
+                    kind === "date"
+                      ? "tasks.recurrence.anchor.mode_date"
+                      : "tasks.recurrence.anchor.mode_day",
+                  )}
+                </option>
+                <option value="nth">{t("tasks.recurrence.anchor.mode_nth")}</option>
+              </select>
+            </div>
+            {#if anchorMode === "day"}
+              <div>
+                <label for="rec-day" class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.recurrence.anchor.day")}
+                </label>
+                <input
+                  id="rec-day"
+                  name="on_day"
+                  type="number"
+                  min="1"
+                  max="31"
+                  form={formId}
+                  bind:value={onDay}
+                  class={numberClass}
+                />
+              </div>
+            {:else if anchorMode === "nth"}
+              <div>
+                <label for="rec-week" class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.recurrence.anchor.week")}
+                </label>
+                <select
+                  id="rec-week"
+                  name="on_week"
+                  form={formId}
+                  bind:value={onWeek}
+                  class={smallClass}
+                >
+                  {#if onWeek === ""}
+                    <option value="">—</option>
+                  {/if}
+                  {#each WEEKS as week (week)}
+                    <option value={String(week)}>{weekLabel(week)}</option>
+                  {/each}
+                </select>
+              </div>
+              <div>
+                <label for="rec-nth-weekday" class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.recurrence.anchor.weekday")}
+                </label>
+                <select
+                  id="rec-nth-weekday"
+                  name="on_weekday"
+                  form={formId}
+                  bind:value={onWeekday}
+                  class={smallClass}
+                >
+                  {#if onWeekday === ""}
+                    <option value="">—</option>
+                  {/if}
+                  {#each weekdays as name, index (name)}
+                    <option value={String(index)}>{name}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+            {#if kind === "date" && anchorMode !== "follow"}
+              <div class="min-w-[8rem] flex-1">
+                <label for="rec-month" class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.recurrence.anchor.month")}
+                </label>
+                <select
+                  id="rec-month"
+                  name="on_month"
+                  form={formId}
+                  bind:value={onMonth}
+                  class={inputClass}
+                >
+                  <option value="">—</option>
+                  {#each months as name, index (name)}
+                    <option value={String(index + 1)}>{name}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
           </div>
+          {#if anchorMode === "day"}
+            <p class="text-[11px] leading-snug text-text-muted">
+              {t("tasks.recurrence.anchor.day_hint")}
+            </p>
+          {/if}
+        {/if}
+
+        <!-- What the *absent* anchor means, said out loud. It was the rule all along — the cadence
+         hangs off the due date — and nothing on any screen admitted it (#335 F2). -->
+        {#if kind !== "none" && (kind === "weekday" ? !onWeekday : anchorMode === "follow")}
+          <p class="text-[11px] leading-snug text-text-muted">
+            {dueDate
+              ? t("tasks.recurrence.anchor.follow_due_hint", { date: fmtDayMonthYear(dueDate) })
+              : t("tasks.recurrence.anchor.follow_due_hint_none")}
+          </p>
         {/if}
       </div>
-      {#if anchorMode === "day"}
-        <p class="text-[11px] leading-snug text-text-muted">
-          {t("tasks.recurrence.anchor.day_hint")}
-        </p>
-      {/if}
-    {/if}
 
-    <!-- What the *absent* anchor means, said out loud. It was the rule all along — the cadence
-         hangs off the due date — and nothing on any screen admitted it (#335 F2). -->
-    {#if kind !== "none" && (kind === "weekday" ? !onWeekday : anchorMode === "follow")}
-      <p class="text-[11px] leading-snug text-text-muted">
-        {dueDate
-          ? t("tasks.recurrence.anchor.follow_due_hint", { date: fmtDayMonthYear(dueDate) })
-          : t("tasks.recurrence.anchor.follow_due_hint_none")}
-      </p>
-    {/if}
+      <!-- The sentence ends in a date the API resolved, while it is being composed. -->
+      <div class="rounded-lg bg-surface px-3 py-2 text-sm" data-testid="recurrence-preview">
+        {#if previewFailed}
+          <span class="text-amber-600 dark:text-amber-400">
+            {t("tasks.recurrence.preview_invalid")}
+          </span>
+        {:else if preview}
+          <span class="font-medium text-text">{t("tasks.recurrence.next")}:</span>
+          <span class="text-text">{fmtDayMonthYear(preview.next_date)}</span>
+          {#if preview.on_completion}
+            <span class="mt-0.5 block text-[11px] leading-snug text-text-muted">
+              {t("tasks.recurrence.next_on_completion")}
+            </span>
+          {:else if preview.following.length > 0}
+            <span class="mt-0.5 block text-[11px] leading-snug text-text-muted">
+              {t("tasks.recurrence.then", {
+                dates: preview.following.map((d) => fmtDayMonthYear(d)).join(" · "),
+              })}
+            </span>
+          {/if}
+        {:else}
+          <span class="font-medium text-text">{t("tasks.recurrence.next")}:</span>
+          <span class="text-text-muted">—</span>
+        {/if}
+      </div>
+    </div>
 
     <!-- Two radios with a line each, instead of one paragraph explaining both at once. -->
     <fieldset class="space-y-2">
@@ -761,59 +802,38 @@
           <p class="mt-2 text-[11px] leading-snug text-text-muted">
             {t("tasks.recurrence.plan.day_hint")}
           </p>
+          <!-- The blocks the next occurrence would book, each on the day its placement lands —
+               under the rows that place them, for the same reason the date sits beside the
+               cadence: an answer belongs next to the question. -->
+          {#if !previewFailed && preview?.blocks.length}
+            <ul
+              class="mt-2 space-y-0.5 rounded-lg bg-surface px-3 py-2 text-xs"
+              data-testid="plan-preview"
+            >
+              {#each preview.blocks as block, i (i)}
+                <li
+                  class="flex flex-wrap items-baseline gap-x-2 {block.in_past
+                    ? 'text-text-muted line-through'
+                    : 'text-text'}"
+                >
+                  <span class="font-medium">
+                    {capitalizeFirst(fmtWeekdayShort(block.day))}
+                    {fmtDayMonthYear(block.day)}
+                  </span>
+                  <span>{clockOf(block.start_time)}{RANGE_DASH}{clockOf(block.end_time)}</span>
+                  <span class="text-text-muted">{previewPeople(block)}</span>
+                  {#if block.in_past}
+                    <span class="text-[11px] no-underline">
+                      {t("tasks.recurrence.plan.in_past")}
+                    </span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
         {/if}
       </div>
     {/if}
-
-    <!-- The sentence ends in a date the API resolved, while it is being composed — and in the
-         blocks it would book, each on the day its placement lands. -->
-    <div class="rounded-lg bg-surface px-3 py-2 text-sm">
-      {#if previewFailed}
-        <span class="text-amber-600 dark:text-amber-400">
-          {t("tasks.recurrence.preview_invalid")}
-        </span>
-      {:else if preview}
-        <span class="font-medium text-text">{t("tasks.recurrence.next")}:</span>
-        <span class="text-text">{fmtDayMonthYear(preview.next_date)}</span>
-        {#if preview.on_completion}
-          <span class="mt-0.5 block text-[11px] leading-snug text-text-muted">
-            {t("tasks.recurrence.next_on_completion")}
-          </span>
-        {:else if preview.following.length > 0}
-          <span class="mt-0.5 block text-[11px] leading-snug text-text-muted">
-            {t("tasks.recurrence.then", {
-              dates: preview.following.map((d) => fmtDayMonthYear(d)).join(" · "),
-            })}
-          </span>
-        {/if}
-        {#if preview.blocks.length}
-          <ul
-            class="mt-1.5 space-y-0.5 border-t border-border pt-1.5 text-xs"
-            data-testid="plan-preview"
-          >
-            {#each preview.blocks as block, i (i)}
-              <li
-                class="flex flex-wrap items-baseline gap-x-2 {block.in_past
-                  ? 'text-text-muted line-through'
-                  : 'text-text'}"
-              >
-                <span class="font-medium">
-                  {capitalizeFirst(fmtWeekdayShort(block.day))}
-                  {fmtDayMonthYear(block.day)}
-                </span>
-                <span>{clockOf(block.start_time)}{RANGE_DASH}{clockOf(block.end_time)}</span>
-                <span class="text-text-muted">{previewPeople(block)}</span>
-                {#if block.in_past}
-                  <span class="text-[11px] no-underline">{t("tasks.recurrence.plan.in_past")}</span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {:else}
-        <span class="text-text-muted">—</span>
-      {/if}
-    </div>
 
     <!-- What travels and what does not, stated where the rule is written rather than discovered
          a month later when the briefing link is missing from the new occurrence. -->

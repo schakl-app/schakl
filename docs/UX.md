@@ -2546,6 +2546,16 @@ contrast bug in dark mode rather than only an inconsistency.
   question the API already answers (#312). The preview goes through a `+server.ts` beside the
   page, never `fetch("/api/v1/…")` from the browser — only traefik routes that prefix, so the same
   call 404s on every dev server and the preview would silently never appear.
+  **…and it is shown *beside* the controls that produce it, not at the foot of the editor.** The
+  preview first landed as the editor's last row, below the mode radios and the whole planned-blocks
+  section — so on a rule with three blocks, changing "op dag 1" to "op dag 15" moved a number a
+  screen below the box being typed in, which is a preview nobody sees while typing. The cadence
+  controls (interval, anchor) and the "Volgende taak" box are one two-column grid now, keyed on the
+  *card's* width (`@container`, since the same editor sits in a half-width card and a full-width
+  form) and stacking with the date directly under the anchor where the card is narrow; the block
+  dates sit under the block rows that place them, for the same reason. An answer belongs next to
+  the question, and "the answer is on the screen" is not the same claim as "the answer is where
+  the eye is".
 
   **A control that acts on the *stored* record, offered inside an edit form, saves first.** #230's
   create-then-edit is right — the record exists, so Inplannen is reachable without a save — but
