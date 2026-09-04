@@ -231,7 +231,7 @@ documented case; if they ever did not, Mollie is right.
   server-side — `InvoicePaymentIntentCreate` carries no amount at all.
 - **`description` is what the payer sees on their bank or card statement.** Mollie's cap is 255
   and card networks truncate far harder, so it leads with the number a client can match:
-  `"<invoice number> — <org name>"`.
+  `"<invoice number> - <org name>"` (a plain hyphen: the statement is the one surface whose typography is not ours).
 - **`redirectUrl`** is where the payer lands **whatever the outcome** — so it is the invoice's
   own page in the client portal, not a thank-you page. `cancelUrl` (the explicit-cancel
   variant) is supported by the seam and not sent today; the portal page is the honest landing

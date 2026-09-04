@@ -86,6 +86,16 @@ regenerated.
   A passed next invoice date is drawn as an overdue deadline, and the strip gained
   "Factuurdatum verstreken", opening the backlog narrowed to agreements for whoever may read it.
 
+### Invoicing and payments
+
+- **Two em dashes went.** A period picked into an invoice — a domain renewal, an agreement's
+  lines — was written as `klant.nl — 01-01-2026 - 31-12-2026`, one run of dashes between a name
+  and a range that is itself dashed; it is `klant.nl (01-01-2026 - 31-12-2026)` now, the shape
+  the nightly cron's own renewal line already had. And the Mollie payment description, which is
+  what the payer reads on their bank statement, was `2026-0042 — breik.`; a statement is the one
+  surface whose typography is not ours, so it is a plain hyphen there now. Lines already on a
+  document keep the text they were saved with.
+
 ### Leave
 
 - **The two member tables open on the colleagues who still work here.** The balances on
