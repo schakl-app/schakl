@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { adoptRun, type ReviewFields } from "../../src/lib/modules/tasks/review.ts";
+import { adoptRun, changedFields, type ReviewFields } from "../../src/lib/modules/tasks/review.ts";
 
 const blank: ReviewFields = { title: "Homepage", description: "", project_id: "", due_date: "" };
 const landed: ReviewFields = {
@@ -86,5 +86,18 @@ describe("adoptRun", () => {
     const out = adoptRun(typing, blank, { ...landed, description: "" }, false);
     assert.equal(out.form.description, "Eigen notitie.");
     assert.equal(out.shown, true);
+  });
+});
+
+describe("changedFields", () => {
+  test("only what differs from the baseline is carried, and an untouched form carries nothing", () => {
+    assert.deepEqual(changedFields(blank, blank), {});
+    const edited = { ...blank, title: "Homepage v2", due_date: "2026-10-01" };
+    assert.deepEqual(changedFields(edited, blank), { title: "Homepage v2", due_date: "2026-10-01" });
+  });
+
+  test("a field typed back to its original value is not a change", () => {
+    const roundTrip = { ...landed, description: landed.description };
+    assert.deepEqual(changedFields(roundTrip, landed), {});
   });
 });

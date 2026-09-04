@@ -231,6 +231,16 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     recurrence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The series this occurrence was generated from (schedule mode): the task holding the rule.
+    # A rule in schedule mode materializes its occurrences a year ahead now, so "the tasks of
+    # this series" has to be a question the database can answer — for the assignee hand-off that
+    # transfers the future, and for a rule change that re-lays it. ``SET NULL`` on purpose: an
+    # occurrence outlives its rule as an ordinary task, never as a dangling reference.
+    recurrence_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # "schakl is filling this in from the email" (#327). ``NULL`` on an ordinary task; every
     # other value is a :class:`TaskAIStatus`. Written only through ``tasks.system`` — the run
     # happens in a worker, where the actor is the system and ``TaskActivity.actor_user_id``'s

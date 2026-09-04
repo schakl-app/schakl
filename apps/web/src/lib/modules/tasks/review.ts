@@ -82,3 +82,20 @@ export function adoptRun(
 
   return { form: next, baseline: nextBaseline, shown, remountDescription };
 }
+
+/**
+ * The fields the reader changed and has not saved — what an exit has to carry.
+ *
+ * The review used to discard them: a reader who corrected the title, followed the link to the
+ * full card and found the old title there had done the work twice. Every way out now saves
+ * what differs from the baseline (`TaskReviewDialog.persist`), and only what differs — the
+ * host's update action patches exactly the fields it is posted, so a field left alone is a
+ * field never mentioned, the way a form that says nothing about a deadline does not move it.
+ */
+export function changedFields(form: ReviewFields, baseline: ReviewFields): Partial<ReviewFields> {
+  const out: Partial<ReviewFields> = {};
+  for (const key of ["title", "description", "project_id", "due_date"] as const) {
+    if (form[key] !== baseline[key]) out[key] = form[key];
+  }
+  return out;
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from tests.test_notifications_fanout import _member
 
 
 async def test_task_crud_and_status_toggle(client_for) -> None:
@@ -36,10 +37,13 @@ async def test_my_open_tasks(client_for) -> None:
             json={"due_date": FAR_FUTURE_DUE, "title": "Mine", "assignee_user_id": str(t.user.id)},
             headers=headers,
         )
-        # Unassigned → excluded from My Day (only tasks assigned to me appear).
+        # A colleague's → excluded from My Day (only tasks assigned to me appear). A task that
+        # names nobody is the creator's now (``test_task_assignee_required``), so "not mine"
+        # has to be somebody else's.
+        other = await _member(t, "collega@example.com")
         await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Unassigned"},
+            json={"due_date": FAR_FUTURE_DUE, "title": "Theirs", "assignee_user_id": str(other.id)},
             headers=headers,
         )
         # Mine but done → excluded.
@@ -486,9 +490,12 @@ async def test_contact_assignee_needs_a_client(client_for) -> None:
                 headers=headers,
             )
         ).json()
+        # Posted the way the picker posts it — the contact beside an explicitly empty roster —
+        # because the internal task is its creator's (somebody is always on a task), and a
+        # contact *beside* an employee is the exclusivity refusal rather than this one.
         rejected = await c.patch(
             f"/api/v1/tasks/{task['id']}",
-            json={"assignee_contact_id": contact_id},
+            json={"assignee_contact_id": contact_id, "assignees": []},
             headers=headers,
         )
         assert rejected.status_code == 422
@@ -521,9 +528,11 @@ async def test_contact_assignee_company_isolation(client_for) -> None:
             )
         ).json()
 
+        # ``assignees: []`` beside the contact, as the picker posts it: the task is its creator's
+        # until then, and a contact beside an employee is the other refusal.
         wrong_company = await c.patch(
             f"/api/v1/tasks/{task['id']}",
-            json={"assignee_contact_id": elsewhere_ct},
+            json={"assignee_contact_id": elsewhere_ct, "assignees": []},
             headers=headers,
         )
         assert wrong_company.status_code == 422
@@ -540,7 +549,7 @@ async def test_contact_assignee_company_isolation(client_for) -> None:
     async with client_for(t.host) as c:
         cross_org = await c.patch(
             f"/api/v1/tasks/{task['id']}",
-            json={"assignee_contact_id": foreign_ct},
+            json={"assignee_contact_id": foreign_ct, "assignees": []},
             headers=headers,
         )
         assert cross_org.status_code == 422

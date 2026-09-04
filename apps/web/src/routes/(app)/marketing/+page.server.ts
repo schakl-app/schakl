@@ -31,10 +31,20 @@ export const load: PageServerLoad = async (event) => {
       })
     : null;
   const clients = await clientsP;
+  // A client's own marketing page is their dashboard, not a picker: with one company (the
+  // usual case) the picker has one tile that only ever leads here, so the page opens on it.
+  // Several companies keep the picker — it is the switcher then.
+  const clientRows = clients.data?.rows ?? [];
+  const only = clientRows.length === 1 ? clientRows[0] : undefined;
+  if (event.locals.user?.isPortal && !companyId && only) {
+    throw redirect(303, `/marketing?company=${only.company_id}`);
+  }
 
   return {
     clients: clients.data?.rows ?? [],
     clientsTotal: clients.data?.total ?? 0,
+    // The tenant's own source names (#446), for the tiles that print a name without a row.
+    sourceLabels: clients.data?.source_labels ?? {},
     companyId,
     // Streamed behind the shell (docs/PERFORMANCE.md): the client picker and the period tabs are
     // what the user interacts with, and neither needs a fold of daily metric rows to render.

@@ -342,17 +342,31 @@
     },
     // The dashboard tile's "no client or project" bucket arrives here as `?unlinked=1`; the chip
     // is what makes that a visible filter rather than a silently narrowed list.
+    // The three below are the agency's housekeeping and none of them can match a client's
+    // list: every task a portal login sees is anchored to their company, and an unnamed or
+    // undated row is one the agency has yet to finish — so they are the layout's, not theirs.
     {
       kind: "pills",
       key: "unlinked",
+      hidden: isPortal,
       options: [{ value: "1", label: t("tasks.filter.unlinked") }],
     },
     // The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or deleted;
     // without it they sit among real work with nothing to gather them by.
-    { kind: "pills", key: "unnamed", options: [{ value: "1", label: t("tasks.filter.unnamed") }] },
+    {
+      kind: "pills",
+      key: "unnamed",
+      hidden: isPortal,
+      options: [{ value: "1", label: t("tasks.filter.unnamed") }],
+    },
     // The rows an instance carried into #392, where the deadline became required. Findable so
     // they can be dated — one at a time, or as a selection through the ✎ beside this list.
-    { kind: "pills", key: "undated", options: [{ value: "1", label: t("tasks.filter.undated") }] },
+    {
+      kind: "pills",
+      key: "undated",
+      hidden: isPortal,
+      options: [{ value: "1", label: t("tasks.filter.undated") }],
+    },
     {
       kind: "pills",
       key: "label_id",

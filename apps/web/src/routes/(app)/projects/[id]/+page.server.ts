@@ -146,7 +146,12 @@ export const actions: Actions = {
    */
   addTask: async (event) => {
     const form = await event.request.formData();
-    const body = taskCreateBody(form, { projectId: event.params.id });
+    // The caller is the picker-less fallback only: a dialog that drew the roster and was left
+    // empty is refused (somebody is always on a task), and the dialog says so itself.
+    const body = taskCreateBody(form, {
+      projectId: event.params.id,
+      fallbackAssigneeUserId: event.locals.user?.id ?? null,
+    });
     if (!body) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

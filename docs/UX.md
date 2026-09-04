@@ -69,7 +69,12 @@
    definition at once, and for the title.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
-   record's activity feed with actor + timestamp. Approval locks records for non-managers.
+   record's activity feed with actor + timestamp. **A deadline nobody stated is not extended,
+   it is set**: create-then-edit writes today over a placeholder row (`unnamed`, #350) and drops
+   the user into the form, so the first date picked there — up to and including the save that
+   names the task — asks for no reason, on the API and on the screen alike; a form that asks
+   someone to explain a default they never chose reads as broken, and the row is the one
+   `?unnamed=1` already lists as unsaved. Approval locks records for non-managers.
    Invoiced implies approved — states never contradict each other.
    **The activity trail is a core capability, not a per-screen nicety** (issue #67, CLAUDE.md §16):
    a mutable record opts into it with `AuditableMixin`, its service records field edits (`created`,
@@ -220,9 +225,24 @@ card to find out what kind of thing it was.
 **`register` is the kind that carries the argument, and it is the only one that is not a box.**
 Reference material is correct, occasionally consulted and never news, so it gets a rule and the
 page's own ground rather than a bordered rectangle competing with the working surfaces above it.
-That is what finally makes the client hub's two lanes look like two lanes: #364 had already told
-the page which panels are which, and it drew both identically, so the distinction lived in the
-data, was announced by one muted heading, and was invisible everywhere else.
+On a task's page, where a register sits *between* panels, that is still the right treatment.
+
+**On the client hub it was not, and the reason is worth keeping.** The hub's registers sit on a
+tinted band (§5), and a hairline rule on a tinted band is a rule floating on a grey slab: six of
+them at six different heights, a left lane that ended half-way down the right one with nothing
+but tint underneath, and card edges nobody could find — the team's word for it was *disgusting*.
+The band and the rule were both saying "different kind of thing", and two ways of saying one
+thing is one too many. So the hub's register lane draws **ordinary `panel` cards on the band**
+(`REGISTER_LANE` in the hub page): the band is the whole distinction, and inside it a register
+is the same white card every other list in the product is drawn in. The rule generalises: **a
+partition is drawn once, by the container, and the things inside it look like everything else.**
+
+**A row is one grammar, wherever it is drawn** (`core/ui/PanelRow.svelte`). Measured on the same
+lane: six cards, six row shapes — brand-coloured names on two, dark on four; the amount inline on
+one and right-aligned on the next; a status chipped beside a name that already *was* the status
+("Concept — Concept"). `PanelRow` states the order once — name, meta under it, value right and
+tabular, chip last — and a chip that is a claim (overdue, ready to review) is drawn through
+`StateMark`, so the register lane and the working lane above it read as one product.
 
 `stat` needed a third surface token. A figure card carries no border — a box drawn around one
 number is chrome around a fact — so it needs a fill that separates it from *both* the page
@@ -278,10 +298,11 @@ alone; #395/#397: the heading carries the colour and the rows stay quiet):
 - **Between the dashboard's two columns, a hairline column rule** (`sm:border-l` on the second
   stack): the board is two stacks of same-shaped cards, and the rule is what lets the card
   edges read as a grid at a glance instead of being recovered by parsing each card.
-- **The client hub's register lane sits on a `--surface-tint` band.** A register card is a
-  hairline rule on the page's own ground (#404), so the lane's *ground* is the thing that can
-  say "a different kind of thing starts here" — and `--surface-tint` is hueless by
-  construction, so it can never read as a state or collide with a brand.
+- **The client hub's register lane sits on a `--surface-tint` band.** The lane's *ground* is
+  the thing that says "a different kind of thing starts here" — and `--surface-tint` is hueless
+  by construction, so it can never read as a state or collide with a brand. The cards on it are
+  ordinary cards (§3): the band draws the partition, and drawing it twice — a wash *and* a
+  rule-on-ground card — is what made the lane read as a slab rather than a section.
 
 The panel-width loose end from the same issue is decided in code, with reasons beside the
 declarations: `marketing.overview` keeps `SIZE_FULL` (the one panel that is a dashboard rather
@@ -2120,6 +2141,23 @@ contrast bug in dark mode rather than only an inconsistency.
   dialog) hands in its own `reveal` and answers whether everything is on screen. A control that
   says "toon wat is aangevuld" and visibly does nothing is the one outcome worse than not
   offering it.
+  **A review is where the plan gets fixed, so the plan is editable there, and every way out
+  saves.** The first slide-over drew the checklist read-only ("restructuring is what the card is
+  for"), had no strip for a screenshot, and threw away a corrected title the moment the reader
+  followed the link to the full card. Four things changed, and the last is the rule. The
+  checklist is edited in place (`TaskChecklistEditor`: tick, add, click a step to rename it,
+  remove, a new list) over the task's own endpoints, because the four pages the dialog is drawn
+  on own no action that knows the task. Screenshots and files land on the card's own strip
+  (`FileAttachments` in `direct` mode, Ctrl+V anywhere while the dialog is open — listening in
+  the capture phase so a host page's own strip does not take the paste first). The box under
+  the notes changes the task in words (`TaskAIRevise`, docs/AI.md), the same box the card has.
+  And **Sluiten, Escape, the backdrop and the link to the card all save the changed fields
+  first** (`persist`, through the same host action Opslaan uses), because "I typed it into the
+  review and it was gone on the card" is the one outcome a review desk must not have; an exit
+  that cannot save — an empty title, a later deadline with no reason — keeps the dialog open and
+  says why. Its sibling on the card: a step's title, and a list's, is renamed by clicking the
+  words (`InlineText`'s rule one row down — Enter saves, blur saves what changed, Escape puts
+  the words back), instead of edit mode, ⋯ → Bewerken and a form.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and
@@ -2280,6 +2318,23 @@ contrast bug in dark mode rather than only an inconsistency.
   could never save. The API being the boundary is why this was not a data *leak*; it is still a
   screen that lies about what the visitor may do, and it is why every settings route declares its
   permission (#19) rather than trusting the call it makes.
+- **A list's chrome is the agency's, and a client reads the same list without it.** Both
+  registers a portal login can open drew the agency's own housekeeping around the rows: Taken
+  offered *Zonder klant of project*, *Naamloos* and *Zonder vervaldatum* (none of which can match
+  a client's list — every task they see is anchored to their company, and an unnamed or undated
+  row is one the agency has yet to finish), and Klanten offered *Mijn klanten*, the lifecycle
+  pills (lead → gearchiveerd) and four agency-side columns: who at the agency handles the account,
+  when the client was entered, the phone number the client itself owns, and the budget burn the
+  API already blanks for them (#449). This is a **layout** question, which is the one `isPortal`
+  is the right signal for (#373), so the pills carry `hidden: isPortal` and the column list is
+  narrowed once (`companyColumns(isPortal)`) for the page *and* its server load — the picker
+  cannot offer what the table cannot draw, and a saved layout naming `hours` no longer asks the
+  API for a roll-up it would withhold. Two siblings on the same pass. The hub's *Open taken* tile
+  counted through a bare `ctx.repo(Task)`, so a client read "4" over a panel and a list that both
+  showed three — §285's failure mode (2) reached through the summary seam; it counts through
+  `TaskService(ctx).repo` now, which is the portal repository for a client. And a project's end
+  date reads as a dash to staff (the field is still to be filled in) and as nothing at all to a
+  client: an end date that was never agreed is not a fact about their project.
 - **A whole *screen* that leaks, not just a control.** The pass above gated the controls inside
   client-reachable pages and missed the page that *is* a write surface: `/tasks/templates` — the
   org-wide task-automation and checklist repositories — hung off the tasks sub-nav and read behind
@@ -2541,6 +2596,16 @@ contrast bug in dark mode rather than only an inconsistency.
   question the API already answers (#312). The preview goes through a `+server.ts` beside the
   page, never `fetch("/api/v1/…")` from the browser — only traefik routes that prefix, so the same
   call 404s on every dev server and the preview would silently never appear.
+  **…and it is shown *beside* the controls that produce it, not at the foot of the editor.** The
+  preview first landed as the editor's last row, below the mode radios and the whole planned-blocks
+  section — so on a rule with three blocks, changing "op dag 1" to "op dag 15" moved a number a
+  screen below the box being typed in, which is a preview nobody sees while typing. The cadence
+  controls (interval, anchor) and the "Volgende taak" box are one two-column grid now, keyed on the
+  *card's* width (`@container`, since the same editor sits in a half-width card and a full-width
+  form) and stacking with the date directly under the anchor where the card is narrow; the block
+  dates sit under the block rows that place them, for the same reason. An answer belongs next to
+  the question, and "the answer is on the screen" is not the same claim as "the answer is where
+  the eye is".
 
   **A control that acts on the *stored* record, offered inside an edit form, saves first.** #230's
   create-then-edit is right — the record exists, so Inplannen is reachable without a save — but
@@ -2616,6 +2681,41 @@ contrast bug in dark mode rather than only an inconsistency.
   standing in the Agenda and in Google (removable in the same confirm, named with its date), and
   the good news that the rule has already scheduled the next one.
 
+- **A year you can see is a year you can plan, and a hand-off is a question** (the recurrence
+  audit; `RecurrenceEditor`, the task page's Planning card). Four things on the repeat rule were
+  each a small lie of omission, and together they made "op schema" a mode nobody trusted.
+
+  **The tasks exist.** A schedule-mode rule now lays out every occurrence inside the year ahead
+  the moment it is saved, and says so before the save ("11 taken in het komende jaar", beside the
+  next date) and after it (an activity line naming the span). The Planning card lists what is
+  ahead in the series as dated chips — this one marked, capped and counted ("en nog 6") — on the
+  root and on every occurrence alike, and an occurrence's Herhaling row says whose series it is
+  and links to the root, because the rule lives in exactly one place and an occurrence page that
+  offered an editor would have been offering to start a second series.
+
+  **The block says who.** A planned block opened with nobody named, which the API reads as
+  "everyone on the task" — true, and drawn as an empty picker over a placeholder, so the one thing
+  the person planning wanted to see was the one thing the row did not say. The assignee is the
+  default now and shows as a chip; a row emptied on purpose still means the roster and the
+  placeholder names them ("Iedereen op de taak (Jij, Thomas Bakker)"), and the preview under the
+  rows prints the names rather than "de toegewezen persoon".
+
+  **A control that removes something is labelled and always there.** The block's ✕ sat at the
+  end of its input row, read as belonging to the length box beside it, and was hidden on a single
+  block — so the one block somebody had added could not be removed except by unticking the whole
+  plan. Each block has a header now ("Blok 1 · Blok verwijderen"), and removing the last one
+  switches the plan off, which is what the checkbox above already means.
+
+  **Reassigning a task in a series asks "this one, or all following?"** — as a dialog raised by
+  the save itself, from the edit form and the in-place editor alike (`InlineField.beforeSubmit`),
+  never a radio pair defaulting to one answer that nobody reads. The answer re-submits the same
+  form; *all following* hands over rosters, the blocks already on the leaver's calendar and the
+  rule's own plan, and the trail on each side says so. Its sibling on the same card: **a prompt
+  with a required answer must not have an exit that leaves the form unsaveable** — the deadline
+  prompt now offers a reason or "14 okt houden", disables Bevestigen over an empty box, treats
+  Escape and the backdrop as the second answer, and takes focus so Escape is its own (with focus
+  left in the date field, the keystroke closed the in-place editor *under* the prompt and left
+  the prompt standing over nothing).
 - **A page with two orderings cannot be reordered** (#393, the task page). The same card asked
   *when* before it had said *what*: Planning sat above Omschrijving and Checklists, which is not
   a decision anybody made — #335 pulled three scattered widgets into one Planning card and left it
@@ -2871,6 +2971,32 @@ contrast bug in dark mode rather than only an inconsistency.
   edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
   edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
   have been the first thing an agency met after upgrading.
+- **Somebody is always on a task, and the two write paths answer that differently on purpose**
+  (tasks' roster, the sibling of #392 above). *"Bij het aanmaken van een taak — vanaf het bord,
+  via audio of vanuit een contactmoment — moet er altijd minstens één persoon aan toegewezen
+  zijn."* An unassigned task is on no one's board, in no one's *mijn taken* and in no one's
+  nudges: #392's invisibility one column over, so the answer is a required field again. Four
+  rules. **Every door asks, through the one body builder**: `taskCreateBody` now refuses a
+  rendered roster that says nobody (a client contact is somebody, #453), `TaskQuickCreate`
+  cancels that submit before the round trip and prints the sentence under the picker — because
+  the roster travels as one *hidden* field, and a hidden control is barred from constraint
+  validation, so `required` had nowhere to sit — and the dictation sheet's assignee picker lost
+  its "Geen" and holds Aanmaken disabled until a colleague is named. **A dialog opened from a
+  contact moment starts as *you***: the four interaction surfaces (the form, the `.eml` upload,
+  the move dialog, the bulk approve) hand `TaskQuickCreate` the viewer as its opening chip, since
+  a task made while reading an e-mail is routinely the reader's own follow-up. Visible and
+  removable, never a decision taken off screen (#391's rule for the same chip) — and removing it
+  without putting somebody else in its place is what the refusal is for. **The API resolves a
+  create and refuses an update.** `TaskService.create` already handed a task that named nobody to
+  the project's responsible, else the client's; the chain ends at the *caller* now, because the
+  callers with nobody in front of them — an MCP agent, the assistant's `create_task`, an import
+  row with an empty cell — mean the person who is obviously meant, and a 422 there would refuse
+  the commonest sentence spoken to the assistant. An update has no such default: "hand this to
+  nobody" is refused with `assignee_user_id` named (`errors.tasks_assignee_required`), absent
+  still means leave alone so a status move on a pre-rule row keeps working, and the ✎ bulk edit
+  sets the roster and cannot clear it. **The one create that is refused is a client's**: a portal
+  login is not somebody a task can be handed to (#273's roster is employees only), so with no
+  roster and no contact it gets the field named rather than a client on the employee roster.
 - **A field a draft carries is not a field anybody filled in** (#284, `modules/time/billable.ts`).
   The hour form seeds `billable` from the project — false where a subscription covers the work —
   and stops seeding it the moment the person moves the toggle themselves. That second half read

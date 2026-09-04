@@ -1,6 +1,7 @@
 /** Display helpers for reporting (issue #300) — labels, badges and the one date format. */
 import { RANGE_DASH } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
+import type { UiState } from "$lib/core/state";
 
 import type { ReportCadence, ReportDelivery } from "./types";
 
@@ -19,6 +20,26 @@ export function statusClass(status: string): string {
 
 export function statusLabel(status: string): string {
   return t(`reporting.status.${status}`);
+}
+
+/**
+ * The same meaning in the fixed state palette (`docs/UX.md` §1), for the surfaces that draw a
+ * row through `PanelRow`: `ready` is the one a person must act on, `failed` has already gone
+ * wrong, `sent` is actively fine, and the rest are history or in flight.
+ */
+export function statusState(status: string): UiState {
+  switch (status) {
+    case "ready":
+      return "today";
+    case "failed":
+      return "late";
+    case "sent":
+      return "ok";
+    case "generating":
+      return "soon";
+    default:
+      return "neutral";
+  }
 }
 
 export function audienceLabel(audience: string): string {

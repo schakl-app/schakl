@@ -24,6 +24,11 @@ registerWebModule({
       module: "oxxa",
       entityType: "domain",
       titleKey: "oxxa.panel.title",
+      // The register we renew at is our supplier, not the client's business (the domains list
+      // hides the registrar column from an external login for the same reason) — and a panel
+      // headed "Registrar (OXXA)" that then refuses is worse than none: it names the vendor
+      // in the refusal.
+      audience: "staff",
       // After Cloudflare's panel (30): the delegation follows the zone, and reading them in
       // that order is what makes the "push these nameservers" step legible.
       position: 40,

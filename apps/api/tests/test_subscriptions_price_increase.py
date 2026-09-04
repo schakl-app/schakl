@@ -432,7 +432,8 @@ async def test_template_scope_requires_template_manage(client_for) -> None:
             json={
                 "permissions": [
                     *member["permissions"],
-                    "subscriptions.subscription.read",
+                    # Scoped since the portal read: stored with its scope, never bare.
+                    "subscriptions.subscription.read:any",
                     "subscriptions.subscription.write",
                 ]
             },

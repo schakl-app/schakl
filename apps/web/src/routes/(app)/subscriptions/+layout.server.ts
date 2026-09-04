@@ -33,10 +33,12 @@ export const load: LayoutServerLoad = async (event) => {
       name: c.name,
       status: c.status,
     })),
+    // With the client, so the agreement form's links picker can narrow to the agreement's.
     projects: lookupItems(projects, "projects").map((p) => ({
       id: p.id,
       name: p.name,
       status: p.status,
+      company_id: p.company_id,
     })),
     definitions: definitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],

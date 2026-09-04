@@ -383,7 +383,9 @@ async def handle_task_schedule_saved(ctx: EmitContext, payload: dict[str, Any]) 
         or await _org_locale(ctx.session, ctx.org.id)
     )
     snapshot = {
-        "summary": _task_summary(payload.get("task_title"), locale),
+        "summary": _task_summary(
+            payload.get("task_title"), payload.get("company_name"), locale
+        ),
         "description": _task_description(ctx.org, payload, locale),
         "local_type": LOCAL_TYPE_TASK_SCHEDULE,
         "local_id": str(schedule_id),
@@ -433,8 +435,19 @@ async def handle_task_schedule_gone(ctx: EmitContext, payload: dict[str, Any]) -
         await ctx.session.flush()
 
 
-def _task_summary(title: str | None, locale: str | None) -> str:
-    """"Taak: Redesign homepage" — the task marker plus its title, in the person's locale."""
+def _task_summary(title: str | None, company_name: str | None, locale: str | None) -> str:
+    """"Nova Fietsen: Redesign homepage" — the client's name and the task's title.
+
+    The client leads because that is what a glance at a week wants to know: whose work sits
+    where. The old marker ("Taak: …") said what *kind* of record the block was, which a
+    calendar full of them already says, and is kept only for a task with no client — an
+    internal job — where there is nothing else to lead with. ``d4a9b3c6f2e7`` retitled the
+    events already mirrored, so the two shapes never sit side by side on one calendar.
+    """
+    if company_name and title:
+        return f"{company_name}: {title}"
+    if company_name:
+        return company_name
     base = translate("google.calendar.task_event_title", locale)
     return f"{base}: {title}" if title else base
 

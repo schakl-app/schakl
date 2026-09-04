@@ -19,7 +19,7 @@ export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking" | "rankmath";
  * same one, and two copies of an order is how a sixth source lands in one place and not the other.
  */
 export const ALL_SOURCES: MarketingSource[] = ["ga4", "gsc", "gads", "seranking", "rankmath"];
-/** The sources a tenant may name for clients (#446) — every one the dashboard can draw. */
+/** The sources a tenant may rename (#446) — every one the dashboard can draw. */
 export const PORTAL_LABEL_SOURCES: MarketingSource[] = [
   "ga4",
   "gsc",
@@ -27,6 +27,11 @@ export const PORTAL_LABEL_SOURCES: MarketingSource[] = [
   "seranking",
   "rankmath",
 ];
+/**
+ * The connections a tenant may rename beside them — keyed by the connection's `kind`, which is
+ * also its key in the same `portal_source_labels` map (the API accepts both vocabularies).
+ */
+export const LABELLED_CONNECTIONS: MarketingConnectionKind[] = ["gtm"];
 
 /** Sources whose credential is an org-level API key, not the shared Google consent. */
 export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
@@ -76,6 +81,8 @@ export const ALL_CONNECTIONS: MarketingConnectionKind[] = ["gtm"];
 /** One attached connection as the panel draws it — mirrors the API's `MarketingConnection`. */
 export interface MarketingConnectionRow {
   kind: MarketingConnectionKind;
+  /** The tenant's own name for this kind of connection; absent means the catalog name. */
+  label?: string | null;
   /** The contributing module's own row id — what its screens address the connection by. */
   id: string;
   /** What anybody quotes: `GTM-XXXXXXX`. */

@@ -13,7 +13,11 @@
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { compareModeLabel, portalDefaultLabel, sourceLabel } from "$lib/modules/marketing/format";
-  import { COMPARE_PERIODS, PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
+  import {
+    LABELLED_CONNECTIONS,
+    COMPARE_PERIODS,
+    PORTAL_LABEL_SOURCES,
+  } from "$lib/modules/marketing/types";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
@@ -73,11 +77,12 @@
       <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_key_hint")}</p>
     </div>
 
-    <!-- What a client is told each source is called (#446). The supplier behind the agency's
-         service is not the client's business, so a keyed source (SE Ranking, Rank Math) is
-         named for what it *measures* by default and the tenant may put their own product name
-         on it — "Breik. Analytics" is one tenant's word and lives here, never in code (§2). A
-         Google source keeps the product name: it is the client's own account. -->
+    <!-- What each source is called, on every screen that names one (#446, widened): the
+         marketing page, the client hub, the client's own homepage. The supplier behind the
+         agency's service is not the client's business, so a keyed source (SE Ranking, Rank
+         Math) is named for what it *measures* by default *in the portal* and the tenant may put
+         their own product name on it everywhere — "Breik. Analytics" is one tenant's word and
+         lives here, never in code (§2). Staff read the product name until they rename it. -->
     <fieldset class="border-t border-border pt-5">
       <legend class="mb-1 text-sm font-semibold text-text">
         {t("settings.marketing.portal_labels")}
@@ -94,6 +99,21 @@
               name={`portal_label_${source}`}
               value={settings?.portal_source_labels?.[source] ?? ""}
               placeholder={portalDefaultLabel(source)}
+              maxlength="80"
+              class={inputClass}
+            />
+          </div>
+        {/each}
+        {#each LABELLED_CONNECTIONS as kind (kind)}
+          <div>
+            <label for={`portal-label-${kind}`} class="mb-1 block text-xs text-text-muted">
+              {t(`marketing.connection.${kind}`)}
+            </label>
+            <input
+              id={`portal-label-${kind}`}
+              name={`portal_label_${kind}`}
+              value={settings?.portal_source_labels?.[kind] ?? ""}
+              placeholder={t(`marketing.connection.${kind}`)}
               maxlength="80"
               class={inputClass}
             />

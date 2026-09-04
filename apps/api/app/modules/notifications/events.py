@@ -42,6 +42,11 @@ TASK_COMMENTED = "task.commented"
 # different sentences, and a recipient hears exactly one of them.
 TASK_REPLIED = "task.replied"
 TASK_MENTIONED = "task.mentioned"
+#: The sentences a **client's** contact person may be told through their portal login: they
+#: were named in a comment, or a task assigned to them was commented on / answered. Everything
+#: else is the agency talking to itself. Stated as a closed set so a new staff event can never
+#: reach a client by riding a hint.
+PORTAL_EVENTS: frozenset[str] = frozenset({TASK_COMMENTED, TASK_REPLIED, TASK_MENTIONED})
 TASK_DUE_SOON = "task.due_soon"
 TASK_OVERDUE = "task.overdue"
 # A task planned onto someone's calendar (#188). Recipient = the person the block is for; the
@@ -162,6 +167,13 @@ DEDUP_KEY = "_dedup_key"
 #: auto-watching it. So "you said it another way" has to be stated to the dispatcher, not merely
 #: implied by an omission. Subtracted after the watcher union, before the actor is dropped.
 EXCLUDE_KEY = "_exclude"
+#: Logins from **outside** the agency this write is addressed to by name — a client's contact
+#: person mentioned in a comment, or the contact a commented task is assigned to. Staff events
+#: never reach a client's inbox (``_members_only``), and that stays the rule for ``_recipients``
+#: and for watchers; this key is the emitter saying "this sentence is *for* them", and it is
+#: honoured only for :data:`PORTAL_EVENTS`. A hint is still data from another module: the
+#: dispatcher keeps only ids that are memberships of this org.
+EXTERNAL_RECIPIENTS_KEY = "_external_recipients"
 
 # --- digest cadences --------------------------------------------------------------------- #
 DIGEST_IMMEDIATE = "immediate"

@@ -116,6 +116,17 @@ REVISIONS: tuple[DefaultsRevision, ...] = (
         marker="@rev:uptime-portal-own",
         grants={"client": ("uptime.monitor.read:own",)},
     ),
+    DefaultsRevision(
+        # The client's homepage (portal dashboard): a "Mijn abonnementen" tile and the planned
+        # blocks on their own tasks. `subscriptions.subscription.read` became scoped in the same
+        # change — the roles holding it bare are rewritten to the `:any` they effectively had
+        # (#266's argument, one module over) and `client` gains the narrow half, fenced by
+        # `Subscription.__portal_horizon_clause__`. `tasks.schedule.read:own` for a client
+        # resolves to "the blocks on a task I may read" (`TaskScheduleService.list_in_range`).
+        marker="@rev:portal-subscriptions-schedules",
+        rescope={"subscriptions.subscription.read": "subscriptions.subscription.read:any"},
+        grants={"client": ("subscriptions.subscription.read:own", "tasks.schedule.read:own")},
+    ),
 )
 
 

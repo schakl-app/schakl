@@ -114,8 +114,12 @@ export const load: PageServerLoad = async (event) => {
         }))
         .catch(() => ({ companyId: selected, website, metrics: null }));
     }
+    // Every tile reads the company the switcher selected — the marketing tile always did,
+    // and the rest read the whole horizon, so a contact linked to two clients saw one
+    // company's marketing over both companies' tasks, whatever chip was lit.
+    const context = { companyId: selected };
     for (const widget of selectedWidgets.filter((item) => item.key !== "marketing.portal")) {
-      widgetData[widget.key] = widget.load(api).catch(() => null);
+      widgetData[widget.key] = widget.load(api, context).catch(() => null);
     }
     return {
       portal: { companies: items, selected },
@@ -135,7 +139,7 @@ export const load: PageServerLoad = async (event) => {
   // for the slowest selected module before sending any page content.
   const widgetData: Record<string, Promise<unknown>> = {};
   for (const widget of selectedWidgets) {
-    widgetData[widget.key] = widget.load(api).catch(() => null);
+    widgetData[widget.key] = widget.load(api, { companyId: null }).catch(() => null);
   }
 
   return {

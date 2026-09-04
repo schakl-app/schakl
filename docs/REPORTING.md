@@ -496,6 +496,22 @@ the same `shape_section`, so the paragraph cannot describe a column the table dr
 - **A ranking is coloured by its move, not by its rank.** `≤ 10 = green` is a verdict, and the
   wrong one: a term parked at 22 all year earned a red cell every month for standing still, and
   one that climbed 41 → 38 earned two red cells for its best month in a year.
+- **A change rides the number it is about; it is not a column.** A row used to read
+  `SESSIES 1.240 · VORIG JAAR 980 · VERSCHIL +26,5%` — three cells for two facts, with the one a
+  reader actually wants (*did it go up*) in the narrowest column at the far end, away from the
+  number it qualifies. `attach_changes` folds a `delta` into the cell of the metric whose
+  `compare_` twin sits beside it, and a `change` (a move in places) into the position it
+  produced: the engine table's average, the rankings table's end rank. The cell then draws
+  `1.240 ▲ +26,5%` through `change_badge` — the same badge the KPI tile has always drawn, so a
+  tile and a table cell say "up a quarter" identically. Two signals, deliberately separate: the
+  **arrow is the direction the number moved** and the **colour is the verdict**, so an average
+  position that fell from 22 to 19 draws a down arrow in green. Folding them into one glyph
+  would make every lower-is-better metric read backwards. The host column is told it is one
+  (`column.change`) and paid for out of the same width budget (`column_widths(count, hosting)`),
+  the rows are untouched (the snapshot stays the source's record and the model's copy still
+  names the change in words), and the rankings cell lost its wash — a coloured badge on a cell
+  washed the same colour is a badge nobody can see. Applied at the renderer, so every report
+  already stored prints this way too.
 
 And two about what the numbers *said*:
 
@@ -671,7 +687,7 @@ A tenant's own document is a `report_templates` row with `design: "custom"` and 
 body (plus optional `custom_css`), rendered inside `_shell.html` — so the page geometry, the
 palette and the "not for the client" band on an internal analysis are not theirs to re-derive
 or to drop. The body renders against the dict in `render/context.py`: **strings and lists,
-never rows**, with `fmt`, `fmt_number`, `fmt_delta` and `delta_class` supplied so a Dutch
+never rows**, with `fmt`, `fmt_number`, `fmt_delta`, `delta_class` and `change_badge` supplied so a Dutch
 thousands separator is not something anyone reimplements in Jinja.
 
 Start from the shipped design rather than a blank page:

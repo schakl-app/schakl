@@ -284,17 +284,18 @@ table.data thead th.group,
 table.data + table.data { margin-top: 12px; }
 .group-head { margin-top: 12px; }
 
-/* A position cell states a rank; the *wash* states whether it moved the right way.
+/* A position cell states a rank; the *badge* beside it states how it got there.
  *
- * It used to be washed by absolute position — `<= 10` green, everything else red — which is the
- * wrong signal on a monthly report and reads as a verdict. A client whose term sat at 22 all
- * year got a red cell every month for standing still, and a term that climbed 41 → 38 got two
- * red cells for its best month in a year. What a client wants to know is what changed, so the
- * change is what carries the colour, on the cell that holds the new number. Where nothing
- * moved, nothing is coloured — a neutral row is a fact too. */
+ * The cell used to be washed by absolute position — `<= 10` green, everything else red — which
+ * is the wrong signal on a monthly report and reads as a verdict. A client whose term sat at 22
+ * all year got a red cell every month for standing still, and a term that climbed 41 → 38 got
+ * two red cells for its best month in a year. What a client wants to know is what changed, so
+ * the change is what carries the colour. It carried it as a wash on the cell for a while, with
+ * the move itself in a VERSCHIL column at the far end of the row; the move now sits inside the
+ * cell as an arrow and a signed count, and the wash went with the column — a coloured badge on
+ * a cell washed the same colour is a badge nobody can see. Where nothing moved, nothing is
+ * coloured — a neutral row is a fact too. */
 .pos { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.pos.up { background: var(--up-wash); }
-.pos.down { background: var(--down-wash); }
 /* The best positions still earn a quiet mark, because "in de top 3" is a milestone a client
  * celebrates and a rank alone does not say it. A rule, not a wash: it cannot be confused with
  * the movement colour beside it.
@@ -304,6 +305,11 @@ table.data + table.data { margin-top: 12px; }
  * printed document is the artefact; the preview is the copy of it. */
 .pos.top { border-left: 3px solid var(--accent); }
 
+/* A change: an arrow for the direction, a colour for the verdict, the figure signed. Drawn by
+ * `context.change_badge` wherever a number has something to be compared with — a KPI tile, a
+ * channel's sessions, an engine's average position, a keyword's end rank — so the document has
+ * one way of saying "up a quarter". It never breaks between the arrow and the figure; the cell
+ * it sits in may still wrap between the number and the badge, which is a layout, not a fault. */
 .badge {
   display: inline-block;
   padding: 1px 5px;
@@ -311,10 +317,16 @@ table.data + table.data { margin-top: 12px; }
   font-size: 7pt;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .badge.up { background: var(--up-wash); color: var(--up); }
 .badge.down { background: var(--down-wash); color: var(--down); }
 .badge.neutral { background: var(--wash); color: var(--muted); }
+/* The arrow is a filled path in `currentColor`, so it is the badge's own colour, and sized in
+ * `em` so it tracks the 7pt figure beside it. */
+.badge .arrow { width: 0.95em; height: 0.95em; vertical-align: -0.08em; margin-right: 2px; }
+/* Beside a number in a table cell the badge keeps a small gap, the same one a tile keeps. */
+table.data td .badge { margin-left: 5px; }
 
 /* The KPI strip.
  *

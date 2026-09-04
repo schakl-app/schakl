@@ -64,10 +64,18 @@ export interface PostedFields {
  * than the thing a person meets. A **deadline is still not a calendar booking**: planning the
  * work into the agenda stays optional and setting one never implies the other.
  *
+ * **Somebody is always on the task**, and that is the third refusal. A rendered picker's
+ * answer is honoured — a roster, or a client contact — except the one answer that names nobody:
+ * `[]` with no contact is refused, not sent, because a task with no one on it is on no one's
+ * board, in no one's "mijn taken" and in no one's nudges, which is #392's invisibility one
+ * column over. The dialog says so before the round trip (`TaskQuickCreate` cancels the submit
+ * and prints the sentence under the picker); this is the backstop.
+ *
  * @param opts.projectId  pinned by the surface (a project's to-do list), overriding the form.
  * @param opts.fallbackAssigneeUserId who to assign when the dialog rendered no roster picker at
- *   all — an org with nobody to offer. A rendered picker's answer is always honoured, `[]`
- *   included: "nobody" is a decision, and `undefined` is the absence of one (`parseAssignees`).
+ *   all — an org with nobody to offer, so the form carries no `assignees` field (`undefined`,
+ *   the absence of a decision — `parseAssignees`). Every action passes the caller here, which is
+ *   what `Nieuwe taak` has always done; without it a picker-less form is refused too.
  */
 export function taskCreateBody(
   form: PostedFields,
@@ -81,6 +89,11 @@ export function taskCreateBody(
   // The client's contact (#453): `TaskAssigneePicker` posts it beside an explicitly empty
   // roster, and the API refuses the pair — so a contact wins outright and no employee rides.
   const contactId = String(form.get("assignee_contact_id") ?? "").trim();
+  // A rendered picker that answers "nobody" is refused; a form with no picker falls back to
+  // the caller, and only a caller-less one is refused as well.
+  const nobodyChosen = !contactId && assignees !== undefined && assignees.length === 0;
+  const nobodyToFallTo = !contactId && assignees === undefined && !opts.fallbackAssigneeUserId;
+  if (nobodyChosen || nobodyToFallTo) return null;
   const companyId = String(form.get("company_id") ?? "").trim();
   const projectId = (opts.projectId ?? String(form.get("project_id") ?? "")).trim();
 

@@ -241,6 +241,67 @@ async def test_enrichment_writes_notes_checklist_deadline_and_links(
         assert "ai_enriched" in [a["action"] for a in detail["activities"]]
 
 
+async def test_the_task_is_the_agencys_whichever_way_the_mail_went(client_for, monkeypatch) -> None:
+    """An outbound mail ("we deliver X by Friday, could you send us Y") used to produce a task
+    telling the *client* to send Y. The prompt names the agency, states the point of view, and
+    the document says in words who wrote the message — so the model cannot read "could you
+    send us" without knowing which side of the conversation is asking."""
+    from app.modules.interactions.enrich import _system_prompt, message_document
+
+    t = await make_tenant("enrich-side")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_email(t, t.user.id)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text("UPDATE interactions SET direction = 'outbound' WHERE id = :id"),
+            {"id": uuid.UUID(row_id)},
+        )
+        await session.execute(
+            text("UPDATE org_settings SET brand_name = 'Bureau Breik' WHERE org_id = :org"),
+            {"org": t.org.id},
+        )
+        await session.commit()
+    seen: dict = {}
+
+    async def capturing(config, **kwargs):  # noqa: ANN001, ANN003
+        seen.update(kwargs)
+        for event in _plan(summary="Logo van de klant afwachten en dan plaatsen."):
+            yield event
+
+    async with client_for(t.host) as c:
+        await _configure_ai(c, headers)
+        task = (await c.post(
+            "/api/v1/tasks",
+            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            headers=headers,
+        )).json()
+        await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"], "enrich_task": True},
+            headers=headers,
+        )
+        await _set_body(t, row_id, "Wij zetten de homepage vrijdag live. Sturen jullie het logo?")
+        monkeypatch.setattr("app.core.ai.providers.stream_chat", capturing)
+        assert await _run_enrichment(t, row_id, task["id"]) == TaskAIStatus.DONE.value
+
+    system = seen["system"]
+    assert "Bureau Breik" in system
+    assert "agency's own point of view" in system
+    assert "never a list of things for the client to do" in system
+    sent = seen["messages"][0].content
+    assert '"written_by": "the agency"' in sent
+    assert '"agency": "Bureau Breik"' in sent
+
+    # The document's own words for the other direction, and for a note with none.
+    from app.modules.interactions.models import Interaction
+
+    inbound = Interaction(direction="inbound", subject="s", participants=[], body_text="x")
+    assert "outside the agency" in message_document(inbound, agency="A")["written_by"]
+    assert message_document(Interaction(direction="none", participants=[]))["written_by"] is None
+    assert "Bureau Breik" in _system_prompt(today=org_today(), locale="nl", agency="Bureau Breik")
+
+
 async def test_status_moves_queued_to_done_and_is_polled_on_its_own_endpoint(
     client_for, monkeypatch
 ) -> None:
@@ -389,7 +450,9 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
         detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
         assert detail["status"] == "open", "an email must not be able to close a task"
         assert detail["visible_to_client"] is False, "an email must not reach a client portal"
-        assert detail["assignee_user_id"] is None, "an email must not reassign work"
+        # Since every create puts somebody on the task (the roster rule), "not reassigned"
+        # means the creator is still the one on it — not that nobody is.
+        assert detail["assignee_user_id"] == str(t.user.id), "an email must not reassign work"
         # The deadline it arrived with, untouched — and two independent rules say so: the task
         # already carries a date a person chose (#392), and 2099-01-01 is outside the bounded
         # window anyway, because a deadline read out of a sentence is a guess.
@@ -643,7 +706,8 @@ async def test_the_ride_along_asks_for_the_task_permission_not_the_review_one(
         await _configure_ai(c, owner_headers)
         reviewer = await _invite_member(c, owner_headers, "reviewer@example.com")
         reviewer_headers = await auth_cookie(reviewer)
-        # Unassigned, and created by the owner: nobody's `:own`.
+        # Created by the owner, so the owner is on it (the roster rule): the reviewer's `:own`
+        # reaches nothing here.
         task = (
             await c.post(
                 "/api/v1/tasks",
@@ -651,7 +715,7 @@ async def test_the_ride_along_asks_for_the_task_permission_not_the_review_one(
                 headers=owner_headers,
             )
         ).json()
-        assert task["assignee_user_id"] is None
+        assert task["assignee_user_id"] == str(t.user.id)
         row_id = await _seed_email(t, reviewer.id, message_id="msg-perm")
         monkeypatch.setattr(
             "app.core.ai.providers.stream_chat", _fake_stream(_plan(summary="Niet toegestaan."))

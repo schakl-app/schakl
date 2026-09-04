@@ -546,12 +546,16 @@
             {project.start_date ? fmtNumericDate(project.start_date) : "—"}
           </dd>
         </div>
-        <div>
-          <dt class="text-text-muted">{t("projects.field.end_date")}</dt>
-          <dd class="mt-0.5 font-medium text-text">
-            {project.end_date ? fmtNumericDate(project.end_date) : "—"}
-          </dd>
-        </div>
+        <!-- A dash tells staff the field is still to be filled in; to a client an end date
+             that was never agreed is not a fact about their project, so the row is absent. -->
+        {#if project.end_date || !page.data.user?.isPortal}
+          <div>
+            <dt class="text-text-muted">{t("projects.field.end_date")}</dt>
+            <dd class="mt-0.5 font-medium text-text">
+              {project.end_date ? fmtNumericDate(project.end_date) : "—"}
+            </dd>
+          </div>
+        {/if}
         {#if project.description}
           <div class="col-span-2">
             <dt class="text-text-muted">{t("projects.field.description")}</dt>

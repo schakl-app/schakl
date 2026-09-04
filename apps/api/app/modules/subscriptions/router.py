@@ -34,6 +34,18 @@ from app.schemas import Page
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
 
+def _read(ctx: RequestContext, sub: object) -> SubscriptionRead:
+    """The row as the caller may read it. An external (client) login gets the agreement —
+    what it is, what it costs, when it renews — and never the agency's working notes on it,
+    nor the automation level it is invoiced under: those are the desk, not the document
+    (the tasks list nulls ``allocated_minutes`` for a portal caller on the same argument)."""
+    read = SubscriptionRead.model_validate(sub)
+    if ctx.is_portal:
+        read.notes = None
+        read.auto_invoice_mode = None
+    return read
+
+
 # --- subscription types (issue #142) ----------------------------------------- #
 # Declared before ``/{subscription_id}`` so "types" never matches the id path param.
 @router.get(
@@ -93,7 +105,9 @@ async def delete_subscription_type(
 @router.get(
     "/templates",
     response_model=list[SubscriptionTemplateRead],
-    dependencies=[require_permission("subscriptions.subscription.read")],
+    # The preset library carries the agency's prices: `:any`, the module's own surface — a
+    # client holding `:own` reads their agreements and nothing about how the rest are priced.
+    dependencies=[require_permission("subscriptions.subscription.read", "any")],
 )
 async def list_subscription_templates(
     ctx: RequestContext = Depends(require_context),
@@ -181,7 +195,7 @@ async def list_subscriptions(
         usage=usage,
     )
     return Page(
-        items=[SubscriptionRead.model_validate(s) for s in items],
+        items=[_read(ctx, s) for s in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -191,7 +205,9 @@ async def list_subscriptions(
 @router.get(
     "/summary",
     response_model=SubscriptionSummary,
-    dependencies=[require_permission("subscriptions.subscription.read")],
+    # MRR/ARR over the whole book: there is no client whose figure this is, so the scope is
+    # the only thing that can fence it (#266).
+    dependencies=[require_permission("subscriptions.subscription.read", "any")],
 )
 async def summary(ctx: RequestContext = Depends(require_context)) -> SubscriptionSummary:
     """MRR/ARR + the invoices due within a month, for Overzicht → Omzet."""
@@ -238,7 +254,7 @@ async def get_subscription(
     ctx: RequestContext = Depends(require_context),
 ) -> SubscriptionRead:
     sub = await SubscriptionService(ctx).get(subscription_id, usage=usage)
-    return SubscriptionRead.model_validate(sub)
+    return _read(ctx, sub)
 
 
 @router.get(

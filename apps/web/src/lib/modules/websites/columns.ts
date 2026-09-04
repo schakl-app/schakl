@@ -24,14 +24,17 @@ export const WEBSITE_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 220,
   },
+  // Hosting, who looks after it, whether it is up and when we filed it are the agency's view
+  // of a site; a client's websites list is just the list (`audience`, core/table/columns.ts).
   {
     key: "hosting",
     labelKey: "websites.hosting",
     sortKey: "hosting",
     defaultVisible: true,
     width: 220,
+    audience: "staff",
   },
-  { key: "technical_owner", labelKey: "websites.technical_owner", width: 200 },
+  { key: "technical_owner", labelKey: "websites.technical_owner", width: 200, audience: "staff" },
   // A pill or a dash, so it needs room for the header and nothing more.
   {
     key: "uptime",
@@ -39,6 +42,7 @@ export const WEBSITE_COLUMNS: ColumnMeta[] = [
     sortKey: "uptime",
     defaultVisible: true,
     width: 110,
+    audience: "staff",
   },
   {
     key: "created_at",
@@ -46,5 +50,6 @@ export const WEBSITE_COLUMNS: ColumnMeta[] = [
     sortKey: "created_at",
     align: "right",
     width: 130,
+    audience: "staff",
   },
 ];

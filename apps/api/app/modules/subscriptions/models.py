@@ -137,6 +137,21 @@ class Subscription(
         Index("ix_subscriptions_custom", "custom", postgresql_using="gin"),
     )
 
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule an **external (client) login** reads agreements by.
+
+        The company match is the plain one (``company_id`` is ``NOT NULL``, so there is no
+        unattached agreement to exempt), and **a draft is invisible**: it is the agency still
+        pricing something, and a client shown it has been told what they are about to be
+        charged before anyone decided. `Invoice.__portal_horizon_clause__`'s rule, one module
+        over, and on the model for the same reason — the list, its total and the detail then
+        answer alike by construction rather than by three predicates agreeing (§15, #285).
+        """
+        return cls.company_id.in_(scope or frozenset()) & (
+            cls.status != SubscriptionStatus.DRAFT.value
+        )
+
     company_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="CASCADE"),

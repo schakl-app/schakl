@@ -11964,6 +11964,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/ai/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Checklist With Ai
+         * @description Write this task's steps from its title and notes, as one new checklist.
+         */
+        post: operations["generate_checklist_with_ai_api_v1_tasks__task_id__ai_checklist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/ai/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Task With Ai
+         * @description Change this task in words: one typed instruction, applied as the caller.
+         *
+         *     "Add a step for the DNS change, move the deadline to Friday, note that the client wants it
+         *     in blue." The route is the task write it is (§15); the service asks ``ai.use`` and the
+         *     ``:own`` rule before a token is spent (``tasks/assist.py``).
+         */
+        post: operations["revise_task_with_ai_api_v1_tasks__task_id__ai_revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists": {
         parameters: {
             query?: never;
@@ -23313,6 +23357,10 @@ export interface components {
         MarketingClientList: {
             /** Rows */
             rows?: components["schemas"]["MarketingClientRow"][];
+            /** Source Labels */
+            source_labels?: {
+                [key: string]: string;
+            };
             /**
              * Total
              * @default 0
@@ -23425,6 +23473,8 @@ export interface components {
              * @default gtm
              */
             kind: string;
+            /** Label */
+            label?: string | null;
             /** Last Error */
             last_error?: string | null;
             /**
@@ -24397,6 +24447,10 @@ export interface components {
             range_days: number;
             /** Rows */
             rows?: components["schemas"]["OverviewRow"][];
+            /** Source Labels */
+            source_labels?: {
+                [key: string]: string;
+            };
             /**
              * Total
              * @default 0
@@ -26488,6 +26542,8 @@ export interface components {
             planned_end?: string | null;
             /** Planned Start */
             planned_start?: string | null;
+            /** Year Count */
+            year_count?: number | null;
         };
         /** RecurringBacklogGroup */
         RecurringBacklogGroup: {
@@ -28122,6 +28178,26 @@ export interface components {
                 [key: string]: number[];
             };
         };
+        /**
+         * SeriesOccurrenceRead
+         * @description One laid-out occurrence of a schedule-mode series, as the card lists the ones ahead.
+         */
+        SeriesOccurrenceRead: {
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Status */
+            status: string;
+        };
         /** ServiceAccessIssued */
         ServiceAccessIssued: {
             /**
@@ -29525,6 +29601,19 @@ export interface components {
             /** Ai Status */
             ai_status?: string | null;
         };
+        /**
+         * TaskChecklistGenerateRequest
+         * @description Write this task's steps from its title and notes; ``instruction`` is an optional hint.
+         */
+        TaskChecklistGenerateRequest: {
+            /** Instruction */
+            instruction?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -29653,6 +29742,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -29660,6 +29751,7 @@ export interface components {
              * @default false
              */
             requires_interaction: boolean;
+            series?: components["schemas"]["TaskSeriesRead"] | null;
             /** Status */
             status: string;
             /** Title */
@@ -29772,6 +29864,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -29955,6 +30049,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -29983,6 +30079,68 @@ export interface components {
             visible_to_client: boolean;
         };
         /**
+         * TaskReviseRequest
+         * @description One typed instruction against one existing task — "voeg een stap toe voor de DNS".
+         *
+         *     The words are the caller's own, so nothing here narrows what they may say; what the answer
+         *     may *do* is bounded on the way in (``assist.revision_from_call``).
+         */
+        TaskReviseRequest: {
+            /** Instruction */
+            instruction: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * TaskReviseResult
+         * @description What the revision did, and the card as it now stands.
+         *
+         *     The whole detail rides along because every caller redraws the task after this: the review
+         *     slide-over adopts it, the card reloads. ``changed`` names the kinds of change that landed
+         *     so a screen can say "steps added, deadline moved" in its own words; ``summary`` is the
+         *     model's one sentence to the colleague.
+         */
+        TaskReviseResult: {
+            /** Changed */
+            changed?: string[];
+            /** Summary */
+            summary?: string | null;
+            task: components["schemas"]["TaskDetail"];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * TaskSeriesRead
+         * @description The series a task belongs to (schedule mode): its root, the rule, and what lies ahead.
+         *
+         *     Answered on the root and on every occurrence alike, so whichever of the year's tasks is
+         *     open, the reader sees the same rule and the same list of what is still to come — and a
+         *     link to where the rule is edited, which is the root and nowhere else.
+         */
+        TaskSeriesRead: {
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * Root Id
+             * Format: uuid
+             */
+            root_id: string;
+            /** Root Title */
+            root_title: string;
+            /** Upcoming */
+            upcoming?: components["schemas"]["SeriesOccurrenceRead"][];
+            /**
+             * Upcoming Total
+             * @default 0
+             */
+            upcoming_total: number;
+        };
+        /**
          * TaskTranscribeRequest
          * @description A recorded task dictation (#382).
          *
@@ -30006,6 +30164,8 @@ export interface components {
         TaskUpdate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Apply To */
+            apply_to?: ("this" | "future") | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
             /** Assignee User Id */
@@ -55958,6 +56118,8 @@ export interface operations {
                 unlinked?: boolean;
                 assignee_user_id?: string | null;
                 assignee_contact_id?: string | null;
+                /** @description Whose work it is: `contact` — assigned to one of the client's own people; `agency` — everything else (assigned to staff, or to nobody yet). The client's homepage draws the two as separate tiles, and a specific person is a different question (`assignee_contact_id` / `assignee_user_id`). */
+                assigned_to?: ("contact" | "agency") | null;
                 /** @description A configured status key */
                 status?: string | null;
                 /** @description Only tasks in a non-terminal status — the working set, any status key */
@@ -57077,6 +57239,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskAIStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_checklist_with_ai_api_v1_tasks__task_id__ai_checklist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskChecklistGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_task_with_ai_api_v1_tasks__task_id__ai_revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskReviseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReviseResult"];
                 };
             };
             /** @description Validation Error */

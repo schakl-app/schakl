@@ -7,7 +7,7 @@ sidebar:
 
 Wat het bureau werkelijk doet, en wat het factureert: projecten met budgetten, taakborden en checklists, de timer en de weekstaat, en elk contactmoment op één tijdlijn.
 
-103 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+105 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `projects`
 
@@ -45,7 +45,7 @@ Queryparameters:
 | `sort` | string | name \| status \| start_date \| end_date \| budget_hours \| …, '-' desc |
 | `hours` | boolean | Include the budget burn-down; costs one grouped query (default `false`) |
 | `count` | boolean | Compute total; set false for name-only lookups (default `true`) |
-| `burn` | string | 'over' keeps only projects at or past their budget; other tokens ignored |
+| `burn` | string | 'over' (at or past budget), 'warn' (75-100 %) or 'ok' (under 75 %) keeps only that burn band; other tokens ignored |
 
 Antwoord: `200` · `Page_ProjectRead_`
 
@@ -141,6 +141,8 @@ Antwoord: `200` · `ProjectSettingsRead`
 | `PATCH` `/tasks/{task_id}` | `tasks.task.write` |
 | `DELETE` `/tasks/{task_id}` | `tasks.task.delete` |
 | `GET` `/tasks/{task_id}/ai-status` | `tasks.task.read` |
+| `POST` `/tasks/{task_id}/ai/checklist` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/ai/revise` | `tasks.task.write` |
 | `POST` `/tasks/{task_id}/checklists` | `tasks.task.write` |
 | `PATCH` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
 | `DELETE` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
@@ -274,6 +276,30 @@ Recht: `tasks.task.read`
 Padparameters: `task_id`
 
 Antwoord: `200` · `TaskAIStatusRead`
+
+#### `POST /api/v1/tasks/{task_id}/ai/checklist`
+
+**Generate Checklist With Ai** — Write this task's steps from its title and notes, as one new checklist.
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `TaskChecklistGenerateRequest`
+
+Antwoord: `201` · `ChecklistRead`
+
+#### `POST /api/v1/tasks/{task_id}/ai/revise`
+
+**Revise Task With Ai** — Change this task in words: one typed instruction, applied as the caller.
+
+Recht: `tasks.task.write`
+
+Padparameters: `task_id`
+
+Request body: `TaskReviseRequest`
+
+Antwoord: `200` · `TaskReviseResult`
 
 #### `POST /api/v1/tasks/{task_id}/checklists`
 

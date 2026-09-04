@@ -163,9 +163,19 @@
    * facts that happen to coincide today, and a page that infers one from the other is a page
    * where changing the outline silently restyles half the hub.
    */
+  //
+  // Both lanes draw **cards**. The register lane drew `Card kind="register"` — a hairline rule
+  // on the page's own ground (#404) — and then #438 put the whole lane on a `--surface-tint`
+  // band, which is where the pairing went wrong: six rules floating on one grey slab, a left
+  // lane that ended half-way down the right one with nothing but tint underneath, and card
+  // edges nobody could find. The band is what says "a different kind of thing starts here",
+  // and it says it on its own; inside it, a register wants the same white card every other
+  // list in the product is drawn in, so the lane reads as a grid rather than as a wash. The
+  // two lanes still differ in three ways the reader sees: the band, the band heading, and the
+  // h3 outline level.
   type LaneKind = { kind: "panel" | "register"; heading: 2 | 3 };
   const WORKING_LANE: LaneKind = { kind: "panel", heading: 2 };
-  const REGISTER_LANE: LaneKind = { kind: "register", heading: 3 };
+  const REGISTER_LANE: LaneKind = { kind: "panel", heading: 3 };
 
   // ---- tier 1: the status pill edits in place ---------------------------- //
   // Most real edits are one field, and none of them should cost a dialog, a scroll position and
@@ -375,13 +385,13 @@
 <!-- Are we all right with this client? Five numbers, above the fold, each opening what it counted. -->
 <SummaryStrip tiles={data.summary} />
 
-<!-- **The two lanes look like two lanes** (#404). #364 already told this page which panels are
-     working surfaces and which are registers, and it drew both as the identical white bordered
-     box — so the distinction existed in the data, was announced by one 12 px muted heading, and
-     was invisible everywhere else. A register is correct, occasionally consulted and never news:
-     it gets `Card kind="register"`, which is a hairline rule and the page's own ground rather
-     than a rectangle competing with the work above it. Nothing about the composition changed;
-     the page still knows the name of no module. -->
+<!-- **The two lanes look like two lanes** (#404, #438). #364 already told this page which panels
+     are working surfaces and which are registers, and it drew both as the identical white box
+     on the identical white page — so the distinction existed in the data, was announced by one
+     12 px muted heading, and was invisible everywhere else. A register is correct, occasionally
+     consulted and never news: its lane sits on a tinted band under its own heading, and the
+     cards inside it are ordinary cards (see `REGISTER_LANE`). Nothing about the composition
+     changed; the page still knows the name of no module. -->
 {#snippet card(panel: Panel, lane: LaneKind)}
   {@const spec = companyPanelComponent(enabled, panel.key)}
   <Card
@@ -444,18 +454,18 @@
 {#if registerRows.length > 0}
   <!-- Reference material: correct, occasionally consulted, never news. It keeps its own lane
        and its own heading so the working surfaces above are unmistakably the foreground.
-       The heading is `BAND_HEADING` now (#404): it used to be 12 px uppercase muted over 14 px
+       The heading is `BAND_HEADING` (#404): it used to be 12 px uppercase muted over 14 px
        dark panel titles, which is the hierarchy the wrong way up — the container quieter than
        its own contents, on the one screen whose whole argument is that the two lanes differ.
-       And the whole lane sits on a `--surface-tint` band (#438): a register card is a rule on
-       the page's own ground, so the lane's *ground* is what can say "different kind of thing"
-       — hueless by construction, never a state and never the brand. -->
-  <div class="mt-8 rounded-xl bg-surface-tint p-4 sm:p-5">
-    <h2 class="mb-3 {BAND_HEADING}">
+       The whole lane sits on a `--surface-tint` band (#438) — hueless by construction, never a
+       state and never the brand — and the cards inside it are the product's ordinary cards, so
+       the band is the *only* thing that differs and it is unmistakable. -->
+  <section class="mt-8 rounded-2xl bg-surface-tint p-4 sm:p-5" aria-labelledby="registers-heading">
+    <h2 id="registers-heading" class="mb-4 {BAND_HEADING}">
       {t("companies.section.registers")}
     </h2>
     {@render lane(registerRows, REGISTER_LANE)}
-  </div>
+  </section>
 {/if}
 
 {#if empties.length > 0}

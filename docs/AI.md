@@ -368,6 +368,58 @@ agency happy for AI to polish a colleague's paragraph may well not be happy for 
 mailbox. Folding it into `writing_assist` would have switched the second on for everyone who had
 already agreed to the first.
 
+### Whose task it is
+
+A sixth fault, reported from real use: an **outbound** mail — the agency writing to a client,
+"we zetten de homepage vrijdag live, sturen jullie het logo?" — produced a task telling the
+*client* to send the logo. Nothing in the prompt said whose task it was, and a model reading
+"could you send us" cannot tell from the words alone which side of the conversation is asking.
+So the prompt now names the agency (`org_settings.brand_name`, read once beside the locale in
+`_org_voice`) and states the point of view outright: the task belongs to the agency, every step
+is something the agency's staff does, and an outbound mail's task is what the agency promised,
+must deliver or must chase — "wait for the client's logo", never "send the logo". The document
+carries the same fact in words (`written_by`: the agency, or someone outside it), because
+`direction: "outbound"` is a token and the sentence is what the model reads.
+
+## Changing a task in words, and writing its steps (`tasks/assist.py`)
+
+Two buttons on the task card and in the review slide-over, one seam, both riding `task_assist`.
+
+**Revise** (`POST /tasks/{id}/ai/revise`): a box under the notes — "voeg een stap toe voor de
+DNS, deadline vrijdag, zet erbij dat de klant het in het blauw wil" — and the task is changed.
+**Generate a checklist** (`POST /tasks/{id}/ai/checklist`): the steps to finish the task, read
+off its title and notes, as one new list.
+
+Both are the *opposite* trust posture from the email enrichment above, and the shape follows
+from that:
+
+* **The words are a colleague's own, and the writes are theirs.** Everything lands through
+  `TaskService` — a rename is a rename, a tick is a tick, a later deadline carries the
+  instruction as its reason — so the trail reads exactly as if the colleague had done it by
+  hand, under their name, plus one `ai_revised` / `ai_checklist` line saying a model did the
+  typing. No `SystemContext`, no worker, no placeholder actor: the route is the task write it
+  is (`tasks.task.write`, §15), and the service asks `ai.use` and the `:own` rule before a
+  token is spent.
+* **The answer is a diff, and the description is the one field returned whole.** A field left
+  null is a field left alone. The description cannot be a diff — a model splicing a paragraph
+  into markdown it cannot see the result of is how a task loses a line — so it is asked for
+  complete, told to keep every line the instruction did not mention, and compared against the
+  stored text so an unchanged answer writes nothing.
+* **Grounding is per id and per URL, as everywhere.** A step to rename, tick or drop is named
+  by an id the model was shown in the task document (`task_document`), and which list an item
+  sits in is our lookup rather than the model's claim; a link must appear in the instruction
+  itself (a bare host the colleague typed counts, and is completed); a deadline is bounded by
+  the same window every model-read date is. Two steps asked for one new list get one list.
+* **Nothing is created when nothing was found.** A checklist answer with no items is a 422
+  with its own key (`errors.ai_empty_answer`) rather than an empty list on the card.
+
+On the web the box is `TaskAIRevise` and the checklist button sits in the checklist section's
+header (or beside the box, when the task has no list yet). Both are drawn only for
+`aiEnabled(user, "task_assist") && canWriteTask(...)` — off means invisible, and a box that would
+answer 409 or 403 is never drawn. In the review slide-over the typed fields are saved *before*
+the instruction is sent, so the model reads what the reviewer sees, and the row that comes back
+is adopted whole.
+
 ## Model choice
 
 `DEFAULT_MODELS` seeds the settings form; a per-feature override lives in the `features` JSONB.

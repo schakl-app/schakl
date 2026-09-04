@@ -12,7 +12,7 @@ import {
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
-import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { columnsForViewer, readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { WEBSITE_COLUMNS, WEBSITES_TABLE_ID } from "$lib/modules/websites/columns";
@@ -42,7 +42,7 @@ export const load: PageServerLoad = async (event) => {
   // over the saved sort so a sorted list stays shareable and the back button works.
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, WEBSITES_TABLE_ID);
-  const resolved = resolveColumns(WEBSITE_COLUMNS, pref);
+  const resolved = resolveColumns(columnsForViewer(WEBSITE_COLUMNS, event.locals.user), pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   const paging = resolvePaging(event.url, pref);

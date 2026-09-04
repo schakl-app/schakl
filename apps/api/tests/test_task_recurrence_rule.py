@@ -364,13 +364,15 @@ async def test_cron_spawn_also_plans(client_for) -> None:
         carrier.recurrence_next_run = org_today() - timedelta(days=1)
         await session.commit()
 
-    assert await spawn_scheduled_recurrences({}) == 1
+    spawned = await spawn_scheduled_recurrences({})
+    assert spawned >= 52  # the whole year, one occurrence a week
 
     async with client_for(t.host) as c:
-        items = (await c.get("/api/v1/tasks", headers=headers)).json()["items"]
-        clone_id = next(row["id"] for row in items if row["id"] != task["id"])
+        items = (await c.get("/api/v1/tasks?limit=200", headers=headers)).json()["items"]
+        clone_ids = [row["id"] for row in items if row["id"] != task["id"]]
+        assert len(clone_ids) == spawned
         blocks = (
-            await c.get(f"/api/v1/tasks/schedules?task_id={clone_id}", headers=headers)
+            await c.get(f"/api/v1/tasks/schedules?task_id={clone_ids[0]}", headers=headers)
         ).json()
     assert len(blocks) == 1
     assert blocks[0]["created_by_user_id"] is None

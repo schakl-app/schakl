@@ -6,6 +6,7 @@
   import { fromHref } from "$lib/core/origin";
   import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
   import { can } from "$lib/core/permissions";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
   interface PanelWebsite {
@@ -38,23 +39,22 @@
     {:else}
       <ul class="divide-y divide-border">
         {#each shown as site (site.id)}
-          <li class="flex items-center gap-2 py-2">
-            <a
-              href={fromHref(`/websites/${site.id}`, page.url)}
-              class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
-            >
-              {site.root ? site.name : `www.${site.name}`}
-            </a>
-            {#if site.hosting_name}
-              <span class="text-xs text-text-muted">{site.hosting_name}</span>
-            {/if}
-            {#if uptimeState(site)}
-              {@const state = uptimeState(site)!}
-              <span class="rounded-full px-2 py-0.5 text-[11px] {uptimeChipClass(state)}">
-                {uptimeLabel(state)}
-              </span>
-            {/if}
-          </li>
+          <PanelRow
+            href={fromHref(`/websites/${site.id}`, page.url)}
+            title={site.root ? site.name : `www.${site.name}`}
+            meta={site.hosting_name}
+          >
+            {#snippet trailing()}
+              {#if uptimeState(site)}
+                {@const state = uptimeState(site)!}
+                <span
+                  class="shrink-0 rounded-full px-2 py-0.5 text-[11px] {uptimeChipClass(state)}"
+                >
+                  {uptimeLabel(state)}
+                </span>
+              {/if}
+            {/snippet}
+          </PanelRow>
         {/each}
       </ul>
     {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/state";
   /**
    * The client picker on Marketing: one tile per client that actually has a source linked.
    *
@@ -16,7 +17,7 @@
 
   import { t } from "$lib/core/i18n";
 
-  import { sourceLabel } from "./format";
+  import { namedSourceLabel } from "./format";
   import type { MarketingClientRow } from "./types";
 
   let {
@@ -24,8 +25,11 @@
     total,
     hrefFor,
     onconnect,
+    sourceLabels = {},
   }: {
     rows: MarketingClientRow[];
+    /** The tenant's own source names (#446), so a tile reads the word the dashboard prints. */
+    sourceLabels?: Record<string, string>;
     /** Linked clients in view — `rows` is capped, and a cap must never read as everything. */
     total: number;
     hrefFor: (companyId: string) => string;
@@ -66,7 +70,9 @@
         <Plus size={15} aria-hidden="true" />
         {t("marketing.connect.open")}
       </button>
-    {:else}
+    {:else if !page.data.user?.isPortal}
+      <!-- "Koppel een bron op de klantpagina" is a sentence about our desk: a client is told
+           there is nothing here yet, never where the agency would go to attach something. -->
       <a href="/companies" class="mt-2 inline-block text-sm font-medium text-brand hover:underline">
         {t("marketing.clients.missing_cta")}
       </a>
@@ -104,26 +110,29 @@
               {#each row.sources as source (source.source)}
                 <!-- The glyph carries the state, never the colour: `text-brand` is gold on some
                      tenants, so a coloured chip would read as a warning on every tile. -->
+                {@const state = page.data.user?.isPortal ? "ok" : source.state}
                 <span
-                  class="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs {source.state ===
+                  class="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs {state ===
                   'ok'
                     ? 'text-text-muted'
                     : 'text-text'}"
-                  title={source.state === "ok" ? undefined : t(`marketing.health.${source.state}`)}
+                  title={state === "ok" ? undefined : t(`marketing.health.${state}`)}
                 >
-                  {#if source.state === "error"}
+                  <!-- A source's health ("synchronisatiefout") is the agency's to act on; on a
+                       client's own screen the chip names the source and nothing about our sync. -->
+                  {#if state === "error"}
                     <AlertTriangle size={12} class="shrink-0" aria-hidden="true" />
-                  {:else if source.state === "pending"}
+                  {:else if state === "pending"}
                     <Clock size={12} class="shrink-0" aria-hidden="true" />
                   {/if}
-                  {sourceLabel(source.source)}
+                  {namedSourceLabel(source.source, sourceLabels)}
                   {#if source.links > 1}
                     <span class="tabular-nums"
                       >{t("marketing.clients.count", { count: String(source.links) })}</span
                     >
                   {/if}
-                  {#if source.state !== "ok"}
-                    <span class="sr-only">{t(`marketing.health.${source.state}`)}</span>
+                  {#if state !== "ok"}
+                    <span class="sr-only">{t(`marketing.health.${state}`)}</span>
                   {/if}
                 </span>
               {/each}
@@ -134,7 +143,7 @@
     </ul>
   {/if}
 
-  <p class="mt-3 text-xs text-text-muted">
+  <p class="mt-3 text-xs text-text-muted" class:hidden={page.data.user?.isPortal}>
     {#if rows.length < total}
       <!-- No silent caps (docs/UX.md): a picker showing a prefix of the clients must say so,
            or the one that is missing reads as one that is not connected. -->

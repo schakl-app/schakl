@@ -25,7 +25,7 @@ import logging
 import socket
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -40,6 +40,8 @@ from app.i18n import translate_count
 from app.modules.notifications.events import (
     CHANNEL_EMAIL,
     CHANNEL_EXTERNAL,
+    DIGEST_IMMEDIATE,
+    PORTAL_EVENTS,
 )
 from app.modules.notifications.models import (
     Notification,
@@ -257,11 +259,24 @@ class EmailChannel:
         prefs = await resolve_email_for_recipients(
             ctx.session, ctx.org.id, event.event_type, [row.user_id for row in notifications]
         )
+        # A client's contact person is not in the app to read a bell: for a login from outside
+        # the agency the mail is the notification, so a portal-facing event mails at once unless
+        # that person (or the org) has said otherwise. Staff keep the silent default — one
+        # query over the batch, never one per recipient.
+        external: set[uuid.UUID] = set()
+        if event.event_type in PORTAL_EVENTS:
+            from app.core.portal import external_user_ids
+
+            external = await external_user_ids(
+                ctx.session, ctx.org.id, {row.user_id for row in notifications}
+            )
         now = datetime.now(UTC)
         # Same rule as the external channel: the org's calendar, resolved once.
         tz = await org_zoneinfo(ctx.session, ctx.org.id)
         for row in notifications:
             pref = prefs.get(row.user_id)
+            if pref is not None and row.user_id in external and pref.source == "default":
+                pref = replace(pref, enabled=True, delay_minutes=0, digest=DIGEST_IMMEDIATE)
             if pref is None or not pref.enabled:
                 continue
             ctx.session.add(

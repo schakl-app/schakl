@@ -72,9 +72,9 @@
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
   const showSettings = $derived(!isPortal && canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
-  const hasNotifications = $derived(
-    !isPortal && (theme?.enabledModules?.includes("notifications") ?? false),
-  );
+  // A client has an inbox too now: the comment that mentions their contact person, or lands on
+  // a task assigned to them, is written to it (`_external_recipients`), so the bell is theirs.
+  const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
 
   // Re-present an already-granted push subscription, once per session (#309). A push endpoint
   // rotates without telling anyone, and a rotated endpoint nobody re-registered is a device that

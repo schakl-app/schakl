@@ -25,12 +25,14 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
+from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.busy import BusyItem, busy_items, registered_busy_sources
 from app.core.events import emit
 from app.core.members import active_member_clause
 from app.core.permissions.deps import require_permission
+from app.core.scope import entity_visible
 from app.core.tenancy import RequestContext, require_context
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -112,13 +114,24 @@ class TaskScheduleService:
         if task_id is None and (date_from is None or date_to is None):
             raise AppError("required", "errors.required", status_code=422)
         can_any = self.ctx.can("tasks.schedule.read", scope="any")
+        # An external login (a client's contact person) holds ``:own`` and owns no block —
+        # every block is a colleague's — so for them *own* means "on a task I may read": the
+        # planned work on their own account, which is the one thing a client wants from a
+        # planning panel. The task's own portal horizon is the gate (visible to the client,
+        # one of their companies), asked through the record's repository; a task they may not
+        # open answers as if it had no blocks, exactly as the task itself 404s. Without a task
+        # the personal feed stays what it is for everyone: the caller's own blocks, i.e. none.
+        portal = self.ctx.is_portal and not can_any
+        if portal and task_id is not None:
+            if user_ids or not await entity_visible(self.ctx, "task", task_id):
+                return []
         targets: list[uuid.UUID] | None
         if user_ids:
             if not can_any and set(user_ids) - {self.ctx.user.id}:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
             targets = user_ids
         elif task_id is not None:
-            targets = None if can_any else [self.ctx.user.id]
+            targets = None if (can_any or portal) else [self.ctx.user.id]
         else:
             targets = [self.ctx.user.id]
 
@@ -179,8 +192,12 @@ class TaskScheduleService:
                     ends_at=block.ends_at,
                     start=local_start.date(),
                     end=max(local_start.date(), local_end.date()),
-                    note=block.note,
-                    time_entry_id=block.time_entry_id,
+                    # A client reads the window and who is in it, never the planner's
+                    # note, the hour budget or the time entry the block became — those are
+                    # the agency's working notes on its own diary (the tasks list nulls
+                    # ``allocated_minutes`` for a portal caller for the same reason).
+                    note=None if portal else block.note,
+                    time_entry_id=None if portal else block.time_entry_id,
                     created_by_user_id=block.created_by_user_id,
                     created_by_name=block.created_by_name,
                     user_name=full_name or email,
@@ -188,7 +205,7 @@ class TaskScheduleService:
                     project_id=project_id,
                     company_id=company_id,
                     status=status,
-                    allocated_minutes=allocated,
+                    allocated_minutes=None if portal else allocated,
                 )
             )
         return items
@@ -288,7 +305,13 @@ class TaskScheduleService:
         await self._notify_scheduled(block, task)
         return block
 
-    async def update(self, schedule_id: uuid.UUID, data: ScheduleUpdate) -> TaskSchedule:
+    async def update(
+        self, schedule_id: uuid.UUID, data: ScheduleUpdate, *, notify: bool = True
+    ) -> TaskSchedule:
+        """``notify=False`` moves a block without telling its new owner — for the series
+        hand-off, where the person taking over a year of a task has already heard "toegewezen"
+        once and must not hear "ingepland" twelve times over. The Google mirror still fires:
+        an event on the wrong calendar is a fact, a duplicate notification is noise."""
         block = await self._readable_or_404(schedule_id)
         # Editing an existing block needs write on its *current* owner…
         self._ensure_write_for(block.user_id)
@@ -318,7 +341,7 @@ class TaskScheduleService:
         task = await self.ctx.repo(Task).get_or_404(block.task_id)
         await self._emit_saved(block, task)
         # A reassignment tells the new person; a plain move does not re-notify (avoid churn).
-        if block.user_id is not None and block.user_id != old_user_id:
+        if notify and block.user_id is not None and block.user_id != old_user_id:
             await self._notify_scheduled(block, task)
         return block
 
@@ -376,8 +399,9 @@ class TaskScheduleService:
             .scalars()
             .all()
         )
+        company_name = await self._company_name(task.company_id)
         for block in blocks:
-            await self._emit_saved(block, task)
+            await self._emit_saved(block, task, company_name=company_name)
 
     async def log_time(self, schedule_id: uuid.UUID, data: ScheduleLogTime) -> TaskSchedule:
         """Confirm a passed block as a real time entry (#188). The entry is always the *caller's*
@@ -446,12 +470,29 @@ class TaskScheduleService:
     # ------------------------------------------------------------------ #
     # Bus emits (CLAUDE.md §6 — never import the google/notifications internals)
     # ------------------------------------------------------------------ #
-    async def _emit_saved(self, block: TaskSchedule, task: Task) -> None:
+    async def _company_name(self, company_id: uuid.UUID | None) -> str | None:
+        """The client's *label* (``companies.name``, never ``legal_name`` — a calendar is a
+        list, not a document; ``app/core/naming.py``), read with org-scoped SQL rather than an
+        import of the companies module (§6)."""
+        if company_id is None:
+            return None
+        return await self.ctx.session.scalar(
+            sql_text("SELECT name FROM companies WHERE id = :cid AND org_id = :oid"),
+            {"cid": company_id, "oid": self.ctx.org.id},
+        )
+
+    async def _emit_saved(
+        self, block: TaskSchedule, task: Task, *, company_name: str | None = None
+    ) -> None:
         """Mirror the block to the person's Google Calendar (#188), worded in the org timezone.
-        The snapshot is everything the google handler needs — it never re-reads a task."""
+        The snapshot is everything the google handler needs — it never re-reads a task. The
+        client's name rides along because the event is titled by it: a week of "Taak: …" says
+        what kind of thing each block is and never whose work it is."""
         zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
         local_start = block.starts_at.astimezone(zone)
         local_end = block.ends_at.astimezone(zone)
+        if company_name is None:
+            company_name = await self._company_name(task.company_id)
         await emit(
             "task_schedule.saved",
             self.ctx,
@@ -460,6 +501,7 @@ class TaskScheduleService:
                 "user_id": block.user_id,
                 "task_id": task.id,
                 "task_title": task.title,
+                "company_name": company_name,
                 "task_description": task.description,
                 "start_date": local_start.date().isoformat(),
                 "end_date": local_end.date().isoformat(),

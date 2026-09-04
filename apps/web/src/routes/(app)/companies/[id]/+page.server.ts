@@ -11,6 +11,7 @@ import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
+import { subscriptionActions } from "$lib/modules/subscriptions/actions.server";
 import { timeEntryActions } from "$lib/modules/time/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -347,4 +348,6 @@ export const actions: Actions = {
   ...gtmActions,
   // Uren panel contract (lib/modules/time): correct or remove one registration from the ⋯ (#400).
   ...timeEntryActions,
+  // Abonnementen panel contract (lib/modules/subscriptions): record an agreement from here.
+  ...subscriptionActions,
 };

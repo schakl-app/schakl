@@ -7,7 +7,7 @@ sidebar:
 
 Invoices and quotes built from the work that produced them, recurring agreements, the payment provider that settles them and the bookkeeping package they end up in.
 
-106 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+108 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `invoicing`
 
@@ -22,6 +22,7 @@ Invoices and quotes built from the work that produced them, recurring agreements
 | `POST` `/invoicing/invoices/{invoice_id}/credit` | `invoicing.invoice.write` |
 | `POST` `/invoicing/invoices/{invoice_id}/export` | `invoicing.invoice.write` |
 | `POST` `/invoicing/invoices/{invoice_id}/issue` | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/{invoice_id}/original` | `invoicing.invoice.write` |
 | `GET` `/invoicing/invoices/{invoice_id}/payment-intents` | `invoicing.invoice.read` |
 | `POST` `/invoicing/invoices/{invoice_id}/payment-intents` | `invoicing.payment.link` |
 | `POST` `/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync` | `invoicing.payment.link:any` |
@@ -35,6 +36,7 @@ Invoices and quotes built from the work that produced them, recurring agreements
 | `POST` `/invoicing/invoices/{invoice_id}/send` | `invoicing.invoice.send` |
 | `GET` `/invoicing/invoices/{invoice_id}/ubl` | `invoicing.invoice.read` |
 | `POST` `/invoicing/invoices/from-time` | `invoicing.invoice.write` |
+| `POST` `/invoicing/invoices/originals` | `invoicing.invoice.write` |
 | `GET` `/invoicing/invoices/pdf` | `invoicing.invoice.read` |
 | `GET` `/invoicing/outstanding` | `invoicing.invoice.write` |
 | `GET` `/invoicing/payment-accounts` | `invoicing.payment.link:any` |
@@ -195,6 +197,18 @@ Request body: `InvoiceIssue`
 
 Returns: `200` · `InvoiceRead`
 
+#### `POST /api/v1/invoicing/invoices/{invoice_id}/original`
+
+**Attach Invoice Original** — Attach (or replace) the original document of an **imported** invoice.
+
+Permission: `invoicing.invoice.write`
+
+Path parameters: `invoice_id`
+
+Request body: `Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post`
+
+Returns: `200` · `InvoiceRead`
+
 #### `GET /api/v1/invoicing/invoices/{invoice_id}/payment-intents`
 
 **List Payment Intents** — This invoice's payment attempts. ``_READ``'s floor, not ``_MODULE``: a client must be able to see the state of the payment they just made.
@@ -330,6 +344,16 @@ Permission: `invoicing.invoice.write`
 Request body: `InvoiceFromTime`
 
 Returns: `201` · `InvoiceRead`
+
+#### `POST /api/v1/invoicing/invoices/originals`
+
+**Attach Invoice Originals** — Attach the original documents of **imported** invoices in one go (docs/INVOICING.md).
+
+Permission: `invoicing.invoice.write`
+
+Request body: `Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post`
+
+Returns: `200` · `OriginalsBatchReport`
 
 #### `GET /api/v1/invoicing/invoices/pdf`
 

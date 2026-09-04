@@ -48,8 +48,10 @@ from app.modules.notifications.events import (
     ENTITY_TASK,
     ENTITY_TYPES,
     EXCLUDE_KEY,
+    EXTERNAL_RECIPIENTS_KEY,
     INTERACTION_EMAIL_PENDING,
     LEAVE_REQUESTED,
+    PORTAL_EVENTS,
     PROJECT_BUDGET_THRESHOLD,
     RECIPIENTS_KEY,
     TASK_COMMENTED,
@@ -240,6 +242,7 @@ class NotificationService:
         # next handler (the tasks module's company-status automation shares these events).
         data = dict(payload)
         hinted = data.pop(RECIPIENTS_KEY, None) or []
+        external_hint = data.pop(EXTERNAL_RECIPIENTS_KEY, None) or []
         excluded_hint = data.pop(EXCLUDE_KEY, None) or []
         dedup_key = data.pop(DEDUP_KEY, None)
         # Every ``_``-prefixed key is routing by convention (``_recipients``, ``_dedup_key``,
@@ -267,6 +270,15 @@ class NotificationService:
         # A hint is data from another module; only people who can actually open the record
         # may be told about it (Golden Rule 1 — never trust the payload for authorization).
         recipients = await self._members_only(recipients)
+        # A client's contact person hears the sentence addressed to *them* — named in a comment,
+        # or the task assigned to them commented on — and nothing else: the external set is
+        # honoured only for the portal-facing vocabulary, only when the emitter named them, and
+        # only for ids that are memberships here. Never through watchers, never the actor.
+        if external_hint and event_type in PORTAL_EVENTS:
+            external = {uid for uid in (_as_uuid(u) for u in external_hint) if uid is not None}
+            external -= muted
+            external.discard(self.actor_id)
+            recipients |= await self._org_members(external)
 
         delivery = await self._apply_preferences(event_type, recipients, data, now)
 
@@ -288,6 +300,18 @@ class NotificationService:
 
         await self._deliver(event, delivery, now)
         return event
+
+    async def _org_members(self, candidates: set[uuid.UUID]) -> set[uuid.UUID]:
+        """Which of ``candidates`` hold a membership in this org — the floor for an external
+        recipient (Golden Rule 1: a hint never authorises)."""
+        if not candidates:
+            return candidates
+        rows = await self.session.execute(
+            select(Membership.user_id).where(
+                Membership.org_id == self.org_id, Membership.user_id.in_(candidates)
+            )
+        )
+        return set(rows.scalars())
 
     async def _members_only(self, recipients: set[uuid.UUID]) -> set[uuid.UUID]:
         """Drop anyone who is not a *staff* member of this org — one query, no per-recipient

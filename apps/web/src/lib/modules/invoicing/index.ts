@@ -8,12 +8,46 @@ import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
 import InvoicingOutstandingWidget from "./InvoicingOutstandingWidget.svelte";
+import InvoicesPortalWidget from "./InvoicesPortalWidget.svelte";
 import InvoicingPanel from "./InvoicingPanel.svelte";
 import QuotesOpenWidget from "./QuotesOpenWidget.svelte";
 
 registerWebModule({
   name: "invoicing",
   dashboardWidgets: [
+    {
+      // The client's invoices on their homepage: what is still open, then the recent ones.
+      // Two reads on the selected company; the portal repository never serves a draft (#266).
+      key: "invoicing.portal",
+      module: "invoicing",
+      audience: "portal",
+      position: 25,
+      requiresPermission: "invoicing.invoice.read",
+      descriptionKey: "dashboard.widget_desc.invoicing.portal",
+      category: "dashboard.category.finance",
+      size: "lg",
+      load: async (api, { companyId }) => {
+        const query = { company_id: companyId ?? undefined, kind: "invoice", lines: false };
+        const [open, recent] = await Promise.all([
+          api.GET("/api/v1/invoicing/invoices", {
+            params: { query: { ...query, status: "open", limit: 10, sort: "due_date" } },
+          }),
+          api.GET("/api/v1/invoicing/invoices", {
+            params: { query: { ...query, limit: 5, sort: "-issue_date" } },
+          }),
+        ]);
+        const openItems = open.data?.items ?? [];
+        const recentItems = recent.data?.items ?? [];
+        return {
+          open: openItems,
+          openTotal: open.data?.total ?? openItems.length,
+          recent: recentItems,
+          recentTotal: recent.data?.total ?? recentItems.length,
+          companyId,
+        };
+      },
+      component: InvoicesPortalWidget,
+    },
     {
       key: "invoicing.outstanding",
       module: "invoicing",

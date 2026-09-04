@@ -120,7 +120,10 @@ async def list_companies(
 ) -> Page[CompanyRead]:
     items, total = await CompanyService(ctx).list(
         limit=limit, offset=offset, q=q, status=status, mine=mine, sort=sort,
-        hours=hours, count=count,
+        # A client never pays for — or reads — the budget roll-up (#449, the projects rule
+        # one module over): the hours the agency spends against its own budgets are what it
+        # agreed with itself, and the web draws no column for what the API withholds.
+        hours=hours and not ctx.is_portal, count=count,
     )
     return Page(
         items=[CompanyRead.model_validate(c) for c in items],

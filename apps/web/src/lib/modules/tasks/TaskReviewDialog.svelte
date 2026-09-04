@@ -12,7 +12,7 @@
    * the message still readable beside it, the task's defining fields editable at once, and a
    * link to the full card for everything a card has that a review does not need.
    *
-   * It is a form over a **fetched** row, not a page load, and that decides three things.
+   * It is a form over a **fetched** row, not a page load, and that decides four things.
    *
    * - **Nobody waits, and nobody is overwritten.** `TaskAIStatus` polls exactly as it does on
    *   the task page; when the run lands, this dialog re-reads the row and adopts the server's
@@ -28,35 +28,47 @@
    *   form carries and nothing else — partial like every update action here — and the same
    *   rule the task page enforces: a deadline pushed *later* asks for a reason, inline, because
    *   a second modal over a slide-over is one dialog too many.
-   * - **What the run wrote that is not a field is shown, read-only.** The enrichment writes a
-   *   description *and* a checklist and the links the message named
-   *   (`tasks/system.apply_ai_enrichment_system`); the dialog drew only the description, so the
-   *   steps schakl had invented were reviewed by nobody — the one part of the plan a reader
-   *   most needs to check against the e-mail beside it, filed behind a link that said they
-   *   "live on the full task". They are drawn, not made editable: this is a review of a task
-   *   that already exists, and restructuring a checklist is what the card is for.
+   * - **Every way out saves what was changed.** A reader who corrected the title and then
+   *   followed the link to the full card found the old title there; Sluiten, Escape, the
+   *   backdrop and the link now all post the changed fields first (`persist`, through the same
+   *   host action), so nothing typed into a review is typed twice. An exit that cannot save —
+   *   an empty title, a later deadline with no reason — keeps the dialog open and says why.
+   *
+   * What the run wrote that is not a field — the checklist, the links — is drawn from the same
+   * fetched row, and the checklist is **editable here** (`TaskChecklistEditor`): the steps are
+   * the part of a plan a reader most needs to check against the e-mail beside them, and being
+   * able to fix one without leaving for the card is the difference between reviewing and
+   * approving. Screenshots and files land on the same strip the card has (`FileAttachments`,
+   * posting straight to the storage API because no host page here owns the task), and the box
+   * under the notes changes the task in words (`TaskAIRevise`) — the same box the card has.
    *
    * Every way out ends the same way: `onclose` fires whether the reader saved, closed, pressed
    * Escape, clicked the backdrop or followed the link to the full task, so the host can close
-   * the review it was standing on (an exit that discards is Sluiten, never Annuleren — there is
-   * nothing to cancel, the task exists).
+   * the review it was standing on.
    */
   import { Link as LinkIcon } from "@lucide/svelte";
 
-  import { enhance } from "$app/forms";
+  import { deserialize, enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
-  import Markdown from "$lib/core/ui/Markdown.svelte";
+  import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
-  import { adoptRun } from "./review";
+  import { canWriteTask } from "./permissions";
+  import { adoptRun, changedFields } from "./review";
+  import TaskAIRevise from "./TaskAIRevise.svelte";
   import TaskAIStatus from "./TaskAIStatus.svelte";
   import TaskAssigneePicker from "./TaskAssigneePicker.svelte";
+  import TaskChecklistEditor from "./TaskChecklistEditor.svelte";
 
   interface Option {
     value: string;
@@ -83,6 +95,13 @@
     url: string;
     title?: string | null;
   }
+  interface StoredFile {
+    id: string;
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    client_visible?: boolean;
+  }
   interface TaskRow {
     id: string;
     title: string;
@@ -91,6 +110,7 @@
     project_id: string | null;
     due_date: string | null;
     assignees: Assignee[];
+    assignee_user_id?: string | null;
     assignee_contact_id: string | null;
     ai_status: string | null;
     checklists?: Checklist[];
@@ -130,11 +150,14 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
   let task = $state<TaskRow | null>(null);
+  let files = $state<StoredFile[]>([]);
   let loading = $state(false);
   let error = $state("");
+  let saved = $state(false);
+  let formEl = $state<HTMLFormElement | null>(null);
 
   // The form's live values, and the baseline they started from — the pair is what answers
-  // "did the reader touch this" when the run lands.
+  // "did the reader touch this" when the run lands, and "what has to be saved" on the way out.
   let title = $state("");
   let description = $state("");
   let projectId = $state("");
@@ -152,6 +175,16 @@
   const dueExtended = $derived(
     Boolean(baseline.due_date) && Boolean(dueDate) && dueDate > baseline.due_date,
   );
+  const dirty = $derived(
+    Object.keys(
+      changedFields({ title, description, project_id: projectId, due_date: dueDate }, baseline),
+    ).length > 0,
+  );
+  // The same gates the card mirrors: the task write per row, the storage core's own
+  // permission for a file, and "off means invisible" for the AI box (#126).
+  const canEdit = $derived(task ? canWriteTask(page.data.user, task) : false);
+  const canWriteFile = $derived(can(page.data.user, "files.file.write"));
+  const aiAvailable = $derived(canEdit && aiEnabled(page.data.user, "task_assist"));
 
   async function fetchTask(): Promise<TaskRow | null> {
     const response = await fetch(`/api/v1/tasks/${taskId}`, {
@@ -161,12 +194,21 @@
     return (await response.json()) as TaskRow;
   }
 
+  async function fetchFiles() {
+    const query = new URLSearchParams({ entity_type: "task", entity_id: taskId });
+    const response = await fetch(`/api/v1/files?${query}`, {
+      headers: { accept: "application/json" },
+    });
+    if (response.ok) files = (await response.json()) as StoredFile[];
+  }
+
   function adopt(row: TaskRow) {
     task = row;
     title = row.title;
     description = row.description ?? "";
     projectId = row.project_id ?? "";
     dueDate = row.due_date ?? "";
+    dueReason = "";
     baseline = {
       title: row.title,
       description: row.description ?? "",
@@ -179,6 +221,7 @@
   async function load() {
     loading = true;
     error = "";
+    saved = false;
     try {
       const row = await fetchTask();
       if (!row) {
@@ -186,11 +229,24 @@
         return;
       }
       adopt(row);
+      void fetchFiles();
     } catch {
       error = "errors.server";
     } finally {
       loading = false;
     }
+  }
+
+  /** Re-read the row after a write that did not go through the form (a step, a file, the AI
+   *  box): the fields keep whatever the reader typed, the structure below them is the server's. */
+  async function refresh() {
+    let row: TaskRow | null;
+    try {
+      row = await fetchTask();
+    } catch {
+      row = null;
+    }
+    if (row) task = row;
   }
 
   /**
@@ -230,6 +286,61 @@
     return outcome.shown;
   }
 
+  /**
+   * Save the changed fields through the host action without leaving — what every exit and
+   * the AI box call first. Posts the form the reader sees (so the roster and the due reason
+   * travel exactly as a press on Opslaan would), reads the action's answer, and returns
+   * whether the row is now clean. `false` means the dialog stays open with the reason shown.
+   */
+  async function persist(): Promise<boolean> {
+    if (!task || !formEl) return true;
+    if (!dirty) return true;
+    if (!formEl.checkValidity()) {
+      formEl.reportValidity();
+      error = "errors.validation";
+      return false;
+    }
+    const body = new FormData(formEl);
+    try {
+      const response = await fetch(action, {
+        method: "POST",
+        headers: { "x-sveltekit-action": "true", accept: "application/json" },
+        body,
+      });
+      const result = deserialize(await response.text());
+      if (result.type === "failure") {
+        const data = result.data as { error?: string } | undefined;
+        error = String(data?.error ?? "errors.validation");
+        return false;
+      }
+      if (result.type === "error") {
+        error = "errors.server";
+        return false;
+      }
+    } catch {
+      error = "errors.server";
+      return false;
+    }
+    error = "";
+    baseline = { title, description, project_id: projectId, due_date: dueDate };
+    dueReason = "";
+    saved = true;
+    return true;
+  }
+
+  async function openCard() {
+    if (!task) return;
+    if (!(await persist())) return;
+    leaving = true;
+    open = false;
+    await goto(`/tasks/${task.id}`);
+  }
+
+  async function close() {
+    if (!(await persist())) return;
+    open = false;
+  }
+
   $effect(() => {
     if (!open) return;
     void load();
@@ -258,16 +369,30 @@
   });
 
   // Every exit — save, Sluiten, Escape, the backdrop, the ✕, the link out — lands here once.
+  // An exit the slide-over itself made (Escape, the backdrop, the ✕) has not been through
+  // `persist`, so it is made here: the dialog reopens over a change it could not save.
   let shown = $state(false);
+  let leaving = $state(false);
   $effect(() => {
     if (open) {
       shown = true;
+      leaving = false;
       return;
     }
-    if (shown) {
-      shown = false;
-      onclose?.();
+    if (!shown) return;
+    if (dirty && !leaving) {
+      void persist().then((ok) => {
+        if (ok) {
+          shown = false;
+          onclose?.();
+        } else {
+          open = true;
+        }
+      });
+      return;
     }
+    shown = false;
+    onclose?.();
   });
 </script>
 
@@ -295,12 +420,14 @@
         method="POST"
         {action}
         class="space-y-4"
+        bind:this={formEl}
         use:enhance={busy.wrap("save", () => async ({ result, update }) => {
           if (result.type === "failure") {
             error = String(result.data?.error ?? "errors.validation");
             return;
           }
           error = "";
+          baseline = { title, description, project_id: projectId, due_date: dueDate };
           // Edits what exists: never reset (forms:check).
           await update({ reset: false });
           open = false;
@@ -331,80 +458,24 @@
               value={description}
               placeholder={t("tasks.detail.description_placeholder")}
               scope={{ companyId: task.company_id ?? null, projectId: projectId || null }}
+              upload={{ entityType: "task", entityId: task.id }}
               onchange={(next) => (description = next)}
             />
           {/key}
         </div>
-        {#if (task.checklists ?? []).length > 0 || (task.links ?? []).length > 0}
-          <!-- What the run wrote that is not a field of the task (#327: a checklist, the links
-               the message named). Read-only here on purpose: this is the review of a task that
-               already exists, so the steps are checked *against the e-mail beside them*, and
-               restructuring them is what the card is for — the link below is one click away.
-               Drawn from the same fetched row as everything else, so the moment `reveal` lands
-               the run's answer, the list appears with it. -->
-          <div class="space-y-3 rounded-xl border border-border bg-surface-raised p-3">
-            {#each task.checklists ?? [] as checklist (checklist.id)}
-              {@const items = checklist.items ?? []}
-              {@const done = items.filter((item) => item.done).length}
-              <div>
-                <div class="flex items-baseline justify-between gap-2">
-                  <h3 class="text-sm font-medium text-text">{checklist.title}</h3>
-                  {#if items.length > 0}
-                    <span class="shrink-0 text-xs tabular-nums text-text-muted">
-                      {t("tasks.checklist.progress", { done, total: items.length })}
-                    </span>
-                  {/if}
-                </div>
-                {#if checklist.description}
-                  <div class="mt-1 text-sm"><Markdown value={checklist.description} /></div>
-                {/if}
-                <ul class="mt-2 space-y-1">
-                  {#each items as item (item.id)}
-                    <li class="flex items-start gap-2">
-                      <span
-                        class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px]
-                        {item.done
-                          ? 'border-brand bg-brand text-white'
-                          : 'border-border text-transparent'}"
-                        aria-hidden="true">✓</span
-                      >
-                      <div class="min-w-0 flex-1">
-                        <span
-                          class="text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}"
-                          >{item.title}</span
-                        >
-                        {#if item.description}
-                          <div class="text-xs text-text-muted">
-                            <Markdown value={item.description} />
-                          </div>
-                        {/if}
-                      </div>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/each}
-            {#if (task.links ?? []).length > 0}
-              <div class={(task.checklists ?? []).length > 0 ? "border-t border-border pt-3" : ""}>
-                <h3 class="mb-1 text-sm font-medium text-text">{t("tasks.links.title")}</h3>
-                <ul class="space-y-1">
-                  {#each task.links ?? [] as link (link.id)}
-                    <li class="flex items-center gap-2">
-                      <LinkIcon size={14} class="shrink-0 text-text-muted" />
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
-                      >
-                        {link.title || link.url}
-                      </a>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
-          </div>
+        {#if aiAvailable}
+          <!-- Change the task in words (`tasks/assist.py`). The typed fields are saved first so
+               the model reads what the reader sees, and the row that comes back is adopted whole:
+               after this press, the server is the truth of every field. -->
+          <TaskAIRevise
+            taskId={task.id}
+            id="review-task-ai"
+            compact
+            before={persist}
+            onapplied={async (result) => {
+              adopt(result.task as unknown as TaskRow);
+            }}
+          />
         {/if}
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="block text-sm">
@@ -468,22 +539,93 @@
           </div>
         {/if}
         {#if error}
-          <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
+          <p class="text-sm text-red-600 dark:text-red-400" role="alert">{t(error)}</p>
+        {:else if saved}
+          <p class="text-sm text-text-muted" aria-live="polite">{t("tasks.review.saved_on_exit")}</p>
         {/if}
         <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-          <a href="/tasks/{task.id}" class="text-sm font-medium text-brand hover:underline">
+          <!-- A button, not a link: the changed fields are saved before the card opens. -->
+          <button
+            type="button"
+            class="text-sm font-medium text-brand hover:underline"
+            onclick={openCard}
+          >
             {t("tasks.review.open_card")}
-          </a>
+          </button>
           <div class="flex gap-2">
             <button
               type="button"
               class="rounded-lg border border-border px-4 py-2 text-sm"
-              onclick={() => (open = false)}>{t("common.close")}</button
+              onclick={close}>{t("common.close")}</button
             >
             <Button loading={busy.active}>{t("common.save")}</Button>
           </div>
         </div>
       </form>
+
+      {#if canEdit || (task.checklists ?? []).length > 0}
+        <!-- The plan, editable in place (the module note above). Outside the form on purpose:
+             every write here is its own request, and a step must never ride along in a save
+             of the fields. -->
+        <div class="space-y-3 rounded-xl border border-border bg-surface-raised p-3">
+          {#if canEdit}
+            <TaskChecklistEditor
+              taskId={task.id}
+              checklists={task.checklists ?? []}
+              onchange={refresh}
+              {aiAvailable}
+            />
+          {:else}
+            {#each task.checklists ?? [] as checklist (checklist.id)}
+              <div>
+                <h3 class="text-sm font-medium text-text">{checklist.title}</h3>
+                <ul class="mt-2 space-y-1">
+                  {#each checklist.items ?? [] as item (item.id)}
+                    <li class="text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}">
+                      {item.title}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/each}
+          {/if}
+          {#if (task.links ?? []).length > 0}
+            <div class="border-t border-border pt-3">
+              <h3 class="mb-1 text-sm font-medium text-text">{t("tasks.links.title")}</h3>
+              <ul class="space-y-1">
+                {#each task.links ?? [] as link (link.id)}
+                  <li class="flex items-center gap-2">
+                    <LinkIcon size={14} class="shrink-0 text-text-muted" />
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
+                    >
+                      {link.title || link.url}
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      {#if canWriteFile || files.length > 0}
+        <!-- Screenshots and files: the card's strip, posting straight to the storage API
+             (`direct`) because no page this dialog is drawn on owns the task. Ctrl+V anywhere
+             while the dialog is open lands the screenshot here. -->
+        <div class="rounded-xl border border-border bg-surface-raised p-3">
+          <h3 class="mb-2 text-sm font-medium text-text">{t("tasks.review.attachments")}</h3>
+          <FileAttachments
+            {files}
+            direct={{ entityType: "task", entityId: task.id }}
+            onchange={fetchFiles}
+            readonly={!canWriteFile}
+          />
+        </div>
+      {/if}
     {:else if error}
       <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
     {/if}

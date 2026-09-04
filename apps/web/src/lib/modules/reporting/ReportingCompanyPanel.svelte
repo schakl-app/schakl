@@ -11,17 +11,25 @@
    * them, and a control that would 403 is never drawn (docs/UX.md — `!isPortal` is not the gate,
    * the permission is).
    */
-  import { CalendarClock, FileText, Plus, Settings2 } from "@lucide/svelte";
+  import { CalendarClock, Settings2 } from "@lucide/svelte";
 
   import { page } from "$app/state";
 
   import { getLocale } from "$lib/paraglide/runtime";
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
 
-  import ReportStatusPill from "./ReportStatusPill.svelte";
-  import { audienceLabel, cadenceLabel, deliveryLabel, fmtDate, periodLabel } from "./format";
+  import {
+    audienceLabel,
+    cadenceLabel,
+    deliveryLabel,
+    fmtDate,
+    periodLabel,
+    statusLabel,
+    statusState,
+  } from "./format";
   import type { EffectiveSchedule, ReportRow } from "./types";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -52,6 +60,14 @@
   // serves a portal login nothing but published client reports with no warnings on them.
   const reader = $derived(page.data.user?.isPortal ?? false);
 </script>
+
+{#snippet generate()}
+  <!-- Generating posts a form, and a form belongs to the page that owns its action. Rather
+       than adding one to the shared company page for a button that is one click from its own
+       screen, this links to the client's reporting page — where the profile being generated
+       *from* is also on display. Drawn as the house footer link every other card ends in. -->
+  <a href={settingsHref} class="text-brand hover:underline">＋ {t("reporting.panel.generate")}</a>
+{/snippet}
 
 {#if panel.forbidden}
   <p class="text-sm text-text-muted">{t("reporting.panel.forbidden")}</p>
@@ -107,6 +123,7 @@
       href={canManage ? `/reports?company=${companyId}` : undefined}
       linkLabel={t("reporting.panel.view_all", { count: total })}
       alwaysLink={canManage}
+      actions={canManage ? generate : undefined}
     >
       {#snippet children(shown)}
         {#if shown.length === 0}
@@ -114,49 +131,24 @@
         {:else}
           <ul class="divide-y divide-border">
             {#each shown as report (report.id)}
-              <li class="flex items-center gap-3 py-2">
-                <FileText size={16} class="shrink-0 text-text-muted" />
-                <a
-                  href={fromHref(`/reports/${report.id}`, page.url)}
-                  class="min-w-0 flex-1 hover:underline"
-                >
-                  <span class="block truncate text-sm text-text">{periodLabel(report, locale)}</span
-                  >
-                  <span class="block text-xs text-text-muted">
-                    {[
-                      reader ? null : audienceLabel(report.audience),
-                      report.sent_at
-                        ? t("reporting.panel.sent_on", { date: fmtDate(report.sent_at, locale) })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </a>
-                {#if !reader}
-                  <ReportStatusPill status={report.status} size="xs" />
-                {/if}
-              </li>
+              <PanelRow
+                href={fromHref(`/reports/${report.id}`, page.url)}
+                title={periodLabel(report, locale)}
+                meta={[
+                  reader ? null : audienceLabel(report.audience),
+                  report.sent_at
+                    ? t("reporting.panel.sent_on", { date: fmtDate(report.sent_at, locale) })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                chip={reader ? null : statusLabel(report.status)}
+                chipState={reader ? "neutral" : statusState(report.status)}
+              />
             {/each}
           </ul>
         {/if}
       {/snippet}
     </PanelRows>
-
-    {#if canManage}
-      <!-- Generating posts a form, and a form belongs to the page that owns its action. Rather
-           than adding one to the shared company page for a button that is one click from its
-           own screen, both controls link to the client's reporting page — where the profile
-           being generated *from* is also on display. -->
-      <div class="flex items-center gap-3">
-        <a
-          href={settingsHref}
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
-        >
-          <Plus size={14} />
-          {t("reporting.panel.generate")}
-        </a>
-      </div>
-    {/if}
   </div>
 {/if}

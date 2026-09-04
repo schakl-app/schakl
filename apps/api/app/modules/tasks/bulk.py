@@ -53,7 +53,11 @@ TASK_BULK = BulkDescriptor(
     model=Task,
     editable=(
         BulkField("status"),
-        BulkField("assignee"),
+        # Settable across a selection ("hand this week's tickets to Sanne") and **not clearable**:
+        # a task always has someone on it, and emptying the roster is the one thing the service
+        # refuses (`TaskService.update`), so a dialog offering it would draw a control that can
+        # only refuse (#253).
+        BulkField("assignee", clearable=False),
         BulkField("priority"),
         BulkField("project"),
         BulkField("company"),

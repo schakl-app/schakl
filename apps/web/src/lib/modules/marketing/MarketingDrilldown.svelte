@@ -32,6 +32,7 @@
     companyId,
     linkId,
     source,
+    label = null,
     kind,
     period,
     currency,
@@ -41,6 +42,8 @@
     companyId: string;
     linkId: string;
     source: MarketingSource;
+    /** The section's resolved name (the tenant's own or the catalog's), for "open in …". */
+    label?: string | null;
     kind: string;
     /** The period token the dashboard is on (#316) — the API resolves it, not us. */
     period: string;
@@ -140,7 +143,7 @@
         rel="noopener noreferrer"
         class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
       >
-        {t("marketing.open_in", { source: sourceLabel(source) })}
+        {t("marketing.open_in", { source: label ?? sourceLabel(source) })}
         <ExternalLink size={12} />
       </a>
     {/if}

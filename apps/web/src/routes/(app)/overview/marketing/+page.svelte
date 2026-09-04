@@ -18,7 +18,7 @@
     deltaClass,
     deltaView,
     fmtMetric,
-    sourceLabel,
+    namedSourceLabel,
   } from "$lib/modules/marketing/format";
   import MarketingPeriodPicker from "$lib/modules/marketing/MarketingPeriodPicker.svelte";
   import { anchorMonth, PERIOD_PRESETS } from "$lib/modules/marketing/periods";
@@ -56,6 +56,9 @@
   // client's own setting — a column sorted on numbers with per-row denominators ranks nothing —
   // which is exactly why the note below says a client's own dashboard may differ.
   const compare = $derived((data.overview as { compare?: CompareWindow | null }).compare ?? null);
+  const sourceLabels = $derived(
+    (data.overview as { source_labels?: Record<string, string> }).source_labels ?? {},
+  );
   const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
   // The grid names its own span too (#316): a board sorted on percentages is unreadable if the
   // reader cannot see which months the percentages are about.
@@ -94,7 +97,9 @@
 {#snippet sourcesCell(row: Row)}
   <span class="flex flex-wrap gap-1">
     {#each row.sources_present as s (s)}
-      <span class="rounded bg-surface px-1.5 py-0.5 text-xs text-text-muted">{sourceLabel(s)}</span>
+      <span class="rounded bg-surface px-1.5 py-0.5 text-xs text-text-muted"
+        >{namedSourceLabel(s, sourceLabels)}</span
+      >
     {/each}
   </span>
 {/snippet}

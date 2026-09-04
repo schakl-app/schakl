@@ -233,10 +233,14 @@ describe("the screens the issue measured", () => {
     }
   });
 
-  test("the client hub's two lanes are drawn as two kinds", () => {
+  test("the client hub's two lanes are told apart by the band and the outline, not the card", () => {
     const hub = read("src/routes/(app)/companies/[id]/+page.svelte");
-    assert.match(hub, /WORKING_LANE: LaneKind = \{ kind: "panel"/);
-    assert.match(hub, /REGISTER_LANE: LaneKind = \{ kind: "register"/);
+    // Both lanes draw the product's ordinary card: the tinted band already says "a different
+    // kind of thing starts here", and a hairline-rule register on top of it said it twice (six
+    // rules floating on one grey slab). What still separates the lanes is the band, its
+    // heading, and the h3 outline level.
+    assert.match(hub, /WORKING_LANE: LaneKind = \{ kind: "panel", heading: 2 \}/);
+    assert.match(hub, /REGISTER_LANE: LaneKind = \{ kind: "panel", heading: 3 \}/);
     // The band over the registers must be the ladder's, not the old muted string.
     assert.match(hub, /BAND_HEADING/);
   });

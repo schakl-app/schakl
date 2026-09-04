@@ -137,6 +137,17 @@ net for both, flipping a pushed `task_schedule` link whose block no longer exist
 path that forgets. Scoped to task schedules on purpose — a leave request is cancelled, never
 hard-deleted, so an unmatched `local_id` there is not evidence of anything.
 
+**A mirrored task block is titled by whose work it is.** Every pushed block read *"Taak: …"*,
+which says what kind of record it is — a calendar full of them already says that — and not the
+one thing a glance at a week needs. The event is *"«client»: «taak»"* now (`push._task_summary`),
+falling back to the old marker only for a task with no client; the client's **label**
+(`companies.name`, never `legal_name` — a calendar is a list, not a document) travels in the
+`task_schedule.saved` payload, because the mirror never re-reads a task. `d4a9b3c6f2e7` retitles
+what is already in people's calendars: per org with the RLS GUC bound, rewriting the snapshot and
+flipping a `pushed` link back to `pending` with its attempts reset, so `push_link` updates the
+existing event in place on the next outbox sweep — never a second event, and never a tombstone
+resurrected.
+
 ## 5. Drive — use it directly; do NOT put object storage in front
 
 **Reference/link model, no sync, no mirror.** The Shared Drive is already the source of truth.

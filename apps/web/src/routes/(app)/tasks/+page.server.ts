@@ -28,6 +28,10 @@ export const load: PageServerLoad = async (event) => {
     // (#15). An absent `company_id` means *any* client, so it could never express this.
     unlinked: q.get("unlinked") === "1" || undefined,
     assignee_user_id: q.get("assignee_user_id") || undefined,
+    // Whose work it is, as a kind: the client's homepage tiles split "asked of you" (assigned
+    // to one of the client's contact persons) from "done for you" (the agency's own), and each
+    // heading opens the list it counted with the same filter.
+    assigned_to: (q.get("assigned_to") as "contact" | "agency" | null) || undefined,
     label_id: q.get("label_id") || undefined,
     due: (q.get("due") as "overdue" | "today" | "week" | "later" | null) || undefined,
     q: q.get("q") || undefined,

@@ -6,14 +6,16 @@
     GripVertical,
     Link as LinkIcon,
     Pencil,
+    Sparkles,
     Trash2,
   } from "@lucide/svelte";
   import { tick } from "svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -45,6 +47,7 @@
   import { dueBucket, dueNote } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
+  import TaskAIRevise from "$lib/modules/tasks/TaskAIRevise.svelte";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
   import RecurrenceEditor from "$lib/modules/tasks/RecurrenceEditor.svelte";
   import { planSummary, recurrenceSentence, type Recurrence } from "$lib/modules/tasks/recurrence";
@@ -178,7 +181,30 @@
   const canScheduleAny = $derived(can(page.data.user, "tasks.schedule.write", "any"));
 
   // --- Planning: one home for "when" (#335) ----------------------------------------------- //
-  const recurrence = $derived((task.recurrence ?? null) as Recurrence | null);
+  // The API already withholds the rule (and the series) from an external login; a client's page
+  // draws the planned blocks and never the repeat machinery, whatever the payload carries.
+  const recurrence = $derived(isPortal ? null : ((task.recurrence ?? null) as Recurrence | null));
+  // The series a schedule-mode rule lays out a year ahead: the root that holds the rule and
+  // what is still to come, answered on the root and on every occurrence alike. An occurrence
+  // carries no rule of its own, so the rule the reader sees is the series' where there is one.
+  interface Series {
+    root_id: string;
+    root_title: string;
+    recurrence: Recurrence;
+    upcoming: { id: string; due_date: string | null; status: string }[];
+    upcoming_total: number;
+  }
+  const series = $derived(isPortal ? null : ((task.series ?? null) as Series | null));
+  const isOccurrence = $derived(!!task.recurrence_source_id);
+  const shownRecurrence = $derived(recurrence ?? series?.recurrence ?? null);
+  /** The next task of the series *after* this one — what "volgende" means on a card. */
+  const nextInSeries = $derived(
+    series?.upcoming.find(
+      (row) =>
+        row.id !== task.id && (!task.due_date || !row.due_date || row.due_date > task.due_date),
+    ) ?? null,
+  );
+  const assigneeIds = $derived((task.assignees ?? []).map((a) => a.user_id));
   /** The hour someone last planned by hand — the auto-plan's best guess at "and at what time?". */
   const lastBlockStart = $derived.by(() => {
     const latest = [...(data.schedules ?? [])].sort((a, b) =>
@@ -591,6 +617,78 @@
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
   let editingChecklistId = $state<string | null>(null);
   let editingItemId = $state<string | null>(null);
+  // A step's title, and a list's, edited in place in *use* mode: click the words, type, Enter
+  // (`InlineText`'s rule, one row down — renaming a step is the thing people do ten times a
+  // day, and it used to cost edit mode, ⋯ → Bewerken and a form). Blur saves what changed;
+  // Escape puts the words back. The posted form carries the current description too, because
+  // the action reads both and an absent one would clear it.
+  let renamingItemId = $state<string | null>(null);
+  let renamingChecklistId = $state<string | null>(null);
+  let renameDraft = $state("");
+  let renameInput = $state<HTMLInputElement | null>(null);
+  async function startRename(kind: "item" | "checklist", id: string, current: string) {
+    if (!canEditTask) return;
+    renameDraft = current;
+    renamingItemId = kind === "item" ? id : null;
+    renamingChecklistId = kind === "checklist" ? id : null;
+    await tick();
+    renameInput?.focus();
+    renameInput?.select();
+  }
+  function cancelRename() {
+    renamingItemId = null;
+    renamingChecklistId = null;
+  }
+  function renameKeydown(event: KeyboardEvent, current: string) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (renameDraft.trim() && renameDraft.trim() !== current) {
+        (event.currentTarget as HTMLInputElement).form?.requestSubmit();
+      } else {
+        cancelRename();
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRename();
+    }
+  }
+  function renameBlur(event: FocusEvent, current: string) {
+    if (renameDraft.trim() && renameDraft.trim() !== current) {
+      (event.currentTarget as HTMLInputElement).form?.requestSubmit();
+    } else {
+      cancelRename();
+    }
+  }
+
+  // Changing the task in words, and writing its steps from the notes (`tasks/assist.py`).
+  // "Off means invisible" (#126): the tenant's toggle *and* the viewer's right to edit this
+  // task, so the box is never drawn for a press that would answer 409 or 403.
+  const aiAvailable = $derived(canEditTask && aiEnabled(page.data.user, "task_assist"));
+  let generatingChecklist = $state(false);
+  let generateError = $state<string | null>(null);
+  async function generateChecklist() {
+    if (generatingChecklist) return;
+    generatingChecklist = true;
+    generateError = null;
+    try {
+      const res = await fetch(`/api/v1/tasks/${task.id}/ai/checklist`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        generateError = payload?.error?.message ?? "errors.ai_provider_error";
+        return;
+      }
+      await invalidateAll();
+    } catch {
+      generateError = "errors.ai_provider_error";
+    } finally {
+      generatingChecklist = false;
+    }
+  }
 
   // ---------------------------------------------------------------------------------------- //
   // Reordering checklists, and items inside one (edit mode)
@@ -755,18 +853,95 @@
   let newLabelColor = $state("blue");
 
   // Extending a deadline requires a reason (accountability): staged here, posted with the
-  // single save (the API rejects an extension without one).
+  // single save (the API rejects an extension without one). Not on a placeholder row nobody
+  // has saved yet (`unnamed`, #350): create-then-edit wrote today over it and dropped the user
+  // into this form, so the first date they pick is *setting* the deadline, and the API asks
+  // for no reason either — the flag clears with the save that names the task.
+  const dueIsCommitted = $derived(!task.unnamed);
   let reasonModalOpen = $state(false);
   let stagedDueDate = $state("");
   let dueReason = $state("");
   let reasonDraft = $state("");
+  // The deadline field's value, owned here so the prompt can put the old date back.
+  // svelte-ignore state_referenced_locally
+  let dueValue = $state(task.due_date ?? "");
   function onDueChanged(value: string) {
     liveDue = value;
-    if (task.due_date && value && value > task.due_date) {
+    if (dueIsCommitted && task.due_date && value && value > task.due_date) {
       stagedDueDate = value;
       reasonDraft = dueReason;
       reasonModalOpen = true;
+      // Focus moves into the prompt, so Escape is the prompt's to answer: with focus still in
+      // the date field, the keystroke reached the in-place editor's own Escape (which closed
+      // the editor) and left the prompt standing over a field that no longer existed.
+      void tick().then(() =>
+        (
+          document.querySelector('[data-testid="due-reason"]') as HTMLTextAreaElement | null
+        )?.focus(),
+      );
     }
+  }
+  /**
+   * Every way out of the prompt that is not Bevestigen keeps the *old* date. The API refuses an
+   * extension without a reason, so a prompt that could be dismissed — Annuleren, Escape, the
+   * backdrop, or Bevestigen over an empty box — with the new date still in the field left a form
+   * that could not be saved, and nothing beside the date said why. The prompt now has exactly
+   * two answers: a reason, or the date it had.
+   */
+  function keepOldDue() {
+    dueValue = task.due_date ?? "";
+    liveDue = dueValue;
+    dueReason = "";
+    reasonDraft = "";
+    reasonModalOpen = false;
+  }
+  function confirmDueReason() {
+    if (!reasonDraft.trim()) return;
+    dueReason = reasonDraft.trim();
+    reasonModalOpen = false;
+  }
+
+  // --- "This one, or this one and every following" ---------------------------------------- //
+  // A task in a series being handed to somebody else is a question before it is a save: the
+  // following occurrences already exist, each with its own roster and its own planned block, so
+  // "reassign" has two honest meanings and only the person at the keyboard knows which. Both
+  // forms that carry the assignee — the edit form and the in-place editor — are held by the same
+  // guard, raise the same dialog, and re-submit themselves with the answer in a hidden field.
+  let applyTo = $state<"" | "this" | "future">("");
+  let applyToOpen = $state(false);
+  let applyToResubmit: (() => void) | null = null;
+  const hasFollowing = $derived((series?.upcoming_total ?? 0) > 1);
+  function assigneeChangedIn(formData: FormData): boolean {
+    if (formData.has("assignee_contact_id")) {
+      const contact = String(formData.get("assignee_contact_id") ?? "").trim();
+      if (contact !== (task.assignee_contact_id ?? "")) return true;
+    }
+    const raw = formData.get("assignees");
+    if (raw == null) return false;
+    let posted: { user_id: string }[];
+    try {
+      posted = JSON.parse(String(raw));
+    } catch {
+      return false;
+    }
+    const before = new Set(assigneeIds);
+    const after = new Set(posted.map((p) => p.user_id));
+    return before.size !== after.size || [...before].some((id) => !after.has(id));
+  }
+  /** `false` holds the save and asks; the answer re-submits the same form. */
+  function guardAssigneeSubmit(formData: FormData, resubmit: () => void): boolean {
+    if (!hasFollowing || applyTo || !assigneeChangedIn(formData)) return true;
+    applyToResubmit = resubmit;
+    applyToOpen = true;
+    return false;
+  }
+  function answerApplyTo(choice: "this" | "future") {
+    applyTo = choice;
+    applyToOpen = false;
+    const resubmit = applyToResubmit;
+    applyToResubmit = null;
+    // The hidden field carries the answer; let it render before the form is read again.
+    void tick().then(() => resubmit?.());
   }
 
   const today = orgToday();
@@ -845,6 +1020,18 @@
         date: a.payload.due_date ? fmtDayMonth(String(a.payload.due_date)) : "—",
       });
     }
+    if (a.action === "recurrence_materialized") {
+      return t("tasks.activity.recurrence_materialized", {
+        count: String(a.payload.count ?? 0),
+        from: a.payload.from ? fmtDayMonth(String(a.payload.from)) : "—",
+        until: a.payload.until ? fmtDayMonth(String(a.payload.until)) : "—",
+      });
+    }
+    if (a.action === "assignees_transferred_future") {
+      return t("tasks.activity.assignees_transferred_future", {
+        count: String(a.payload.count ?? 0),
+      });
+    }
     if (a.action === "due_extended") {
       return t("tasks.activity.due_extended", {
         to: a.payload.to ? fmtDayMonth(String(a.payload.to)) : "—",
@@ -870,6 +1057,15 @@
       return t(`tasks.activity.${a.action}`, {
         from: String(a.payload.from ?? ""),
         to: String(a.payload.to ?? ""),
+      });
+    }
+    if (a.action === "ai_revised") {
+      return t("tasks.activity.ai_revised", { summary: String(a.payload.summary ?? "") });
+    }
+    if (a.action === "ai_checklist") {
+      return t("tasks.activity.ai_checklist", {
+        title: String(a.payload.title ?? ""),
+        count: String(a.payload.count ?? ""),
       });
     }
     if (a.action === "attachment_added" || a.action === "attachment_deleted") {
@@ -1059,14 +1255,16 @@
              stored recurrence: no interval, no anchor, no mode, and no next date at all — the
              one it could not have shown, because `recurrence_next_run` was stored and exposed to
              nobody (#335 F3). Compact here; the Planning card below spells the mode out. -->
-      {#if recurrence}
+      {#if shownRecurrence}
         <a
           href="#planning"
           class="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-brand"
         >
-          ↻ {recurrenceSentence(recurrence, { compact: true })}{task.recurrence_next_run
-            ? ` · ${fmtDayMonth(task.recurrence_next_run)}`
-            : ""}
+          ↻ {recurrenceSentence(shownRecurrence, { compact: true })}{nextInSeries?.due_date
+            ? ` · ${fmtDayMonth(nextInSeries.due_date)}`
+            : !series && task.recurrence_next_run
+              ? ` · ${fmtDayMonth(task.recurrence_next_run)}`
+              : ""}
         </a>
       {/if}
       {#if editMode}
@@ -1203,14 +1401,27 @@
               assignees={task.assignees ?? []}
               contactValue={task.assignee_contact_id ?? ""}
             />
+            <input type="hidden" name="apply_to" value={applyTo} form="task-edit" />
           </div>
         {:else}
           <InlineField
             id="assignee-employees"
             label={t("tasks.field.assignees")}
             canEdit={canEditTask}
-            onopen={() => (assigneeInlineOpen = true)}
-            onclose={() => (assigneeInlineOpen = false)}
+            onopen={() => {
+              assigneeInlineOpen = true;
+              applyTo = "";
+            }}
+            onclose={() => {
+              assigneeInlineOpen = false;
+              applyTo = "";
+            }}
+            beforeSubmit={(formData) =>
+              guardAssigneeSubmit(formData, () =>
+                (
+                  document.getElementById("assignee-employees-form") as HTMLFormElement | null
+                )?.requestSubmit(),
+              )}
           >
             {#snippet read()}
               {#if task.assignee_contact_id}
@@ -1237,6 +1448,7 @@
                 assignees={task.assignees ?? []}
                 contactValue={task.assignee_contact_id ?? ""}
               />
+              <input type="hidden" name="apply_to" value={applyTo} />
             {/snippet}
           </InlineField>
         {/if}
@@ -1738,13 +1950,17 @@
               <DateInput
                 id="due_date"
                 name="due_date"
-                value={task.due_date ?? ""}
+                bind:value={dueValue}
                 formId="task-edit"
                 required
                 onchange={onDueChanged}
               />
             </div>
-            <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            <!-- A hint that promises a question the form will not ask is half a sentence: a
+                 placeholder row's first date is set, not moved. -->
+            {#if dueIsCommitted}
+              <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            {/if}
             <!-- Rows written before #392 open, render and edit exactly as before — but saving
                  one asks for the date it never had, which is the way out rather than a refusal. -->
             {#if !task.due_date}
@@ -1762,6 +1978,7 @@
               class="max-w-xs"
               onclose={() => {
                 liveDue = task.due_date ?? "";
+                dueValue = liveDue;
                 dueReason = "";
               }}
             >
@@ -1791,12 +2008,14 @@
                 <DateInput
                   id="due_date"
                   name="due_date"
-                  value={task.due_date ?? ""}
+                  bind:value={dueValue}
                   required
                   onchange={onDueChanged}
                 />
                 <input type="hidden" name="due_change_reason" value={dueReason} />
-                <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+                {#if dueIsCommitted}
+                  <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+                {/if}
               {/snippet}
             </InlineField>
           {/if}
@@ -1830,9 +2049,25 @@
         <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
              niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
              editor behind the pencil is where a rule gets made. -->
-        {#if editMode || recurrence || canEditTask}
+        {#if editMode || shownRecurrence || canEditTask}
           <div class="border-t border-border pt-4">
-            {#if editMode}
+            {#if isOccurrence && series}
+              <!-- An occurrence carries no rule of its own: the rule lives on the root, and is
+                   edited there — one rule, one place, whichever of the year's tasks is open. -->
+              <span class="mb-1 block text-xs font-medium text-text-muted">
+                {t("tasks.recurrence.title")}
+              </span>
+              <p class="text-sm text-text">↻ {recurrenceSentence(series.recurrence)}</p>
+              <p class="mt-0.5 text-[11px] text-text-muted">
+                {t("tasks.series.part_of", { title: series.root_title })}
+                {#if canEditTask}
+                  ·
+                  <a href="/tasks/{series.root_id}#planning" class="underline hover:text-brand">
+                    {t("tasks.series.edit_rule")}
+                  </a>
+                {/if}
+              </p>
+            {:else if editMode}
               <RecurrenceEditor
                 formId="task-edit"
                 previewUrl={`/tasks/${task.id}/recurrence-preview`}
@@ -1842,6 +2077,7 @@
                 {lastBlockStart}
                 members={data.members}
                 currentUserId={page.data.user?.id ?? ""}
+                {assigneeIds}
                 {canSchedule}
                 {canScheduleAny}
               />
@@ -1860,7 +2096,11 @@
                   {#if recurrence}
                     <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
                     <p class="mt-0.5 text-[11px] text-text-muted">
-                      {#if task.recurrence_next_run}
+                      {#if series}
+                        {t("tasks.recurrence.next")}: {nextInSeries?.due_date
+                          ? fmtDayMonthYear(nextInSeries.due_date)
+                          : "—"}{recurrence.plan ? ` · ${planSummary(recurrence)}` : ""}
+                      {:else if task.recurrence_next_run}
                         {t("tasks.recurrence.next")}: {fmtDayMonthYear(
                           task.recurrence_next_run,
                         )}{recurrence.plan ? ` · ${planSummary(recurrence)}` : ""}
@@ -1884,11 +2124,50 @@
                     {lastBlockStart}
                     members={data.members}
                     currentUserId={page.data.user?.id ?? ""}
+                    {assigneeIds}
                     {canSchedule}
                     {canScheduleAny}
                   />
                 {/snippet}
               </InlineField>
+            {/if}
+            <!-- What lies ahead in the series: the year the rule laid out, as links, this one
+                 marked. The list is capped and says how many it stands for (CLAUDE.md §17). -->
+            {#if series && series.upcoming.length > 0}
+              <div class="mt-3" data-testid="series-upcoming">
+                <span class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.series.upcoming", { count: String(series.upcoming_total) })}
+                </span>
+                <ul class="flex flex-wrap items-center gap-1.5">
+                  {#each series.upcoming as row (row.id)}
+                    <li>
+                      {#if row.id === task.id}
+                        <span
+                          class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+                        >
+                          {row.due_date ? fmtDayMonth(row.due_date) : "—"} · {t(
+                            "tasks.series.current",
+                          )}
+                        </span>
+                      {:else}
+                        <a
+                          href="/tasks/{row.id}"
+                          class="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-brand"
+                        >
+                          {row.due_date ? fmtDayMonth(row.due_date) : "—"}
+                        </a>
+                      {/if}
+                    </li>
+                  {/each}
+                  {#if series.upcoming_total > series.upcoming.length}
+                    <li class="text-[11px] text-text-muted">
+                      {t("tasks.series.more", {
+                        count: String(series.upcoming_total - series.upcoming.length),
+                      })}
+                    </li>
+                  {/if}
+                </ul>
+              </div>
             {/if}
           </div>
         {/if}
@@ -1925,6 +2204,38 @@
           upload={{ entityType: "task", entityId: task.id }}
           id="task-description-inline"
         />
+        {#if aiAvailable}
+          <!-- Change the task in words (`tasks/assist.py`): one instruction, applied as the
+               viewer, every change on the trail. The page reloads its data afterwards, the
+               way any other write here does. When the task has no checklist yet, the second
+               button writes one from the notes — it lives here because the checklist section
+               is not drawn until there is one (an empty card is the clutter use mode avoids). -->
+          <div class="mt-4">
+            <TaskAIRevise taskId={task.id} onapplied={() => invalidateAll()} />
+            {#if (task.checklists ?? []).length === 0}
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  loading={generatingChecklist}
+                  onclick={generateChecklist}
+                  title={t("tasks.ai.checklist_generate_hint")}
+                >
+                  <Sparkles size={12} class="text-brand" aria-hidden="true" />
+                  {generatingChecklist
+                    ? t("tasks.ai.checklist_busy")
+                    : t("tasks.ai.checklist_generate")}
+                </Button>
+                {#if generateError}
+                  <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                    >{t(generateError)}</span
+                  >
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </section>
   {/snippet}
@@ -1936,9 +2247,33 @@
            is exactly the clutter use mode exists to avoid. -->
     {#if (task.checklists ?? []).length > 0 || editMode}
       <section class="rounded-xl border border-border bg-surface-raised p-5">
-        <h3 class="mb-3 {PANEL_HEADING}">
-          {t("tasks.checklist.title")}
-        </h3>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 class={PANEL_HEADING}>
+            {t("tasks.checklist.title")}
+          </h3>
+          {#if aiAvailable && !editMode}
+            <div class="flex items-center gap-2">
+              {#if generateError}
+                <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                  >{t(generateError)}</span
+                >
+              {/if}
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                loading={generatingChecklist}
+                onclick={generateChecklist}
+                title={t("tasks.ai.checklist_generate_hint")}
+              >
+                <Sparkles size={12} class="text-brand" aria-hidden="true" />
+                {generatingChecklist
+                  ? t("tasks.ai.checklist_busy")
+                  : t("tasks.ai.checklist_generate")}
+              </Button>
+            </div>
+          {/if}
+        </div>
 
         <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
                items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
@@ -1992,7 +2327,40 @@
                       <GripVertical size={14} />
                     </button>
                   {/if}
-                  <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
+                  {#if renamingChecklistId === checklist.id}
+                    <form
+                      method="POST"
+                      action="?/editChecklist"
+                      class="min-w-0 flex-1"
+                      use:enhance={busy.wrap("renameChecklist", () => ({ update }) => {
+                        cancelRename();
+                        void update({ reset: false });
+                      })}
+                    >
+                      <input type="hidden" name="checklist_id" value={checklist.id} />
+                      <input type="hidden" name="description" value={checklist.description ?? ""} />
+                      <input
+                        bind:this={renameInput}
+                        bind:value={renameDraft}
+                        name="title"
+                        required
+                        class="w-full rounded-lg border border-brand px-2 py-0.5 text-sm font-semibold outline-none"
+                        aria-label={t("common.edit")}
+                        onkeydown={(event) => renameKeydown(event, checklist.title)}
+                        onblur={(event) => renameBlur(event, checklist.title)}
+                      />
+                    </form>
+                  {:else if canEditTask && !editMode}
+                    <button
+                      type="button"
+                      class="min-w-0 cursor-text truncate rounded px-1 text-left text-sm font-semibold text-text hover:bg-surface"
+                      title={t("tasks.review.item_edit_hint")}
+                      onclick={() => startRename("checklist", checklist.id, checklist.title)}
+                      >{checklist.title}</button
+                    >
+                  {:else}
+                    <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
+                  {/if}
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="text-xs tabular-nums text-text-muted"
@@ -2194,11 +2562,47 @@
                           aria-label={t("tasks.toggle_done")}>✓</span
                         >
                       {/if}
-                      <span
-                        class="flex-1 text-sm {item.done
-                          ? 'text-text-muted line-through'
-                          : 'text-text'}">{item.title}</span
-                      >
+                      {#if renamingItemId === item.id}
+                        <form
+                          method="POST"
+                          action="?/editItem"
+                          class="min-w-0 flex-1"
+                          use:enhance={busy.wrap("renameItem", () => ({ update }) => {
+                            cancelRename();
+                            void update({ reset: false });
+                          })}
+                        >
+                          <input type="hidden" name="checklist_id" value={checklist.id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="description" value={item.description ?? ""} />
+                          <input
+                            bind:this={renameInput}
+                            bind:value={renameDraft}
+                            name="title"
+                            required
+                            class="w-full rounded-lg border border-brand px-2 py-0.5 text-sm outline-none"
+                            aria-label={t("common.edit")}
+                            onkeydown={(event) => renameKeydown(event, item.title)}
+                            onblur={(event) => renameBlur(event, item.title)}
+                          />
+                        </form>
+                      {:else if canEditTask && !editMode}
+                        <button
+                          type="button"
+                          class="min-w-0 flex-1 cursor-text rounded px-1 text-left text-sm hover:bg-surface {item.done
+                            ? 'text-text-muted line-through'
+                            : 'text-text'}"
+                          title={t("tasks.review.item_edit_hint")}
+                          onclick={() => startRename("item", item.id, item.title)}
+                          >{item.title}</button
+                        >
+                      {:else}
+                        <span
+                          class="flex-1 text-sm {item.done
+                            ? 'text-text-muted line-through'
+                            : 'text-text'}">{item.title}</span
+                        >
+                      {/if}
                       {#if editMode}
                         <ActionsMenu
                           compact
@@ -2580,29 +2984,38 @@
       bind:this={editForm}
       method="POST"
       action="?/update"
-      use:enhance={busy.wrap("update", () => async ({ update, result }) => {
-        // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
-        // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
-        // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
-        // in service of.
-        const waiting = pendingSave;
-        pendingSave = null;
-        if (result.type === "success" && !waiting && origin) {
+      use:enhance={busy.wrap("update", ({ formData, cancel }) => {
+        // A task in a series being handed over is a question first (the dialog below); the
+        // answer re-submits this same form with `apply_to` filled in.
+        if (!guardAssigneeSubmit(formData, () => editForm?.requestSubmit())) {
+          cancel();
+          return;
+        }
+        return async ({ update, result }) => {
+          applyTo = "";
+          // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
+          // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
+          // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
+          // in service of.
+          const waiting = pendingSave;
+          pendingSave = null;
+          if (result.type === "success" && !waiting && origin) {
+            dueReason = "";
+            return void goto(origin, { invalidateAll: true });
+          }
+          if (result.type === "success") {
+            editMode = waiting !== null;
+            // …and the marker that opened it goes with it (#402). A task created from a client
+            // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
+            // means the next visit — a reload, the back button off the client's page — reopens
+            // the form over a save that had already happened. An intent is consumed once. The
+            // detour's exit above needs none of this: it leaves this URL behind entirely.
+            if (!editMode) clearEditIntent();
+          }
           dueReason = "";
-          return void goto(origin, { invalidateAll: true });
-        }
-        if (result.type === "success") {
-          editMode = waiting !== null;
-          // …and the marker that opened it goes with it (#402). A task created from a client
-          // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
-          // means the next visit — a reload, the back button off the client's page — reopens
-          // the form over a save that had already happened. An intent is consumed once. The
-          // detour's exit above needs none of this: it leaves this URL behind entirely.
-          if (!editMode) clearEditIntent();
-        }
-        dueReason = "";
-        await update();
-        waiting?.(result.type === "success");
+          await update();
+          waiting?.(result.type === "success");
+        };
       })}
       class="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface/90 px-1 py-3 backdrop-blur"
     >
@@ -2625,7 +3038,14 @@
 {/if}
 
 <!-- Deadline extension requires a reason (logged in the activity feed) -->
-<Modal bind:open={reasonModalOpen} title={t("tasks.detail.due_reason_title")}>
+<Modal
+  bind:open={reasonModalOpen}
+  title={t("tasks.detail.due_reason_title")}
+  closeGuard={() => {
+    keepOldDue();
+    return true;
+  }}
+>
   <div class="space-y-3">
     <p class="text-sm text-text-muted">
       {t("tasks.detail.due_reason_body", {
@@ -2637,22 +3057,54 @@
       rows="3"
       bind:value={reasonDraft}
       placeholder={t("tasks.detail.due_reason_placeholder")}
+      data-testid="due-reason"
       class={inputClass}></textarea>
-    <div class="flex justify-end gap-2">
+    <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_required_hint")}</p>
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (reasonModalOpen = false)}>{t("common.cancel")}</button
+        onclick={keepOldDue}
+      >
+        {t("tasks.detail.due_reason_keep", {
+          date: task.due_date ? fmtDayMonth(task.due_date) : "—",
+        })}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        disabled={!reasonDraft.trim()}
+        onclick={confirmDueReason}
+      >
+        {t("common.confirm")}
+      </button>
+    </div>
+  </div>
+</Modal>
+
+<!-- A task in a series, handed to somebody else: this one, or every following one too. -->
+<Modal bind:open={applyToOpen} title={t("tasks.series.apply_title")}>
+  <div class="space-y-3">
+    <p class="text-sm text-text-muted">{t("tasks.series.apply_body")}</p>
+    <div class="flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
+        onclick={() => (applyToOpen = false)}>{t("common.cancel")}</button
       >
       <button
         type="button"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        onclick={() => {
-          dueReason = reasonDraft.trim();
-          reasonModalOpen = false;
-        }}
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+        onclick={() => answerApplyTo("this")}
       >
-        {t("common.confirm")}
+        {t("tasks.series.apply_this")}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => answerApplyTo("future")}
+      >
+        {t("tasks.series.apply_future")}
       </button>
     </div>
   </div>
@@ -2661,7 +3113,9 @@
 <ConfirmDialog
   bind:open={confirmDelete}
   title={t("tasks.detail.delete")}
-  message={t("tasks.detail.delete_confirm")}
+  message={series && !isOccurrence && series.upcoming_total > 1
+    ? t("tasks.detail.delete_confirm_series", { count: String(series.upcoming_total - 1) })
+    : t("tasks.detail.delete_confirm")}
   action={withOrigin("?/delete", page.url)}
 />
 

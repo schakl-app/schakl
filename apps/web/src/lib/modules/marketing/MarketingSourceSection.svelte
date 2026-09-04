@@ -332,6 +332,7 @@
                 {companyId}
                 linkId={src.link_id}
                 source={src.source}
+                label={src.label ?? null}
                 {kind}
                 {period}
                 currency={src.currency}
@@ -444,6 +445,7 @@
             {companyId}
             linkId={src.link_id}
             source={src.source}
+            label={src.label ?? null}
             {kind}
             {period}
             currency={src.currency}

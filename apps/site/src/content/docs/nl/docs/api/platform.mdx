@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-201 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+205 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -1191,6 +1191,10 @@ Antwoord: `200` · `GoogleAnalyticsReport`
 | `GET` `/impex/hosting/export` | `impex.export`, `hosting.hosting.read` |
 | `POST` `/impex/hosting/import` | `impex.import`, `hosting.hosting.write` |
 | `POST` `/impex/hosting/inspect` | `impex.import`, `hosting.hosting.write` |
+| `GET` `/impex/invoice/columns` | `invoicing.invoice.read` |
+| `GET` `/impex/invoice/export` | `impex.export`, `invoicing.invoice.read` |
+| `POST` `/impex/invoice/import` | `impex.import`, `invoicing.invoice.write` |
+| `POST` `/impex/invoice/inspect` | `impex.import`, `invoicing.invoice.write` |
 | `GET` `/impex/project/columns` | `projects.project.read` |
 | `GET` `/impex/project/export` | `impex.export`, `projects.project.read` |
 | `POST` `/impex/project/import` | `impex.import`, `projects.project.write` |
@@ -1477,6 +1481,58 @@ Antwoord: `200` · `ImportReport`
 Recht: `impex.import`, `hosting.hosting.write`
 
 Request body: `Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post`
+
+Antwoord: `200` · `ImpexInspectReport`
+
+#### `GET /api/v1/impex/invoice/columns`
+
+**Impex Columns Invoice** — Every column a invoice import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+
+Recht: `invoicing.invoice.read`
+
+Antwoord: `200` · `ImpexColumnsResponse`
+
+#### `GET /api/v1/impex/invoice/export`
+
+**Impex Export Invoice** — Export the current filtered invoice list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+
+Recht: `impex.export`, `invoicing.invoice.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `q` | string | Search, as on the list |
+| `status` | string | Status, as on the list |
+| `company_id` | string |  |
+| `overdue` | boolean | Only rows past their due date (default `false`) |
+| `sort` | string | List sort key, '-' desc |
+
+Antwoord: `200`
+
+#### `POST /api/v1/impex/invoice/import`
+
+**Impex Import Invoice** — Import invoice rows from a spreadsheet, upserting on the first of `number` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+
+Recht: `impex.import`, `invoicing.invoice.write`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `dry_run` | boolean | Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. (default `true`) |
+
+Request body: `Body_impex_import_invoice_api_v1_impex_invoice_import_post`
+
+Antwoord: `200` · `ImportReport`
+
+#### `POST /api/v1/impex/invoice/inspect`
+
+**Impex Inspect Invoice** — Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+
+Recht: `impex.import`, `invoicing.invoice.write`
+
+Request body: `Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post`
 
 Antwoord: `200` · `ImpexInspectReport`
 

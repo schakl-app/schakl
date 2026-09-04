@@ -666,6 +666,17 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
   and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
   `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A change rides the number it is about; it is not a column** (`docs/REPORTING.md`). A row read
+  `SESSIES 1.240 · VORIG JAAR 980 · VERSCHIL +26,5%` — three cells for two facts, with the one a
+  reader wants at the far end, away from the number it qualifies. `render/context.attach_changes`
+  folds a `delta` into the cell of the metric whose `compare_` twin sits beside it and a `change`
+  (a move in places) into the position it produced, and the cell draws `1.240 ▲ +26,5%` through
+  `change_badge` — the badge the KPI tile always drew, so a tile and a cell say "up a quarter"
+  identically. Two signals kept apart on purpose: the **arrow is the direction the number moved**,
+  the **colour is the verdict**, so an average position that fell draws a down arrow in green.
+  The host column is told it is one and paid for out of the same width budget, the rows and the
+  model's copy are untouched, and the rankings cell lost its wash — a coloured badge on a cell
+  washed the same colour is a badge nobody can see. At the renderer, so stored reports print it too.
 - **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
   Five faults on one real July report, and only three of them were on the warnings strip the
   agency reads; the two worse ones were on the client's page and named nothing. **A metric whose
@@ -925,6 +936,52 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
+  `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
+  one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,
+  the dictation sheet holds Aanmaken until a colleague is picked, and a dialog opened from a
+  contact moment starts with the viewer as its chip. At the API the existing inheritance chain
+  (project's responsible → client's) now ends at the **caller**, because the callers with nobody
+  in front of them (an MCP agent, the assistant, an import cell) mean the person obviously meant
+  and a 422 would refuse the commonest sentence; an update has no such default, so emptying the
+  roster is refused with the field named and absent still means leave alone. The one create that
+  is refused is a portal login's — a client is never on the employee roster.
+- **A rule on a schedule lays its year out, and a series has one root** (`recurrence.py`,
+  `docs/UX.md`). Schedule mode handed the rule to the next occurrence the night that one fell due,
+  so the calendar knew about exactly one future task at a time: nothing to plan a quarter around,
+  nothing to hand over when somebody left, and a "repeat also the planning" that booked one block
+  at a time. Saving a schedule-mode rule now creates every occurrence inside the year ahead
+  (`HORIZON_DAYS`), each an ordinary task naming its root in `recurrence_source_id`, with its
+  blocks booked through the schedule service as it is made; the nightly cron only ever adds what
+  the sliding horizon reached. Four rules generalise. **The root keeps the rule and is the
+  template**: one rule, one place, whichever of the year's tasks is open — an occurrence's page
+  says whose series it is and links to where the rule is edited, and never grows a rule of its
+  own. **A pointer that a form re-posts must only move on an actual change**: the edit form posts
+  the whole rule on every save, and recomputing `recurrence_next_run` for a rule that did not move
+  would restart the year from the root's own date and hand the sweep a second copy of every
+  occurrence — so the rule is compared in one canonical shape (`_rule_key`, absent anchors equal
+  to `None` ones) and an unchanged one is dropped from the write. **A changed rhythm re-lays the
+  unfinished future and only that**: an occurrence somebody finished is a record and stays, one
+  whose day has come stays, and every other one goes through `remove_for_task` first so a mirrored
+  block is taken back rather than orphaned — the same set a root takes with it when it is deleted.
+  And **handing a task over is a question before it is a save** (`TaskUpdate.apply_to`): the
+  following occurrences already exist, each with its own roster and its own booked block, so
+  "reassign" has two honest meanings and only the person at the keyboard knows which. Both forms
+  that carry the assignee are held by one guard (`InlineField.beforeSubmit`, the edit form's
+  `cancel()`), raise one dialog, and re-submit with the answer; *all following* moves the sibling
+  rosters, the blocks on the leaver's calendar (to whoever joined in their place, through the
+  schedule service's own update with `notify=False` — one "toegewezen", never twelve "ingepland")
+  and the leaver's name inside the rule's plan, so what is laid out next follows too. Two smaller
+  ones ride along. **A calendar block is titled by whose work it is**: "Nova Fietsen: Nieuwsbrief"
+  rather than "Taak: Nieuwsbrief", the client's label carried in the emit payload because the
+  mirror never re-reads a task, and `d4a9b3c6f2e7` retitles what is already in people's calendars
+  by flipping a pushed link back to pending — an update in place, never a second event. And **a
+  prompt with a required answer offers exactly the answers that leave the form saveable**: the
+  deadline-extension prompt could be dismissed with the new date still in the field and the reason
+  empty, which the API then refused on save with nothing beside the date saying why; it now has a
+  reason or "keep the old date", Bevestigen is disabled over an empty box, every other exit is
+  the second answer, and focus moves into the prompt so Escape is *its* Escape and not the
+  in-place editor's beneath it.
 - **Being allowed to book somebody is the reason to see when they are taken, and only that**
   (`app/core/busy.py`, `docs/UX.md`). The scheduling dialog draws the day beside the form — one
   column per person, the block about to be booked as a ghost over what is already there — and the
@@ -1120,6 +1177,24 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
   dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
   such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
+- **A task is changed in words as the person who typed them, and the answer is a diff**
+  (`tasks/assist.py`, `docs/AI.md`). #327 narrowed what a model may write to six fields because an
+  email is an outsider's and a worker applies it unwatched; #382 widened it to the whole form
+  because a dictation is a colleague's and a person confirms it. The box under a task's notes —
+  "voeg een stap toe voor de DNS, deadline vrijdag" — is the third posture and the one that makes
+  the other two legible: the words are a colleague's, the task already exists, and every write
+  lands through `TaskService` **under their name**, behind every rule an ordinary edit meets (a
+  later deadline carries the instruction as its reason). Three rules. **A field left null is a
+  field left alone**, and the description is the one field returned whole rather than as a diff,
+  because a model cannot splice a paragraph into markdown it cannot see the result of. **An id is
+  grounded in the document the model was shown and a link in the instruction itself**, and which
+  list a step sits in is our lookup, never the model's claim — a step "in the other task's list"
+  lands in this task's. And **an empty answer creates nothing** (`errors.ai_empty_answer`), so
+  "stappen schrijven met schakl" never leaves a titled list with no steps on the card. Its sibling
+  is the email enrichment's own fault, found in real use: an *outbound* mail produced a task for
+  the **client** to do, because nothing said whose task it was — the prompt now names the agency
+  and states the point of view, and the document says in words who wrote the message
+  (`written_by`), since `direction: "outbound"` is a token and the sentence is what gets read.
 - **The assistant reaches what the MCP surface reaches, through a catalog, and writes only a
   stated list** (`app/core/ai/apitools.py`, `docs/AI.md`). #127's assistant answered from six
   curated lookups and said "you are read-only", while §12 already handed an external agent every
@@ -1492,6 +1567,37 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   from the hub, because a cutover ends and its queue is where a decision is actually made. On the
   web the composition runs the only direction §6 allows — an integration registers a
   `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
+- **The client's homepage is one company at a time, and every tile has to know which** (the
+  portal dashboard review, `docs/PORTAL.md` §"The client's homepage"). A contact linked to two
+  clients had a company switcher that moved exactly one of three tiles: the marketing widget read
+  `?company=`, the task and report tiles read the whole horizon, and the board kept every tile's
+  *previous* promise across the switch — so the switcher visibly did nothing. `DashboardWidgetSpec.load`
+  takes a `DashboardWidgetContext` now (`companyId`, `null` on the staff board) and the board
+  replaces its promises when the company changes. Five rules generalise. **A default that belongs to
+  one audience must not be inherited by the other**: the org's dashboard template is the staff
+  gallery, and a portal login resolving it got a layout in which every key was unknown — an empty
+  homepage the moment an agency curated its own — so `GET /dashboard/prefs` hands an external login
+  no template. **"Asked of you" and "done for you" are one predicate** (`?assigned_to=contact|agency`
+  on `/tasks`): the client's two tiles read it, a task lands in exactly one, and the list they open
+  filters the same way. **An external login's `:own` is "on a record I may read"** where the row's
+  owner is always a colleague — `tasks.schedule.read:own` for a client resolves through the task's
+  portal horizon and returns the blocks with the planner's note, budget and time entry withheld;
+  `subscriptions.subscription.read` became scoped the way `invoicing.invoice.read` did (#266), with
+  `Subscription.__portal_horizon_clause__` hiding drafts, the notes and automation level nulled, and
+  the summary and preset library fenced at `:any`. **A client's contact person is a recipient only
+  when the emitter names them**: `_external_recipients` is honoured for `PORTAL_EVENTS` alone, never
+  through watchers, and an external login mails at once by default because the bell is not where
+  they live — a mentioned contact and the contact a commented task is assigned to are the two cases
+  (`TaskService._portal_users_for`, through the portal-subject seam). And **a column has an
+  audience** (`ColumnMeta.audience: "staff"`, `columnsForViewer`): a domain's registrar, the billing
+  decision, a website's hosting, owner and uptime stay off a client's table *and* its picker, with
+  the filters and detail rows that name them following — an audience is a layout question (#373),
+  not a permission, which is why it is `isPortal` and not a key. Two smaller ones: the tenant's
+  source names (#446) apply for **every** reader now, on the marketing page, the hub and the picker
+  tiles alike, with Tag Manager renameable beside the five sources, while only the vendor-free
+  *default* stays a portal substitution; and the mention picker offers active colleagues only —
+  `/members/lookup` returns a departed account flagged so a record keeps its author's name, and an
+  `@` on a new comment was the one member picker that never split them out.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

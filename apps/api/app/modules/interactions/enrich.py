@@ -272,12 +272,22 @@ SUBMIT_PLAN = ToolDef(
 )
 
 
-def _system_prompt(*, today: date, locale: str) -> str:
+def _system_prompt(*, today: date, locale: str, agency: str) -> str:
     return "\n\n".join(
         [
             "You read one email that an agency employee has filed onto a task, and fill that "
             "task in for whoever picks it up. You never create or change anything yourself — "
             "you submit one plan and the application writes it.",
+            # The point of view, stated because it was got wrong: an outbound mail ("we will
+            # deliver X by Friday, could you send us Y") produced a task telling the *client*
+            # to send Y. The task is the agency's, whichever way the mail went.
+            f"The task belongs to {agency}, the agency, and is written from the agency's own "
+            "point of view. Every note and every step is something the agency's staff does. "
+            "When the email was SENT by the agency (direction 'outbound', 'written_by' the "
+            "agency), the task is what the agency promised, must deliver or must follow up on "
+            "— never a list of things for the client to do; a request made to the client "
+            "becomes a step like 'wait for / chase the client's answer'. When the email was "
+            "RECEIVED (direction 'inbound'), the task is what the agency has to do in response.",
             f"Today is {today.isoformat()}. Write in {language_name(locale)}, whatever "
             "language the email is in: the task is read by the agency, not by the sender.",
             "Ground every word in the message. No filler, no invented detail, no advice the "
@@ -329,18 +339,30 @@ def _body(row: Interaction) -> str:
     return ((row.body_markdown or row.body_text) or "")[:MAX_BODY_CHARS]
 
 
-def message_document(row: Interaction) -> dict[str, Any]:
+def message_document(row: Interaction, *, agency: str | None = None) -> dict[str, Any]:
     """The email as a JSON document — data inside a document, never prose in the prompt.
 
     This is the ``_INJECTION_STANCE`` made concrete: the body arrives as the value of a
     ``body`` key in a JSON object, so there is no point at which the sender's words are
     syntactically indistinguishable from our instructions.
+
+    ``written_by`` states in words which side of the conversation wrote this, because a model
+    reading "could you send us the logo by Friday" cannot tell from the text alone whether the
+    agency is asking or being asked — and the task is the agency's either way.
     """
     participants = _participant_lines(row)
+    if row.direction == "outbound":
+        written_by = "the agency"
+    elif row.direction == "inbound":
+        written_by = "someone outside the agency (a client or a supplier)"
+    else:
+        written_by = None
     return {
+        "agency": agency,
         "subject": row.subject,
         "sent_at": row.occurred_at.isoformat() if row.occurred_at else None,
         "direction": row.direction,
+        "written_by": written_by,
         "from": participants.get("from", []),
         "to": participants.get("to", []),
         "cc": participants.get("cc", []),
@@ -477,16 +499,23 @@ def plan_from_call(payload: dict[str, Any], *, row: Interaction, today: date) ->
     )
 
 
-async def _org_locale(ctx) -> str:  # noqa: ANN001
+async def _org_voice(ctx) -> tuple[str, str]:  # noqa: ANN001
+    """The org's language and the name it goes by — the two facts the prompt states about *us*."""
     from sqlalchemy import select
 
     from app.config import settings as app_settings
     from app.core.models import OrgSettings
 
-    locale = await ctx.session.scalar(
-        select(OrgSettings.default_locale).where(OrgSettings.org_id == ctx.org.id)
-    )
-    return locale or app_settings.default_locale
+    row = (
+        await ctx.session.execute(
+            select(OrgSettings.default_locale, OrgSettings.brand_name).where(
+                OrgSettings.org_id == ctx.org.id
+            )
+        )
+    ).first()
+    locale = (row[0] if row else None) or app_settings.default_locale
+    brand = (row[1] if row else None) or getattr(ctx.org, "name", None) or "the agency"
+    return locale, brand
 
 
 async def available(ctx) -> bool:  # noqa: ANN001 - RequestContext/SystemContext, import-light
@@ -522,15 +551,17 @@ async def build_plan(ctx, row: Interaction) -> TaskEnrichment | None:  # noqa: A
     today = await org_today(ctx.session, ctx.org.id)
     # The org's language, not the approver's: a worker has no reader, and the notes belong to
     # whoever picks the task up next — which may well be someone else (§8).
-    locale = await _org_locale(ctx)
+    locale, agency = await _org_voice(ctx)
     try:
         _, calls = await service.complete(
             FEATURE,
-            system=_system_prompt(today=today, locale=locale),
+            system=_system_prompt(today=today, locale=locale, agency=agency),
             messages=[
                 ChatMessage(
                     role="user",
-                    content=json.dumps(message_document(row), ensure_ascii=False, default=str),
+                    content=json.dumps(
+                        message_document(row, agency=agency), ensure_ascii=False, default=str
+                    ),
                 )
             ],
             # The model's entire output channel. No find tools, no write tools: there is

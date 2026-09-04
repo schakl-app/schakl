@@ -25,6 +25,8 @@ interface MemberRow {
   user_id: string;
   full_name: string | null;
   email: string | null;
+  /** `false` for a colleague who has left (`/members/lookup` returns them, flagged). */
+  is_active?: boolean;
 }
 interface StatusRow {
   key: string;
@@ -104,11 +106,17 @@ export function loadMentionCandidates(scope: CandidateScope = {}): Promise<Candi
       // `email` is absent for a client-portal login (`/members/lookup` withholds the agency's
       // address book), so the chain ends in "" rather than in `null`: a colleague who has not
       // set a name yet reads as blank, never as somebody's mailbox.
-      ...team.map((m) => ({
-        id: m.user_id,
-        name: m.full_name || m.email || "",
-        kind: "user" as const,
-      })),
+      // Only colleagues who can still read the mention: `/members/lookup` keeps a departed
+      // account in its answer (flagged, so a record keeps its author's name), but an `@` on a
+      // new comment is a request for somebody's attention, and every other member picker
+      // already splits the retired ones out. This was the one that did not.
+      ...team
+        .filter((m) => m.is_active !== false)
+        .map((m) => ({
+          id: m.user_id,
+          name: m.full_name || m.email || "",
+          kind: "user" as const,
+        })),
       ...contacts,
     ];
   });

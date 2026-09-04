@@ -124,6 +124,12 @@ TASK_IMPEX = ImpexDescriptor(
             field="project_id",
             getter=lambda t: getattr(t, "project", None),
         ),
+        # An empty cell is not "nobody": a task always has someone on it, and the service hands
+        # a row that names no one to the project's responsible, else the client's, else the
+        # person doing the import (`TaskService.create`). Deliberately not `required=True` like
+        # the deadline below — a spreadsheet from a client's own tracker rarely knows our
+        # colleagues by e-mail, and refusing every such row would make the importer type their
+        # own address five hundred times to say what the default already says.
         ImpexColumn(
             "assignee",
             data_type="fk",

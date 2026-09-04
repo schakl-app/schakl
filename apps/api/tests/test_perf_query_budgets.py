@@ -426,7 +426,10 @@ _MEMBER_REQUEST_BUDGET = 8
 # cannot tell five-of-five from five-of-twenty-three. What must *not* happen is a count that
 # tracks the client's size — pinned separately by
 # ``test_company_hub_totals_do_not_scale_with_the_client``.
-_PANELS_BUDGET = 54
+# 54 → 55: the tenant's own source names (#446, widened) are read for every caller of the
+# marketing panel now — one org-level statement, so the agency's word for a source is the same on
+# the hub as in the portal. Flat in the client's size, like the counts above.
+_PANELS_BUDGET = 55
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.

@@ -40,6 +40,9 @@ async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dic
                 "status": i.status,
                 "issue_date": i.issue_date.isoformat() if i.issue_date else None,
                 "due_date": i.due_date.isoformat() if i.due_date else None,
+                # A draft has no issue date and no number, so the day it was started is the
+                # one fact that tells five drafts apart on the card.
+                "created_at": i.created_at.isoformat(),
                 "overdue": bool(
                     i.status == "open"
                     and i.due_date is not None
