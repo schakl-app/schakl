@@ -25,6 +25,8 @@
     employmentMenuItems,
     type OpenEmployment,
   } from "$lib/modules/leave/EmploymentModals.svelte";
+  import DeactivatedBadge from "$lib/modules/leave/DeactivatedBadge.svelte";
+  import DeactivatedMembersRow from "$lib/modules/leave/DeactivatedMembersRow.svelte";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import {
@@ -59,11 +61,20 @@
   const memberName = $derived(
     Object.fromEntries(data.members.map((m) => [m.user_id, memberLabel(m)])),
   );
-  // The register-for-someone picker. The roster table below deliberately keeps listing
-  // everyone — it is a record of the year, not a suggestion — but a sick call is never
-  // registered for somebody who has left, so they move behind the search there.
+  // The register-for-someone picker. The roster table below keeps listing everyone — it is a
+  // record of the year, not a suggestion — but a sick call is never registered for somebody who
+  // has left, so they move behind the search there.
   const memberPicker = $derived(splitMemberOptions(data.members));
   const memberOptions = $derived(memberPicker.live);
+  // The roster opens on the people who still work here (#405's fold, one module over). A
+  // colleague who left in March kept a row between two working ones, and on an agency that has
+  // been around a while the balances table was mostly people nobody books any more. Their row
+  // is not deleted — last year's pot and this year's requests are a record — it is folded behind
+  // a strip that says how many it hides. Split on the derived `is_active`, which answers for
+  // both reasons an account is off (deactivated here, or disabled at the instance).
+  const activeMembers = $derived(data.members.filter((m) => m.is_active));
+  const inactiveMembers = $derived(data.members.filter((m) => !m.is_active));
+  let showDeactivated = $state(false);
   // `data.profiles` is null when the caller may not read them (`leave.profile.manage`) — the
   // column then shows a placeholder rather than pretending everyone works the default week.
   const hoursByUser = $derived(
@@ -447,84 +458,101 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
-        {#each data.members as member (member.user_id)}
-          {@const expanded = expandedRows.includes(member.user_id)}
-          <tr>
-            <td class="px-4 py-2 font-medium text-text">
-              {memberLabel(member)}
-            </td>
-            <td class="px-2 py-2 text-right tabular-nums text-text-muted">
-              {data.profiles === null
-                ? "—"
-                : fmtHours(hoursByUser[member.user_id] ?? fallbackWeekHours)}
-            </td>
-            {#each groupColumns as col (col.key)}
-              {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
-              {@const remaining = Number(g?.remaining_hours ?? 0)}
-              <td class="px-2 py-2 text-right tabular-nums">
-                <span class="inline-flex items-center justify-end gap-1">
-                  {#if col.multi}
-                    <!-- Expand the combined figure into its statutory / extra split (#282). -->
-                    <button
-                      type="button"
-                      class="rounded p-0.5 text-text-muted hover:text-text"
-                      aria-expanded={expanded}
-                      title={t("leave.team.vacation_split")}
-                      aria-label={t("leave.team.vacation_split")}
-                      onclick={() => toggleRow(member.user_id)}
-                    >
-                      {#if expanded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-                    </button>
-                  {/if}
-                  <span
-                    class={remaining < 0
-                      ? "font-medium text-red-600 dark:text-red-400"
-                      : "text-text"}
-                  >
-                    {fmtHours(remaining)}
-                  </span>
-                  <span class="text-xs text-text-muted"
-                    >/ {fmtHours(Number(g?.entitled_hours ?? 0))}</span
-                  >
-                </span>
-              </td>
-            {/each}
-            {#if hasRowActions}
-              <!-- Fix this member's rooster/contract/free time without leaving the leave overview. -->
-              <td class="px-2 py-2 text-right">
-                <ActionsMenu
-                  compact
-                  items={employmentMenuItems(member, openEmployment, {
-                    schedules: data.manageEmployment,
-                    availability: data.keepsAvailability && freelancerIds.has(member.user_id),
-                    rates: false,
-                  })}
-                />
-              </td>
-            {/if}
-          </tr>
-          {#if expanded && hasSplit}
-            <!-- The split behind each combined figure: statutory vs extra vacation (#282, #265). -->
-            <tr class="bg-surface/60">
-              <td class="px-4 py-1.5 text-xs text-text-muted" colspan={balanceColCount}>
-                <span class="flex flex-wrap gap-x-4 gap-y-1">
-                  {#each groupColumns.filter((c) => c.multi) as col (col.key)}
-                    {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
-                    {#each groupSplit(g, col) as part (part.type?.id)}
-                      <span class="tabular-nums">
-                        {typeLabel(part.type, data.locale)}: {fmtHours(part.remaining)}
-                      </span>
-                    {/each}
-                  {/each}
-                </span>
-              </td>
-            </tr>
-          {/if}
+        {#each activeMembers as member (member.user_id)}
+          {@render rosterRow(member)}
         {/each}
+        {#if inactiveMembers.length > 0}
+          <!-- The fold, closed by default: absent entirely when nobody has left, and the strip
+               carries the count because a section with no number reads like an empty one. -->
+          <DeactivatedMembersRow
+            count={inactiveMembers.length}
+            colspan={balanceColCount}
+            bind:expanded={showDeactivated}
+          />
+          {#if showDeactivated}
+            {#each inactiveMembers as member (member.user_id)}
+              {@render rosterRow(member)}
+            {/each}
+          {/if}
+        {/if}
       </tbody>
     </table>
   </div>
 </section>
+
+<!-- One row markup for both halves of the roster: a second copy grown for the fold is how a
+     colleague who left would quietly lose the split, the ⋯ or the badge that says they left. -->
+{#snippet rosterRow(member: (typeof data.members)[number])}
+  {@const expanded = expandedRows.includes(member.user_id)}
+  <tr class={member.is_active ? "" : "text-text-muted"}>
+    <td class="px-4 py-2 font-medium text-text">
+      <span class="inline-flex flex-wrap items-center gap-2">
+        {memberLabel(member)}
+        {#if !member.is_active}
+          <DeactivatedBadge />
+        {/if}
+      </span>
+    </td>
+    <td class="px-2 py-2 text-right tabular-nums text-text-muted">
+      {data.profiles === null ? "—" : fmtHours(hoursByUser[member.user_id] ?? fallbackWeekHours)}
+    </td>
+    {#each groupColumns as col (col.key)}
+      {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
+      {@const remaining = Number(g?.remaining_hours ?? 0)}
+      <td class="px-2 py-2 text-right tabular-nums">
+        <span class="inline-flex items-center justify-end gap-1">
+          {#if col.multi}
+            <!-- Expand the combined figure into its statutory / extra split (#282). -->
+            <button
+              type="button"
+              class="rounded p-0.5 text-text-muted hover:text-text"
+              aria-expanded={expanded}
+              title={t("leave.team.vacation_split")}
+              aria-label={t("leave.team.vacation_split")}
+              onclick={() => toggleRow(member.user_id)}
+            >
+              {#if expanded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+            </button>
+          {/if}
+          <span class={remaining < 0 ? "font-medium text-red-600 dark:text-red-400" : "text-text"}>
+            {fmtHours(remaining)}
+          </span>
+          <span class="text-xs text-text-muted">/ {fmtHours(Number(g?.entitled_hours ?? 0))}</span>
+        </span>
+      </td>
+    {/each}
+    {#if hasRowActions}
+      <!-- Fix this member's rooster/contract/free time without leaving the leave overview. -->
+      <td class="px-2 py-2 text-right">
+        <ActionsMenu
+          compact
+          items={employmentMenuItems(member, openEmployment, {
+            schedules: data.manageEmployment,
+            availability: data.keepsAvailability && freelancerIds.has(member.user_id),
+            rates: false,
+          })}
+        />
+      </td>
+    {/if}
+  </tr>
+  {#if expanded && hasSplit}
+    <!-- The split behind each combined figure: statutory vs extra vacation (#282, #265). -->
+    <tr class="bg-surface/60">
+      <td class="px-4 py-1.5 text-xs text-text-muted" colspan={balanceColCount}>
+        <span class="flex flex-wrap gap-x-4 gap-y-1">
+          {#each groupColumns.filter((c) => c.multi) as col (col.key)}
+            {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
+            {#each groupSplit(g, col) as part (part.type?.id)}
+              <span class="tabular-nums">
+                {typeLabel(part.type, data.locale)}: {fmtHours(part.remaining)}
+              </span>
+            {/each}
+          {/each}
+        </span>
+      </td>
+    </tr>
+  {/if}
+{/snippet}
 
 <!-- All requests this year -->
 {#snippet employeeCell(request: Request)}

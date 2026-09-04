@@ -411,6 +411,8 @@
   "leave.team.resubmitted": "Edited — re-submitted for approval",
   "leave.team.over_balance": "Exceeds the balance — approving leaves −{hours} h remaining this year.",
   "leave.team.vacation_split": "Show vacation split",
+  "leave.team.deactivated_section": "Deactivated ({count})",
+  "leave.team.deactivated_hint": "No longer works here. Their balances and requests are kept for the record.",
   "auth.welcome": "Welcome",
   "auth.sign_in": "Sign in",
   "auth.sign_in_action": "Sign in",

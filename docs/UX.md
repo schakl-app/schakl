@@ -776,6 +776,22 @@ contrast bug in dark mode rather than only an inconsistency.
   colleague" had been built for a year (the picker split, the roster badge, the login refusal)
   against a column no screen could write, so the only lever an admin had was the destructive one.
   A status a screen can *display* and cannot *set* is a missing control, not a finished feature.
+- **A roster of colleagues opens on the ones who still work here, and folds the rest behind a
+  count.** Instellingen → Gebruikers did this first (#405); the leave module's two member tables —
+  the balances on `/leave/team` and the entitlement table under Instellingen → Verlof — kept every
+  colleague who ever worked here flat between the ones who still do, so on an agency that has been
+  around a while the roster was mostly people nobody books any more. The row is not deleted (last
+  year's pot and this year's requests are a record, and the ⋯ still edits them); it is folded
+  behind one strip that says how many it hides (`DeactivatedMembersRow`, the dashed button drawn
+  as a `<tr>` because a table has nowhere else to put it), closed by default and **absent when
+  nobody has left** — "Gedeactiveerd (0)" is a heading over a negative sentence. Three rules travel
+  with it. **Split on the derived `is_active`**, which answers for both reasons an account is off,
+  never on `deactivated_at` alone. **The row says on itself that the person left**
+  (`DeactivatedBadge`, wearing the members' own word for the state), so a row copied out of the
+  fold by a later change cannot read as an ordinary member. And **one row markup for both halves**:
+  each table renders one snippet from the active list and from the fold, pinned by
+  `leave-roster-fold.test.ts`, because a second copy grown for the fold is how a former colleague
+  quietly loses the vacation split or the ⋯.
 - **A member is edited in a modal, because a member has no detail page.** The #78 rule below —
   row ⋯ → Bewerken is a link carrying `?edit=1` to the record's own page — needs a page to link
   to. Instellingen → Gebruikers is the record surface for a colleague, so its Bewerken opens a

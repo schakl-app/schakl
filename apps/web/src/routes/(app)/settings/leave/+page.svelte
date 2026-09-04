@@ -24,6 +24,8 @@
     type HolidayInfo,
     type LeaveTypeInfo,
   } from "$lib/modules/leave/format";
+  import DeactivatedBadge from "$lib/modules/leave/DeactivatedBadge.svelte";
+  import DeactivatedMembersRow from "$lib/modules/leave/DeactivatedMembersRow.svelte";
   import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
   import { cloneSchedule, weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
@@ -33,6 +35,12 @@
 
   const types = $derived(data.types as LeaveTypeInfo[]);
   const trackedTypes = $derived(types.filter((lt) => lt.tracks_balance && lt.active));
+  // The entitlement table opens on the people who still work here, exactly as the team roster
+  // and Instellingen → Gebruikers do (#405): a former colleague's pots are a record and stay
+  // editable, folded behind a strip that says how many it hides.
+  const activeMembers = $derived(data.members.filter((m) => m.is_active));
+  const inactiveMembers = $derived(data.members.filter((m) => !m.is_active));
+  let showDeactivated = $state(false);
   const hoursByUser = $derived(
     Object.fromEntries(data.profiles.map((p) => [p.user_id, Number(p.hours_per_week)])),
   );
@@ -553,46 +561,67 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
-          {#each data.members as member (member.user_id)}
-            <tr>
-              <td class="px-4 py-2 font-medium text-text">
-                {member.full_name || member.email}
-              </td>
-              <!-- Derived from the person's schedule, so it is read here and edited there. -->
-              <td class="px-2 py-2 text-right tabular-nums text-text">
-                <a
-                  href="/settings/users"
-                  class="hover:text-brand hover:underline"
-                  title={t("settings.leave.contract_hours_derived")}
-                >
-                  {fmtHours(hoursByUser[member.user_id] ?? weekHours(data.defaultSchedule as WorkSchedule))}
-                </a>
-                {#if inheritedByUser[member.user_id] !== false}
-                  <span class="ml-1 text-xs text-text-muted"
-                    >{t("settings.leave.schedule_inherited_short")}</span
-                  >
-                {/if}
-              </td>
-              {#each trackedTypes as lt (lt.id)}
-                <td class="px-2 py-2 text-right tabular-nums text-text">
-                  {fmtHours(entitledByUserType[`${member.user_id}|${lt.id}`] ?? 0)}
-                </td>
-              {/each}
-              <td class="px-2 py-2 text-right">
-                <ActionsMenu
-                  compact
-                  items={[
-                    { label: t("common.edit"), icon: Pencil, onclick: () => openMember(member) },
-                  ]}
-                />
-              </td>
-            </tr>
+          {#each activeMembers as member (member.user_id)}
+            {@render entitlementRow(member)}
           {/each}
+          {#if inactiveMembers.length > 0}
+            <DeactivatedMembersRow
+              count={inactiveMembers.length}
+              colspan={3 + trackedTypes.length}
+              bind:expanded={showDeactivated}
+            />
+            {#if showDeactivated}
+              {#each inactiveMembers as member (member.user_id)}
+                {@render entitlementRow(member)}
+              {/each}
+            {/if}
+          {/if}
         </tbody>
       </table>
     </div>
   </div>
 </section>
+
+<!-- One row markup for both halves of the table (#405): the fold must not grow a second copy
+     that drops the edit action or the badge. -->
+{#snippet entitlementRow(member: (typeof data.members)[number])}
+  <tr class={member.is_active ? "" : "text-text-muted"}>
+    <td class="px-4 py-2 font-medium text-text">
+      <span class="inline-flex flex-wrap items-center gap-2">
+        {member.full_name || member.email}
+        {#if !member.is_active}
+          <DeactivatedBadge />
+        {/if}
+      </span>
+    </td>
+    <!-- Derived from the person's schedule, so it is read here and edited there. -->
+    <td class="px-2 py-2 text-right tabular-nums text-text">
+      <a
+        href="/settings/users"
+        class="hover:text-brand hover:underline"
+        title={t("settings.leave.contract_hours_derived")}
+      >
+        {fmtHours(hoursByUser[member.user_id] ?? weekHours(data.defaultSchedule as WorkSchedule))}
+      </a>
+      {#if inheritedByUser[member.user_id] !== false}
+        <span class="ml-1 text-xs text-text-muted"
+          >{t("settings.leave.schedule_inherited_short")}</span
+        >
+      {/if}
+    </td>
+    {#each trackedTypes as lt (lt.id)}
+      <td class="px-2 py-2 text-right tabular-nums text-text">
+        {fmtHours(entitledByUserType[`${member.user_id}|${lt.id}`] ?? 0)}
+      </td>
+    {/each}
+    <td class="px-2 py-2 text-right">
+      <ActionsMenu
+        compact
+        items={[{ label: t("common.edit"), icon: Pencil, onclick: () => openMember(member) }]}
+      />
+    </td>
+  </tr>
+{/snippet}
 
 <!-- Leave type create/edit (one save per surface) -->
 <Modal bind:open={typeOpen} title={editType ? t("common.edit") : t("settings.leave.new_type")}>

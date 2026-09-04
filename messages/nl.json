@@ -411,6 +411,8 @@
   "leave.team.resubmitted": "Bewerkt, opnieuw ter goedkeuring",
   "leave.team.over_balance": "Boven het saldo: na goedkeuren blijft dit jaar −{hours} u over.",
   "leave.team.vacation_split": "Opsplitsing vakantie tonen",
+  "leave.team.deactivated_section": "Gedeactiveerd ({count})",
+  "leave.team.deactivated_hint": "Werkt hier niet meer. Saldo's en aanvragen blijven bewaard.",
   "auth.welcome": "Welkom",
   "auth.sign_in": "Inloggen",
   "auth.sign_in_action": "Inloggen",
