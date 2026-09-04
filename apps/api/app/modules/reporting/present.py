@@ -242,8 +242,11 @@ def _rows(
                     key, row.get(key), locale, currency
                 )
         # A split table carries a comparison the columns do not name (it rides the row), and it
-        # is the whole point of half the sentences a report writes.
-        for key in ("compare_sessions", "compare_keyEvents", "delta"):
+        # is the whole point of half the sentences a report writes. The same goes for a change
+        # the page draws *inside* another column (`render.context.attach_changes` folds `delta`
+        # into the sessions cell and `change` into the position's): the document no longer has
+        # a column for it, and the model still needs the figure to write "a quarter up".
+        for key in ("compare_sessions", "compare_keyEvents", "delta", "change"):
             if key in row and key not in columns and row.get(key) is not None:
                 entry[metric_label(key, locale)] = fmt_metric(key, row[key], locale)
         # `status` ("improved" / "declined" / "new") is deliberately left out: it is an English

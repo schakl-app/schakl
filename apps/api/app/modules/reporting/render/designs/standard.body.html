@@ -19,10 +19,9 @@
         {% if tile %}
           <div class="kpi">
             <div class="figure">
-              <span class="value">{{ tile.value }}</span>
-              {% if tile.delta != '-' %}
-                <span class="badge {{ tile.delta_class }}">{{ tile.delta }}</span>
-              {% endif %}
+              {# The change is drawn by `change_badge` — an arrow for the direction, a colour
+                 for the verdict — so a tile and a table cell say "up a quarter" identically. #}
+              <span class="value">{{ tile.value }}</span>{{ tile.badge }}
             </div>
             <span class="label">{{ tile.icon }}{{ tile.label }}</span>
           </div>
@@ -135,7 +134,10 @@
          names under it, and printed eight labels reading `brochur…`, `click_t…`, `form_su…`:
          a picture of a table nobody could read, beside the table itself. Above six categories
          the chart takes the full width, where its names fit. #}
-      {% set beside = part.chart and part.rows and part.columns | length <= 3
+      {# A column carrying its change beside the number counts twice: it is as wide as the
+         VERSCHIL column it absorbed, and a channel table beside its chart wrapped every
+         `4.120 ▲ +18,4%` onto two lines the moment that column stopped being counted. #}
+      {% set beside = part.chart and part.rows and (part.columns | length + part.hosts) <= 3
                       and part.chart_categories <= 6
                       and section.kind not in ('rankings', 'audit') %}
       {% if part.chart and not beside %}<div class="chart">{{ part.chart }}</div>{% endif %}
@@ -151,12 +153,15 @@
            Console-sourced ranking table knows the query and not which page answered it, and a
            column of dashes is worse than no column (§17's rule, one layer over). #}
         {% for group in part.groups %}
-          {% set span = 4 + (1 if part.show_landing_page else 0) %}
+          {% set span = 3 + (1 if part.show_landing_page else 0) %}
           <table class="data">
+            {# Two position columns, the second wide enough to carry the move beside the rank:
+               the VERSCHIL column it used to be is now drawn *in* the end cell, as an arrow
+               and a signed count, so the number and how it got there are read in one place. #}
             <colgroup>
               <col style="width: {{ part.rank_name_width }}%" />
               {% if part.show_landing_page %}<col style="width: 26%" />{% endif %}
-              <col style="width: 11%" /><col style="width: 11%" /><col style="width: 13%" />
+              <col style="width: 11%" /><col style="width: 24%" />
             </colgroup>
             {# The theme's name lives *inside* the head, so a group that runs over a page break
                carries its name onto the next sheet — `display: table-header-group` repeats a
@@ -173,8 +178,7 @@
                   <th>{{ icon('landing_page') }}{{ labels.landing_page }}</th>
                 {% endif %}
                 <th class="num">{{ labels.start_position }}</th>
-                <th class="num">{{ labels.end_position }}</th>
-                <th class="num">{{ icon('change') }}{{ labels.move }}</th>
+                <th class="num" title="{{ labels.move }}">{{ labels.end_position }}</th>
               </tr>
             </thead>
             <tbody>
@@ -185,20 +189,14 @@
                     <td class="url">{{ row.landing_page or '-' }}</td>
                   {% endif %}
                   <td class="pos">{{ row.begin or '-' }}</td>
-                  {# The wash is the *move*, not the rank — see `standard.css`. The accent rule is
-                     the separate, quieter fact that this term is in the top three. #}
-                  <td class="pos {{ row.move_class or '' }}{% if row.end and row.end <= 3 %} top{% endif %}">
+                  {# The rank, and beside it the move that produced it: the badge carries the
+                     colour now (the cell wash it replaced is explained in `standard.css`). The
+                     accent rule is the separate, quieter fact that this term is in the top
+                     three. A term seen for the first time has no move, only a status. #}
+                  <td class="pos{% if row.end and row.end <= 3 %} top{% endif %}">
                     {{ row.end or '-' }}
-                  </td>
-                  <td class="num">
-                    {% if row.status == 'new' %}
-                      <span class="badge up">{{ labels.new_keyword }}</span>
-                    {% elif row.change %}
-                      <span class="badge {{ row.move_class }}">
-                        {% if row.change > 0 %}+{% endif %}{{ row.change }}
-                      </span>
-                    {% else %}
-                      <span class="badge neutral">0</span>
+                    {% if row.status == 'new' %} <span class="badge up">{{ labels.new_keyword }}</span>
+                    {% else %} {{ change_badge('change', row.get('change')) }}
                     {% endif %}
                   </td>
                 </tr>
@@ -251,25 +249,18 @@
               <tr{% if row.get('folded') %} class="folded"{% endif %}>
                 <td{% if part.dots %} class="mark"{% endif %}>{% if row.get('color') %}<span class="dot" style="background: {{ row.get('color') }}"></span>{% endif %}{{ row.get('label') or row.get('engine') or '-' }}</td>
                 {% for column in part.columns %}
-                  <td class="num">
+                  <td class="num{% if column.change %} host{% endif %}">
                     {% if row.get(column.key) is none %}
                       <span class="empty">-</span>
-                    {% elif column.key == 'delta' %}
-                      <span class="badge {{ delta_class(column.key, row.get(column.key)) }}">
-                        {{ fmt_delta(row.get(column.key)) }}
-                      </span>
-                    {% elif column.key == 'change' %}
-                      {# A move in *places*, not percent — so it is `fmt`, not `fmt_delta`. It
-                         still needs the sign and the colour: a bare `9` in a column headed
-                         VERSCHIL reads as easily as "position 9" as "nine places better", and
-                         the rankings table three blocks up has drawn it as a signed badge all
-                         along. Two tables in one document disagreeing about how a move looks is
-                         the thing this branch exists to prevent. #}
-                      <span class="badge {{ delta_class(column.key, row.get(column.key)) }}">
-                        {% if row.get(column.key) > 0 %}+{% endif %}{{ fmt(column.key, row.get(column.key)) }}
-                      </span>
                     {% else %}
                       {{ fmt(column.key, row.get(column.key)) }}
+                      {#- A column that carries its change draws it beside the number: the
+                         arrow for the direction, the colour for the verdict, the figure signed
+                         (`context.attach_changes` decided which column, and `change_badge`
+                         knows that a `delta` is a percentage and a `change` a move in places).
+                         The separate VERSCHIL column this replaces put the one thing a reader
+                         wants — did it go up — three cells away from the number it was about. #}
+                      {% if column.change %} {{ change_badge(column.change, row.get(column.change)) }}{% endif %}
                     {% endif %}
                   </td>
                 {% endfor %}

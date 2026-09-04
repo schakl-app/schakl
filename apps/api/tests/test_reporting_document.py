@@ -81,13 +81,150 @@ def test_a_table_states_its_widths_and_the_name_column_gets_the_remainder() -> N
     while a column of zeros took twice its width.
     """
     for count in (1, 2, 3, 4, 5, 6, 7):
-        name, per = ctx.column_widths(count)
+        name, per, _ = ctx.column_widths(count)
         assert name + per * count == pytest.approx(100.0, abs=0.5)
         # The name column always holds the largest single share: it is the only column whose
         # content is genuinely long.
         assert name > per, (count, name, per)
         # …and never so narrow that a hostname has to break inside a word again.
         assert name >= 24.0, (count, name)
+
+
+def test_a_column_that_carries_its_change_is_wider_and_the_name_column_still_wins() -> None:
+    """``4.124 ▲ +26,5%`` is a number and a badge in one cell, and the cell is told so.
+
+    The budget is the same one: a table that folded its VERSCHIL column into its SESSIES column
+    spends about what it spent before, so the name column — the hostnames — keeps its share.
+    """
+    for count in (2, 3, 4, 5):
+        name, per, host = ctx.column_widths(count, hosting=1)
+        assert name + per * (count - 1) + host == pytest.approx(100.0, abs=0.5)
+        assert host > per
+        assert name > host, (count, name, host)
+        assert name >= 24.0
+    # No host, no third width to speak of — and the old answer exactly.
+    assert ctx.column_widths(3)[:2] == ctx.column_widths(3, hosting=0)[:2]
+
+
+# --------------------------------------------------------------------------------------- #
+# The change rides the number it is about
+# --------------------------------------------------------------------------------------- #
+def _channels() -> dict:
+    return {
+        "kind": "channels",
+        "columns": ["sessions", "compare_sessions", "delta", "share"],
+        "rows": [
+            {"label": "Organic Search", "sessions": 1240, "compare_sessions": 980,
+             "delta": 26.5, "share": 62.0},
+            {"label": "Direct", "sessions": 760, "compare_sessions": 800,
+             "delta": -5.0, "share": 38.0},
+        ],
+        "totals": {},
+        "compare": None,
+        "chart": None,
+    }
+
+
+def test_a_difference_column_is_folded_into_the_column_it_describes() -> None:
+    """Three cells for two facts, with the one a reader wants at the far end of the row."""
+    shaped = ctx.shape_section(_channels(), "nl")
+    assert shaped["columns"] == ["sessions", "compare_sessions", "share"]
+    assert shaped["changes"] == {"sessions": "delta"}
+    # The rows are untouched: the snapshot stays the record of what the source said.
+    assert shaped["rows"][0]["delta"] == 26.5
+
+    # A move in places belongs to the position it produced — the engine table's average, the
+    # rankings table's end rank.
+    engines = ctx.shape_section(
+        {
+            "kind": "engines",
+            "columns": ["keywords_tracked", "top3", "top10", "avg_position", "change"],
+            "rows": [{"label": "Google", "keywords_tracked": 145, "top3": 21, "top10": 60,
+                      "avg_position": 19.4, "change": 3.0}],
+            "totals": {},
+            "compare": None,
+            "chart": None,
+        },
+        "nl",
+    )
+    assert engines["columns"] == ["keywords_tracked", "top3", "top10", "avg_position"]
+    assert engines["changes"] == {"avg_position": "change"}
+    # A table with no change column is handed back as it was.
+    assert "changes" not in ctx.shape_section(_referrals(0), "nl")
+
+
+def test_a_change_badge_says_direction_with_an_arrow_and_verdict_with_a_colour() -> None:
+    """Two signals, deliberately separate: an average position that *fell* is *good*."""
+    up = str(ctx.change_badge("delta", 26.5, "nl"))
+    assert 'class="badge up"' in up and "+26,5%" in up and 'class="arrow"' in up
+    down = str(ctx.change_badge("delta", -5.0, "nl"))
+    assert 'class="badge down"' in down and "-5,0%" in down
+    # A move in places is a signed count, not a percentage.
+    assert "+3" in str(ctx.change_badge("change", 3.0, "nl"))
+    assert "%" not in str(ctx.change_badge("change", 3.0, "nl"))
+    # No movement: no arrow, muted. Nothing to compare against: nothing at all.
+    flat = str(ctx.change_badge("delta", 0, "nl"))
+    assert 'class="badge neutral"' in flat and "arrow" not in flat
+    assert str(ctx.change_badge("delta", None, "nl")) == ""
+    assert str(ctx.change_badge("delta", "n/a", "nl")) == ""
+
+
+def test_the_document_draws_the_change_beside_the_number_and_has_no_difference_column() -> None:
+    """The head no longer says VERSCHIL; the sessions cell says ``1.240 ▲ +26,5%``."""
+    from app.modules.reporting.render.engine import ENGINE
+
+    snapshot = {
+        "company": {"name": "Acme B.V."},
+        "period": {"label": "juli 2026"},
+        "compare": {"label": "juli 2025"},
+        "order": ["marketing.traffic_channels", "marketing.rankings"],
+        "sections": {
+            "marketing.traffic_channels": _channels(),
+            "marketing.rankings": {
+                "kind": "rankings",
+                "columns": ["begin", "end", "change"],
+                "rows": [],
+                "groups": [{"name": "Thema", "rows": [
+                    {"keyword": "zonnepanelen", "begin": 8, "end": 3, "change": 5,
+                     "status": "improved", "landing_page": None},
+                    {"keyword": "nieuw", "begin": 0, "end": 7, "change": 0,
+                     "status": "new", "landing_page": None},
+                ]}],
+                "totals": {},
+                "compare": None,
+                "chart": None,
+            },
+        },
+    }
+
+    class _Report:
+        title = "Maandrapport"
+        company_name = "Acme B.V."
+
+    context = ctx.build_context(
+        report=_Report(), snapshot=snapshot, narrative={}, section_titles={},
+        brand_name="Bureau", logo_uri=None, cover_uri=None, client_logo_uri=None,
+        accent=None, intro_text=None, footer_text=None, locale="nl", internal=False,
+    )
+    html = ENGINE.render_html(context, {})
+    # No column is headed VERSCHIL any more — the word survives only as the end-position
+    # column's title attribute, which is where a reader hovering the preview learns what the
+    # badge is.
+    assert "Verschil</th>" not in html
+    # Whitespace-insensitive: the cell holds the number, then the badge, then nothing else.
+    flat = " ".join(html.split())
+    assert '1.240 <span class="badge up"><svg class="arrow"' in flat
+    assert "+26,5%" in flat and "-5,0%" in flat
+    # The rankings table: the end rank carries its move, a new term its status.
+    assert "+5</span>" in flat
+    assert "nieuw</span>" in flat
+
+
+def test_the_model_still_reads_the_change_the_page_folded_away() -> None:
+    """A paragraph that says "a quarter up on last year" needs the figure whichever cell
+    draws it."""
+    presented = present.section(_channels(), locale="nl", title="Kanalen")
+    assert presented["rows"][0]["Verandering"] == "+26,5%"
 
 
 def test_a_column_heading_is_the_short_name_and_the_tile_keeps_the_long_one() -> None:

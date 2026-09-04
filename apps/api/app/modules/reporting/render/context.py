@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 from app.core.documents import (
     ChartStyle,
@@ -247,8 +247,15 @@ def metric_icon(key: str) -> Markup:
     )
 
 
-def column_widths(count: int) -> tuple[float, float]:
-    """``(name column %, each metric column %)`` for a fixed-layout table.
+#: How much wider a column that carries its own change is than a plain one. A period total is
+#: four or five tabular digits; beside it sit an arrow and a signed percentage at 7pt, which is
+#: about as much again — so the host column is not two columns' worth, but it is not one either.
+_HOST_WIDTH_FACTOR = 1.8
+
+
+def column_widths(count: int, hosting: int = 0) -> tuple[float, float, float]:
+    """``(name column %, each metric column %, each change-hosting column %)`` for a
+    fixed-layout table.
 
     A sheet of A4 has a width and the *table* decides how to spend it, not the widest word in
     a heading. Each metric column gets an equal, generous-enough share — a period total is four
@@ -256,14 +263,23 @@ def column_widths(count: int) -> tuple[float, float]:
     is room to spare — and the name column takes everything left over, which is where the
     hostnames and the event names actually live.
 
+    ``hosting`` is how many of the ``count`` columns carry a change beside their number (see
+    :func:`attach_changes`). Such a column holds ``4.124 ▲ +26,5%`` and gets
+    :data:`_HOST_WIDTH_FACTOR` times a plain column's share, paid for out of the same budget —
+    so a table that folded its VERSCHIL column into its SESSIES column spends about what it
+    spent before, and the name column keeps what it had.
+
     Capped at 14 % so a two-column table does not draw two enormous number columns, and the
     name column is floored so seven metrics cannot starve it back to where this started.
     """
     if count <= 0:
-        return 100.0, 0.0
-    per = min(14.0, 66.0 / count)
-    name = max(24.0, 100.0 - per * count)
-    return round(name, 2), round(per, 2)
+        return 100.0, 0.0, 0.0
+    hosting = max(0, min(hosting, count))
+    units = (count - hosting) + hosting * _HOST_WIDTH_FACTOR
+    per = min(14.0, 66.0 / units)
+    host = per * _HOST_WIDTH_FACTOR
+    name = max(24.0, 100.0 - per * (count - hosting) - host * hosting)
+    return round(name, 2), round(per, 2), round(host, 2)
 
 
 def fmt_number(value: Any, locale: str) -> str:
@@ -376,6 +392,105 @@ def fmt_delta(value: Any, locale: str) -> str:
     return f"{sign}{fmt_decimal(number, locale)}%"
 
 
+#: A change column, and the column whose number it describes — in the order the host is
+#: looked for. ``delta`` is a percentage against the row's own ``compare_<metric>``, so its host
+#: is whichever metric has that twin beside it (``sessions`` on a channel table, ``keyEvents``
+#: on a conversions one). ``change`` is a move in *places*: on the per-engine table it is the
+#: average position's, on the rankings table the end position's.
+_CHANGE_HOSTS: dict[str, tuple[str, ...]] = {
+    "delta": ("sessions", "keyEvents", "totalUsers", "clicks", "impressions"),
+    "change": ("avg_position", "position", "end"),
+}
+
+#: The two triangles a change is drawn with — solid, 16×16, filled in ``currentColor`` so they
+#: take the badge's own colour. Glyphs rather than ``▲``/``▼``, because a document font is the
+#: tenant's choice and not every one of them carries the geometric shapes block; an inline path
+#: prints the same on every machine WeasyPrint runs on.
+_ARROWS = {
+    "up": "M8 3.2l5.2 8.4H2.8z",
+    "down": "M8 12.8L2.8 4.4h10.4z",
+}
+
+
+def _arrow(direction: str) -> Markup:
+    path = _ARROWS.get(direction)
+    if not path:
+        return Markup("")
+    return Markup(
+        f'<svg class="arrow" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
+        f'<path d="{path}"/></svg>'
+    )
+
+
+def change_badge(key: str, value: Any, locale: str) -> Markup:
+    """A change, drawn beside the number it is about: a coloured arrow and the signed figure.
+
+    The **arrow** is the direction the number moved (up for a rise, down for a fall, none for
+    no movement) and the **colour** is the verdict (:func:`delta_class`), and the two are
+    deliberately separate signals: an average position that fell from 22 to 19 draws a *down*
+    arrow in *green*, because the number went down and that is the good direction. Folding the
+    two into one glyph would make every lower-is-better metric read backwards.
+
+    ``delta`` is a percentage and prints through :func:`fmt_delta`; ``change`` is a move in
+    places and prints as a signed count. Nothing to compare against (``None``, or not a number)
+    draws nothing at all — a dash beside a number is a question, and the compare column already
+    holds the answer.
+    """
+    if value is None or value == "":
+        return Markup("")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return Markup("")
+    if key in _DELTA_METRICS:
+        text = fmt_delta(number, locale)
+    else:
+        # A whole number of places prints whole; an engine's average moves by halves and
+        # tenths, and rounding `-1,5` to `-2` would overstate a move the tile beside it states
+        # exactly.
+        figure = (
+            fmt_number(number, locale) if number.is_integer() else fmt_decimal(number, locale)
+        )
+        text = f"{'+' if number > 0 else ''}{figure}"
+    direction = "up" if number > 0 else ("down" if number < 0 else "")
+    return Markup(
+        f'<span class="badge {delta_class(key, number)}">{_arrow(direction)}{escape(text)}</span>'
+    )
+
+
+def attach_changes(data: dict[str, Any]) -> dict[str, Any]:
+    """Fold a table's change column into the column whose number it describes.
+
+    A row used to read ``SESSIES 1.240 · VORIG JAAR 980 · VERSCHIL +26,5%``: three cells for two
+    facts, with the one a reader actually wants — *did it go up* — in the narrowest column at
+    the far end, away from the number it qualifies. The change now rides the number's own cell,
+    as an arrow and a signed figure (:func:`change_badge`), exactly as the KPI tile above the
+    table has always drawn its own.
+
+    ``columns`` loses the change key and ``changes`` records where it went, ``{host: change}``,
+    so a design can ask each column whether it carries one. The **rows** are untouched: the
+    stored snapshot stays the record of what the source said, and the model's copy of the table
+    (``present.section``) still names the change in words — a paragraph that says "a quarter
+    up on last year" needs the figure whichever cell the page draws it in.
+
+    Applied at the renderer for the reason every narrowing here is: a report freezes its rows,
+    so reports already generated print the new layout too.
+    """
+    columns = [key for key in data.get("columns") or [] if isinstance(key, str)]
+    changes: dict[str, str] = {}
+    for change, hosts in _CHANGE_HOSTS.items():
+        if change not in columns:
+            continue
+        host = next((key for key in hosts if key in columns and key not in changes), None)
+        if host is None:
+            continue
+        changes[host] = change
+        columns.remove(change)
+    if not changes:
+        return data
+    return {**data, "columns": columns, "changes": changes}
+
+
 def build_context(
     *,
     report: Any,
@@ -472,6 +587,7 @@ def build_context(
         "fmt_number": lambda value: fmt_number(value, locale),
         "fmt_delta": lambda value: fmt_delta(value, locale),
         "delta_class": delta_class,
+        "change_badge": lambda key, value: change_badge(key, value, locale),
         "tile_rows": tile_rows,
         "icon": metric_icon,
     }
@@ -496,7 +612,8 @@ def _shaped_part(
     colors = _row_colors(data, style, locale)
     currency = data.get("currency")
     keys = list(data.get("columns") or [])
-    name_width, metric_width = column_widths(len(keys))
+    changes: dict[str, str] = dict(data.get("changes") or {})
+    name_width, metric_width, host_width = column_widths(len(keys), len(changes))
     return {
         "label": str(data.get("label") or ""),
         "columns": [
@@ -508,13 +625,21 @@ def _shaped_part(
                 # stands for.
                 "full_label": metric_label(column, locale),
                 "icon": metric_icon(column),
-                "width": metric_width,
+                # The change this column carries beside its number, or none — the key the row
+                # holds it under, so a design draws `change_badge(column.change, row[…])` and
+                # never has to know that a channel's is `delta` and an engine's is `change`.
+                "change": changes.get(column),
+                "width": host_width if column in changes else metric_width,
             }
             for column in keys
         ],
         # The table's own geometry, decided here rather than negotiated by the widest heading at
         # layout time — see `column_widths`.
         "name_width": name_width,
+        # How many columns carry a change beside their number. A design that decides whether a
+        # chart fits *beside* a table counts these twice: the change was a column of its own
+        # before it was folded in, and its width did not go away with the heading.
+        "hosts": len(changes),
         "rows": _coloured(_ranked(data.get("rows") or []), colors),
         # Whether this block's *column* carries the mark. A design needs it as well as the
         # per-row colour, because the rows past the chart's segment cap have no segment and must
@@ -599,6 +724,10 @@ def _tiles(data: dict[str, Any], locale: str, currency: str | None) -> list[dict
             "value": fmt_metric(metric, value, locale, currency),
             "delta": fmt_delta(change, locale),
             "delta_class": delta_class(metric, change),
+            # The drawn form — arrow and figure — so the tile and a table cell say a change
+            # the same way. `delta` and `delta_class` stay for a tenant's own design that
+            # reads them.
+            "badge": change_badge("delta", change, locale),
         }
         fingerprint = (str(tile["value"]), str(tile["delta"]))
         if fingerprint in seen:
@@ -896,7 +1025,10 @@ def shape_section(
             ],
         }
         data = _fold_tail(data, locale)
-    return _drop_empty_columns(data)
+    # The change joins the number it describes *before* the empty-column sweep: a compare
+    # column that is zero on every row is dropped there, and a change against nothing draws
+    # nothing (`change_badge`), so the two rules agree without knowing about each other.
+    return _drop_empty_columns(attach_changes(data))
 
 
 def _row_colors(

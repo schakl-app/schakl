@@ -666,6 +666,17 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
   and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
   `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A change rides the number it is about; it is not a column** (`docs/REPORTING.md`). A row read
+  `SESSIES 1.240 · VORIG JAAR 980 · VERSCHIL +26,5%` — three cells for two facts, with the one a
+  reader wants at the far end, away from the number it qualifies. `render/context.attach_changes`
+  folds a `delta` into the cell of the metric whose `compare_` twin sits beside it and a `change`
+  (a move in places) into the position it produced, and the cell draws `1.240 ▲ +26,5%` through
+  `change_badge` — the badge the KPI tile always drew, so a tile and a cell say "up a quarter"
+  identically. Two signals kept apart on purpose: the **arrow is the direction the number moved**,
+  the **colour is the verdict**, so an average position that fell draws a down arrow in green.
+  The host column is told it is one and paid for out of the same width budget, the rows and the
+  model's copy are untouched, and the rankings cell lost its wash — a coloured badge on a cell
+  washed the same colour is a badge nobody can see. At the renderer, so stored reports print it too.
 - **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
   Five faults on one real July report, and only three of them were on the warnings strip the
   agency reads; the two worse ones were on the client's page and named nothing. **A metric whose
