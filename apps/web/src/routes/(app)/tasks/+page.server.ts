@@ -3,16 +3,14 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
-import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
-import { orgToday } from "$lib/core/today";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
-import { taskPlaceholderBody } from "$lib/modules/tasks/create";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
 import { DUE_SORT, resolveGrouping } from "$lib/modules/tasks/grouping";
 
@@ -38,7 +36,6 @@ export const load: PageServerLoad = async (event) => {
     // "Show me the ones nobody named" (#350). A create-then-edit row that was never finished
     // reads as ordinary work, so without a filter there is no way to find — let alone clear —
     // the ones an interrupted afternoon left behind.
-    unnamed: q.get("unnamed") === "1" || undefined,
     // "Show me the ones with no deadline" (#392). The rule arrived with the column still
     // nullable (expand/contract, docs/WORKFLOW.md), so an instance upgrades carrying rows the
     // new rule forbids — and a list sorted by a date they do not have is not a way to find
@@ -147,32 +144,25 @@ export const actions: Actions = {
 
   /**
    * The one create path behind every "＋ nieuwe taak" — this list's button, the client's Taken
-   * panel, the client header. Create-then-edit (#230, docs/UX.md Principle 3): one click writes
-   * a placeholder row and the user lands on its detail page in edit mode (#78's `?edit=1`), the
-   * one surface where a task's definition is edited.
+   * panel, the client header — and every one of them opens `TaskQuickCreate` first, so the row
+   * is named, dated, held by somebody and a client's before it exists (`taskCreateBody`). The
+   * placeholder create that used to sit here (#350: one click, a row titled "Naamloze taak",
+   * marked `unnamed`) is gone by decision: an abandoned create was a task on somebody's board,
+   * and marking it never made it not one.
    *
-   * #391 put `TaskQuickCreate` in front of this, to stop an abandoned create leaving a row on
-   * the board. The cost turned out to be larger than the thing it bought: a modal asking three
-   * of a task's twenty fields, in front of the page where all twenty — including those three —
-   * are edited, on the one path where the user was going to that page anyway. So the dialog
-   * goes back to being what it was built for (a picker's inline ＋, which must hand an id back
-   * and may not navigate), and this writes the placeholder again.
-   *
-   * The row is not silent about being one: `unnamed` (#350) is what makes an abandoned create
-   * findable (`?unnamed=1`) and renders as *Naamloze taak* in the reader's own language, and
-   * the flag clears itself the moment a real title is saved.
+   * What the dialog does *not* ask for stays behind create-then-edit (#230, docs/UX.md
+   * Principle 3): the redirect lands the user on the new task in edit mode (#78's `?edit=1`),
+   * the one surface where the rest of a task's definition is edited.
    */
   create: async (event) => {
     const form = await event.request.formData();
-    const body = taskPlaceholderBody({
-      title: t("tasks.untitled"),
-      today: orgToday(),
-      companyId: String(form.get("company_id") ?? "").trim(),
-      projectId: String(form.get("project_id") ?? "").trim(),
-      assigneeUserId: event.locals.user?.id ?? null,
-    });
+    // The caller is the picker-less fallback only: a dialog that drew the roster and was left
+    // empty is refused (somebody is always on a task), and the dialog says so itself — as it
+    // does for a missing client. `qcError` is the key the dialog prints under its form.
+    const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
+    if (!body) return fail(400, { qcError: "errors.required" });
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
-    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     throw redirect(303, editHref(`/tasks/${data.id}`));
   },
 
@@ -204,6 +194,11 @@ export const actions: Actions = {
     // human is watching and a date nobody chose is what this whole issue is about.
     const dictatedDue = String(draft.due_date ?? "").trim();
     if (!dictatedDue) return fail(400, { error: "errors.required" });
+    // …and the client, for the same reason: the sheet holds Aanmaken until one is picked, so
+    // an empty one here is a client that did not, and a task is always a client's.
+    if (!String(draft.company_id ?? "").trim()) {
+      return fail(400, { error: "errors.tasks_company_required" });
+    }
 
     const steps = (Array.isArray(draft.checklist_items) ? draft.checklist_items : []) as {
       title?: string;

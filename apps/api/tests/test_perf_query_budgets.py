@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, default_company, make_tenant
 from tests.test_invoicing_api import _setup_org as _invoicing_setup_org
 
 
@@ -1397,6 +1397,7 @@ async def test_composite_create_does_not_scale_with_its_checklist(
                 res = await c.post(
                     "/api/v1/tasks",
                     json={
+                        "company_id": await default_company(c, headers),
                         "due_date": FAR_FUTURE_DUE,
                         "title": f"Taak met {steps} stappen",
                         "checklist": {
@@ -1412,7 +1413,10 @@ async def test_composite_create_does_not_scale_with_its_checklist(
         # Warm the org's status vocabulary, which the first create seeds.
         warm = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "warm"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "warm",
+            },
             headers=headers,
         )
         assert warm.status_code == 201, warm.text

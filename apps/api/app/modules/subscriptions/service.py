@@ -12,7 +12,8 @@ The decisions the issue demanded be made explicitly, made and encoded:
   integration decides what to do with it.
 - **Proration: unsupported in v1**, on purpose. The first ``subscription.due`` fires on
   ``next_invoice_date`` for a full period; left unset, the first activation derives it as
-  ``start_date`` + one period (#223).
+  the first boundary of the ``start_date`` grid still ahead (#223, and the rule that a derived
+  cycle date never lands in the past — see ``_mark_activated``).
 - **Rollover is stored tenant config** (``RolloverRule``); the carry *computation* lands with
   the invoicing consumer (#31), which owns per-period settlement.
 """
@@ -37,7 +38,7 @@ from app.core.activity.service import snapshot
 # Calendar arithmetic for a billing cycle lives in core (§6): `domains` bills on one too, and
 # two copies of "which periods has this reached" would drift into a double bill. `add_months`
 # is re-exported under the name this module has always published (`jobs.py` imports it here).
-from app.core.billing import add_months, period_boundaries
+from app.core.billing import add_months, first_boundary_ahead, period_boundaries
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.richtext import sanitize_markdown
@@ -516,6 +517,7 @@ class SubscriptionService:
                     months=months,
                     floor=sub.created_at.date(),
                     end_date=sub.end_date,
+                    until=today,
                 )
                 if sub.next_invoice_date is not None
                 else ([], False)
@@ -1099,17 +1101,29 @@ class SubscriptionService:
 
         Also the moment a missing ``next_invoice_date`` is derived (#223): the create form no
         longer asks for one, and an active agreement the cron never sees is a silent billing
-        hole. The first cycle boundary is ``start_date`` + one period — the cron's own
-        semantics (``subscription.due`` on date X covers ``[X − period, X]``); proration stays
-        v1-unsupported, the operator adjusts the date in edit. An end before the first
-        boundary leaves it NULL, mirroring the cron's past-the-end rule.
+        hole. The first cycle boundary is the first one on the ``start_date`` grid **still
+        ahead** — the cron's own semantics (``subscription.due`` on date X covers
+        ``[X − period, X]``); proration stays v1-unsupported, the operator adjusts the date in
+        edit. An end before the first boundary leaves it NULL, mirroring the cron's
+        past-the-end rule.
+
+        *Still ahead*, not ``start_date`` + one period, which is what this derived until the
+        audit that found the demo instance drafting thirteen historic invoices a night: an
+        agreement entered with a start date years back is an existing arrangement being
+        onboarded, and a derived anchor in the past hands the cycle cron every period since —
+        the back-billing the backlog's ``created_at`` floor exists to refuse (#250), produced
+        by the platform's own default. An operator who *does* mean to bill the past sets the
+        date explicitly, and an explicit date is honoured everywhere (never overwritten here,
+        offered by the backlog below the floor, billed by the cron).
         """
         if sub.status != SubscriptionStatus.ACTIVE.value or sub.activated_at is not None:
             return
         values: dict[str, Any] = {"activated_at": datetime.now(UTC)}
         if sub.next_invoice_date is None:
-            next_date = add_months(
-                sub.start_date, period_months(sub.interval, sub.interval_count)
+            next_date = first_boundary_ahead(
+                sub.start_date,
+                period_months(sub.interval, sub.interval_count),
+                await self._org_today(),
             )
             if sub.end_date is None or next_date <= sub.end_date:
                 values["next_invoice_date"] = next_date

@@ -120,6 +120,7 @@ from app.modules.marketing.schemas import (
     RankingSettingsRead,
     ReportSplitSettingsRead,
     SeriesData,
+    SourceAiVisibility,
     SourceMetrics,
     WebsiteRef,
 )
@@ -1616,6 +1617,11 @@ class MarketingService:
             tile_labels=(src_layout.labels if src_layout else {}),
             drilldowns=resolved_drilldowns(
                 link.source, adapter.drilldowns, src_layout, metrics
+            ),
+            ai_visibility=(
+                SourceAiVisibility(**adapter.ai_visibility(link.external_id, link.config or {}))
+                if not portal and hasattr(adapter, "ai_visibility")
+                else None
             ),
         )
 

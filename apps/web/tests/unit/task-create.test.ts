@@ -1,29 +1,29 @@
 /**
- * The two shapes a task is created in, and why neither may drift into the other.
+ * The one shape a task is created in, and what it refuses.
  *
- * A **dialog** create (a picker's inline ＋) is named by the person making it: the control that
- * opened it needs an id back, so it may not navigate, so the title has to be asked for. Nothing
- * about it is invented — "the title is the caller's" is exactly the kind of thing a later
- * refactor re-introduces a default for, and a body builder is invisible in review.
- *
- * A **placeholder** create is `Nieuwe taak` itself: create-then-edit (#230), one click and
- * straight into edit mode on the detail page. It invents all three of the fields the dialog
- * asks for, so each one is pinned here — above all `unnamed` (#350), which is what keeps an
- * abandoned create findable rather than indistinguishable from real work, and the org's own
- * today rather than a `NULL` that would take the task out of every urgency screen (#392).
+ * Every "＋ nieuwe taak" — the list's button, a client's page, its Taken panel, a project's
+ * to-do list, a picker's inline ＋ — posts through `taskCreateBody`, and the body is named by
+ * the person making it: the control that opened the dialog may need an id back, so nothing
+ * is invented and nothing is written before it has been asked for. There used to be a second,
+ * placeholder-writing shape beside it (`taskPlaceholderBody`, #350's `unnamed` rows); it is
+ * gone, and this file is where "no title is a refusal, not a placeholder" and "no client is a
+ * refusal, not a task filed under nobody" are asserted without a browser — "the title is the
+ * caller's" is exactly the kind of rule a later refactor re-introduces a default for, and a
+ * body builder is invisible in review.
  *
  * Run with `pnpm web test:unit` (node's built-in runner strips the types; no vitest here).
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { taskCreateBody, taskPlaceholderBody } from "../../src/lib/modules/tasks/create.ts";
+import { taskCreateBody } from "../../src/lib/modules/tasks/create.ts";
 
 //: A deadline is required too (#392), so every body that is *meant* to build carries one —
 //: only the tests about the deadline itself leave it out.
 const DUE = "2026-09-01";
 const ME = "11111111-1111-1111-1111-111111111111";
 const JAN = "22222222-2222-2222-2222-222222222222";
+const CLIENT = "33333333-3333-3333-3333-333333333333";
 
 /** The posted fields, without a DOM. */
 function posted(fields: Record<string, string>) {
@@ -32,8 +32,9 @@ function posted(fields: Record<string, string>) {
 
 //: Somebody is always on a task, so every body that is *meant* to build names someone — here
 //: the way every action does it, by handing the caller over as the picker-less fallback. Only
-//: the tests about the roster itself leave it out.
-const AS_ME = { fallbackAssigneeUserId: ME };
+//: the tests about the roster itself leave it out. And every such body is a client's, so the
+//: client rides along the same way; only the tests about the client leave it out.
+const AS_ME = { fallbackAssigneeUserId: ME, companyId: CLIENT };
 
 describe("taskCreateBody", () => {
   test("a client contact holds the task alone, with an explicitly empty roster (#453)", () => {
@@ -44,7 +45,7 @@ describe("taskCreateBody", () => {
         assignee_contact_id: JAN,
         assignees: "[]",
       }),
-      { fallbackAssigneeUserId: ME },
+      AS_ME,
     );
     assert.equal(body?.assignee_contact_id, JAN);
     assert.deepEqual(body?.assignees, []);
@@ -55,13 +56,13 @@ describe("taskCreateBody", () => {
   test("the title is the caller's, and nothing else is invented", () => {
     const body = taskCreateBody(posted({ title: "Productfeed opschonen", due_date: DUE }), AS_ME);
     assert.equal(body?.title, "Productfeed opschonen");
-    // A named row is not an unnamed one: the flag belongs to the placeholder shape alone.
+    // There is no placeholder shape left to mark a row with.
     assert.ok(body && !("unnamed" in body));
   });
 
   test("no title is a refusal, not a placeholder", () => {
     assert.equal(taskCreateBody(posted({}), AS_ME), null);
-    assert.equal(taskCreateBody(posted({ title: "   " }), AS_ME), null);
+    assert.equal(taskCreateBody(posted({ title: "   ", due_date: DUE }), AS_ME), null);
   });
 
   test("whitespace around a real title is trimmed, not counted", () => {
@@ -72,7 +73,9 @@ describe("taskCreateBody", () => {
   });
 
   test("the deadline and the client the dialog asked for reach the body", () => {
-    const body = taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "c1" }), AS_ME);
+    const body = taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "c1" }), {
+      fallbackAssigneeUserId: ME,
+    });
     assert.equal(body?.due_date, DUE);
     assert.equal(body?.company_id, "c1");
   });
@@ -86,10 +89,38 @@ describe("taskCreateBody", () => {
     assert.equal(taskCreateBody(posted({ title: "x", due_date: "   " }), AS_ME), null);
   });
 
-  test("an empty client is null, never the empty string", () => {
-    const body = taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "" }), AS_ME);
+  test("no client is a refusal, not a task filed under nobody", () => {
+    // A task with no client is on no client's page, in no client's export and outside every
+    // company horizon — the one place the agency's own work cannot be.
+    const without = { fallbackAssigneeUserId: ME };
+    assert.equal(taskCreateBody(posted({ title: "x", due_date: DUE }), without), null);
+    assert.equal(
+      taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "" }), without),
+      null,
+    );
+    assert.equal(
+      taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "   " }), without),
+      null,
+    );
+  });
+
+  test("a surface that pins the client outranks the form", () => {
+    const body = taskCreateBody(posted({ title: "x", due_date: DUE, company_id: "posted" }), {
+      fallbackAssigneeUserId: ME,
+      companyId: "the-client",
+    });
+    assert.equal(body?.company_id, "the-client");
+  });
+
+  test("a pinned project stands in for the client — the API takes it off the project", () => {
+    // A project has exactly one client, so naming the project *is* naming the client; the
+    // project's to-do list pins the project and the body carries no client of its own.
+    const body = taskCreateBody(posted({ title: "x", due_date: DUE }), {
+      fallbackAssigneeUserId: ME,
+      projectId: "the-project",
+    });
+    assert.equal(body?.project_id, "the-project");
     assert.equal(body?.company_id, null);
-    assert.equal(body?.project_id, null);
   });
 
   test("a surface that pins the project outranks the form", () => {
@@ -122,68 +153,25 @@ describe("taskCreateBody", () => {
       taskCreateBody(posted({ title: "x", due_date: DUE, assignees: "[]" }), AS_ME),
       null,
     );
-    assert.equal(taskCreateBody(posted({ title: "x", due_date: DUE, assignees: "[]" })), null);
-    // …and a contact *is* somebody, so the same empty roster beside a contact builds (#453).
-    const held = taskCreateBody(
-      posted({ title: "x", due_date: DUE, assignees: "[]", assignee_contact_id: JAN }),
+  });
+
+  test("a form with no picker at all falls back to the caller, and only then", () => {
+    const fallen = taskCreateBody(posted({ title: "x", due_date: DUE }), AS_ME);
+    assert.equal(fallen?.assignee_user_id, ME);
+    assert.ok(!("assignees" in fallen!));
+    // …and a caller-less picker-less form is refused too: nobody is never an answer.
+    assert.equal(
+      taskCreateBody(posted({ title: "x", due_date: DUE }), { companyId: CLIENT }),
+      null,
     );
-    assert.equal(held?.assignee_contact_id, JAN);
   });
 
-  test("no roster at all falls back to the creator, which is what the picker-less org gets", () => {
+  test("the defaults the dialog does not ask for are fixed, not guessed", () => {
     const body = taskCreateBody(posted({ title: "x", due_date: DUE }), AS_ME);
-    assert.equal(body?.assignee_user_id, ME);
-    assert.ok(!("assignees" in body!));
-  });
-
-  test("no roster and no fallback is a refusal rather than a guess", () => {
-    assert.equal(taskCreateBody(posted({ title: "x", due_date: DUE })), null);
-  });
-
-  test("the status is left to the org's default (#62)", () => {
-    const body = taskCreateBody(posted({ title: "x", due_date: DUE }), AS_ME);
-    assert.ok(body && !("status" in body));
     assert.equal(body?.priority, "normal");
-  });
-});
-
-describe("taskPlaceholderBody", () => {
-  const TODAY = "2026-08-31";
-  const placeholder = (extra: Record<string, string | null> = {}) =>
-    taskPlaceholderBody({ title: "Naamloze taak", today: TODAY, ...extra });
-
-  test("the row says it is unnamed, so an abandoned create stays findable (#350)", () => {
-    const body = placeholder();
-    assert.equal(body.title, "Naamloze taak");
-    assert.equal(body.unnamed, true);
-  });
-
-  test("the deadline is the org's today, never absent (#392)", () => {
-    // The default #392 wrote down for exactly this path. A `NULL` here would take the task out
-    // of `?due=overdue`, the Agenda's deadline feed and both dashboards' overdue counts — while
-    // the user is standing on the field, one keystroke from changing it.
-    assert.equal(placeholder().due_date, TODAY);
-  });
-
-  test("the creator is assigned, and an unknown one is nobody rather than a guess", () => {
-    assert.equal(placeholder({ assigneeUserId: ME }).assignee_user_id, ME);
-    assert.equal(placeholder().assignee_user_id, null);
-    // The roster field is the dialog's; a placeholder never posts one.
-    assert.ok(!("assignees" in placeholder({ assigneeUserId: ME })));
-  });
-
-  test("an empty client or project is null, never the empty string", () => {
-    const body = placeholder({ companyId: "", projectId: "" });
-    assert.equal(body.company_id, null);
-    assert.equal(body.project_id, null);
-    assert.equal(placeholder({ companyId: "c1" }).company_id, "c1");
-  });
-
-  test("the status is left to the org's default (#62), like every other create", () => {
-    const body = placeholder();
-    assert.ok(!("status" in body));
-    assert.equal(body.priority, "normal");
-    assert.equal(body.requires_interaction, false);
-    assert.equal(body.visible_to_client, false);
+    assert.equal(body?.requires_interaction, false);
+    assert.equal(body?.visible_to_client, false);
+    // Status is omitted so the API assigns the org's default status (#62).
+    assert.ok(body && !("status" in body));
   });
 });

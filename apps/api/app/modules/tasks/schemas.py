@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.tasks.models import (
     RecurrenceFreq,
@@ -217,6 +217,17 @@ class TaskBase(BaseModel):
     # status. Validated against the org's ``task_statuses`` in the service.
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority = TaskPriority.NORMAL
+
+    @field_validator("title")
+    @classmethod
+    def _named(cls, value: str) -> str:
+        """A task is named, and three spaces is not a name. ``min_length`` counts characters,
+        so it let a whitespace title through as a real one; the stored title is the trimmed
+        one, so the list never sorts on a leading space either."""
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("errors.required")
+        return stripped
     # Nullable *here* because ``TaskRead`` inherits this shape and every instance that upgrades
     # into #392 carries rows written before the deadline was required — a read model that could
     # not express them would 500 on the tenant's own backlog. The **write** shapes are where the
@@ -259,13 +270,20 @@ class TaskCreate(TaskBase):
     #: refuses to empty it; the default here is for the callers with nobody in front of them.
     assignees: list[AssigneeWrite] | None = None
     recurrence: Recurrence | None = None
-    #: Create-then-edit (#230): this row exists so the user can be landed on its detail page in
-    #: edit mode, and the title it carries is a placeholder nobody typed. Marks the row so a
-    #: list can say so, in the *reader's* language, and so an abandoned one can be found (#350).
-    #: A caller who supplies a real title never sets this. Nullable so that the generated
-    #: client makes it optional: every existing caller creating a *named* task must keep
-    #: compiling without saying so.
-    unnamed: bool | None = None
+    #: **A task is always a client's.** ``company_id`` stays optional *on the wire* only so a
+    #: caller may name the project alone and let the service take the client off it — a project
+    #: has exactly one — and every other create that names no client is refused with the field
+    #: named (``errors.tasks_company_required``, ``TaskService.create``). Not defaulted for the
+    #: callers with nobody in front of them, the way the deadline is: a deadline has an honest
+    #: default (today) and a client does not — the agency's own work is a client too, and only
+    #: the caller knows which one. The column stays nullable for the rows written before this
+    #: (expand/contract, docs/WORKFLOW.md), and ``TaskUpdate`` refuses clearing it.
+    #:
+    #: There is no ``unnamed`` here any more (#350): create-then-edit used to write a placeholder
+    #: title and mark the row so a list could italicise it and a filter could gather it. That was
+    #: a mitigation for a row nobody had asked for; the row is no longer written at all — every
+    #: create names the task before it exists — so the flag has nothing left to say and a caller
+    #: cannot set it. ``TaskRead.unnamed`` stays, read-only, for the rows an instance already has.
     #: What the task arrives *with* (#382): its steps, its links, its labels. All optional, and
     #: all written through this service's own ``add_checklist`` / ``add_link`` /
     #: ``set_task_labels`` inside the create's transaction — a composite create, never a second
@@ -330,6 +348,17 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _named(cls, value: str | None) -> str | None:
+        """Absent leaves the title alone; a whitespace one is refused, as on create."""
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("errors.required")
+        return stripped
     #: Absent leaves the deadline alone; an explicit ``null`` is **refused** (#392). CLAUDE.md
     #: §18's rule with its second half withdrawn: clearing is what stops being allowed, so a
     #: ``PATCH`` that mentions nothing but ``status`` still works on a task written before this

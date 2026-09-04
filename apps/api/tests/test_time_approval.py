@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, default_company, make_tenant
 from tests.test_task_subresources import add_member
 
 
@@ -149,7 +149,10 @@ async def test_report_filters_and_totals(client_for) -> None:
         # client hub's hour rows and the task page's burn figure can deep-link the report.
         task = await c.post(
             "/api/v1/tasks",
-            json={"title": "Rapport taak", "due_date": "2099-01-01"},
+            json={
+                "company_id": await default_company(c, owner_headers),
+                "title": "Rapport taak", "due_date": "2099-01-01",
+            },
             headers=owner_headers,
         )
         assert task.status_code == 201, task.text

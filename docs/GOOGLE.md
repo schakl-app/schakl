@@ -625,7 +625,7 @@ or two Google APIs that must be switched on in the Cloud project the OAuth clien
 | Source | Scope | APIs to enable in the Cloud project |
 |--------|-------|--------------------------------------|
 | GA4    | `analytics.readonly` | **Google Analytics Admin API** (the property picker, `analyticsadmin.googleapis.com`) **and** **Google Analytics Data API** (every metric, `analyticsdata.googleapis.com`) |
-| Search Console | `webmasters.readonly` | Google Search Console API |
+| Search Console | `webmasters.readonly` | Google Search Console API (also the whole surface of the `google_search_console` integration, URL inspection included — `docs/GOOGLE_SEARCH_CONSOLE.md`) |
 | Google Ads | `adwords` | Google Ads API, **plus** a per-org developer token (§ the module's own settings) |
 
 Two APIs for GA4 is the trap: enabling only the Data API leaves the picker dead while the rest

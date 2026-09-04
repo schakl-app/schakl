@@ -37,7 +37,10 @@ export const load: PageServerLoad = async (event) => {
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, SUBSCRIPTIONS_TABLE_ID);
   const resolved = resolveColumns(SUBSCRIPTION_COLUMNS, pref);
-  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  // Sections are standard subscriptions and the rows inside one are clients, so the list's own
+  // default orders by client — the API's default (by name) would order every section randomly,
+  // since inside a section every name is the same. A saved layout or a shared URL still wins.
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? "company";
   // The bar and this load read the same source, so what the controls show and what the API was
   // asked for can never disagree (core/filters/types.ts).
   const filters = readFilters(event.url, [...SUBSCRIPTION_FILTERS]);
@@ -90,6 +93,10 @@ export const load: PageServerLoad = async (event) => {
     canManageTypes,
     canManageTemplates,
     canWrite: can(event.locals.user, "subscriptions.subscription.write"),
+    // The "factuurdatum verstreken" tile links to the org-wide backlog, which is `:any` on
+    // the invoice read (#266): whoever may not open it still gets the number, never a link
+    // that refuses (#253).
+    canReadBacklog: can(event.locals.user, "invoicing.invoice.read", "any"),
     locale: event.locals.locale,
   };
 };

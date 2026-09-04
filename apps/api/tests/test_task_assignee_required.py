@@ -26,12 +26,13 @@ from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.bulk import TASK_BULK
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 from tests.test_notifications_fanout import _member
 
 
 async def _task(c, headers, title: str = "Homepage herzien", **extra) -> dict:
     body = {"title": title, "due_date": FAR_FUTURE_DUE, **extra}
+    body.setdefault("company_id", await default_company(c, headers))
     res = await c.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()

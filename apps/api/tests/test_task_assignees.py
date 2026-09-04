@@ -24,7 +24,7 @@ from pwdlib import PasswordHash
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, default_company, make_tenant
 
 _ph = PasswordHash.recommended()
 
@@ -64,6 +64,7 @@ async def test_roster_round_trip_and_mirrors_the_assignee_column(client_for) -> 
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Samen doen",
                 "assignees": [
@@ -97,6 +98,7 @@ async def test_an_unstarred_roster_promotes_its_first_entry(client_for) -> None:
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Niemand gemarkeerd",
                 "assignees": [{"user_id": other}],
@@ -118,6 +120,7 @@ async def test_patching_assignees_replaces_the_roster(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Wisselen",
                     "assignees": [{"user_id": owner, "is_primary": True}, {"user_id": other}],
@@ -169,6 +172,7 @@ async def test_a_bare_assignee_column_hands_the_task_over(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Overdragen",
                     "assignees": [{"user_id": owner, "is_primary": True}, {"user_id": other}],
@@ -206,6 +210,7 @@ async def test_own_write_means_any_assignee(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Gedeeld",
                     "assignees": [
@@ -241,6 +246,7 @@ async def test_the_person_filter_and_my_day_match_any_assignee(client_for) -> No
         await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Gedeeld",
                 "assignees": [
@@ -253,6 +259,7 @@ async def test_the_person_filter_and_my_day_match_any_assignee(client_for) -> No
         await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Alleen ik",
                 "assignees": [{"user_id": owner, "is_primary": True}],
@@ -344,6 +351,7 @@ async def test_a_recurring_task_repeats_onto_everyone(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "title": "Maandrapport",
                     "due_date": "2026-07-01",
                     "recurrence": {"freq": "monthly", "interval": 1, "mode": "after_completion"},
@@ -414,6 +422,7 @@ async def test_task_assignees_never_cross_tenants(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "A's werk",
                     "assignees": [{"user_id": str(a.user.id), "is_primary": True}],
@@ -437,6 +446,7 @@ async def test_task_assignees_never_cross_tenants(client_for) -> None:
         foreign = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "B's werk",
                 "assignees": [{"user_id": str(a.user.id)}],

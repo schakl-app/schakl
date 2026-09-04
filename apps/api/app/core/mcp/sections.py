@@ -89,11 +89,12 @@ _BUNDLES: dict[str, tuple[str, ...]] = {
     # What is owed and what is collected.
     "finance": ("invoicing", "subscriptions", "mollie"),
     # What is being spent, what is measuring it, and what it returned. `google_analytics`
-    # is a member *and* keeps its own section: an agent asked to work a client's Analytics
-    # wants seventeen tools and not the ninety this bundle unions.
+    # and `google_search_console` are members *and* keep their own sections: an agent asked
+    # to work a client's Analytics wants seventeen tools and not the hundred this bundle unions.
     "growth": (
         "google_ads",
         "google_analytics",
+        "google_search_console",
         "google_tag_manager",
         "marketing",
         "reporting",

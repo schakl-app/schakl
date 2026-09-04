@@ -32,7 +32,7 @@ from app.core.ai.providers import AIEvent, ToolCall
 from app.core.permissions.permset import PermissionSet
 from app.core.tenancy import RequestContext
 from app.main import app
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 SETTINGS_BODY = {
     "provider": "anthropic",
@@ -254,14 +254,27 @@ async def test_api_get_refuses_a_write_or_an_unknown_name(client_for, monkeypatc
 async def test_create_task_writes_through_the_route_and_is_cited(client_for, monkeypatch) -> None:
     t = await make_tenant("reach-write")
     headers = await auth_cookie(t.user)
-    fake = _scripted(
-        [
-            _call("create_task", {"title": "Offerte nabellen", "due_date": FAR_FUTURE_DUE}),
-            [AIEvent(kind="text", text="gemaakt"), AIEvent(kind="done", tokens_in=1, tokens_out=1)],
-        ]
-    )
-    monkeypatch.setattr("app.core.ai.providers.stream_chat", fake)
     async with client_for(t.host) as c:
+        # A task is always a client's, and the tool carries the route's own shape — so the
+        # model names one, exactly as a person would have to.
+        company = await default_company(c, headers)
+        fake = _scripted(
+            [
+                _call(
+                    "create_task",
+                    {
+                        "title": "Offerte nabellen",
+                        "due_date": FAR_FUTURE_DUE,
+                        "company_id": company,
+                    },
+                ),
+                [
+                    AIEvent(kind="text", text="gemaakt"),
+                    AIEvent(kind="done", tokens_in=1, tokens_out=1),
+                ],
+            ]
+        )
+        monkeypatch.setattr("app.core.ai.providers.stream_chat", fake)
         await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
         response = await c.post(
             "/api/v1/ai/assistant",

@@ -23,7 +23,7 @@ from app.modules.interactions.models import (
     InteractionTask,
 )
 from app.modules.notifications.models import Notification
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, default_company, make_tenant
 from tests.test_google_gmail import _message, _poll, _StubGmail
 from tests.test_google_gmail import _seed as _seed_connection
 
@@ -45,6 +45,7 @@ async def _member(client, headers, email: str) -> User:
 
 async def _task(client, headers, title: str, **over) -> dict:
     body = {"title": title, "due_date": _DUE, **over}
+    body.setdefault("company_id", await default_company(client, headers))
     res = await client.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()
@@ -348,7 +349,10 @@ async def test_a_colleague_on_the_email_reviews_it_and_the_owner_queue_clears(
             await c.post(f"/api/v1/interactions/{row_id}/approve", headers=bystander_h)
         ).status_code in (403, 404)
 
-        task = await _task(c, colleague_h, "Answer the quote")
+        # The colleague may make tasks but not clients; the stand-in client is the owner's.
+        task = await _task(
+            c, colleague_h, "Answer the quote", company_id=await default_company(c, owner_h)
+        )
         approved = await c.post(
             f"/api/v1/interactions/{row_id}/approve",
             json={"task_ids": [task["id"]]},

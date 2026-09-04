@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from sqlalchemy import text
+
+from app.db import async_session_maker, set_current_org
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 
 
 async def test_due_extension_requires_reason(client_for) -> None:
@@ -15,7 +19,10 @@ async def test_due_extension_requires_reason(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Deadline", "due_date": today.isoformat()},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "title": "Deadline", "due_date": today.isoformat(),
+                },
                 headers=headers,
             )
         ).json()
@@ -53,9 +60,12 @@ async def test_due_extension_requires_reason(client_for) -> None:
 
 
 async def test_unnamed_placeholder_moves_its_deadline_without_a_reason(client_for) -> None:
-    """Create-then-edit writes today over a placeholder row (#350/#392); the first date picked
-    in the edit form it lands in is *setting* the deadline, not extending one somebody stated.
-    The save that names the task is the last free move — after it the rule applies as usual."""
+    """A row an instance carried in from the placeholder era (#350/#392) still gets its first
+    real date for free: nobody stated the deadline it holds, so moving it is *setting* one, and
+    the save that names the task is the last free move — after it the rule applies as usual.
+
+    No API writes such a row any more (a task is named before it exists), so the flag is set
+    the only way it can still arrive: already in the table."""
     t = await make_tenant("acct-due-unnamed")
     headers = await auth_cookie(t.user)
     today = org_today()
@@ -63,11 +73,23 @@ async def test_unnamed_placeholder_moves_its_deadline_without_a_reason(client_fo
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"title": "Naamloze taak", "unnamed": True, "due_date": today.isoformat()},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "title": "Naamloze taak",
+                    "due_date": today.isoformat(),
+                },
                 headers=headers,
             )
         ).json()
-        assert task["unnamed"] is True
+        # The create refuses to mark a row; only the table can still say so.
+        assert task["unnamed"] is False
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(
+                text("UPDATE tasks SET unnamed = TRUE WHERE id = :id"),
+                {"id": uuid.UUID(task["id"])},
+            )
+            await session.commit()
 
         later = (today + timedelta(days=3)).isoformat()
         # A placeholder's deadline moves later with no reason and no extension entry…
@@ -109,7 +131,10 @@ async def test_allocated_minutes_and_logged(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Budgeted", "allocated_minutes": 120},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Budgeted", "allocated_minutes": 120,
+                },
                 headers=headers,
             )
         ).json()
@@ -142,7 +167,10 @@ async def test_task_links_crud_and_isolation(client_for) -> None:
     async with client_for(a.host) as ca:
         task = (await ca.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "L"},
+            json={
+                "company_id": await default_company(ca, a_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "L",
+            },
             headers=a_headers,
         )).json()
         link = (

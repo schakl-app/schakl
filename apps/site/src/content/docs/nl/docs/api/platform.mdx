@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-205 endpoints, verdeeld over 16 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+218 endpoints, verdeeld over 17 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -1163,6 +1163,246 @@ Queryparameters:
 | `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Dates are days in the property's own reporting timezone — GET /properties/&#123;property_id&#125; tells you which. |
 
 Antwoord: `200` · `GoogleAnalyticsReport`
+
+</details>
+
+## `google-search-console`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/google-search-console/ai-visibility` | `google_search_console.site.read` |
+| `GET` `/google-search-console/breakdown` | `google_search_console.site.read` |
+| `GET` `/google-search-console/hourly` | `google_search_console.site.read` |
+| `GET` `/google-search-console/inspect` | `google_search_console.site.read` |
+| `GET` `/google-search-console/movers` | `google_search_console.site.read` |
+| `GET` `/google-search-console/overview` | `google_search_console.site.read` |
+| `GET` `/google-search-console/query` | `google_search_console.report.run` |
+| `GET` `/google-search-console/search-types` | `google_search_console.site.read` |
+| `GET` `/google-search-console/site` | `google_search_console.site.read` |
+| `GET` `/google-search-console/sitemap` | `google_search_console.site.read` |
+| `GET` `/google-search-console/sitemaps` | `google_search_console.site.read` |
+| `GET` `/google-search-console/sites` | `google_search_console.site.read` |
+| `GET` `/google-search-console/timeseries` | `google_search_console.site.read` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/google-search-console/ai-visibility`
+
+**Google Search Console Ai Visibility** — How visible the site is in Google's generative AI features — AI Overviews and AI Mode — as far as the Search Console API can say.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `compare` | string | year (default — what seasonality survives) or previous. |
+
+Antwoord: `200` · `GoogleSearchConsoleAiVisibility`
+
+#### `GET /api/v1/google-search-console/breakdown`
+
+**Google Search Console Breakdown** — One dimension, ranked — top queries, top pages, countries, devices, or the search appearances (rich results, video, product snippets…) the site was shown with.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `dimension` | string | query (default), page, country, device or searchAppearance. (default `query`) |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+| `filters` | string[] | Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. |
+| `limit` | integer |  (default `25`) |
+| `offset` | integer |  (default `0`) |
+| `order` | string | Google ranks by clicks. Another metric (-impressions, -ctr, +position) is applied over the first thousand clicks-ranked rows, and the answer says so in warnings. |
+
+Antwoord: `200` · `GoogleSearchConsoleReport`
+
+#### `GET /api/v1/google-search-console/hourly`
+
+**Google Search Console Hourly** — Hour by hour over the last few days, today included and still moving — for "what happened this morning" and "did the launch land". Every row may still change; there is no final hourly data, by Google's design.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `days` | integer | How many days back, today included. Google keeps ten days of hourly rows. (default `2`) |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+
+Antwoord: `200` · `GoogleSearchConsoleReport`
+
+#### `GET /api/v1/google-search-console/inspect`
+
+**Google Search Console Inspect Url** — What Google's index holds for one URL: whether it is indexed (verdict PASS) and if not why (coverage_state, indexing_state, robots_txt_state, page_fetch_state), which canonical Google chose against the one the page declares, when it was last crawled, and the rich results found. One URL per call — Google allows 2 000 inspections a day per property.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `url` | string · verplicht | The page to inspect. Must be under the property. |
+| `language` | string | BCP-47 code for the issue texts, e.g. nl. |
+
+Antwoord: `200` · `GoogleSearchConsoleInspection`
+
+#### `GET /api/v1/google-search-console/movers`
+
+**Google Search Console Movers** — Which queries or pages moved most in average position between this period and the one it is compared against. change is positive for a climb. entered and dropped count what appeared or vanished entirely, which the rows cannot show.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `compare` | string | year (default — what seasonality survives) or previous. |
+| `dimension` | string | query (default) or page. (default `query`) |
+| `limit` | integer |  (default `25`) |
+| `min_impressions` | number | Ignore anything shown fewer times than this in either span. (default `10`) |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+
+Antwoord: `200` · `GoogleSearchConsoleMovers`
+
+#### `GET /api/v1/google-search-console/overview`
+
+**Google Search Console Overview** — How a property did over a period — clicks, impressions, CTR and average position — against the same period a year earlier, with the change already computed, plus the split by device.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `compare` | string | year (default — what seasonality survives) or previous. |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+
+Antwoord: `200` · `GoogleSearchConsoleOverview`
+
+#### `GET /api/v1/google-search-console/query`
+
+**Google Search Console Query** — Any dimensions crossed, with any filters, any aggregation and any data state — the escape hatch for questions the curated reads do not answer (query by page, page by country, branded queries by device…).
+
+Recht: `google_search_console.report.run`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `dimensions` | string[] | Repeatable, in row-key order: query, page, country, device, searchAppearance, date, hour. None is a total. hour forces data_state hourly_all. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+| `filters` | string[] | Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. |
+| `aggregation` | string | auto (default), byProperty, byPage or byNewsShowcasePanel. |
+| `data_state` | string | all (default here: includes the fresh, still-changing days), final (Google's default: finalised data only, so the last days are missing) or hourly_all. |
+| `limit` | integer |  (default `25`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `GoogleSearchConsoleReport`
+
+#### `GET /api/v1/google-search-console/search-types`
+
+**Google Search Console Search Types** — The four metrics per Google surface — web, image, video, news, Discover, Google News — so "where is this site actually seen" is one answer. AI Overviews sit inside web and the API cannot split them out; see /ai-visibility for what it can say.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+
+Antwoord: `200` · `GoogleSearchConsoleSearchTypes`
+
+#### `GET /api/v1/google-search-console/site`
+
+**Get Google Search Console Site** — One property's record: its kind (domain or URL prefix) and what this account may do there.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+
+Antwoord: `200` · `GoogleSearchConsoleSite`
+
+#### `GET /api/v1/google-search-console/sitemap`
+
+**Google Search Console Sitemap** — One sitemap by its URL.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `feedpath` | string · verplicht | The sitemap's own URL, as /sitemaps lists it. |
+
+Antwoord: `200` · `GoogleSearchConsoleSitemap`
+
+#### `GET /api/v1/google-search-console/sitemaps`
+
+**Google Search Console Sitemaps** — The sitemaps submitted for a property: when Google last read each, how many URLs it declares, and how many errors and warnings it carries. A sitemap nobody submitted, or one with errors, is the usual answer to "why are the new pages not indexed".
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+
+Antwoord: `200` · `GoogleSearchConsoleSitemapList`
+
+#### `GET /api/v1/google-search-console/sites`
+
+**List Google Search Console Sites** — Every Search Console property the signed-in user's Google account can read. Start here.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `query` | string | Filter by site URL. |
+
+Antwoord: `200` · `GoogleSearchConsoleSiteList`
+
+#### `GET /api/v1/google-search-console/timeseries`
+
+**Google Search Console Timeseries** — The four metrics day by day, oldest first. A day with nothing shown is omitted by Google rather than answered as zero.
+
+Recht: `google_search_console.site.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `site` | string · verplicht | The property exactly as GET /sites lists it: sc-domain:klant.nl for a domain property or https://www.klant.nl/ (trailing slash included) for a URL-prefix property. A bare hostname is read as the domain property. |
+| `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). An unknown value falls back to 30d. Search Console keeps its days in Pacific time; the last two or three days are still being collected and are flagged as fresh. |
+| `search_type` | string | web (default; includes AI Overviews, which cannot be split out), image, video, news, discover or googleNews. |
+| `filters` | string[] | Dimension filters, repeatable: dimension==value, dimension!=value, dimension=@value (contains), dimension!@value, dimension=~regex, dimension!~regex, on query, page, country (ISO 3166-1 alpha-3, lower case: nld), device (DESKTOP/MOBILE/TABLET) or searchAppearance. All clauses must match. A clause that parses as none of these is refused rather than ignored. |
+
+Antwoord: `200` · `GoogleSearchConsoleReport`
 
 </details>
 

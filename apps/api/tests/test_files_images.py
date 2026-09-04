@@ -17,7 +17,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.auth.models import User
 from app.db import async_session_maker
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 
 def _png(width: int = 64, height: int = 32, *, alpha: bool = False) -> bytes:
@@ -49,7 +49,10 @@ async def test_inline_upload_is_the_multipart_upload_in_json(
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Screenshot"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Screenshot",
+                },
                 headers=headers,
             )
         ).json()

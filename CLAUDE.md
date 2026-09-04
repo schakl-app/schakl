@@ -75,6 +75,7 @@ apps/
       google/      # Workspace: Gmail, Calendar, Drive, Contacts
       google_ads/
       google_analytics/  # GA4, live and read-only
+      google_search_console/  # Search Console, live and read-only — and the AI-visibility seam
       cloudflare/
       oxxa/        # registrar
       uptime/      # Uptime Kuma
@@ -238,7 +239,7 @@ and it is worth having with every third-party account in the world cancelled: `c
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
-over there: `google` (Workspace), `google_ads`, `google_analytics`, `cloudflare`, `oxxa`,
+over there: `google` (Workspace), `google_ads`, `google_analytics`, `google_search_console`, `cloudflare`, `oxxa`,
 `uptime` (Uptime Kuma), `wordpress`, `mollie`, `timeon` (an outgoing time registration a
 cutover is still running on).
 
@@ -263,7 +264,8 @@ It is stated in five places and each one is load-bearing:
   `module_kinds` on `/meta/modules`.
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
-  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `timeon` → `time`.
+  `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `google_search_console` →
+  `google`, `timeon` → `time`.
   Deliberately *not* "modules this
   is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
@@ -936,6 +938,19 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **A task is named before it exists, and it is always a client's** (the owner's decision closing
+  #350/#391, `docs/UX.md`). The placeholder create — one click, a row titled "Naamloze taak",
+  marked `unnamed` so a list could italicise it and `?unnamed=1` could gather it — is deleted
+  rather than disabled: every `Nieuwe taak` opens `TaskQuickCreate`, `TaskCreate` carries no flag,
+  the `Naamloos` pill is gone, and `TaskRead.unnamed` stays read-only for the rows an instance
+  already has. The client is #392's shape one column over, with one difference worth stating: a
+  deadline has an honest default (today) and a client does not, so nothing invents one —
+  `TaskService.create` refuses with the field named (`errors.tasks_company_required`), the update
+  refuses clearing, `create_task_system` refuses onto the automation run, the import names the
+  row — and the one indirection is a **project**, whose client the service takes because a
+  project has exactly one. The column stays nullable for a release (expand/contract), and
+  `tests/conftest.default_company` is the suite's stand-in client, created lazily per host so a
+  test that never makes a task never gains a company row.
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,
@@ -1097,6 +1112,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   matched by file name, and readable by exactly whoever may read the invoice
   (`RECORD_GATED_ENTITY_TYPES`) — because a record that only points at a blob cannot say whether
   it still holds what was attached.
+- **A cycle date the platform derives never lands in the past, and a backlog lists what the cron
+  will bill** (`app/core/billing.py`, `docs/INVOICING.md`). An audit of the demo instance found
+  every agreement with a `next_invoice_date` months back **absent** from "nog te factureren"
+  while the cron drafted one historic period for each of them a night. Two rules were each right
+  alone and wrong together: #223 derived a first invoice date as `start_date` + one period, so an
+  onboarded agreement's anchor sat years back and the cycle then billed every period since — the
+  back-billing the backlog's `created_at` floor (#250) exists to refuse — and that floor, applied
+  to the anchor as well as to the history behind it, hid from the backlog exactly the period the
+  cron was about to draft. So the derivation is the first grid boundary **still ahead**
+  (`first_boundary_ahead`, what `domains` already did for an anniversary); the floor bounds what
+  the walk *reaches* and never where the cycle *sits* — the anchor, and every boundary forward of
+  it up to today (`period_boundaries(until=…)`), is offered whatever the floor says, because it is
+  the cycle's own statement; and both crons **catch up in one run**, since "one period per fire"
+  applied to a lagging cycle trickles a historic draft a night for as many nights as the lag,
+  which reads as a daily fault rather than as arrears. An explicit date is the operator's and is
+  honoured everywhere. The screen half (`docs/UX.md`): the agreements list is sectioned by
+  standard subscription with the **client** as its primary column, a passed invoice date is drawn
+  as an overdue deadline, and the strip's *Factuurdatum verstreken* opens the backlog — before it,
+  the answer to "why is this not on nog te factureren" was that nothing on that page said it
+  should be.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -1512,6 +1547,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   would otherwise shift every column one to the left with every number still plausible; and a
   sampled or thresholded answer is reported as one, because a sampled number reads as a count on
   every screen it lands on.
+- **A report Google draws is not a number Google's API returns, and the honest tool says which**
+  (`google_search_console`, `docs/GOOGLE_SEARCH_CONSOLE.md`). Search Console was reachable from an
+  agent only as the marketing module's stored four-metric aggregate and three drill-downs, while
+  Analytics had seventeen routes and its own section — so it got the same shape: thirteen GET
+  routes under `/google-search-console` (sites, sitemaps, an overview, the search-type split, the
+  daily and hourly series, a breakdown, the movers, the URL inspection and a free-form query behind
+  its own `report.run`), derived into `/mcp/google-search-console` and the `growth` bundle. Three
+  rules generalise. **A `siteUrl` is a URL, so it is a query parameter**: a path parameter is
+  decoded before it is matched, `%2F` becomes `/`, and the route stops matching — Analytics puts its
+  property in the path because a property id is a number. **A vocabulary is read from the vendor's
+  discovery document and refused here before the round trip**, with the list that would have
+  worked in `details` (§9): Google's own 400 for an unknown dimension names neither the bad value
+  nor the good ones, and the document's revision is written into the module so the next reader
+  checks it rather than assumes. And the one the whole ask was about: Search Console gained a
+  **Generative AI performance report** in June 2026 — impressions in AI Overviews and AI Mode by
+  page, country, device and date — and as of discovery revision `20260902` the Search Analytics
+  API accepts exactly six search types and no generative-AI value; the numbers exist and the API
+  does not return them. So `GET /ai-visibility` answers **`available: false` with the report's own
+  URL** and never estimates the figure from the web totals, where AI Overviews are folded in with
+  no way to separate them; the marketing dashboard's Search Console section draws the same fact as
+  a dashed **card with a link, not a tile with a number** (withheld from a portal login for the
+  reason `deep_link` is, #447); and `client.GENERATIVE_AI_SEARCH_TYPES` is the seam — empty on
+  purpose, pinned by a test that fails the day it is populated, which is when the card, the reason
+  and the tool description want revisiting. A tool that answered a plausible number here would be
+  the worst kind of wrong, because nothing on any screen could contradict it. Its sibling finding
+  is in the web build: thirteen more operations pushed the generated client past TypeScript's
+  instantiation depth in the one place that handed `api.GET` to `Reflect.apply`, so the deduper
+  widens through `unknown` — the same assertion, the proof skipped.
 - **A tool the caller may never use must not be in the model's view, and the service must refuse it
   anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
   "how did this client do last month" was a question the platform could answer everywhere except

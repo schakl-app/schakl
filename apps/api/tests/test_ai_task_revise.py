@@ -22,7 +22,14 @@ from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.assist import SUBMIT_CHANGES, SUBMIT_CHECKLIST
 from app.modules.tasks.models import TaskActivity
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant, org_today
+from tests.conftest import (
+    FAR_FUTURE_DUE,
+    add_membership,
+    auth_cookie,
+    default_company,
+    make_tenant,
+    org_today,
+)
 
 _password_hash = PasswordHash.recommended()
 
@@ -77,6 +84,7 @@ async def _task_with_steps(c, headers) -> tuple[str, str, list[str]]:  # noqa: A
     created = await c.post(
         "/api/v1/tasks",
         json={
+            "company_id": await default_company(c, headers),
             "title": "Homepage opleveren",
             "description": "De klant wil een rustige uitstraling.",
             "due_date": FAR_FUTURE_DUE,
@@ -282,7 +290,10 @@ async def test_revise_that_moves_a_deadline_later_carries_the_instruction_as_the
     async with client_for(t.host) as c:
         await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
         created = await c.post(
-            "/api/v1/tasks", json={"title": "Iets", "due_date": soon}, headers=headers
+            "/api/v1/tasks", json={
+                "company_id": await default_company(c, headers),
+                "title": "Iets", "due_date": soon,
+            }, headers=headers
         )
         task_id = created.json()["id"]
         monkeypatch.setattr(
@@ -392,6 +403,7 @@ async def test_generate_checklist_writes_one_list_with_its_steps(client_for, mon
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "title": "Webshop koppelen aan boekhouding",
                 "description": "Orders moeten als factuur in SnelStart landen.",
                 "due_date": FAR_FUTURE_DUE,

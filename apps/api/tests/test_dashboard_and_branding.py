@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 from tests.test_task_subresources import add_member
 
 
@@ -263,7 +263,10 @@ async def test_search_filters(client_for) -> None:
 
         await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "SEO audit uitvoeren"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "SEO audit uitvoeren",
+            },
             headers=headers,
         )
         assert (

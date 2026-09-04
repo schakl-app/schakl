@@ -558,13 +558,20 @@
                 {t("tasks.field.company")}
                 {#if marked("company_id")}<Sparkles size={12} class="text-brand" />{/if}
               </span>
+              <!-- Required: a task is a client's, so the sheet holds Aanmaken until one is
+                   picked and offers no "Wissen" — an empty pick is the one state the submit
+                   refuses (#392's DateInput lesson, one field over). -->
               <Combobox
                 items={companyItems}
                 name="dictate-company"
                 value={draft.company_id ?? ""}
-                placeholder={t("common.none")}
+                allowEmpty={false}
+                placeholder={t("tasks.field.company")}
                 onselect={(v) => draft && (draft.company_id = v || null)}
               />
+              {#if !draft.company_id}
+                <p class="mt-1 text-xs text-text-muted">{t("errors.tasks_company_required")}</p>
+              {/if}
             </div>
             <div>
               <span class="mb-1 flex items-center gap-1 text-sm font-medium text-text">
@@ -735,6 +742,7 @@
               loading={busy.active}
               disabled={!draft.title?.trim() ||
                 !draft.due_date ||
+                !draft.company_id ||
                 (members.length > 0 && !draft.assignee_user_id)}
             >
               {t("tasks.dictate.create")}

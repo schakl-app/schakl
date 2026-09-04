@@ -403,6 +403,28 @@ for accounting packages.
   cut. Claimed periods are returned marked `already_billed`, never omitted — "did I invoice
   March?" is the question the picker exists to answer, and answering by omission produces the
   duplicate.
+  **The floor bounds what the walk reaches, never where the cycle sits.** An audit of the demo
+  instance found every agreement with a `next_invoice_date` months in the past **absent** from
+  "nog te factureren" while the cron drafted one historic period for each of them every night:
+  the anchor predated `created_at`, so the floor refused the anchor along with the history
+  behind it, and nothing between the anchor and today was ever offered because the walk only
+  ever went backwards. The two halves of one question disagreeing is the failure the shared
+  seam exists to prevent, so two things are now outside the floor, both being the cycle's own
+  statement rather than history the walk reached on its own: the **anchor** is offered whatever
+  the floor says (it is what the cron bills next, whoever set it), and every boundary
+  **forward** of it up to the org's today (`period_boundaries(until=…)`) is offered too — the
+  calendar has passed the cycle, and each of those periods is outstanding whether the cron
+  catches up tonight or nobody ever drafts it. Two siblings follow from it. **A derived cycle
+  date never lands in the past** (`app/core/billing.first_boundary_ahead`): #223's
+  `start_date` + one period put an onboarded agreement's anchor years back and handed the cron
+  every period since — #250's back-billing, produced by the platform's own default — so the
+  derivation is the first boundary of the start date's grid still ahead, which is what the
+  domains module already did for its first anniversary; an explicit date stays the operator's
+  and is honoured everywhere. And **the crons catch up in one run**: "advance by one period per
+  fire" was written for a cycle that keeps pace, and applied to one that lags it trickled a
+  historic draft a night for as many nights as the lag, which reads as a daily fault rather
+  than as arrears. Every period the calendar has passed is owed now, the backlog lists all of
+  them, and the agency is owed the whole answer the next morning.
 - **Quotes → invoices**: `convert` (accepted only) copies the lines *with their snapshots* —
   the deal keeps the prices it was accepted at. The quote flips to `invoiced` and points at
   the invoice; deleting that draft reverts it to `accepted`.

@@ -1,37 +1,59 @@
 <script lang="ts">
   /**
    * The new-task dialog: **the** way a task is made (#391). It began behind a picker's
-   * "＋ … toevoegen" (docs/UX.md) and is now what `Nieuwe taak` opens too — on `/tasks`, on a
-   * client's Taken panel, on the client header and on a project's to-do list — because the one
-   * entry point that skipped it posted a row before the user had been asked anything, and an
-   * abandoned create is a task on somebody's board (#350's `unnamed` mitigated the display of
-   * that, never the row).
+   * "＋ … toevoegen" (docs/UX.md) and is what `Nieuwe taak` opens too — on `/tasks`, on a
+   * client's Taken panel, on the client header and on a project's to-do list — because a task
+   * is never written before it has been named and given a client. The placeholder create that
+   * used to sit behind the primary buttons (#350's `unnamed` rows) is gone: an abandoned create
+   * was a task on somebody's board, and marking it never made it not one.
    *
-   * Real fields — title, due date, the employees on it — prefilled with what was typed, posting
-   * to the caller's own action: a picker's answers with `inlineCreated` so it auto-selects the
-   * new task, the list's redirects to the task in edit mode. The company/project ride along
-   * hidden when the caller has them pinned (e.g. the approve dialog's current picks).
+   * Real fields — title, due date, the client, the employees on it — prefilled with what was
+   * typed, posting to the caller's own action: a picker's answers with `inlineCreated` so it
+   * auto-selects the new task, the list's redirects to the task in edit mode. The company and
+   * project ride along hidden when the caller has them pinned (a client's page, a project's
+   * to-do list, the approve dialog's current picks); when the client is *not* pinned the dialog
+   * draws its own picker for it, because a task without one is refused (`taskCreateBody`) and
+   * a control that is missing is a refusal the user cannot act on.
    *
    * The roster is the same `AssigneePicker` the full task form draws (#375), not a single
    * Combobox. A task created from a pending email is routinely work for two people, and a
    * dialog that can only name one made "assign the pair" a second visit to the task itself —
    * which is exactly the trip the inline-create exists to save. It posts the whole roster in
    * one hidden field, so the caller's action forwards `assignees` and never a lone id.
+   *
+   * Self-sufficient on its lookups: a host that has the org's clients or colleagues on hand
+   * passes them, and one that does not (a client's Taken panel) lets the dialog fetch them the
+   * first time it opens — the same lazy read the client's contacts already get, so no page pays
+   * for a dialog most opens never see (docs/PERFORMANCE.md).
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import {
+    companyArchivedLabel,
+    type PickerCompany,
+    splitCompanyOptions,
+  } from "$lib/modules/companies/picker";
 
   import TaskAssigneePicker from "./TaskAssigneePicker.svelte";
+
+  interface Member {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    is_active?: boolean;
+  }
 
   let {
     open = $bindable(false),
     title = "",
     companyId = null,
     projectId = null,
+    companies = [],
     members = [],
     assignees = [],
     action = "?/createTask",
@@ -41,16 +63,14 @@
     open?: boolean;
     /** What was typed in the picker. */
     title?: string;
+    /** Pinned by the surface: posted hidden and not asked for. `null` draws the picker. */
     companyId?: string | null;
     projectId?: string | null;
+    /** The org's clients, when the host already has them; fetched on open otherwise. */
+    companies?: PickerCompany[];
     // `email` is nullable on `/members/lookup` and on `AssigneePicker`, which is what this
     // forwards them to; narrowing it here only made every caller cast.
-    members?: {
-      user_id: string;
-      full_name: string | null;
-      email: string | null;
-      is_active?: boolean;
-    }[];
+    members?: Member[];
     /**
      * The roster the picker opens with. `Nieuwe taak` used to assign its creator behind the
      * scenes (#391); it still offers to, as a chip that is visible and removable rather than a
@@ -81,16 +101,58 @@
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
+  // The client this task is for: pinned by the host, or picked here. Reset on every open, so
+  // a dialog reopened for a second task does not carry the first one's pick.
+  let chosenCompany = $state("");
+  $effect(() => {
+    if (open) chosenCompany = companyId ?? "";
+  });
+
+  // The org's clients, for the picker the dialog draws when nothing pinned one. Read once per
+  // mount and only when needed: a host with the list on hand passes it, and the common opens —
+  // from a client's own page, from a project — never pay for it.
+  let fetchedCompanies = $state<PickerCompany[]>([]);
+  let companiesLoaded = $state(false);
+  $effect(() => {
+    if (!open || companyId || companies.length > 0 || companiesLoaded) return;
+    companiesLoaded = true;
+    void (async () => {
+      const response = await fetch("/api/v1/companies?limit=200&offset=0&count=false&sort=name", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      fetchedCompanies = ((await response.json()).items ?? []) as PickerCompany[];
+    })();
+  });
+  const companyList = $derived(companies.length > 0 ? companies : fetchedCompanies);
+  const companyPicker = $derived(splitCompanyOptions(companyList, { selectedId: chosenCompany }));
+
+  // The colleagues, for a host that has none on hand (a panel on the client hub). Same lazy
+  // read, same reason.
+  let fetchedMembers = $state<Member[]>([]);
+  let membersLoaded = $state(false);
+  $effect(() => {
+    if (!open || members.length > 0 || membersLoaded) return;
+    membersLoaded = true;
+    void (async () => {
+      const response = await fetch("/api/v1/members/lookup", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      fetchedMembers = (await response.json()) as Member[];
+    })();
+  });
+  const employees = $derived(members.length > 0 ? members : fetchedMembers);
+
   // The client's contacts (#453), so a task can be *for* the client from the dialog rather than
-  // only from the task's own edit mode. Fetched when the dialog opens with a client pinned —
-  // the majority of opens (no client, or a colleague's task) never pay for it — and the same
-  // endpoint the task page reads in edit mode. Read-only callers (a client's own portal login)
-  // get an empty list and the picker stays employee-only, exactly as it was.
+  // only from the task's own edit mode. Fetched when the dialog has a client — pinned, or just
+  // picked — and the same endpoint the task page reads in edit mode. Read-only callers (a
+  // client's own portal login) get an empty list and the picker stays employee-only.
   let contacts = $state<{ id: string; name: string }[]>([]);
   let contactsFor = $state<string>("");
   $effect(() => {
-    if (!open || !companyId || companyId === contactsFor) return;
-    const target = companyId;
+    const target = chosenCompany;
+    if (!open || !target || target === contactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${target}`, {
         headers: { accept: "application/json" },
@@ -118,11 +180,18 @@
       {action}
       use:enhance={busy.wrap("", ({ formData, cancel }) => {
         refusal = null;
-        // Somebody is always on a task. The roster travels as one hidden field, and a hidden
-        // control is barred from constraint validation by definition (docs/UX.md, #392's
-        // `required` lesson) — so the check is made here, before the round trip, and the
-        // sentence lands under the picker. A client contact is somebody too (#453); a form
-        // that drew no picker at all posts no `assignees` and the action assigns the caller.
+        // A task is a client's. The picker posts through a hidden input, and a hidden control
+        // is barred from constraint validation by definition (docs/UX.md, #392's `required`
+        // lesson) — so the check is made here, before the round trip, and the sentence lands
+        // under the picker rather than as "er ging iets mis" over the form.
+        if (!String(formData.get("company_id") ?? "").trim() && !projectId) {
+          refusal = "errors.tasks_company_required";
+          cancel();
+          return;
+        }
+        // Somebody is always on a task. The roster travels as one hidden field too. A client
+        // contact is somebody (#453); a form that drew no picker at all posts no `assignees`
+        // and the action assigns the caller.
         const roster = String(formData.get("assignees") ?? "");
         const contact = String(formData.get("assignee_contact_id") ?? "").trim();
         if (roster && !contact && roster.replace(/\s/g, "") === "[]") {
@@ -152,6 +221,28 @@
         >
         <input id="qc-task-title" name="title" value={title} required class={inputClass} />
       </div>
+      <!-- The client, unless the surface pinned one. Required: a task with no client is on no
+           client's page and outside every company horizon, so the dialog asks rather than
+           letting one through and finding out on the API. No "Wissen" (`allowEmpty`), since an
+           empty pick is the one state the next submit refuses (#392's DateInput lesson). -->
+      {#if !companyId}
+        <div>
+          <label for="qc-task-company" class="mb-1 block text-sm font-medium text-text"
+            >{t("tasks.field.company")}</label
+          >
+          <Combobox
+            items={companyPicker.live}
+            archived={companyPicker.retired}
+            archivedLabel={companyArchivedLabel()}
+            name="company_id"
+            value={chosenCompany}
+            id="qc-task-company"
+            allowEmpty={false}
+            placeholder={t("tasks.field.company")}
+            onselect={(value) => (chosenCompany = value)}
+          />
+        </div>
+      {/if}
       <!-- Required (#392): a task with no deadline is invisible to every urgency screen, so
            the dialog asks rather than letting one through and finding out on the API. -->
       <div>
@@ -165,13 +256,13 @@
            Employees, or — when the task has a client (#273/#453) — one of that client's
            contacts: the same control the task page draws, posting `assignees` and
            `assignee_contact_id` so the caller's body builder never has to guess which. -->
-      {#if members.length > 0 || contacts.length > 0}
+      {#if employees.length > 0 || contacts.length > 0}
         <div>
           <span class="mb-1 block text-sm font-medium text-text">{t("tasks.field.assignees")}</span>
           <TaskAssigneePicker
-            employees={members}
+            {employees}
             {contacts}
-            contactsEnabled={!!companyId && contacts.length > 0}
+            contactsEnabled={!!chosenCompany && contacts.length > 0}
             {assignees}
             id="qc-task-assignee"
           />

@@ -95,6 +95,29 @@ def add_months(day: date, months: int) -> date:
     return date(year, month, min(day.day, last_day))
 
 
+def first_boundary_ahead(start_date: date, months: int, today: date) -> date:
+    """The first boundary of the ``start_date`` grid that has not passed yet.
+
+    What a *derived* cycle date is: an agreement entered today with a start date three years
+    back is an existing arrangement being onboarded, not three years of arrears. ``start_date``
+    + one period — the obvious derivation, and the one `subscriptions` shipped with (#223) —
+    landed the anchor years in the past, and the cycle cron then drafted every historic period
+    the record had never been asked about, one per night: the back-billing #250 forbids,
+    produced by the platform's own default. The domains module already derived its first
+    anniversary as "still ahead"; this is that rule stated once, for both.
+
+    Stepped as ``start + k·months`` rather than by chaining ``add_months``: a chained walk from
+    the 31st clamps to the 28th in February and never recovers, and the grid must be the one
+    the operator would draw from the start date.
+    """
+    k = 1
+    boundary = add_months(start_date, months * k)
+    while boundary < today:
+        k += 1
+        boundary = add_months(start_date, months * k)
+    return boundary
+
+
 def period_boundaries(
     *,
     start_date: date,
@@ -102,6 +125,7 @@ def period_boundaries(
     months: int,
     floor: date | None = None,
     end_date: date | None = None,
+    until: date | None = None,
     limit: int = MAX_OPEN_PERIODS,
 ) -> tuple[list[date], bool]:
     """Every period boundary an agreement has reached, oldest first, and whether the cap bit.
@@ -129,13 +153,25 @@ def period_boundaries(
 
     ``anchor`` itself is offered even when it lies in the future: billing a period in advance
     is a choice an agency makes, not a mistake, so it is returned and the caller labels it.
+
+    Two things the floor does **not** bound, because both are the cycle's own statement rather
+    than history the walk reached on its own. The **anchor** is offered even below the floor:
+    ``next_invoice_date`` is what the cron will bill next, whoever set it and whenever the row
+    was made, and a backlog that hid it while the cron drafted it that night would be the two
+    halves of "what do we still have to invoice" disagreeing — the failure this seam exists to
+    prevent. And with ``until`` (the org's today) every boundary **forward** of the anchor up
+    to it is offered too: the calendar has passed the cycle — a worker that did not run, an
+    anchor set into the past on purpose, a resumed agreement — and each of those periods is
+    outstanding whether the cron catches up tonight or nobody ever drafts it.
     """
     if months <= 0:
         return [], False
-    boundary = min(anchor, end_date) if end_date is not None else anchor
+    anchor = min(anchor, end_date) if end_date is not None else anchor
     out: list[date] = []
+    boundary = anchor
     while len(out) <= limit:
-        if floor is not None and boundary < floor:
+        # The floor bounds what the walk *reaches*, never where the cycle *sits*.
+        if boundary != anchor and floor is not None and boundary < floor:
             break
         # A period that would begin before the agreement did was never served.
         if add_months(boundary, -months) < start_date:
@@ -143,6 +179,15 @@ def period_boundaries(
         out.append(boundary)
         boundary = add_months(boundary, -months)
     out.reverse()  # oldest first: arrears are worked through in the order they fell due
+    if until is not None:
+        boundary = add_months(anchor, months)
+        while boundary <= until and (end_date is None or boundary <= end_date):
+            out.append(boundary)
+            # A rolling window rather than an unbounded list: only the newest survive the cap
+            # below anyway, and ``until`` is a date, so the walk itself always terminates.
+            if len(out) > limit + 1:
+                del out[0]
+            boundary = add_months(boundary, months)
     if len(out) <= limit:
         return out, False
     # Keep the **newest**: recent unbilled periods are what someone opening a picker is

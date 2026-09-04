@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookmarkPlus, Pencil, Trash2, TrendingUp } from "@lucide/svelte";
+  import { BookmarkPlus, Building2, Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -12,7 +12,9 @@
   import FilterBar from "$lib/core/filters/FilterBar.svelte";
   import type { FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
+  import { stateTextClass } from "$lib/core/state";
   import { navLabel, pageTitle } from "$lib/core/title";
+  import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -78,6 +80,57 @@
       data.locale,
     );
   }
+  // --- sectioned by standard subscription ----------------------------------------
+  // The contacts list's shape (docs/UX.md): the sections are the standard subscriptions *on
+  // this page*, alphabetically, with the agreements that follow no preset last. Built from the
+  // rows rather than from the preset library — a reader holding `:own` never loads that
+  // library, and twelve sections of which ten are empty is not a list of agreements. An
+  // agreement made from a preset carries the preset's name (a rename follows through, see
+  // `SubscriptionTemplate`), so the heading is the name the rows would otherwise each repeat,
+  // and what a row is left to say is *whose* it is — which is why the client leads the row.
+  const NO_TEMPLATE = "__no_template";
+  const groups = $derived.by(() => {
+    // A plain record, not a Map: `svelte/prefer-svelte-reactivity` rejects a mutated Map even
+    // in a derived, and this one is a throwaway index rather than state.
+    const named: Record<string, string> = {};
+    let loose = false;
+    for (const sub of data.subscriptions) {
+      const templateId = sub.subscription_template_id;
+      if (!templateId) {
+        loose = true;
+        continue;
+      }
+      // The preset's own name where the library was loaded; the row's otherwise — the same
+      // string unless the agreement was renamed away from its preset, in which case the
+      // preset is still the section and the row's name says so in its own column.
+      named[templateId] ??= data.templates.find((tpl) => tpl.id === templateId)?.name ?? sub.name;
+    }
+    const sections = Object.entries(named)
+      .map(([key, label]) => ({ key, label, collapsible: true }))
+      .sort((a, b) => a.label.localeCompare(b.label, data.locale));
+    if (loose)
+      sections.push({
+        key: NO_TEMPLATE,
+        label: t("subscriptions.group.no_template"),
+        collapsible: true,
+      });
+    return sections;
+  });
+  const groupOf = (sub: Subscription): string => sub.subscription_template_id ?? NO_TEMPLATE;
+
+  // A next invoice date that has passed is a period the cycle has reached and nothing has
+  // invoiced yet — it is on the "nog te factureren" backlog, and this is the one place the
+  // date is drawn, so it is drawn the way an overdue deadline is. The org's calendar, never
+  // the browser's (§8).
+  const today = orgToday();
+  const overdue = (sub: { next_invoice_date: string | null; status: string }): boolean =>
+    sub.status === "active" && !!sub.next_invoice_date && sub.next_invoice_date < today;
+  // The strip's fourth figure, from the summary the page already loads: `upcoming` carries
+  // every active agreement due within a month, which includes everything already past.
+  const overdueCount = $derived(
+    (data.summary?.upcoming ?? []).filter((row) => row.next_invoice_date < today).length,
+  );
+
   /**
    * The list's filters, rendered by the shared bar (#354).
    *
@@ -192,10 +245,12 @@
       label: subscriptionTypeLabel(st, data.locale),
       hint: t("subscriptions.field.type"),
     })),
+    // Client first, agreement second — the way the list reads: twelve "Hosting & onderhoud"
+    // entries are told apart by whose they are.
     ...data.subscriptions.map((sub) => ({
       value: `subscription:${sub.id}`,
-      label: sub.name,
-      hint: sub.company_name || undefined,
+      label: sub.company_name || sub.name,
+      hint: sub.company_name ? sub.name : undefined,
     })),
     // A template-scoped change needs the catalog grant too (the API enforces it).
     ...(data.canManageTemplates
@@ -279,7 +334,7 @@
 
 <!-- Recurring revenue at a glance (#30). Every number opens: the list below is the breakdown. -->
 {#if data.summary}
-  <div class="mb-6 grid gap-4 sm:grid-cols-3">
+  <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-xl border border-border bg-surface-raised p-4">
       <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("subscriptions.mrr")}
@@ -298,6 +353,36 @@
       </p>
       <p class="mt-1 text-2xl font-semibold text-text">{data.summary.active_count}</p>
     </div>
+    <!-- Agreements whose next invoice date has passed. The answer to "why is this not on
+         'nog te factureren'" used to be that nothing on this page said it should be: the
+         backlog is the screen that lists the periods, so the figure opens it, narrowed to
+         agreements — for whoever may read the org-wide backlog (`:any`, #266); a reader who
+         may not still gets the number. -->
+    {#snippet overdueTile()}
+      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+        {t("subscriptions.overdue_count")}
+      </p>
+      <p
+        class="mt-1 text-2xl font-semibold {overdueCount > 0
+          ? stateTextClass('late')
+          : 'text-text'}"
+      >
+        {overdueCount}
+      </p>
+    {/snippet}
+    {#if data.canReadBacklog}
+      <a
+        href="/invoices/uninvoiced?source=subscription"
+        class="block rounded-xl border border-border bg-surface-raised p-4 hover:border-brand"
+        title={t("subscriptions.overdue_open")}
+      >
+        {@render overdueTile()}
+      </a>
+    {:else}
+      <div class="rounded-xl border border-border bg-surface-raised p-4">
+        {@render overdueTile()}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -347,31 +432,33 @@
   {form}
 />
 
-{#snippet nameCell(sub: Subscription)}
+<!-- The client is the row's identity (the section is the agreement), so it is the cell that
+     opens the record: the edit dialog for a writer, the record page for a reader. The client's
+     own page is one entry down the ⋯ menu. -->
+{#snippet companyCell(sub: Subscription)}
   {#if data.canWrite}
     <!-- `w-full`, because a button shrinks to fit even as a block box: without it the nowrap
          from `truncate` would let it grow past the column and be cut mid-letter. -->
     <button
       type="button"
       class="block w-full truncate text-left font-medium text-text hover:text-brand"
-      onclick={() => openEdit(sub)}>{sub.name}</button
+      onclick={() => openEdit(sub)}>{sub.company_name || "—"}</button
     >
   {:else}
     <!-- A reader — a client on their own agreements — opens the record page; the edit modal
          behind the button above is a form they may not post. -->
     <a
       href={`/subscriptions/${sub.id}`}
-      class="block w-full truncate text-left font-medium text-text hover:text-brand">{sub.name}</a
+      class="block w-full truncate text-left font-medium text-text hover:text-brand"
+      >{sub.company_name || "—"}</a
     >
   {/if}
 {/snippet}
 
-{#snippet companyCell(sub: Subscription)}
-  {#if sub.company_id}
-    <a href="/companies/{sub.company_id}" class="block truncate text-text-muted hover:text-brand"
-      >{sub.company_name}</a
-    >
-  {:else}<span class="text-text-muted">—</span>{/if}
+<!-- Muted: inside a section it repeats the heading, and it only carries information for an
+     agreement that follows no preset or was renamed away from one. -->
+{#snippet nameCell(sub: Subscription)}
+  <span class="block truncate text-text-muted">{sub.name}</span>
 {/snippet}
 
 {#snippet typeCell(sub: Subscription)}
@@ -391,9 +478,16 @@
 {/snippet}
 
 {#snippet nextInvoiceCell(sub: Subscription)}
-  <span class="tabular-nums text-text-muted"
-    >{sub.next_invoice_date ? fmtNumericDate(sub.next_invoice_date) : "—"}</span
-  >
+  {#if overdue(sub)}
+    <span
+      class="tabular-nums font-medium {stateTextClass('late')}"
+      title={t("subscriptions.overdue_title")}>{fmtNumericDate(sub.next_invoice_date ?? "")}</span
+    >
+  {:else}
+    <span class="tabular-nums text-text-muted"
+      >{sub.next_invoice_date ? fmtNumericDate(sub.next_invoice_date) : "—"}</span
+    >
+  {/if}
 {/snippet}
 
 {#snippet statusCell(sub: Subscription)}
@@ -425,6 +519,17 @@
     compact
     items={[
       { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(sub) },
+      // The client's page: it used to be the client cell's link, and the cell now opens the
+      // agreement itself.
+      ...(sub.company_id
+        ? [
+            {
+              label: t("subscriptions.open_company"),
+              icon: Building2,
+              href: `/companies/${sub.company_id}`,
+            },
+          ]
+        : []),
       ...(data.canWrite
         ? [
             {
@@ -462,10 +567,13 @@
        phone's page 34px wider than the viewport. The lines below can only truncate against a
        definite width. -->
   <button type="button" class="block w-full text-left" onclick={() => openEdit(sub)}>
-    <span class="block truncate text-sm font-medium text-text">{sub.name}</span>
+    <span class="block truncate text-sm font-medium text-text">{sub.company_name || "—"}</span>
     <span class="mt-0.5 block truncate text-xs text-text-muted">
-      {sub.company_name} · {money(sub.amount)} ·
+      {sub.name} · {money(sub.amount)} ·
       {t(`subscriptions.status.${sub.status}`)}
+      {#if overdue(sub)}
+        · <span class={stateTextClass("late")}>{fmtNumericDate(sub.next_invoice_date ?? "")}</span>
+      {/if}
     </span>
   </button>
 {/snippet}
@@ -473,6 +581,14 @@
 {#snippet emptyState()}
   <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
 {/snippet}
+
+{#if data.total > data.paging.limit}
+  <!-- Sectioned by standard subscription, "Hosting & onderhoud (12)" above a preset that
+       thirty clients are on reads as the whole answer. The pager below says which slice this
+       is, but the *section counts* still need saying out loud — a cap is reported, never
+       silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-text-muted">{t("subscriptions.groups_page_only")}</p>
+{/if}
 
 <BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
@@ -484,6 +600,10 @@
   sort={table.sort}
   widths={table.widths}
   locale={data.locale}
+  {groups}
+  groupBy={groupOf}
+  collapsed={table.collapsed}
+  oncollapse={table.onCollapse}
   actions={rowActions}
   {mobileRow}
   empty={emptyState}

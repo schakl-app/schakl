@@ -97,6 +97,13 @@ def _source_row(metrics: SourceMetrics, *, include_series: bool) -> dict[str, An
         # The kinds `marketing.drilldown` will accept for this link, so the follow-up call is
         # never a guess against an adapter's private vocabulary.
         "drilldowns": list(metrics.drilldowns),
+        # Search Console only: whether the site's visibility in AI Overviews / AI Mode can be
+        # read at all, and where the report is while it cannot. A model handed this stops
+        # estimating AI visibility from the web totals, which is the sentence it would
+        # otherwise write.
+        "ai_visibility": (
+            metrics.ai_visibility.model_dump(mode="json") if metrics.ai_visibility else None
+        ),
     }
     if include_series:
         dates = metrics.series.dates[-_MAX_SERIES_DAYS:]

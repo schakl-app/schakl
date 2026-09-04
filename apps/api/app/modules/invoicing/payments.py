@@ -341,7 +341,9 @@ class InvoicePaymentService:
         card networks far shorter), so it leads with the number a client can match."""
         brand = self.ctx.org.name
         number = invoice.number or str(invoice.id)[:8]
-        return f"{number} — {brand}"[:255]
+        # A plain hyphen: a bank statement is the one surface whose typography is not ours,
+        # and an em dash lands there as "?" or as a mojibake pair on plenty of them.
+        return f"{number} - {brand}"[:255]
 
     async def refresh_pending(
         self, invoice_id: uuid.UUID

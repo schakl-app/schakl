@@ -9,7 +9,7 @@ from app.core.auth.models import User
 from app.core.events import subscribe
 from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
 
@@ -1171,7 +1171,9 @@ async def test_thread_followup_inherits_all_links_including_task(client_for) -> 
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Review", "project_id": project["id"]},
+                json={
+                    "due_date": FAR_FUTURE_DUE, "title": "Review", "project_id": project["id"],
+                },
                 headers=headers,
             )
         ).json()
@@ -1290,7 +1292,10 @@ async def test_task_host_activity_readable(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Bouwen"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Bouwen",
+                },
                 headers=headers,
             )
         ).json()

@@ -224,7 +224,10 @@
       for (const offer of offers) {
         added.push({
           key: lineKey(),
-          description: `${offer.description} — ${span}`,
+          // The span in parentheses, the shape the cron's own renewal line already has
+          // ("Domeinverlenging klant.nl (01-01-2026-31-12-2026)"): a dash between a name and
+          // a date range that is itself dashed reads as one run of dashes on paper.
+          description: `${offer.description} (${span})`,
           // The kind follows the *source*, not the section the picker was opened from, so a
           // renewal is a renewal however it was reached.
           line_kind: isAgreement ? "subscription" : "domain",

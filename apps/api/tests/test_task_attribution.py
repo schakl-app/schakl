@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import TaskActivity
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, default_company, make_tenant
 
 
 def _actions(detail: dict) -> list[str]:
@@ -37,7 +37,10 @@ async def test_checklist_lifecycle_lands_in_the_activity_trail(client_for) -> No
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Onboarding"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Onboarding",
+                },
                 headers=headers,
             )
         ).json()
@@ -99,7 +102,10 @@ async def test_reordering_a_checklist_is_not_activity(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         tid = task["id"]
@@ -123,7 +129,10 @@ async def test_comment_activity_carries_an_excerpt_and_the_comment_id(client_for
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         tid = task["id"]
@@ -162,7 +171,10 @@ async def test_a_long_comment_is_excerpted_not_stored_whole(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         tid = task["id"]
@@ -183,7 +195,10 @@ async def test_activity_and_comments_snapshot_the_actor_name(client_for) -> None
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         await c.post(f"/api/v1/tasks/{task['id']}/comments", json={"body": "hoi"}, headers=headers)
@@ -209,7 +224,10 @@ async def test_a_deleted_user_keeps_their_name_and_is_marked_deleted(client_for)
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         tid = task["id"]
@@ -271,7 +289,10 @@ async def test_a_null_actor_with_no_snapshot_is_still_the_system(client_for) -> 
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         tid = task["id"]

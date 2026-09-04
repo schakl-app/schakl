@@ -561,7 +561,6 @@ class TaskService:
         due_from: date | None = None,
         due_to: date | None = None,
         q: str | None = None,
-        unnamed: bool | None = None,
         undated: bool | None = None,
         sort: str | None = None,
         with_meta: bool = True,
@@ -571,11 +570,6 @@ class TaskService:
         stmt = self.repo.scoped_select()
         if q:
             stmt = stmt.where(Task.title.ilike(f"%{q.strip()}%"))
-        # "The ones nobody named" (#350): a create-then-edit row whose author never finished is
-        # indistinguishable from real work by its title, so the flag is the only thing that can
-        # gather them — and gathering them is what makes clearing them possible at all.
-        if unnamed is not None:
-            stmt = stmt.where(Task.unnamed.is_(unnamed))
         # "The ones with no deadline" (#392) — the way out for the rows an instance carries
         # into the release that made the date required. The column stays nullable for a release
         # (expand/contract), so the legacy set has to be *findable*: without this it is scattered
@@ -1216,9 +1210,10 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.require("tasks.task.create")
         values = data.model_dump()
-        # Nullable on the wire so an existing caller need not mention it (#350); the column is
-        # `NOT NULL`, and "the caller said nothing" means the task has a title somebody chose.
-        values["unnamed"] = bool(values.get("unnamed"))
+        # Every task is named by whoever makes it: the placeholder create that used to set this
+        # (#350) no longer exists, and no caller can mark a row as unnamed any more. The column
+        # is `NOT NULL` and stays for the rows an instance already carries.
+        values["unnamed"] = False
         # What the task arrives with (#382). Popped before the column write and applied after the
         # row exists — each through this service's own method, so an inline checklist gets the
         # same validation, activity line and 403 that a separate POST would.
@@ -1228,6 +1223,11 @@ class TaskService:
         # A task's company/project FKs must live in this tenant (audit F19).
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
+        # A task is always a client's. Named outright, or taken off the project the caller
+        # named instead; a create that does neither is refused with the field named.
+        values["company_id"] = await self._require_company(
+            values.get("company_id"), values.get("project_id")
+        )
         # Markdown source is stored; strip any raw HTML on write (issue #66, app/core/richtext).
         values["description"] = sanitize_markdown(values.get("description"))
         # The roster (#375). ``assignees=None`` means the caller didn't say, and the single
@@ -1379,6 +1379,38 @@ class TaskService:
         if self.ctx.is_portal:
             return None
         return self.ctx.user.id
+
+    async def _require_company(
+        self, company_id: uuid.UUID | None, project_id: uuid.UUID | None
+    ) -> uuid.UUID:
+        """The client a task is for — stated, or the one the named project belongs to.
+
+        A task with no client is on no client's page, in no client's export, on no report and
+        outside every company horizon (§15), which is the one place the agency's own work
+        cannot be: an agency that wants a to-do list for itself is a client of itself. So a
+        create that names neither is refused with the field named rather than defaulted —
+        unlike the deadline (#392), a client has no honest default; only the caller knows
+        which one — and a project's client is taken off the project because a project has
+        exactly one, so naming the project *is* naming the client. Never a silent widening:
+        a project with no client of its own answers nothing here, and the create is refused.
+        """
+        if company_id is not None:
+            return company_id
+        if project_id is not None:
+            inherited = await self.ctx.session.scalar(
+                select(_dashboard_projects.c.company_id).where(
+                    _dashboard_projects.c.org_id == self.ctx.org.id,
+                    _dashboard_projects.c.id == project_id,
+                )
+            )
+            if inherited is not None:
+                return inherited
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"company_id": "errors.tasks_company_required"},
+        )
 
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
@@ -1717,6 +1749,16 @@ class TaskService:
                 "errors.validation",
                 status_code=422,
                 fields={"due_date": "errors.required"},
+            )
+        # The client may be changed and may not be removed, for the same reason and in the same
+        # shape (``_require_company``): absent leaves it alone, so a task written before the
+        # rule keeps taking every other edit, and an explicit ``null`` is refused by name.
+        if "company_id" in values and values["company_id"] is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"company_id": "errors.tasks_company_required"},
             )
 
         # Accountability: pushing an existing deadline back requires a reason, which lands

@@ -453,6 +453,7 @@ class DomainService:
                     anchor=domain.next_invoice_date,
                     months=12,
                     floor=domain.created_at.date(),
+                    until=today,
                 )
                 if domain.next_invoice_date is not None
                 else ([], False)

@@ -28,7 +28,7 @@ from app.modules.tasks.recurrence import (
     snap,
     spawn_scheduled_recurrences,
 )
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 
 # --------------------------------------------------------------------------- #
 # Anchors: the date math, in isolation
@@ -110,7 +110,10 @@ async def test_mismatched_anchor_is_refused(client_for, rule) -> None:
     async with client_for(t.host) as c:
         res = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Bad rule", "recurrence": rule},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Bad rule", "recurrence": rule,
+            },
             headers=headers,
         )
     assert res.status_code == 422
@@ -124,6 +127,7 @@ async def test_anchor_round_trips_and_drives_the_next_date(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Facturatie",
                     "recurrence": {
@@ -272,6 +276,7 @@ async def test_completion_records_the_hand_off_on_the_carrier(client_for) -> Non
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Nieuwsbrief",
                     "recurrence": {"freq": "weekly", "interval": 1, "mode": "after_completion"},
@@ -299,6 +304,7 @@ async def test_spawn_plans_the_occurrence_through_the_schedule_service(client_fo
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Backup controleren",
                     "assignee_user_id": str(t.user.id),
@@ -344,6 +350,7 @@ async def test_cron_spawn_also_plans(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Weekrapport",
                     "assignee_user_id": str(t.user.id),
@@ -389,6 +396,7 @@ async def test_a_late_completion_never_books_a_block_in_the_past(client_for) -> 
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "title": "Vergeten klusje",
                     "assignee_user_id": str(t.user.id),
                     "due_date": long_ago,
@@ -424,6 +432,7 @@ async def test_plan_for_someone_else_needs_schedule_write_any(client_for) -> Non
         res = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Niet van mij",
                 "recurrence": {
@@ -583,6 +592,7 @@ async def test_spawn_books_every_block_for_the_roster_and_skips_the_past(client_
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": due.isoformat(),
                     "title": "Nieuwsbrief",
                     "assignees": [

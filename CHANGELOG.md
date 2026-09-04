@@ -1,5 +1,146 @@
 # Changelog
 
+_Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
+
+## v0.42.0 — 2026-09-04
+
+Search Console as its own read surface with an honest answer about AI visibility, a task that
+is named before it exists and is always a client's, a subscription backlog that lists what the
+cron is about to draft, and two member tables that open on the colleagues who still work here.
+
+No migrations: the schema head is unchanged from v0.41.0, so rolling the image back is safe.
+Two new permission keys, both on the new integration. Thirteen new endpoints, all `GET`; no
+existing route changes shape, but one query parameter and one request field are gone from
+tasks (see the upgrade notes). No new environment variables. The public API reference is
+regenerated.
+
+### Google Search Console (integration)
+
+- **Search Console is a read surface of its own.** It was reachable from an agent only as the
+  marketing module's stored four-metric aggregate and three drill-downs, while Analytics had
+  seventeen routes and its own section. It now has the same shape: thirteen `GET` routes under
+  `/api/v1/google-search-console` — the sites and sitemaps a connection may read, an overview,
+  the split per search type, the daily and hourly series, a breakdown by any dimension, the
+  movers between two spans, the URL inspection, and a free-form query behind its own
+  permission. They are derived into the `/mcp/google-search-console` section and the `growth`
+  bundle, and seven curated tools reach the in-app assistant, so "how did this site do in
+  search last month" is answerable in the box built for asking it.
+- **The property travels as `?site=`**, because a `siteUrl` is a URL: a path parameter is
+  decoded before it is matched, `%2F` becomes `/`, and the route stops matching.
+- **Every enum is checked here before the round trip.** Dimensions, search types, data states
+  and the rest were read from Google's own discovery document (revision `20260902`); an unknown
+  value is refused with the list that would have worked in `details`, where Google's own 400
+  names neither the bad value nor the good ones.
+- **AI visibility is a state, not a number.** Search Console gained a Generative AI performance
+  report in June 2026 — impressions in AI Overviews and AI Mode — and the Search Analytics API
+  still accepts exactly six search types and no generative-AI value. So `GET /ai-visibility`
+  answers `available: false` with the report's own URL and never estimates the figure from the
+  web totals, where AI Overviews are folded in with no way to separate them. The marketing
+  dashboard's Search Console section draws the same fact as a dashed card with a link — never a
+  tile with a number — and withholds it from a portal login. The seam is pinned by a test that
+  fails the day Google adds the search type, which is when the card wants revisiting.
+- Two permissions: `google_search_console.site.read` (the curated shapes; administrators and
+  employees by default) and `google_search_console.report.run` (any dimension crossed with any
+  filter; administrators only). The integration requires the Google connection and nothing
+  else, and it is licensed under its own sku, `google_search_console`.
+- Not verified against a live Google grant: twenty-two tests run on a fake transport, and the
+  browser pass covered the card, the settings listing and the MCP section through a scoped key.
+
+### Tasks
+
+- **A task is named before it exists.** The placeholder create — one click, a row titled
+  "Naamloze taak", italicised in every list and gathered by a "Naamloos" pill — is deleted
+  rather than disabled. Every `Nieuwe taak` (the list, the client header, the client's Taken
+  panel) opens the create dialog, a whitespace title is refused at the schema, the pill and the
+  `?unnamed=1` filter are gone, and rows an instance already has keep their one free deadline
+  move and their italics until they are named.
+- **And it is always a client's.** A task with no client is on no client's page, in no export,
+  on no report and outside every company horizon. Unlike a deadline it has no honest default,
+  so nothing invents one: the create refuses with the field named
+  (`errors.tasks_company_required`), the update refuses clearing it, an automation rule's task
+  inherits the client of the task it fired on, and the import marks the column required so the
+  preview names the row. The one indirection is a project — naming the project is naming the
+  client, because a project has exactly one. The column stays nullable for a release
+  (expand/contract), and a legacy row without a client keeps taking every other edit.
+- On screen the dialog draws its own client picker wherever the surface has not pinned one,
+  with no "Wissen"; the dictation sheet holds Aanmaken until a client is picked; the
+  contactmoment dialogs refuse before the round trip; and the task page's client picker lost
+  its clear affordance.
+
+### Subscriptions
+
+- **An overdue agreement is on the backlog, and is billed in one run.** An audit of the demo
+  instance found every agreement with a next invoice date months in the past absent from "Nog
+  te factureren" while the cron drafted one historic period for each of them a night. Two rules
+  were each right alone and wrong together: the first activation derived the cycle date as start
+  plus one period, which for an onboarded agreement landed years back and handed the cron every
+  period since — the back-billing the backlog's floor exists to refuse — and that floor, applied
+  to the anchor as well as to the history behind it, hid from the backlog exactly the period the
+  cron was about to draft. A derived cycle date is now the first boundary of the start date's
+  grid still ahead (an explicit date stays the operator's, everywhere); the floor bounds what
+  the walk reaches and never where the cycle sits, so the anchor and every boundary forward of
+  it up to today are offered; and the nightly cycle cron catches up in one run instead of one
+  period per night.
+- **The list takes the contacts list's shape**: sections per standard subscription, the client
+  as the primary column and the default sort, the name muted, the client's page moved to the ⋯.
+  A passed next invoice date is drawn as an overdue deadline, and the strip gained
+  "Factuurdatum verstreken", opening the backlog narrowed to agreements for whoever may read it.
+
+### Invoicing and payments
+
+- **Two em dashes went.** A period picked into an invoice — a domain renewal, an agreement's
+  lines — was written as `klant.nl — 01-01-2026 - 31-12-2026`, one run of dashes between a name
+  and a range that is itself dashed; it is `klant.nl (01-01-2026 - 31-12-2026)` now, the shape
+  the nightly cron's own renewal line already had. And the Mollie payment description, which is
+  what the payer reads on their bank statement, was `2026-0042 — breik.`; a statement is the one
+  surface whose typography is not ours, so it is a plain hyphen there now. Lines already on a
+  document keep the text they were saved with.
+
+### Leave
+
+- **The two member tables open on the colleagues who still work here.** The balances on
+  `/leave/team` and the entitlement table under Instellingen → Verlof listed everyone who ever
+  worked here flat between the ones who still do. Both now show the active roster first, then a
+  "Gedeactiveerd (n)" strip that is closed by default and absent when nobody has left, opening
+  to the former colleagues' rows with an amber badge on each. Nothing is deleted: the vacation
+  split, the employment ⋯ and the entitlement edit all keep working inside the fold.
+
+### Housekeeping
+
+- The task import test named no client on any row, which this release refuses on purpose; it
+  names one now. That one assertion was the only red on `dev` since the required-client commit.
+
+### Upgrade notes
+
+- **No migrations.** The schema head is `d4a9b3c6f2e7`, the same as v0.41.0.
+- **`POST /tasks` without a client is refused** with a 422 naming `company_id`, unless the body
+  names a project. An automation, an MCP agent or an import that created tasks with neither will
+  meet that refusal from now on; a rule that fires on a task inherits that task's client and
+  needs nothing changed. `PATCH /tasks/{id}` refuses an explicit `null` client; absent still
+  means leave alone, so an update naming only `status` works on a legacy row. The `unnamed`
+  field on the create body is gone (a caller that still sends it gets a named task, since the
+  title it sends is the title), `?unnamed=1` on `/tasks` is no longer recognised, and
+  `TaskRead.unnamed` stays for the rows an instance already has.
+- **The task import requires a `company` column.** A sheet without one is refused before any
+  row is read, and a row with an empty cell is reported by row.
+- **Overdue agreements bill on the first night.** An agreement whose next invoice date is
+  already in the past shows on "Nog te factureren" the moment you upgrade, and the nightly cron
+  drafts every outstanding period up to today in one run rather than one per night. Nothing
+  before the agreement's anchor is invented and no stored cycle date is moved; from now on a
+  date the platform derives at first activation lands on the first boundary still ahead
+  instead of one period after the start. Read the backlog before the first night if you would
+  rather cancel a period than have it drafted.
+- **Google Search Console is switched on per organisation** under Instellingen → Integraties
+  and needs the Google integration enabled beside it. On a self-hosted install its sku
+  (`google_search_console`) has to be on the licence key before it can be enabled. A Google
+  connection made before Search Console was part of the grant has to be reconnected once, and
+  the error says so. Its
+  two permissions are granted to the seeded roles once, on the first start after upgrade:
+  `site.read` to administrators and employees, `report.run` to administrators.
+- **The `growth` MCP bundle grew.** A key scoped to `/mcp/growth` sees the thirteen new tools
+  as soon as the integration is enabled and the key holds the permission; a key that holds
+  neither sees nothing new.
+
 ## v0.24.0 — 2026-08-10
 
 Notifications that reach a phone with the laptop shut, quiet hours that are finally applied,

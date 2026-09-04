@@ -39,6 +39,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
@@ -213,7 +214,7 @@
 
   // Nieuwe taak from the header: create-then-edit — one click writes a placeholder row
   // pre-linked to this client and the tasks action lands on its detail page in edit mode.
-  const creatingTask = new InFlight();
+  let creatingTask = $state(false);
 
   // AI digest + report drafts (#130): rendered only when the reporting feature is on.
   const hasReporting = $derived(aiEnabled(page.data.user, "reporting"));
@@ -320,14 +321,18 @@
       </button>
     {/if}
     {#if can(page.data.user, "tasks.task.create")}
-      <!-- Create-then-edit (#230): the tasks action writes a placeholder row linked to this
-             client and redirects to its detail page in edit mode, where every field lives. -->
-      <form method="POST" action="/tasks?/create" use:enhance={creatingTask.wrap()}>
-        <input type="hidden" name="company_id" value={company.id} />
-        <Button variant="secondary" size="sm" loading={creatingTask.active} disabled={busy.active}>
-          {t("companies.actions.new_task")}
-        </Button>
-      </form>
+      <!-- The new-task dialog (#391), this client pinned: the task is named, dated and held by
+             somebody before the row exists, and its action then lands on the task in edit mode
+             for everything else. -->
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={busy.active}
+        onclick={() => (creatingTask = true)}
+      >
+        {t("companies.actions.new_task")}
+      </Button>
     {/if}
     {#if can(page.data.user, "time.entry.write")}
       <!-- The same act as the Uren panel's ＋ (#402), so it is the same control: the module's
@@ -559,6 +564,14 @@
 
 {#if can(page.data.user, "time.entry.write")}
   <LogTimeDialog bind:open={loggingTime} companyId={company.id} />
+  <TaskQuickCreate
+    bind:open={creatingTask}
+    companyId={company.id}
+    members={data.members}
+    assignees={page.data.user?.id ? [{ user_id: page.data.user.id, is_primary: true }] : []}
+    action="/tasks?/create"
+    pickerSlot="company_header"
+  />
 {/if}
 
 <Modal bind:open={showLogInteraction} title={t("interactions.add")}>

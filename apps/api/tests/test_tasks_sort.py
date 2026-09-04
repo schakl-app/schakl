@@ -20,6 +20,7 @@ from tests.conftest import (
     FAR_FUTURE_DUE,
     add_membership,
     auth_cookie,
+    default_company,
     make_tenant,
     org_today,
 )
@@ -53,6 +54,7 @@ async def _task(client, headers, title: str, **fields) -> str:
         "due_date": FAR_FUTURE_DUE,
         **fields,
     }
+    body.setdefault("company_id", await default_company(client, headers))
     res = await client.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()["id"]

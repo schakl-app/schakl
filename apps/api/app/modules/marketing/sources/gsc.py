@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from app.integrations.google.oauth import SCOPE_SEARCH_CONSOLE
+from app.integrations.google_search_console.client import (
+    GENERATIVE_AI_SEARCH_TYPES,
+    console_url,
+    generative_ai_report_url,
+)
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,
@@ -304,7 +309,22 @@ class GSCAdapter:
         return out[:limit]
 
     def deep_link(self, external_id: str, config: dict) -> str:
-        return f"https://search.google.com/search-console?resource_id={quote(external_id, safe='')}"
+        return console_url(external_id)
+
+    def ai_visibility(self, external_id: str, config: dict) -> dict:
+        """What the dashboard's AI-visibility card says for this property.
+
+        Search Console has reported impressions in AI Overviews and AI Mode since June 2026 and
+        the Search Analytics API has no search type for them (``google_search_console.client``,
+        which owns both the vocabulary and the report's URL, so the dashboard's card and the
+        assistant's tool cannot point two ways). So the card is a **state with a link**, never
+        a number: ``available`` flips the day Google ships the search type, and until then the
+        report in the console is where those figures live.
+        """
+        return {
+            "available": bool(GENERATIVE_AI_SEARCH_TYPES),
+            "report_url": generative_ai_report_url(external_id),
+        }
 
 
 register(GSCAdapter())

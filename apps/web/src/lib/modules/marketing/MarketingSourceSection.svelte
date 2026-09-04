@@ -437,6 +437,30 @@
       </div>
     {/if}
 
+    {#if src.ai_visibility && !src.ai_visibility.available && src.ai_visibility.report_url}
+      <!-- A state with a link, not a tile with a number. Search Console reports impressions in
+           AI Overviews and AI Mode since June 2026 and the API does not return them, so the one
+           honest thing this card can do is say so and open the report — a plausible figure here
+           is one nothing on any screen could contradict. It disappears the day the API answers,
+           because then the metric is a tile like any other. Staff only: the API sends no card to
+           a portal login, whose link would land in the agency's Google account. -->
+      <div class="mb-5 rounded-lg border border-dashed border-border bg-surface p-3">
+        <p class="text-sm font-medium text-text">{t("marketing.ai_visibility.title")}</p>
+        <p class="mt-1 max-w-3xl text-xs leading-relaxed text-text-muted">
+          {t("marketing.ai_visibility.not_in_api")}
+        </p>
+        <a
+          href={src.ai_visibility.report_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+        >
+          {t("marketing.ai_visibility.open_report")}
+          <ExternalLink size={12} />
+        </a>
+      </div>
+    {/if}
+
     <!-- Live drill-downs (only these touch Google), keyed so a range change re-fetches. -->
     <div class="grid gap-5 md:grid-cols-2">
       {#each drilldowns as kind (kind)}
