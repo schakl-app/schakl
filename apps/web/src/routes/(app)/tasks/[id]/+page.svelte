@@ -755,14 +755,18 @@
   let newLabelColor = $state("blue");
 
   // Extending a deadline requires a reason (accountability): staged here, posted with the
-  // single save (the API rejects an extension without one).
+  // single save (the API rejects an extension without one). Not on a placeholder row nobody
+  // has saved yet (`unnamed`, #350): create-then-edit wrote today over it and dropped the user
+  // into this form, so the first date they pick is *setting* the deadline, and the API asks
+  // for no reason either — the flag clears with the save that names the task.
+  const dueIsCommitted = $derived(!task.unnamed);
   let reasonModalOpen = $state(false);
   let stagedDueDate = $state("");
   let dueReason = $state("");
   let reasonDraft = $state("");
   function onDueChanged(value: string) {
     liveDue = value;
-    if (task.due_date && value && value > task.due_date) {
+    if (dueIsCommitted && task.due_date && value && value > task.due_date) {
       stagedDueDate = value;
       reasonDraft = dueReason;
       reasonModalOpen = true;
@@ -1744,7 +1748,11 @@
                 onchange={onDueChanged}
               />
             </div>
-            <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            <!-- A hint that promises a question the form will not ask is half a sentence: a
+                 placeholder row's first date is set, not moved. -->
+            {#if dueIsCommitted}
+              <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+            {/if}
             <!-- Rows written before #392 open, render and edit exactly as before — but saving
                  one asks for the date it never had, which is the way out rather than a refusal. -->
             {#if !task.due_date}
@@ -1796,7 +1804,9 @@
                   onchange={onDueChanged}
                 />
                 <input type="hidden" name="due_change_reason" value={dueReason} />
-                <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+                {#if dueIsCommitted}
+                  <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+                {/if}
               {/snippet}
             </InlineField>
           {/if}

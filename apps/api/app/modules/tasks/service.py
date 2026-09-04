@@ -1645,12 +1645,19 @@ class TaskService:
             )
 
         # Accountability: pushing an existing deadline back requires a reason, which lands
-        # in the activity feed.
+        # in the activity feed. Not on a row nobody has named yet: create-then-edit wrote the
+        # org's today over a placeholder (`unnamed`, #350/#392) that the user is about to be
+        # looking at in edit mode, so the first date they pick there is *setting* the deadline,
+        # not moving one somebody stated — and asking why is asking them to explain a default.
+        # The flag clears with the first save (a real title lands above), and from then on the
+        # date is a commitment like any other. Read off the row, before this update's own
+        # ``unnamed = False`` is applied, so the save that names the task is the last free move.
         due_extended = (
             "due_date" in values
             and task.due_date is not None
             and values["due_date"] is not None
             and values["due_date"] > task.due_date
+            and not task.unnamed
         )
         if due_extended and not (reason or "").strip():
             raise AppError(

@@ -52,6 +52,56 @@ async def test_due_extension_requires_reason(client_for) -> None:
         ).status_code == 200
 
 
+async def test_unnamed_placeholder_moves_its_deadline_without_a_reason(client_for) -> None:
+    """Create-then-edit writes today over a placeholder row (#350/#392); the first date picked
+    in the edit form it lands in is *setting* the deadline, not extending one somebody stated.
+    The save that names the task is the last free move — after it the rule applies as usual."""
+    t = await make_tenant("acct-due-unnamed")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    async with client_for(t.host) as c:
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Naamloze taak", "unnamed": True, "due_date": today.isoformat()},
+                headers=headers,
+            )
+        ).json()
+        assert task["unnamed"] is True
+
+        later = (today + timedelta(days=3)).isoformat()
+        # A placeholder's deadline moves later with no reason and no extension entry…
+        moved = await c.patch(
+            f"/api/v1/tasks/{task['id']}", json={"due_date": later}, headers=headers
+        )
+        assert moved.status_code == 200
+        assert moved.json()["due_date"] == later
+
+        # …and so does the save that names it, even when both land in one request.
+        even_later = (today + timedelta(days=5)).isoformat()
+        named = await c.patch(
+            f"/api/v1/tasks/{task['id']}",
+            json={"title": "Echte taak", "due_date": even_later},
+            headers=headers,
+        )
+        assert named.status_code == 200
+        assert named.json()["unnamed"] is False
+
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        assert not [a for a in detail["activities"] if a["action"] == "due_extended"]
+
+        # Named and saved: from here on an extension is a commitment being moved.
+        blocked = await c.patch(
+            f"/api/v1/tasks/{task['id']}",
+            json={"due_date": (today + timedelta(days=9)).isoformat()},
+            headers=headers,
+        )
+        assert blocked.status_code == 422
+        assert blocked.json()["error"]["fields"]["due_change_reason"] == (
+            "errors.due_reason_required"
+        )
+
+
 async def test_allocated_minutes_and_logged(client_for) -> None:
     t = await make_tenant("acct-alloc")
     headers = await auth_cookie(t.user)

@@ -69,7 +69,12 @@
    definition at once, and for the title.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
-   record's activity feed with actor + timestamp. Approval locks records for non-managers.
+   record's activity feed with actor + timestamp. **A deadline nobody stated is not extended,
+   it is set**: create-then-edit writes today over a placeholder row (`unnamed`, #350) and drops
+   the user into the form, so the first date picked there — up to and including the save that
+   names the task — asks for no reason, on the API and on the screen alike; a form that asks
+   someone to explain a default they never chose reads as broken, and the row is the one
+   `?unnamed=1` already lists as unsaved. Approval locks records for non-managers.
    Invoiced implies approved — states never contradict each other.
    **The activity trail is a core capability, not a per-screen nicety** (issue #67, CLAUDE.md §16):
    a mutable record opts into it with `AuditableMixin`, its service records field edits (`created`,
