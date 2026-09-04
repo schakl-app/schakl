@@ -112,7 +112,14 @@ async def test_responsible_and_assignee_overrides_win(client_for) -> None:
         assert task.json()["assignee_user_id"] == owner
 
 
-async def test_no_parent_responsible_means_no_default(client_for) -> None:
+async def test_no_parent_responsible_means_the_caller(client_for) -> None:
+    """The inheritance chain ends at the caller, never at nobody.
+
+    An unassigned task is on no board and in no one's nudges, so a create with no project or
+    client responsible to inherit lands on the person making it — an MCP agent, the assistant
+    and an import cell all mean the person obviously meant, and a 422 would refuse the commonest
+    sentence spoken to the assistant. (It used to end at ``None``.)
+    """
     t = await make_tenant("resp-none")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
@@ -124,4 +131,4 @@ async def test_no_parent_responsible_means_no_default(client_for) -> None:
             json={"due_date": FAR_FUTURE_DUE, "title": "Loose", "company_id": company_id},
             headers=headers,
         )
-        assert task.json()["assignee_user_id"] is None
+        assert task.json()["assignee_user_id"] == str(t.user.id)

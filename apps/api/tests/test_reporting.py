@@ -604,14 +604,16 @@ async def test_the_document_renders_and_prints_from_the_snapshot(tmp_path) -> No
     def svg_boxes(box) -> list[tuple[float, float]]:
         tag = str(getattr(box, "element_tag", "") or "")
         if tag.endswith("}svg") or tag == "svg":
-            # A document has two kinds of SVG since #373: charts, and the metric glyph on a
-            # table head or a tile. The glyph is *meant* to be ten pixels square, so a blanket
-            # "every SVG has area" started failing on a perfectly good document. Filter on what
-            # the mark says it is rather than on a size threshold — a threshold would eventually
-            # wave a genuinely collapsed chart through as "probably an icon".
+            # A document has two kinds of SVG since #373: charts, and the glyphs — the metric
+            # icon on a table head or a tile (`mi`) and, since a change rides the number it is
+            # about, the arrow inside a change badge (`arrow`). A glyph is *meant* to be a few
+            # pixels square, so a blanket "every SVG has area" started failing on a perfectly
+            # good document. Filter on what the mark says it is rather than on a size threshold —
+            # a threshold would eventually wave a genuinely collapsed chart through as "probably
+            # an icon".
             element = getattr(box, "element", None)
             classes = (element.get("class") or "") if element is not None else ""
-            if "mi" in classes.split():
+            if {"mi", "arrow"} & set(classes.split()):
                 return []
             return [(box.width, box.height)]
         found: list[tuple[float, float]] = []

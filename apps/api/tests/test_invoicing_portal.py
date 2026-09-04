@@ -443,12 +443,20 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
         assert (await c.get("/api/v1/companies", headers=blind)).status_code == 200
 
         # Give them the client's own read and the invoices appear, unnarrowed.
-        # Both of the client role's invoicing keys. ``payment.link:own`` (epic #269) lets a
-        # client start a checkout for their own invoice, and an impersonated session is capped
-        # to the *intersection* (#266) — so a staff member who does not hold it sees a narrowed
-        # session, correctly. "Unnarrowed" means the impersonator holds everything the target
-        # does, which is what this half of the test is about.
-        await grant_member({"invoicing.invoice.read:own", "invoicing.payment.link:own"})
+        # Every key the client role holds that a member does not. ``payment.link:own`` (epic
+        # #269) lets a client start a checkout for their own invoice, and
+        # ``subscriptions.subscription.read:own`` is the client reading the agreements on their
+        # own companies (the portal homepage's Mijn abonnementen tile); an impersonated session
+        # is capped to the *intersection* (#266) — so a staff member who does not hold one of
+        # them sees a narrowed session, correctly. "Unnarrowed" means the impersonator holds
+        # everything the target does, which is what this half of the test is about.
+        await grant_member(
+            {
+                "invoicing.invoice.read:own",
+                "invoicing.payment.link:own",
+                "subscriptions.subscription.read:own",
+            }
+        )
         seeing = enter(
             await c.post(
                 f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
