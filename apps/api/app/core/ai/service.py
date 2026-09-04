@@ -167,18 +167,24 @@ class AIService:
             base_url=row.base_url,
         )
 
-    async def speech_config(self) -> ProviderConfig:
+    async def speech_config(self, feature: str = "time_assist") -> ProviderConfig:
         """The provider config for transcription (#246).
 
         Its own credential when the tenant set one, otherwise the chat provider — which only
         resolves for a provider that can actually transcribe. Anthropic cannot, and is the
         default, so this raises the ordinary "not configured" 409 there rather than pretending;
         the web surface asks ``enabled_features`` first and simply does not draw a microphone.
+
+        ``feature`` is the **host** the transcript is for, and it has to be the caller's own:
+        this used to test ``time_assist`` for every caller, so an org that had switched the
+        time quick-add off and dictated tasks on was drawn a microphone (``SPEECH_FEATURES``
+        said so) that answered 409 on the first press. The gate and the capability now read the
+        same toggle.
         """
         row = await self._settings()
         if row is None:
             raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
-        if not _feature_config(row, "time_assist").enabled:
+        if feature not in SPEECH_FEATURES or not _feature_config(row, feature).enabled:
             raise AppError(
                 "ai_feature_disabled", "errors.ai_feature_disabled", status_code=409
             )

@@ -32,7 +32,12 @@ _memberships = table("memberships", column("user_id"), column("org_id"))
 #: client: core already knows the table name and that ``name`` is its label, and "this table has
 #: a second name" is the same kind of knowledge. Ambiguity is decided over the *union*, so a
 #: reference matching two different clients by two different columns is still refused.
-_ALT_NAME_COLUMNS: dict[str, tuple[str, ...]] = {"companies": ("legal_name",)}
+#: Columns a reference may name a row by **besides** ``name``. A client is known by its label,
+#: its legal name (the one a bookkeeping export prints) and its client number (the one a
+#: bookkeeping export *keys* on), and a sheet from the bookkeeper carries whichever it has.
+_ALT_NAME_COLUMNS: dict[str, tuple[str, ...]] = {
+    "companies": ("legal_name", "client_number"),
+}
 
 
 def name_or_id_resolver(table_name: str):

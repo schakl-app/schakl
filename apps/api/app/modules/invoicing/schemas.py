@@ -19,6 +19,7 @@ from app.core.numbering import format_valid
 from app.modules.invoicing.models import (
     AutoInvoiceMode,
     InvoiceKind,
+    InvoiceOrigin,
     InvoiceStatus,
     LineKind,
     PaymentIntentStatus,
@@ -611,11 +612,93 @@ class InvoiceUpdate(BaseModel):
     reminders_paused: bool | None = None
     lines: list[LineWrite] | None = Field(default=None, max_length=200)
     custom: dict[str, Any] | None = None
+    #: The original document of an **imported** invoice, as a stored file this invoice may
+    #: name (uploaded through ``POST /files`` or ``/files/inline`` against this invoice). §18:
+    #: unset leaves it alone, an explicit ``null`` detaches. Refused on a native invoice.
+    original_file_id: uuid.UUID | None = None
 
     @field_validator("currency")
     @classmethod
     def _currency_ok(cls, value: str | None) -> str | None:
         return _validate_currency(value) if value is not None else None
+
+
+class InvoiceImport(BaseModel):
+    """One invoice of the back catalogue, as the import shape hands it to the service.
+
+    Not a route body: it arrives through the impex engine (``impex.py``), one spreadsheet row
+    at a time, already coerced. The *totals* are the document's own — an invoice somebody else
+    issued states them, and the service stores them verbatim (docs/INVOICING.md). The payment
+    columns describe a **state** (how much has been received, and when), and the service
+    records whatever payment makes that state true.
+    """
+
+    number: str = Field(min_length=1, max_length=40)
+    kind: InvoiceKind = InvoiceKind.INVOICE
+    company_id: uuid.UUID
+    issue_date: date
+    due_date: date | None = None
+    delivery_date: date | None = None
+    reference: str | None = Field(default=None, max_length=120)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    locale: str | None = Field(default=None, max_length=10)
+    subtotal: Decimal | None = None
+    tax_total: Decimal | None = None
+    total: Decimal
+    status: InvoiceStatus | None = None
+    paid_total: Decimal | None = None
+    paid_on: date | None = None
+    payment_method: Literal["bank", "cash", "card", "other"] = "bank"
+    sent_on: date | None = None
+    #: Off unless the sheet says so: auto-mail from a new system about old invoices is a
+    #: decision. ``None`` is "the sheet has no such column" — on an update it changes nothing.
+    reminders: bool | None = None
+    #: What the one summary line says; default "Factuur {number}" in the document's locale.
+    description: str | None = Field(default=None, max_length=512)
+    import_source: str | None = Field(default=None, max_length=80)
+    #: For a credit note: the invoice it corrects (already resolved from its number).
+    credit_for_id: uuid.UUID | None = None
+    notes: str | None = None
+    custom: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("currency")
+    @classmethod
+    def _currency_ok(cls, value: str | None) -> str | None:
+        return _validate_currency(value) if value is not None else None
+
+
+class InvoiceOriginalRead(BaseModel):
+    """The document an imported invoice was actually sent as — what the record holds."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    file_id: uuid.UUID
+    filename: str
+    size_bytes: int
+    #: The invoice's own record of the file's fingerprint, written when it was attached.
+    sha256: str
+    uploaded_at: datetime
+
+
+class OriginalsMatch(BaseModel):
+    number: str
+    filename: str
+
+
+class OriginalsBatchReport(BaseModel):
+    """What a zip of originals did: one line per file, and the invoices it could not serve.
+
+    ``ambiguous`` names a file whose name matched more than one invoice number (an entry called
+    ``2024.pdf`` on a register full of ``2024-…`` numbers), ``unmatched`` one matching none, and
+    ``already_attached`` an invoice that had its original and was left alone — a batch never
+    replaces a document somebody attached on purpose.
+    """
+
+    matched: list[OriginalsMatch] = Field(default_factory=list)
+    unmatched: list[str] = Field(default_factory=list)
+    ambiguous: list[str] = Field(default_factory=list)
+    already_attached: list[OriginalsMatch] = Field(default_factory=list)
+    not_pdf: list[str] = Field(default_factory=list)
 
 
 class PaymentWrite(BaseModel):
@@ -753,6 +836,10 @@ class PublicInvoiceRead(BaseModel):
     payment_status: PaymentIntentStatus | None = None
     payment_settled: bool = False
     payment_pending: bool = False
+    #: An imported invoice carrying the document it was actually sent as: the page frames the
+    #: PDF rather than the HTML render, which would draw a different document under the same
+    #: number.
+    has_original: bool = False
 
 
 class PublicCheckout(BaseModel):
@@ -846,6 +933,14 @@ class InvoiceRead(BaseModel):
     #: to the other. Empty on a list, which draws the ``credited`` flag instead.
     credit_notes: list[CreditNoteRef] = Field(default_factory=list)
     credit_for_number: str = ""
+    #: ``native`` or ``imported`` — the back catalogue (docs/INVOICING.md). An imported
+    #: document's totals are stored facts, and it may carry the original file it was sent as.
+    origin: InvoiceOrigin = InvoiceOrigin.NATIVE
+    import_source: str | None = None
+    imported_at: datetime | None = None
+    #: The original document, resolved on the **detail read only** — a list of two hundred
+    #: invoices draws a chip, never a file row.
+    original: InvoiceOriginalRead | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -6,7 +6,7 @@ import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
 import { FolderKanban } from "@lucide/svelte";
 
-import ProjectBudgetsDonutWidget from "./ProjectBudgetsDonutWidget.svelte";
+import ProjectBudgetsOverviewWidget from "./ProjectBudgetsOverviewWidget.svelte";
 import ProjectBudgetsWidget from "./ProjectBudgetsWidget.svelte";
 import ProjectsPanel from "./ProjectsPanel.svelte";
 
@@ -31,20 +31,25 @@ registerWebModule({
       component: ProjectBudgetsWidget,
     },
     {
+      // The key still says "donut" because it is what saved dashboard layouts name this tile
+      // by (`dashboard_prefs`); the donut itself is gone. Renaming the key would drop the tile
+      // off every board that had placed it.
       key: "projects.budgets_donut",
       module: "projects",
       position: 26,
       requiresPermission: "projects.project.read",
-      descriptionKey: "dashboard.widget_desc.projects.budgets_donut",
+      titleKey: "dashboard.widget.projects.budgets_overview",
+      descriptionKey: "dashboard.widget_desc.projects.budgets_overview",
       category: "dashboard.category.projects",
       size: "md",
-      // Ten slices plus an honest tail bucket (#437): the endpoint hands back the hottest
-      // rows, the tail's summed hours, and the over-budget count over the whole set.
+      // Ten rows, hottest first: the endpoint hands back the rows, the count per burn band
+      // over the whole set, and the hours past budget summed over the over-budget ones — so
+      // every heading on the tile prints the number the list it opens will show.
       load: (api) =>
         api
           .GET("/api/v1/projects/dashboard-budgets", { params: { query: { limit: 10 } } })
           .then((r) => r.data ?? { items: [], total: 0 }),
-      component: ProjectBudgetsDonutWidget,
+      component: ProjectBudgetsOverviewWidget,
     },
   ],
   nav: [

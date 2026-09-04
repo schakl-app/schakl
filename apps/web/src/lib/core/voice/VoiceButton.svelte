@@ -13,6 +13,7 @@
   import Button from "$lib/core/ui/Button.svelte";
 
   import type { Recorder } from "./recorder.svelte";
+  import { formatClock } from "./transcribe";
 
   let {
     recorder,
@@ -27,6 +28,11 @@
   } = $props();
 
   const recording = $derived(recorder.state === "recording");
+  // The cap is printed beside the counter ("0:42 / 5:00") rather than discovered when the
+  // recording stops on its own: a limit the user can see is a limit, one they cannot is a fault.
+  const clock = $derived(
+    `${formatClock(recorder.elapsed)} / ${formatClock(Math.round(recorder.maxMs / 1000))}`,
+  );
 </script>
 
 <Button
@@ -47,6 +53,6 @@
     {/if}
   {/if}
   {#if recording}
-    <span class="tabular-nums">{recorder.elapsed}s</span>
+    <span class="tabular-nums">{clock}</span>
   {/if}
 </Button>

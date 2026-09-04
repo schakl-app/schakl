@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
-  import { CircleMinus, Download, Pencil, Trash2 } from "@lucide/svelte";
+  import { CircleMinus, Download, FileArchive, Pencil, Trash2 } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
@@ -9,16 +10,21 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import FilterBar from "$lib/core/filters/FilterBar.svelte";
   import { filterUrl, type FilterDef } from "$lib/core/filters/types";
   import type { InvoiceFilterKey } from "$lib/modules/invoicing/filters";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
   import { docMoney, docStatus, MAX_ARCHIVE_DOCUMENTS } from "$lib/modules/invoicing/types";
@@ -37,6 +43,32 @@
   );
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // --- originals (docs/INVOICING.md) ------------------------------------------
+  // A zip of the PDFs an imported back catalogue was sent as, matched by invoice number. Its
+  // own dialog rather than a step of the import wizard: the spreadsheet and the archive come
+  // from different places (the ledger export, a mail folder) and rarely on the same day, and
+  // the report it answers with is a different shape from a row report. Gated on the write key
+  // the API route declares — no bulk permission, because attaching forty PDFs you may each
+  // attach is the same act repeated (§18).
+  const busy = new InFlight();
+  let originalsOpen = $state(false);
+  let originalsInput = $state<HTMLInputElement | null>(null);
+  let originalsDropError = $state<string | null>(null);
+  const originalsReport = $derived(form?.originals ?? null);
+  const originalsCounts = $derived(
+    originalsReport
+      ? (
+          [
+            ["matched", originalsReport.matched?.length ?? 0],
+            ["already_attached", originalsReport.already_attached?.length ?? 0],
+            ["unmatched", originalsReport.unmatched?.length ?? 0],
+            ["ambiguous", originalsReport.ambiguous?.length ?? 0],
+            ["not_pdf", originalsReport.not_pdf?.length ?? 0],
+          ] as const
+        ).filter(([, count]) => count > 0)
+      : [],
+  );
 
   // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
   // Download and delete, and deliberately nothing else: everything else an invoice has is money
@@ -148,6 +180,7 @@
       outstanding: outstandingCell,
       reference: referenceCell,
       reminders: remindersCell,
+      origin: originCell,
     }),
   });
 </script>
@@ -225,6 +258,35 @@
 
 <FilterBar filters={filterDefs} idPrefix="invoice-filter">
   {#snippet actions()}
+    {#if data.canReadRegister}
+      <!-- Export carries what the screen is narrowed by, so the file *is* the list on screen,
+           whole (docs/UX.md) — the API declares exactly these on the export route. A client
+           reads only their own copies, and bulk is not theirs either way (§17). -->
+      <ImpexBar
+        entity="invoice"
+        readPermission="invoicing.invoice.read"
+        writePermission="invoicing.invoice.write"
+        filters={{
+          q: data.q,
+          company_id: data.companyFilter,
+          status: data.statusFilter,
+          overdue: data.overdueFilter,
+          sort: data.table.sort,
+        }}
+        locale={data.locale}
+        {form}
+      />
+      {#if data.canWrite}
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
+          onclick={() => (originalsOpen = true)}
+        >
+          <FileArchive class="h-4 w-4" />
+          {t("invoicing.originals.title")}
+        </button>
+      {/if}
+    {/if}
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -324,6 +386,17 @@
   <span class="text-text-muted">{invoice.reminder_count > 0 ? invoice.reminder_count : "—"}</span>
 {/snippet}
 
+{#snippet originCell(invoice: Invoice)}
+  {#if invoice.origin === "imported"}
+    <span
+      class="inline-block max-w-full truncate rounded-md bg-surface px-2 py-0.5 align-middle text-xs text-text-muted"
+      >{t("invoicing.origin.imported")}</span
+    >
+  {:else}
+    <span class="text-text-muted">{t("invoicing.origin.native")}</span>
+  {/if}
+{/snippet}
+
 {#snippet rowActions(invoice: Invoice)}
   <ActionsMenu
     compact
@@ -420,3 +493,69 @@
   action="?/delete"
   fields={{ id: deleteId }}
 />
+
+<Modal bind:open={originalsOpen} title={t("invoicing.originals.title")}>
+  <form
+    method="POST"
+    action="?/originals"
+    enctype="multipart/form-data"
+    use:enhance={busy.keep("originals")}
+    class="space-y-3"
+  >
+    <p class="text-sm text-text-muted">{t("invoicing.originals.hint")}</p>
+    <div
+      class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3"
+      use:filedrop={{
+        input: () => originalsInput,
+        disabled: busy.active,
+        onerror: (key) => (originalsDropError = key),
+      }}
+    >
+      <input
+        bind:this={originalsInput}
+        type="file"
+        name="file"
+        accept="application/zip,.zip"
+        required
+        class="text-sm text-text"
+        onchange={() => (originalsDropError = null)}
+      />
+      <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
+    </div>
+    {#if originalsDropError || form?.originalsError}
+      <p class="text-sm text-red-600 dark:text-red-400">
+        {t(originalsDropError ?? form?.originalsError ?? "")}
+      </p>
+    {/if}
+    {#if originalsReport}
+      <!-- The whole report, counts first and then every file that did not land, by name:
+           "3 gekoppeld" alone leaves the reader guessing which of the forty were not. -->
+      <div class="rounded-lg bg-surface p-3 text-sm">
+        {#if originalsCounts.length === 0}
+          <p class="text-text-muted">{t("invoicing.originals.nothing")}</p>
+        {:else}
+          <ul class="space-y-0.5">
+            {#each originalsCounts as [key, count] (key)}
+              <li class={key === "matched" ? "text-text" : "text-text-muted"}>
+                {t(`invoicing.originals.${key}`, { count })}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#each [...(originalsReport.unmatched ?? []), ...(originalsReport.ambiguous ?? []), ...(originalsReport.not_pdf ?? [])] as name (name)}
+          <p class="mt-1 truncate font-mono text-xs text-text-muted">{name}</p>
+        {/each}
+      </div>
+    {/if}
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (originalsOpen = false)}>{t("common.close")}</button
+      >
+      <Button loading={busy.is("originals")} disabled={busy.active}>
+        {t("invoicing.originals.upload")}
+      </Button>
+    </div>
+  </form>
+</Modal>

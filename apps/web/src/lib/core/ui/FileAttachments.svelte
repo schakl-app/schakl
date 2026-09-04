@@ -17,23 +17,27 @@
    *
    * An image is **shown, not spelled out** (docs/UX.md): `shot-2026-08-31.png` says nothing and
    * the picture says everything, so the strip draws the API's thumbnail and a click opens the
-   * original in a lightbox. A file the browser cannot draw stays a filename with a paperclip.
+   * original in the app's one viewer (`lightbox.svelte.ts`), handed the whole strip so ← → walk
+   * the screenshots in the order they are drawn. A file the browser cannot draw stays a filename
+   * with a paperclip.
    *
    * The client's view of a file is a per-file bit (`client_visible`), toggled here with an eye
    * and stated in words on hover. It defaults to hidden — a screenshot pinned to a bug is the
    * team's working material until somebody decides otherwise — and the API enforces it on every
    * path (list, bytes, thumbnail), so the eye is the control and never the gate.
    */
-  import { Eye, EyeOff, ExternalLink, Paperclip, Trash2, X } from "@lucide/svelte";
+  import { Eye, EyeOff, Paperclip, Trash2 } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { pastedImageName } from "$lib/core/files/paste";
+  import { fmtBytes } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
+  import { openLightbox } from "$lib/core/ui/lightbox.svelte";
 
   interface StoredFile {
     id: string;
@@ -77,8 +81,6 @@
   let confirmFileId = $state("");
   let uploading = $state(false);
   let localError = $state<string | null>(null);
-  let lightbox = $state<StoredFile | null>(null);
-  let dialog = $state<HTMLDialogElement | null>(null);
   let input = $state<HTMLInputElement | null>(null);
 
   function askDelete(fileId: string) {
@@ -86,20 +88,16 @@
     confirmOpen = true;
   }
 
-  function fmtSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`;
-    return `${bytes} B`;
-  }
-
-  function open(file: StoredFile) {
-    lightbox = file;
-    dialog?.showModal();
-  }
-
-  function close() {
-    dialog?.close();
-    lightbox = null;
+  function open(index: number) {
+    openLightbox(
+      images.map((file) => ({
+        src: `/api/v1/files/${file.id}`,
+        thumb: `/api/v1/files/${file.id}/thumbnail?size=480`,
+        label: file.filename,
+        sizeBytes: file.size_bytes,
+      })),
+      index,
+    );
   }
 
   function onPaste(event: ClipboardEvent) {
@@ -117,8 +115,7 @@
     const target = event.target as HTMLElement | null;
     const typing =
       !!target &&
-      (target.closest("input, textarea, [contenteditable=''], [contenteditable='true']") !==
-        null) &&
+      target.closest("input, textarea, [contenteditable=''], [contenteditable='true']") !== null &&
       data.types.includes("text/plain");
     if (typing) return;
     event.preventDefault();
@@ -138,13 +135,13 @@
 
 {#if images.length > 0}
   <ul class="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-    {#each images as file (file.id)}
+    {#each images as file, i (file.id)}
       <li class="group relative">
         <button
           type="button"
           class="block w-full overflow-hidden rounded-lg border border-border bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           title={file.filename}
-          onclick={() => open(file)}
+          onclick={() => open(i)}
         >
           <img
             src={`/api/v1/files/${file.id}/thumbnail?size=480`}
@@ -178,7 +175,7 @@
         >
           {file.filename}
         </a>
-        <span class="shrink-0 text-xs text-text-muted">{fmtSize(file.size_bytes)}</span>
+        <span class="shrink-0 text-xs text-text-muted">{fmtBytes(file.size_bytes)}</span>
         {@render visibility(file)}
         {@render menu(file)}
       </li>
@@ -277,52 +274,10 @@
   </form>
 {/if}
 {#if error || localError}
-  <p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{t(error ?? localError ?? "")}</p>
+  <p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+    {t(error ?? localError ?? "")}
+  </p>
 {/if}
-
-<!-- The lightbox: the original bytes, at the size the screen allows, and a way out. A native
-     <dialog> so Escape, the backdrop and focus containment come for free. -->
-<dialog
-  bind:this={dialog}
-  class="m-auto max-h-[92vh] max-w-[92vw] rounded-xl border border-border bg-surface-raised p-0 shadow-xl backdrop:bg-black/70"
-  onclose={() => (lightbox = null)}
-  onclick={(e) => {
-    if (e.target === dialog) close();
-  }}
->
-  {#if lightbox}
-    <div class="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-      <span class="min-w-0 truncate text-sm text-text" title={lightbox.filename}>
-        {lightbox.filename}
-        <span class="ml-2 text-xs text-text-muted">{fmtSize(lightbox.size_bytes)}</span>
-      </span>
-      <div class="flex shrink-0 items-center gap-1">
-        <a
-          href={`/api/v1/files/${lightbox.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-surface hover:text-text"
-        >
-          <ExternalLink size={14} />
-          {t("files.open_original")}
-        </a>
-        <button
-          type="button"
-          class="inline-flex items-center rounded p-1 text-text-muted hover:bg-surface hover:text-text"
-          aria-label={t("common.close")}
-          onclick={close}
-        >
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-    <img
-      src={`/api/v1/files/${lightbox.id}`}
-      alt={lightbox.filename}
-      class="block max-h-[calc(92vh-3rem)] max-w-[92vw] object-contain"
-    />
-  {/if}
-</dialog>
 
 <ConfirmDialog
   bind:open={confirmOpen}

@@ -61,6 +61,7 @@ export const IMPEX_ENTITIES = [
   "website",
   "hosting",
   "uptime_monitor",
+  "invoice",
 ] as const satisfies readonly ImpexEntity[];
 
 type NoneMissing =
@@ -91,6 +92,7 @@ export const EXPORT_FILTERS = [
   "dns_provider_id",
   "invoiceable",
   "uptime_enabled",
+  "overdue",
   "sort",
 ] as const;
 

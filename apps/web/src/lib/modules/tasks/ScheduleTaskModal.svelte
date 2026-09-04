@@ -30,6 +30,7 @@
   import { orgToday } from "$lib/core/today";
   import { formatMinutes } from "$lib/modules/time/format";
 
+  import ConflictCalendar from "./ConflictCalendar.svelte";
   import { durationMinutes as blockDuration, localDayTime } from "./schedule";
 
   interface SchedTask {
@@ -230,6 +231,13 @@
     ),
   );
 
+  // Whose calendars the conflict view draws: the chips for a new block, the one person of the
+  // block being edited (which is left out of its own check by id), and only ever the caller
+  // for a `:own` holder — the same list the form is about to post, never a wider one.
+  const conflictPeople = $derived(
+    editBlock ? [personId].filter(Boolean) : canScheduleAny ? personIds : [currentUserId],
+  );
+
   const modalTitle = $derived(
     editBlock
       ? t("tasks.schedule.edit_title")
@@ -239,7 +247,7 @@
   );
 </script>
 
-<Modal bind:open size={selectedTask ? "lg" : "2xl"} title={modalTitle}>
+<Modal bind:open size={selectedTask ? "5xl" : "2xl"} title={modalTitle}>
   {#if !selectedTask}
     <!-- Picker: a dataframe of schedulable tasks with project, client and assignee visible. -->
     <input
@@ -301,145 +309,166 @@
       </div>
     {/if}
   {:else}
-    <!-- Form: person, day, start, length (defaults to the task's time budget), live preview. -->
-    <form
-      method="POST"
-      {action}
-      use:enhance={busy.wrap("", () => async ({ result, update }) => {
-        if (result.type === "success") {
-          open = false;
-          ondone?.();
-          await update();
-        } else if (result.type === "failure") {
-          errorKey = (result.data as { error?: string } | undefined)?.error ?? "errors.validation";
-          await update({ reset: false });
-        } else {
-          await update();
-        }
-      })}
-      class="space-y-4"
-    >
-      <input type="hidden" name="task_id" value={selectedTask.id} />
-      {#if editBlock}
-        <input type="hidden" name="schedule_id" value={editBlock.id} />
-      {/if}
+    <!-- Form: person, day, start, length (defaults to the task's time budget), live preview —
+         and beside it the day itself, one calendar per person, with this block drawn over
+         whatever is already there (docs/UX.md): a clash is seen before it is saved, never after. -->
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,27rem)_minmax(0,1fr)]">
+      <form
+        method="POST"
+        {action}
+        use:enhance={busy.wrap("", () => async ({ result, update }) => {
+          if (result.type === "success") {
+            open = false;
+            ondone?.();
+            await update();
+          } else if (result.type === "failure") {
+            errorKey =
+              (result.data as { error?: string } | undefined)?.error ?? "errors.validation";
+            await update({ reset: false });
+          } else {
+            await update();
+          }
+        })}
+        class="space-y-4"
+      >
+        <input type="hidden" name="task_id" value={selectedTask.id} />
+        {#if editBlock}
+          <input type="hidden" name="schedule_id" value={editBlock.id} />
+        {/if}
 
-      <div class="rounded-lg border border-border bg-surface px-3 py-2">
-        <p class="text-sm font-medium text-text">{selectedTask.title}</p>
-        <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-text-muted">
-          {#if selectedTask.allocated_minutes}
-            <span
-              >{t("tasks.schedule.budget", {
-                time: formatMinutes(selectedTask.allocated_minutes),
-              })}</span
+        <div class="rounded-lg border border-border bg-surface px-3 py-2">
+          <p class="text-sm font-medium text-text">{selectedTask.title}</p>
+          <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-text-muted">
+            {#if selectedTask.allocated_minutes}
+              <span
+                >{t("tasks.schedule.budget", {
+                  time: formatMinutes(selectedTask.allocated_minutes),
+                })}</span
+              >
+            {/if}
+            {#if selectedTask.due_date}
+              <span
+                >{t("tasks.schedule.deadline_at", {
+                  date: fmtDayMonth(selectedTask.due_date),
+                })}</span
+              >
+            {/if}
+          </p>
+          {#if !task}
+            <button
+              type="button"
+              class="mt-1 text-xs text-brand hover:underline"
+              onclick={() => (selectedTask = null)}>{t("tasks.schedule.change_task")}</button
             >
           {/if}
-          {#if selectedTask.due_date}
-            <span
-              >{t("tasks.schedule.deadline_at", { date: fmtDayMonth(selectedTask.due_date) })}</span
-            >
+        </div>
+
+        <div>
+          <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.person")}</span>
+          {#if !canScheduleAny}
+            <!-- `:own` plans one calendar: the caller's. Posted under the same field either way, so
+               the action reads one shape. -->
+            <input type="hidden" name={editBlock ? "user_id" : "user_ids"} value={currentUserId} />
+            <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
+              {memberName.get(currentUserId) ?? t("tasks.schedule.you")}
+            </p>
+          {:else if editBlock}
+            <!-- An existing block is one person's; editing it moves or reassigns *that* row. -->
+            <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
+          {:else}
+            <!-- A new block is one act for everyone it is for — chips, like the assignee roster it
+               is prefilled from; one block per chip, written together or not at all. -->
+            <MembersPicker
+              name="user_ids"
+              id="sched-people"
+              bind:value={personIds}
+              members={allMembers}
+              placeholder={t("tasks.schedule.add_person")}
+            />
+            {#if personIds.length === 0}
+              <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                {t("tasks.schedule.nobody")}
+              </p>
+            {/if}
           {/if}
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.date")}</span>
+            <DateInput name="day" bind:value={day} />
+          </div>
+          <div>
+            <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.start")}</span
+            >
+            <TimeInput name="start_time" bind:value={startTime} />
+          </div>
+          <div>
+            <label for="sched-duration" class="mb-1 block text-sm font-medium text-text">
+              {t("tasks.schedule.duration")}
+            </label>
+            <DurationInput
+              id="sched-duration"
+              name="duration_minutes"
+              required
+              bind:minutes={durationMinutes}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label for="sched-note" class="mb-1 block text-sm font-medium text-text">
+            {t("tasks.schedule.note")}
+          </label>
+          <input
+            id="sched-note"
+            name="note"
+            bind:value={note}
+            maxlength="500"
+            class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+        </div>
+
+        <!-- Live preview: the block that will be stored (docs/UX.md: every number opens). -->
+        <p class="rounded-lg bg-surface px-3 py-2 text-sm text-text">
+          {fmtDayMonth(day || todayIso())} · {startTime}{RANGE_DASH}{endPreview.time}{endPreview.nextDay
+            ? " (+1)"
+            : ""} · {formatMinutes(durationMinutes ?? 0)}
         </p>
-        {#if !task}
+        {#if overBudget}
+          <p class="text-xs text-amber-600 dark:text-amber-400">
+            {t("tasks.schedule.over_budget")}
+          </p>
+        {/if}
+
+        {#if errorKey}
+          <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
+        {/if}
+
+        <div class="flex justify-end gap-2">
           <button
             type="button"
-            class="mt-1 text-xs text-brand hover:underline"
-            onclick={() => (selectedTask = null)}>{t("tasks.schedule.change_task")}</button
+            class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
+            onclick={() => (open = false)}>{t("common.cancel")}</button
           >
-        {/if}
-      </div>
-
-      <div>
-        <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.person")}</span>
-        {#if !canScheduleAny}
-          <!-- `:own` plans one calendar: the caller's. Posted under the same field either way, so
-               the action reads one shape. -->
-          <input type="hidden" name={editBlock ? "user_id" : "user_ids"} value={currentUserId} />
-          <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
-            {memberName.get(currentUserId) ?? t("tasks.schedule.you")}
-          </p>
-        {:else if editBlock}
-          <!-- An existing block is one person's; editing it moves or reassigns *that* row. -->
-          <MemberPicker name="user_id" bind:value={personId} members={allMembers} />
-        {:else}
-          <!-- A new block is one act for everyone it is for — chips, like the assignee roster it
-               is prefilled from; one block per chip, written together or not at all. -->
-          <MembersPicker
-            name="user_ids"
-            id="sched-people"
-            bind:value={personIds}
-            members={allMembers}
-            placeholder={t("tasks.schedule.add_person")}
-          />
-          {#if personIds.length === 0}
-            <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t("tasks.schedule.nobody")}</p>
-          {/if}
-        {/if}
-      </div>
-
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.date")}</span>
-          <DateInput name="day" bind:value={day} />
+          <Button
+            type="submit"
+            loading={busy.active}
+            disabled={!editBlock && canScheduleAny && personIds.length === 0}
+          >
+            {t("tasks.schedule.submit")}
+          </Button>
         </div>
-        <div>
-          <span class="mb-1 block text-sm font-medium text-text">{t("tasks.schedule.start")}</span>
-          <TimeInput name="start_time" bind:value={startTime} />
-        </div>
-        <div>
-          <label for="sched-duration" class="mb-1 block text-sm font-medium text-text">
-            {t("tasks.schedule.duration")}
-          </label>
-          <DurationInput
-            id="sched-duration"
-            name="duration_minutes"
-            required
-            bind:minutes={durationMinutes}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label for="sched-note" class="mb-1 block text-sm font-medium text-text">
-          {t("tasks.schedule.note")}
-        </label>
-        <input
-          id="sched-note"
-          name="note"
-          bind:value={note}
-          maxlength="500"
-          class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-        />
-      </div>
-
-      <!-- Live preview: the block that will be stored (docs/UX.md: every number opens). -->
-      <p class="rounded-lg bg-surface px-3 py-2 text-sm text-text">
-        {fmtDayMonth(day || todayIso())} · {startTime}{RANGE_DASH}{endPreview.time}{endPreview.nextDay
-          ? " (+1)"
-          : ""} · {formatMinutes(durationMinutes ?? 0)}
-      </p>
-      {#if overBudget}
-        <p class="text-xs text-amber-600 dark:text-amber-400">{t("tasks.schedule.over_budget")}</p>
-      {/if}
-
-      {#if errorKey}
-        <p class="text-sm text-red-600 dark:text-red-400">{t(errorKey)}</p>
-      {/if}
-
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
-          onclick={() => (open = false)}>{t("common.cancel")}</button
-        >
-        <Button
-          type="submit"
-          loading={busy.active}
-          disabled={!editBlock && canScheduleAny && personIds.length === 0}
-        >
-          {t("tasks.schedule.submit")}
-        </Button>
-      </div>
-    </form>
+      </form>
+      <ConflictCalendar
+        {day}
+        {startTime}
+        {durationMinutes}
+        personIds={conflictPeople}
+        members={allMembers}
+        {currentUserId}
+        excludeRef={editBlock?.id ?? null}
+      />
+    </div>
   {/if}
 </Modal>

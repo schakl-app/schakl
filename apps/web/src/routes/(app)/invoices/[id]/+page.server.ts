@@ -8,6 +8,7 @@ import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import "$lib/modules";
 import { contactLookups, documentBody, processBody } from "$lib/modules/invoicing/form.server";
+import { postOriginal } from "$lib/modules/invoicing/originals.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -265,6 +266,36 @@ export const actions: Actions = {
     );
     if (error) return fail(400, { paymentError: apiErrorKey(error).key });
     return { paymentSynced: true };
+  },
+  /**
+   * The original PDF of an imported invoice (docs/INVOICING.md). Attaching replaces whatever
+   * was there — the API keeps one original per invoice and records the swap on the trail —
+   * and refuses a native invoice outright, so the card is only ever drawn on an imported one.
+   * Errors land as `originalError`, in the card that produced them rather than at the top of
+   * a long document page (the payment card's rule).
+   */
+  attachOriginal: async (event) => {
+    const form = await event.request.formData();
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return fail(400, { originalError: "errors.required" });
+    }
+    const result = await postOriginal(
+      event,
+      `/api/v1/invoicing/invoices/${event.params.id}/original`,
+      file,
+    );
+    if ("error" in result) return fail(400, { originalError: result.error });
+    return { originalSaved: true };
+  },
+  /** Forget the original: an explicit `null` on the field, §18's "absent leaves alone". */
+  detachOriginal: async (event) => {
+    const { error } = await apiFor(event).PATCH("/api/v1/invoicing/invoices/{invoice_id}", {
+      ...pathFor(event),
+      body: { original_file_id: null } as never,
+    });
+    if (error) return fail(400, { originalError: apiErrorKey(error).key });
+    return { originalDetached: true };
   },
   deletePayment: async (event) => {
     const form = await event.request.formData();

@@ -28,18 +28,28 @@
    *   form carries and nothing else — partial like every update action here — and the same
    *   rule the task page enforces: a deadline pushed *later* asks for a reason, inline, because
    *   a second modal over a slide-over is one dialog too many.
+   * - **What the run wrote that is not a field is shown, read-only.** The enrichment writes a
+   *   description *and* a checklist and the links the message named
+   *   (`tasks/system.apply_ai_enrichment_system`); the dialog drew only the description, so the
+   *   steps schakl had invented were reviewed by nobody — the one part of the plan a reader
+   *   most needs to check against the e-mail beside it, filed behind a link that said they
+   *   "live on the full task". They are drawn, not made editable: this is a review of a task
+   *   that already exists, and restructuring a checklist is what the card is for.
    *
    * Every way out ends the same way: `onclose` fires whether the reader saved, closed, pressed
    * Escape, clicked the backdrop or followed the link to the full task, so the host can close
    * the review it was standing on (an exit that discards is Sluiten, never Annuleren — there is
    * nothing to cancel, the task exists).
    */
+  import { Link as LinkIcon } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
@@ -56,6 +66,23 @@
     user_id: string;
     is_primary: boolean;
   }
+  interface ChecklistItem {
+    id: string;
+    title: string;
+    description?: string | null;
+    done: boolean;
+  }
+  interface Checklist {
+    id: string;
+    title: string;
+    description?: string | null;
+    items?: ChecklistItem[];
+  }
+  interface Link {
+    id: string;
+    url: string;
+    title?: string | null;
+  }
   interface TaskRow {
     id: string;
     title: string;
@@ -66,6 +93,8 @@
     assignees: Assignee[];
     assignee_contact_id: string | null;
     ai_status: string | null;
+    checklists?: Checklist[];
+    links?: Link[];
   }
 
   let {
@@ -306,6 +335,77 @@
             />
           {/key}
         </div>
+        {#if (task.checklists ?? []).length > 0 || (task.links ?? []).length > 0}
+          <!-- What the run wrote that is not a field of the task (#327: a checklist, the links
+               the message named). Read-only here on purpose: this is the review of a task that
+               already exists, so the steps are checked *against the e-mail beside them*, and
+               restructuring them is what the card is for — the link below is one click away.
+               Drawn from the same fetched row as everything else, so the moment `reveal` lands
+               the run's answer, the list appears with it. -->
+          <div class="space-y-3 rounded-xl border border-border bg-surface-raised p-3">
+            {#each task.checklists ?? [] as checklist (checklist.id)}
+              {@const items = checklist.items ?? []}
+              {@const done = items.filter((item) => item.done).length}
+              <div>
+                <div class="flex items-baseline justify-between gap-2">
+                  <h3 class="text-sm font-medium text-text">{checklist.title}</h3>
+                  {#if items.length > 0}
+                    <span class="shrink-0 text-xs tabular-nums text-text-muted">
+                      {t("tasks.checklist.progress", { done, total: items.length })}
+                    </span>
+                  {/if}
+                </div>
+                {#if checklist.description}
+                  <div class="mt-1 text-sm"><Markdown value={checklist.description} /></div>
+                {/if}
+                <ul class="mt-2 space-y-1">
+                  {#each items as item (item.id)}
+                    <li class="flex items-start gap-2">
+                      <span
+                        class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px]
+                        {item.done
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-border text-transparent'}"
+                        aria-hidden="true">✓</span
+                      >
+                      <div class="min-w-0 flex-1">
+                        <span
+                          class="text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}"
+                          >{item.title}</span
+                        >
+                        {#if item.description}
+                          <div class="text-xs text-text-muted">
+                            <Markdown value={item.description} />
+                          </div>
+                        {/if}
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/each}
+            {#if (task.links ?? []).length > 0}
+              <div class={(task.checklists ?? []).length > 0 ? "border-t border-border pt-3" : ""}>
+                <h3 class="mb-1 text-sm font-medium text-text">{t("tasks.links.title")}</h3>
+                <ul class="space-y-1">
+                  {#each task.links ?? [] as link (link.id)}
+                    <li class="flex items-center gap-2">
+                      <LinkIcon size={14} class="shrink-0 text-text-muted" />
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
+                      >
+                        {link.title || link.url}
+                      </a>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          </div>
+        {/if}
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="block text-sm">
             <span class="mb-1 block font-medium text-text">{t("tasks.field.project")}</span>

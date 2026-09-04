@@ -66,6 +66,9 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     # 'over' keeps only budgeted projects at or past their budget (#437) — the projects list's
     # own token, so the over-budget view exports exactly what it shows.
     "burn": (str | None, Query(None, max_length=20)),
+    # The invoice list's "te laat" pill (#354): a screen narrowed to what is overdue exports
+    # exactly that, or the spreadsheet quietly grows the rows the tile did not count.
+    "overdue": (bool, Query(False, description="Only rows past their due date")),
     "sort": (str | None, Query(None, max_length=50, description="List sort key, '-' desc")),
 }
 

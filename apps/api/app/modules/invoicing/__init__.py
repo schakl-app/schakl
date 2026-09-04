@@ -13,6 +13,7 @@ from app.core.events import subscribe
 from app.modules.invoicing.bulk import INVOICE_BULK
 from app.modules.invoicing.emails import INVOICING_EMAIL_KINDS
 from app.modules.invoicing.events import on_domain_due, on_subscription_due
+from app.modules.invoicing.impex import INVOICE_IMPEX
 from app.modules.invoicing.jobs import invoicing_daily, invoicing_payments_reconcile
 from app.modules.invoicing.panels import invoicing_company_panel
 from app.modules.invoicing.permissions import INVOICING_PERMISSIONS
@@ -32,6 +33,9 @@ module = ModuleDescriptor(
     summaries=[invoicing_company_summary],
     permissions=INVOICING_PERMISSIONS,
     bulk=[INVOICE_BULK],
+    # The back catalogue comes in as a spreadsheet (§17, docs/INVOICING.md): one row per
+    # invoice with its totals and payment state, upserting on the number.
+    impex=[INVOICE_IMPEX],
     # The three mails a client reads (invoice, quote, reminder), rewritable per locale in
     # Instellingen -> E-mail like the auth mails already were (#161 tier 2, §6).
     email_templates=INVOICING_EMAIL_KINDS,

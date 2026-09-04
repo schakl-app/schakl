@@ -159,3 +159,13 @@ class DashboardBudgets(BaseModel):
     #: How many budgeted projects are at or past their budget — over the *whole* set, so the
     #: aggregate the widget prints agrees with the ``?burn=over`` list it opens (#437).
     over_budget: int = 0
+    #: The other two bands of the one burn scale (``budget.burn_level``): three quarters spent
+    #: but not yet over, and everything below that. Counted over the whole set for the same
+    #: reason as ``over_budget`` — each heading on the tile opens ``?burn=<level>`` and must
+    #: print the number that list will show.
+    almost_budget: int = 0
+    within_budget: int = 0
+    #: Hours past the budget, summed over the over-budget projects: "4 projects over budget" says
+    #: *that* something is wrong, and 46,5 h says how much — the figure an agency actually has to
+    #: decide about (bill, write off, or renegotiate). Zero when nothing is over.
+    over_budget_hours: float = 0.0

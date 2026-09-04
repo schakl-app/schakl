@@ -594,6 +594,110 @@ in ours.
   `(provider, local_type, local_id)` — the structural idempotency that makes "never create
   the same invoice twice" a constraint instead of a hope. `GET /invoices/{id}/refs` shows it.
 
+## Bringing the back catalogue in (`impex.py`, `service.import_document`)
+
+An agency moving onto schakl brings years of invoices from the package it used before —
+Moneybird, SnelStart, e-Boekhouden, a spreadsheet — and without them the client hub has no
+history, the outstanding tile starts on migration day and the PDF the client actually received
+lives in a folder nobody links. They come in as a **spreadsheet through the impex engine**
+(§17: the same wizard, preview and permissions as every other list — `ImpexBar` on Facturen,
+`impex.import` + `invoicing.invoice.write`), one row per invoice **with its totals**, upserting
+on `number`. Five rules hold it up, and the first two are the ones that generalise.
+
+- **An imported invoice is an ordinary `Invoice` with provenance, never a second table.**
+  `invoices.origin` is `native` or `imported`; an imported one is created *issued* (it has a
+  number, so it is never a draft), with the sheet's status, and everything downstream — the
+  company horizon, the portal clause, post-issue immutability, `OUTSTANDING_SQL`, the summary
+  tiles, the reminders cron, the company panel — works unchanged because nothing about it is
+  special except where it came from.
+- **For a document somebody else issued, the totals are the fact, not the lines.** "Clients
+  send lines, never totals" is the rule for documents *this platform* prices. A sheet states
+  `subtotal`/`tax_total`/`total` (any one of the first two may be left for the difference, and
+  all three present must agree to the cent — `invoicing.import.totals_mismatch`), and the
+  service stores them **verbatim**. The document gets one summary line (`description`, or
+  "Factuur {number}" in the document's locale; amount = subtotal at the *effective* rate, named
+  after the tenant's own rate when one matches exactly) so the page has a row to print — but
+  recomputing tax from that line at a two-decimal rate can be a cent off on a large mixed-rate
+  invoice, so every breakdown a reader prints comes from **`calc.stated_totals`** through one
+  `InvoiceService.document_totals`: the renderer, UBL and `InvoiceRead.tax_groups` cannot be a
+  cent apart from each other or from the stored total. A credit note is stored negative
+  whichever sign the sheet wrote it in, and `credit_for` (the source's number) rides the same
+  `_apply_credit` a native note does at issue — so "credited" derives exactly as before. A
+  reference is resolved against what exists *before* the preview, so a note travels in a
+  later file than the invoice it corrects.
+- **The payment columns describe a state, and the import records what makes it true.**
+  `paid_total` is how much has been received and `paid_on` when; `status` alone means the whole
+  document (`paid`) or nothing (`open`); an amount alone decides the status; both present must
+  agree (`status_mismatch` — a sheet saying "paid" over "40 of 100" is telling two stories and
+  picking one silently is what §17 refuses). A payment is a dated fact, so an amount without a
+  date is refused (`paid_on_required`) rather than stamped with a day nobody stated. What lands
+  is an ordinary `InvoicePayment` — which is why nothing else needs to know. The same columns on
+  an **existing** row — native or imported — may only *raise* the state: the difference between
+  the sheet's `paid_total` and what is registered is recorded as a payment, a lower figure is
+  refused (`payments_reduced`; taking a registered payment back is a hand act with a trail), and
+  any money column that *differs* is `invoicing.import.locked` while an equal one is not — so an
+  export round-trips untouched and "mark these forty paid from the bank statement" is one file.
+  Every one of these rules runs in the **preview**, naming the row and the column (#289):
+  `ImpexDescriptor.validate_row` exists for this and calls the same two functions the write
+  does (`plan_import`, `plan_import_update`), so the dry run can never pass a row the commit
+  then refuses whole.
+- **A bulk write of history emits nothing, and dunning is opt-in.** The import fires neither
+  `invoice.issued` nor `invoice.paid` (`_settle(notify=False)`): an invoice paid three years
+  ago is being *recorded*, not paid, and eight hundred rows must not become eight hundred
+  notifications and automation runs. `reminders_paused` is **true** unless the sheet's
+  `reminders` column says otherwise, because auto-mail from a new system about old invoices is
+  a decision, not a default. SnelStart's automatic push sweep skips `origin = imported` (those
+  were booked when they were issued); naming one explicitly still pushes it and a duplicate
+  answer adopts. Instants the sheet cannot state (`paid_at`, `cancelled_at`, `sent_at`) are
+  stamped with the sheet's own day at noon in the org's zone, never with "now".
+- **The original document is a file the invoice names, and the record carries its own
+  fingerprint.** An imported invoice may hold the PDF the client actually received
+  (`original_file_id` → `files`, `ON DELETE SET NULL`), stored untouched — a document is
+  evidence, the screenshot rule applied to paper — and `original_sha256` is written on the
+  invoice *itself* when it is attached, so "is this still what was attached" is answerable from
+  the record without trusting the blob table. Every reader of "the PDF" serves it in place of a
+  render: `document_pdf` (the download, the mail attachment, the public link, the portal), while
+  the HTML preview keeps rendering and the web decides what to frame. Only an `imported` invoice
+  may carry one (409 `errors.invoicing.not_imported`): a native invoice's document *is* its
+  render, and two documents under one number is the confusion this exists to avoid. PDF by
+  declared type **and** by bytes. Attaching is `POST /invoices/{id}/original` (multipart, off
+  the MCP surface by method) or its JSON twin — `POST /files/inline` against the invoice plus
+  `PATCH {original_file_id}`; `null` detaches (§18); replacing goes through `drop_file`, never a
+  bare storage delete. A migration has hundreds of these, so `POST /invoices/originals` takes a
+  **zip** and matches each PDF to an imported invoice by its *file name* — exactly the number
+  or a name containing it, separators and case ignored — and reports what matched, matched two
+  numbers, matched none, was not a PDF, or was left alone because the invoice already held one;
+  a batch never replaces a document somebody attached on purpose. The file reads for anyone
+  **exactly when the invoice does**: `RECORD_GATED_ENTITY_TYPES` in `core/storage/service.py`
+  routes `/files/{id}` through `entity_visible`, so a portal login of another client and a
+  member outside the client's group get the same 404 the invoice route gives.
+
+Two practical notes. The **numbering sequence** is untouched by an import — set
+`invoice_next_seq` past the highest imported number in Instellingen → Facturatie, or the
+allocator walks past collisions one at a time. And **crediting an imported invoice** works as
+for any other (the note mirrors the summary line at the effective rate), but the note is a
+native document whose totals *are* recomputed from that line, so on a large mixed-rate source
+its draft may be a cent off the original — it is a draft, and you edit it before issuing.
+
+**On screen** it is three surfaces and one component. The invoice list carries the shared
+`ImpexBar` (§17 — Export is handed the *resolved* filters, `overdue` included, which is why that
+pill joined `FILTER_PARAMS`) plus an **Originelen (zip)** dialog beside it, gated on
+`invoicing.invoice.write` and nothing more: attaching forty PDFs you may each attach is the same
+act repeated (§18), and the dialog prints the API's whole report, counts first and then every
+file that did not land by name. The detail page says once where the document came from, frames
+the **original** where one is attached and the reconstructed render where none is, and carries an
+**Origineel** card in the aside — filename, size, when, the SHA-256 whole (a fingerprint you can
+only read half of is decoration), and attach / replace / remove on one `<input>` the button and
+the drop share. The card follows the register gate (`invoicing.invoice.read:any`), because the
+fingerprint and the replace control are the agency's; a client reads the document itself, framed,
+on the same page and on the public link. The component is `core/ui/PdfFrame`, and it is not
+`DocumentFrame` for two reasons that generalise: a `sandbox` attribute switches off the browser's
+PDF viewer (a plugin is what the flag blocks), and a browser with **no** viewer turns an `<iframe>`
+to a PDF into a download on page load — so it is an unsandboxed `<object>` over our own proxy,
+falling through to a sentence and the download link where nothing can draw it. The proxies serve
+the same bytes twice: `?inline=1` swaps `attachment` for `inline` and adds `frame-ancestors
+'self'`, and the download keeps the filename the API chose.
+
 ## Multi-currency & locale
 
 The org currency (#124) is the default; a document may carry any ISO 4217 currency with an

@@ -47,6 +47,10 @@
   const recipients = $derived(panel.recipients ?? []);
   const locale = $derived(getLocale());
   const settingsHref = $derived(`/companies/${companyId}/reporting`);
+  // Layout, not a gate (#373): the status pill and the audience label are our workflow's
+  // words, and a client on their own company page reads finished documents. The API already
+  // serves a portal login nothing but published client reports with no warnings on them.
+  const reader = $derived(page.data.user?.isPortal ?? false);
 </script>
 
 {#if panel.forbidden}
@@ -112,17 +116,26 @@
             {#each shown as report (report.id)}
               <li class="flex items-center gap-3 py-2">
                 <FileText size={16} class="shrink-0 text-text-muted" />
-                <a href={fromHref(`/reports/${report.id}`, page.url)} class="min-w-0 flex-1 hover:underline">
+                <a
+                  href={fromHref(`/reports/${report.id}`, page.url)}
+                  class="min-w-0 flex-1 hover:underline"
+                >
                   <span class="block truncate text-sm text-text">{periodLabel(report, locale)}</span
                   >
                   <span class="block text-xs text-text-muted">
-                    {audienceLabel(report.audience)}
-                    {#if report.sent_at}· {t("reporting.panel.sent_on", {
-                        date: fmtDate(report.sent_at, locale),
-                      })}{/if}
+                    {[
+                      reader ? null : audienceLabel(report.audience),
+                      report.sent_at
+                        ? t("reporting.panel.sent_on", { date: fmtDate(report.sent_at, locale) })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </a>
-                <ReportStatusPill status={report.status} size="xs" />
+                {#if !reader}
+                  <ReportStatusPill status={report.status} size="xs" />
+                {/if}
               </li>
             {/each}
           </ul>

@@ -7,7 +7,7 @@ sidebar:
 
 What the agency actually does, and what it bills: projects with budgets, task boards and checklists, the timer and the timesheet, and every contact moment on one timeline.
 
-102 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+103 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `projects`
 
@@ -175,6 +175,7 @@ Returns: `200` · `ProjectSettingsRead`
 | `DELETE` `/tasks/schedules/{schedule_id}` | `tasks.schedule.write` |
 | `POST` `/tasks/schedules/{schedule_id}/log-time` | `time.entry.write` |
 | `POST` `/tasks/schedules/batch` | `tasks.schedule.write` |
+| `GET` `/tasks/schedules/busy` | `tasks.schedule.write` |
 | `GET` `/tasks/statuses` | `tasks.task.read` |
 | `POST` `/tasks/statuses` | `tasks.status.write` |
 | `PATCH` `/tasks/statuses/{status_id}` | `tasks.status.write` |
@@ -658,6 +659,22 @@ Permission: `tasks.schedule.write`
 Request body: `ScheduleBatchCreate`
 
 Returns: `201` · `ScheduleRead[]`
+
+#### `GET /api/v1/tasks/schedules/busy`
+
+**Busy Schedules** — When these people are already taken — every calendar the instance can read, in one answer, for the block about to be planned. Declared before ``/&#123;schedule_id&#125;`` so the path segment is never read as an id.
+
+Permission: `tasks.schedule.write`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `user_ids` | string[] · required |  |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+
+Returns: `200` · `BusyFeedRead`
 
 #### `GET /api/v1/tasks/statuses`
 

@@ -925,6 +925,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **Being allowed to book somebody is the reason to see when they are taken, and only that**
+  (`app/core/busy.py`, `docs/UX.md`). The scheduling dialog draws the day beside the form — one
+  column per person, the block about to be booked as a ghost over what is already there — and the
+  answer it draws is composed across three modules that each hold a third of it: the tasks module
+  knows planned blocks, `leave` knows absences, the Google integration holds the cached mirror of a
+  diary. §6 forbids the dialog importing any of them, so the composition is a core seam with
+  registered providers (the `core/tagmanager.py` shape, applied to a calendar). Three rules.
+  **The route decides *that* the person is taken; the provider decides *what by*** — the feed
+  rides `tasks.schedule.write` (`:any` to ask about anyone), while a title travels only under each
+  source's own read key, so a planner who may book a colleague but not read their planning gets
+  the window unnamed, and a colleague's Google appointment is a window and nothing more whoever
+  asks: Google's free/busy rule, and the only cross-person Google read in the codebase, from the
+  cache and never with the colleague's credential. **The interval is never withheld** — an
+  unnamed block is honest, an invisible one is a double booking. And **a provider that fails is
+  named, not dropped**: each runs in its own SAVEPOINT (§18) and the feed returns `unavailable`
+  beside `items`, because a calendar with a third missing looks exactly like a free afternoon
+  (§17). Its sibling is on the recurrence rule: the auto-plan (#335) became **placed blocks** —
+  several per occurrence, each stating its day relative to the occurrence (`on: due | offset |
+  weekday | day`), each with its own people — and the anchor learned "the n-th weekday of the
+  month" (`on_weekday` + `on_week`). The legacy single clock still reads as one block on the due
+  date through the one reader both sides share (`recurrence.plan_blocks`), so no stored rule
+  changed meaning; a block whose day is already behind today is skipped rather than booked in the
+  past; and every person any block names is judged once, at save time, against the same
+  `tasks.schedule.write:any` Inplannen itself asks for (#335's "a stored decision is gated when it
+  is written").
 - **An integration is only as honest as the answer it refuses to guess** (#377, `docs/SNELSTART.md`).
   SnelStart fills the accounting seam #31 asked for and #207 shipped empty, and four of its rules
   outlive it. **A query parameter the server ignores is worse than one it rejects**: `$filter` is
@@ -993,6 +1018,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
   the subscription cron having grown a hand-written copy that already omitted `client_number`, so
   "which name does an invoice say?" would have depended on who raised it.
+- **A document somebody else issued states its totals, and the record carries its own
+  fingerprint** (`docs/INVOICING.md`, "Bringing the back catalogue in"). An agency arriving from
+  Moneybird or SnelStart brings years of invoices, and without them the client hub has no history
+  and the outstanding tile starts on migration day. They come in through the impex engine — the
+  same wizard, preview and permissions as every list — as ordinary `Invoice` rows with
+  `origin = imported`, and three rules generalise. **"Clients send lines, never totals" is the
+  rule for documents we price**; for one issued elsewhere the totals are the fact, stored
+  verbatim, with one summary line so the page has a row and every printed breakdown reading
+  `calc.stated_totals` through one `document_totals`, so the renderer, UBL and the detail read
+  cannot be a cent apart. **The payment columns describe a state and the import records what
+  makes it true** — an ordinary `InvoicePayment` for the difference, never a lower figure, never
+  a payment without a date — and every one of those rules runs in the *preview* through
+  `ImpexDescriptor.validate_row`, calling the same functions the write does (#289 again: a check
+  the row report cannot name is a check the preview does not have). And **a bulk write of history
+  emits nothing**: no `invoice.issued`, no `invoice.paid`, reminders paused unless the sheet says
+  otherwise, the accounting sweep skipping what was booked over there when it was issued. The
+  original PDF the client received is a file the invoice *names* (`original_file_id`) plus the
+  invoice's **own** `original_sha256`, served untouched by every reader in place of a render,
+  refused on a native invoice (its document *is* its render), attached one at a time or as a zip
+  matched by file name, and readable by exactly whoever may read the invoice
+  (`RECORD_GATED_ENTITY_TYPES`) — because a record that only points at a blob cannot say whether
+  it still holds what was attached.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -1073,6 +1120,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
   dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
   such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
+- **The assistant reaches what the MCP surface reaches, through a catalog, and writes only a
+  stated list** (`app/core/ai/apitools.py`, `docs/AI.md`). #127's assistant answered from six
+  curated lookups and said "you are read-only", while §12 already handed an external agent every
+  route — so the box built into the screen knew less than a connector. Four rules. **A read
+  surface is derived, never listed**: `api.find` / `api.get` search and call the operations the
+  caller may use, built from the OpenAPI document, each route's declared permission (§15's marker)
+  and the MCP route maps' exclusions — a route added tomorrow is searchable tomorrow, a route the
+  caller cannot call is not in their catalog. **A write is a closed list of named tools**
+  (`ASSISTANT_WRITES`: a task, a comment, hours, the timer), each carrying the route's own request
+  schema and permission, pinned against the route table by a test; widening it is a decision made
+  in one place. **Every call is the HTTP request it stands for** — an in-process re-entry with the
+  caller's own credential and host, the MCP proxy's shape — so tenant, RLS, permissions, horizon,
+  validation, trail and licence gate all apply by construction, and the outer connection is handed
+  back around it (§11). And **a spoken instruction lands in the composer, not in the model**:
+  dictation is the third `SPEECH_FEATURES` host, and `speech_config` now gates on the *host's*
+  toggle rather than on `time_assist` for everybody — the gate that drew a microphone (the
+  capability said yes) which then answered 409. Its sibling is about a number nobody had written
+  down: a five-minute task dictation met adapter-node's **512 kB default body limit** as a bare 413
+  before the proxy ran, and the client called it a provider failure. The web image now states
+  `BODY_SIZE_LIMIT` at what the API admits (`docs/DEPLOY.md`), the API's cap sits just under the
+  provider's, the browser prints the cap while it counts and says when it was reached, and a 413
+  is read as *too long* by status before body — a limit stated in one place and enforced in two
+  is a limit enforced at the lower one.
 - **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
   MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
   source adapter inside `marketing`, so a licensed module on top of it meant one of the two
@@ -1422,6 +1492,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   from the hub, because a cutover ends and its queue is where a decision is actually made. On the
   web the composition runs the only direction §6 allows — an integration registers a
   `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
+- **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
+  them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
+  email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it
+  (the RFC-822 dedup, the deferral to the intended owner), and "a pending row is private to its
+  owner" (#172) then meant the *other* colleague — on the message, notified by nobody — could
+  neither see nor approve it until the owner got round to it. The privacy rule was written to
+  keep a mailbox from the **team**, not from the people the message was sent to, so the ingest
+  names them (`interaction_reviewers`) and every "is this mine to decide" question asks the
+  review set (`_mine_or_reviewing`) instead of the owner column; whoever decides first decides
+  for all, and the existing entity-level notification resolver (#170) retires everyone's row
+  because it always did — it had only ever been handed one recipient. Two things generalise.
+  **Replace a predicate, never a caller**: the owner check lived in eight places (the list's
+  privacy clause, `get`, `thread`, both pending-thread reads, the single and bulk review gates,
+  `mine`), and widening it in seven of them would have left the eighth as the one screen where a
+  reviewer's approval "did not work"; one clause, and a `reviewable` flag on the payload so the web
+  gates on the API's answer rather than re-deriving it (`mayReview`). And **the decision retires
+  the right, never the ownership**: the reviewer links are deleted on approve and cascade on
+  reject, while the body fetch, the deep link and the suppression keep using the mailbox the
+  message is actually in — a logged row is its owner's alone again, by construction. The second
+  ask is #300 one link over: `interaction_tasks` is the task roster, `task_id` its lead (chip 0,
+  what derives the client and what every single-task reader — the enrichment offer, the closing
+  check, a rolled-back release — keeps reading), `task_ids` the write contract beside `task_id`
+  with the contact pair's exact semantics, and `thread_mappings` carries the whole roster so a
+  reply lands on the same three tickets. A lead column beside a roster table is the shape to copy
+  for the next link that turns out to be plural.
+
 
 ## 11. Working agreement (for Claude Code)
 

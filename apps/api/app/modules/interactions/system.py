@@ -10,6 +10,7 @@ session, whose RLS GUC is already bound.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -22,8 +23,10 @@ from app.modules.interactions.models import (
     Interaction,
     InteractionContact,
     InteractionKind,
+    InteractionReviewer,
     InteractionSource,
     InteractionStatus,
+    InteractionTask,
 )
 
 #: The mapping fields thread inheritance copies from an earlier message in the thread.
@@ -45,15 +48,20 @@ async def record_email(
     rfc822_message_id: str | None,
     deep_link: str | None,
     pending: bool,
-    mappings: dict[str, uuid.UUID | None],
+    mappings: dict[str, Any],
+    reviewer_user_ids: Iterable[uuid.UUID] = (),
 ) -> Interaction:
-    """Insert one matched email. The caller decided status, dedup and mappings already."""
+    """Insert one matched email. The caller decided status, dedup and mappings already.
+
+    ``mappings`` may carry ``task_ids`` beside the four columns (a thread follow-up inherits
+    the whole task roster, ``thread_mappings``); ``task_id`` alone is a one-task roster.
+    ``reviewer_user_ids`` names the colleagues who may decide on a **pending** row beside its
+    owner (``InteractionReviewer``) — ignored for a row logged at birth, which nobody reviews.
+    """
     # A row auto-approved at birth joins its thread's conversation now (#272); a pending row
     # gets its id later, when its owner approves it (the service does that). Grouping is only
     # ever set on logged rows, so a pending row keeps ``NULL`` and folds to itself.
-    conversation_id = (
-        await resolve_conversation_id(ctx, gmail_thread_id) if not pending else None
-    )
+    conversation_id = await resolve_conversation_id(ctx, gmail_thread_id) if not pending else None
     row = Interaction(
         org_id=ctx.org.id,
         kind=InteractionKind.EMAIL.value,
@@ -73,8 +81,27 @@ async def record_email(
         conversation_id=conversation_id,
         **{field: mappings.get(field) for field in MAPPING_FIELDS},
     )
+    task_ids = list(dict.fromkeys(mappings.get("task_ids") or ()))
+    if task_ids:
+        row.task_id = task_ids[0]  # the lead mirrors chip 0, whichever way the roster arrived
+    elif row.task_id is not None:
+        task_ids = [row.task_id]
     ctx.session.add(row)
     await ctx.session.flush()
+    for position, task_id in enumerate(task_ids):
+        ctx.session.add(
+            InteractionTask(
+                org_id=ctx.org.id, interaction_id=row.id, task_id=task_id, position=position
+            )
+        )
+    if pending:
+        for user_id in dict.fromkeys(reviewer_user_ids):
+            if user_id != owner_user_id:
+                ctx.session.add(
+                    InteractionReviewer(org_id=ctx.org.id, interaction_id=row.id, user_id=user_id)
+                )
+    if task_ids or pending:
+        await ctx.session.flush()
     # The roster is what every read answers from (#300), so a matched contact has to land on it
     # here too — writing only the column would make a gmail-logged message read as naming
     # nobody, and drop it out of that person's timeline, their panel counter and their trail.
@@ -148,7 +175,20 @@ async def thread_mappings(
     ).scalar_one_or_none()
     if row is None:
         return None
-    mappings = {field: getattr(row, field) for field in MAPPING_FIELDS}
+    mappings: dict[str, Any] = {field: getattr(row, field) for field in MAPPING_FIELDS}
+    if row.task_id is not None:
+        # The whole task roster follows the thread, not only its lead: a reply to an email
+        # filed on three tickets belongs on the same three.
+        mappings["task_ids"] = list(
+            await ctx.session.scalars(
+                select(InteractionTask.task_id)
+                .where(
+                    InteractionTask.org_id == ctx.org.id,
+                    InteractionTask.interaction_id == row.id,
+                )
+                .order_by(InteractionTask.position, InteractionTask.created_at)
+            )
+        )
     return mappings if any(mappings.values()) else None
 
 
@@ -175,10 +215,7 @@ async def resolve_conversation_id(
         conditions.append(Interaction.id != exclude_id)
     sibling = (
         await ctx.session.execute(
-            select(Interaction)
-            .where(*conditions)
-            .order_by(Interaction.occurred_at.desc())
-            .limit(1)
+            select(Interaction).where(*conditions).order_by(Interaction.occurred_at.desc()).limit(1)
         )
     ).scalar_one_or_none()
     if sibling is None:
@@ -233,10 +270,7 @@ async def resolve_upload_conversation_id(
         conditions.append(Interaction.id != exclude_id)
     sibling = (
         await ctx.session.execute(
-            select(Interaction)
-            .where(*conditions)
-            .order_by(Interaction.occurred_at.desc())
-            .limit(1)
+            select(Interaction).where(*conditions).order_by(Interaction.occurred_at.desc()).limit(1)
         )
     ).scalar_one_or_none()
     if sibling is None:
@@ -247,9 +281,7 @@ async def resolve_upload_conversation_id(
     return sibling.conversation_id
 
 
-async def email_ref(
-    ctx: EmitContext, interaction_id: uuid.UUID
-) -> tuple[uuid.UUID, str] | None:
+async def email_ref(ctx: EmitContext, interaction_id: uuid.UUID) -> tuple[uuid.UUID, str] | None:
     """``(owner_user_id, gmail_message_id)`` for a gmail row — what a body fetch needs."""
     row = (
         await ctx.session.execute(
@@ -385,7 +417,7 @@ async def record_manual_gmail_email(ctx, **fields) -> Interaction:  # noqa: ANN0
 
 
 async def offer_task_enrichment(ctx, row: Interaction) -> None:  # noqa: ANN001
-    """"Laat schakl deze taak invullen" for a row another module just logged (#327/#342).
+    """ "Laat schakl deze taak invullen" for a row another module just logged (#327/#342).
 
     Published separately from :func:`record_manual_gmail_email` so the caller can make the
     offer **after** whatever it still has to fetch: the offer enqueues the worker job with a

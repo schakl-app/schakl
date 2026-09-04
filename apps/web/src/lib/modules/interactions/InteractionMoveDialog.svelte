@@ -35,9 +35,11 @@
   import { projectArchivedLabel } from "$lib/modules/projects/picker";
 
   import ContactChips from "./ContactChips.svelte";
+  import TaskChips from "./TaskChips.svelte";
   import { splitLinkOptions } from "./lookups";
   import type { InteractionItem } from "./format";
   import { ContactRoster, initialContacts } from "./roster.svelte";
+  import { initialTasks, missingTaskOptions } from "./taskroster";
 
   let {
     interaction,
@@ -91,7 +93,15 @@
 
   let companyId = $state(interaction.company_id ?? "");
   let projectId = $state(interaction.project_id ?? "");
-  let taskId = $state(interaction.task_id ?? "");
+  // The task link is a roster (`TaskChips`); its lead is what the approve offers below read.
+  // Deliberate initial capture: the dialog is keyed per row, so props never swap here.
+  // svelte-ignore state_referenced_locally
+  const storedTasks = initialTasks(interaction);
+  let taskIds = $state<string[]>(storedTasks.map((task) => task.id));
+  const taskId = $derived(taskIds[0] ?? "");
+  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
+    storedTasks.map((task) => [task.id, task.title]),
+  );
   // svelte-ignore state_referenced_locally — the dialog is keyed per row; props never swap here.
   const roster = new ContactRoster(initialContacts(interaction));
 
@@ -123,11 +133,14 @@
     projectId = id;
     const project = projects.find((p) => p.value === id);
     if (project?.company_id) companyId = project.company_id;
-    if (taskId && tasks.find((task) => task.value === taskId)?.project_id !== id) taskId = "";
+    // Every chip follows the project, not only the lead (`InteractionForm`'s rule).
+    taskIds = taskIds.filter(
+      (picked) => tasks.find((task) => task.value === picked)?.project_id === id,
+    );
   }
 
+  /** The lead changed (`TaskChips`' `onpick`): it fixes the levels above. */
   function onTaskPicked(id: string) {
-    taskId = id;
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
@@ -305,7 +318,8 @@
           },
         ];
       }
-      onTaskPicked(created.id);
+      if (!taskIds.includes(created.id)) taskIds = [...taskIds, created.id];
+      if (taskIds[0] === created.id) onTaskPicked(created.id);
     } else if (created.slot === "move_project") {
       handledCreate = created.id;
       if (!projects.some((option) => option.value === created.id)) {
@@ -410,7 +424,7 @@
           status: p.status ?? null,
         }),
       );
-      tasks = (tasksPage.items ?? []).map(
+      const fetched: TaskOption[] = (tasksPage.items ?? []).map(
         (task: {
           id: string;
           title: string;
@@ -429,6 +443,18 @@
           completed_at: task.completed_at ?? null,
         }),
       );
+      // The row's own chips stay labelled even outside the fetched 200 — the contact rule.
+      tasks = [
+        ...missingTaskOptions(storedTasks, fetched, (ref) => ({
+          value: ref.id,
+          label: ref.title as string,
+          project_id: interaction.project_id ?? null,
+          company_id: interaction.company_id ?? null,
+          assignees: [],
+          assignee_user_id: null,
+        })),
+        ...fetched,
+      ];
     } catch {
       error = "errors.server";
     } finally {
@@ -488,25 +514,24 @@
             id="move-project"
           />
         </label>
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-          <Combobox
+        <div class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.tasks")}</span>
+          <TaskChips
+            bind:picked={taskIds}
             items={taskOptions}
             archived={linkSplit.tasks.retired}
             archivedLabel={t("tasks.picker.archived")}
-            name="task_id"
-            value={taskId}
-            placeholder={t("common.none")}
-            onselect={onTaskPicked}
+            labels={taskLabels}
+            onpick={onTaskPicked}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;
                   taskCreateOpen = true;
                 }
               : undefined}
-            id="move-task"
+            id="move-tasks"
           />
-        </label>
+        </div>
         <div class="block text-sm">
           <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
           <ContactChips

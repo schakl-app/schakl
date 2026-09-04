@@ -35,6 +35,7 @@ function idList(raw: FormDataEntryValue | null): string[] {
 
 /** The rule shape the API takes, straight off the generated client — never a hand-kept copy. */
 type Rule = components["schemas"]["Recurrence"];
+type PlanBlocks = NonNullable<NonNullable<Rule["plan"]>["blocks"]>;
 
 /** An optional whole number a `<select>`/`<input type=number>` posts, or `null` for "not set". */
 function optionalInt(form: FormData, name: string): number | null {
@@ -66,20 +67,30 @@ function readRecurrence(form: FormData): Rule | null {
   const weekday = optionalInt(form, "on_weekday");
   const day = optionalInt(form, "on_day");
   const month = optionalInt(form, "on_month");
+  const week = optionalInt(form, "on_week");
   if (weekday !== null) rule.on_weekday = weekday;
+  // An n-th weekday is a pair (the API refuses half of one); the editor posts both or neither.
+  if (week !== null && weekday !== null) rule.on_week = week;
   // A yearly anchor is a whole date or nothing (the API refuses half of one), so the pair goes
   // together — and the editor only ever shows both boxes at once.
   if (day !== null && (freq !== "yearly" || month !== null)) rule.on_day = day;
-  if (month !== null && day !== null && freq === "yearly") rule.on_month = month;
+  if (month !== null && (day !== null || week !== null) && freq === "yearly") {
+    rule.on_month = month;
+  }
 
-  const start = String(form.get("plan_start") ?? "").trim();
-  const minutes = parsePostedMinutes(form.get("plan_duration"));
-  if (checked(form, "plan_enabled") && start && minutes) {
-    rule.plan = {
-      user_id: String(form.get("plan_user_id") ?? "").trim() || null,
-      start_time: `${start}:00`,
-      duration_minutes: minutes,
-    };
+  // The plan travels as one JSON field: a list of placed blocks is not a shape a flat form can
+  // post as fields, and the editor is the one place that composes it. Presence of the checkbox
+  // is read with `checked`, never a literal (the reporting post-mortem); the API validates every
+  // block, so this only has to be honest about the shape.
+  if (checked(form, "plan_enabled")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(String(form.get("plan_blocks") ?? "[]"));
+    } catch {
+      parsed = [];
+    }
+    const blocks = Array.isArray(parsed) ? (parsed as PlanBlocks) : [];
+    if (blocks.length > 0) rule.plan = { blocks };
   }
   return rule;
 }

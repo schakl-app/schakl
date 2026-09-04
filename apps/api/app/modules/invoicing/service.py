@@ -19,12 +19,15 @@ The decisions, where they are enforced:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
+import posixpath
+import re
 import uuid
 import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -44,18 +47,23 @@ from app.core.payments import available_accounts
 from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
+from app.core.storage.models import StoredFile
+from app.core.storage.service import FileService, drop_file
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.i18n import translate
 from app.modules.invoicing.calc import (
     OUTSTANDING_SQL,
+    UNTAXED_CATEGORIES,
     LineInput,
     Totals,
     compute_totals,
+    effective_rate_pct,
     line_amount,
     outstanding_of,
     round_cents,
+    stated_totals,
 )
 from app.modules.invoicing.models import (
     DocumentTemplate,
@@ -64,6 +72,7 @@ from app.modules.invoicing.models import (
     InvoiceDomainPeriod,
     InvoiceKind,
     InvoiceLine,
+    InvoiceOrigin,
     InvoicePayment,
     InvoicePaymentIntent,
     InvoiceStatus,
@@ -75,6 +84,7 @@ from app.modules.invoicing.models import (
     Quote,
     QuoteLine,
     QuoteStatus,
+    TaxCategory,
     TaxRate,
 )
 from app.modules.invoicing.paylinks import (
@@ -99,6 +109,7 @@ from app.modules.invoicing.schemas import (
     DocumentSend,
     InvoiceCreate,
     InvoiceFromTime,
+    InvoiceImport,
     InvoiceIssue,
     InvoiceUpdate,
     InvoicingSettingsWrite,
@@ -193,7 +204,10 @@ _POST_ISSUE_INVOICE_FIELDS = frozenset(
     # `delivery_date` is a rendering/process fact, not money: correcting the leverdatum on a
     # sent invoice is exactly the kind of edit this set exists to allow.
     {"contact_id", "reference", "intro", "notes", "template_id", "locale", "due_date",
-     "reminders_paused", "exchange_rate", "custom", "delivery_date"}
+     "reminders_paused", "exchange_rate", "custom", "delivery_date",
+     # Which file an *imported* invoice holds as its original is a fact about the record,
+     # not about the money; the service refuses it on a native one regardless of status.
+     "original_file_id"}
 )
 _POST_ISSUE_QUOTE_FIELDS = frozenset(
     {"contact_id", "reference", "intro", "notes", "template_id", "locale", "valid_until",
@@ -795,6 +809,249 @@ class TemplateService:
 # --------------------------------------------------------------------------- #
 # Shared document machinery
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# The back catalogue — pure rules, shared by the import's preview and its write
+# --------------------------------------------------------------------------- #
+#: Entries one zip of originals may carry. A migration's archive is a few hundred PDFs; a
+#: ceiling stated once keeps a 50,000-entry zip from being inflated before anyone looks.
+MAX_ORIGINALS_PER_ARCHIVE = 500
+
+
+@dataclass(frozen=True)
+class ImportPlan:
+    """What one sheet row resolves to, before anything is written.
+
+    Computed by :func:`plan_import` and read twice: by the impex preview, which turns a
+    refusal into a row error naming the column (#289 — a check the row report cannot name is
+    a check the preview does not have), and by ``import_document``, which writes it.
+    """
+
+    subtotal: Decimal
+    tax_total: Decimal
+    total: Decimal
+    #: The resting state the row describes: ``open``, ``paid`` or ``cancelled``.
+    status: InvoiceStatus
+    #: The payment to register so the row's state is true — zero for none, negative on a
+    #: credit note (a refund the client received).
+    payment: Decimal
+    paid_on: date | None
+
+
+def _refuse(field: str, key: str) -> AppError:
+    return AppError("validation", "errors.validation", status_code=400, fields={field: key})
+
+
+def stated_amounts(
+    kind: InvoiceKind,
+    subtotal: Decimal | None,
+    tax_total: Decimal | None,
+    total: Decimal,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """``(subtotal, tax_total, total)`` as a sheet states them, completed and checked.
+
+    A sheet from a bookkeeping package carries all three; one somebody typed may carry only
+    the total (taken as untaxed) or the total and one half (the other is the difference).
+    All three present must agree to the cent — the alternative is storing a document that
+    disagrees with itself. A credit note is stored negative whichever way the sheet wrote it,
+    which is how a native one is stored and what lets ``_apply_credit`` reuse its arithmetic.
+    """
+    total = round_cents(Decimal(total))
+    if subtotal is None and tax_total is None:
+        subtotal, tax_total = total, Decimal("0.00")
+    elif subtotal is None:
+        tax_total = round_cents(Decimal(tax_total))  # type: ignore[arg-type]
+        subtotal = total - tax_total
+    elif tax_total is None:
+        subtotal = round_cents(Decimal(subtotal))
+        tax_total = total - subtotal
+    else:
+        subtotal, tax_total = round_cents(Decimal(subtotal)), round_cents(Decimal(tax_total))
+        if subtotal + tax_total != total:
+            raise _refuse("total", "invoicing.import.totals_mismatch")
+    if kind == InvoiceKind.CREDIT_NOTE and total > 0:
+        subtotal, tax_total, total = -subtotal, -tax_total, -total
+    return subtotal, tax_total, total
+
+
+def plan_import(data: InvoiceImport) -> ImportPlan:
+    """Resolve one new row: the money, the resting state and the payment that makes it so.
+
+    The payment columns are a *state*: ``paid_total`` is how much has been received and
+    ``paid_on`` when. A status without an amount means the whole document (``paid``) or
+    nothing (``open``); an amount without a status decides the status; both present must
+    agree, because a sheet that says "paid" over "40 of 100" is telling two stories and
+    picking one silently is the failure §17 exists to refuse. A payment is a dated fact, so
+    an amount without a date is refused rather than stamped with a day nobody stated. A
+    credit note registers a refund only when the sheet *states* one — "paid" on a note that
+    its source absorbed means settled, and that is what ``_apply_credit`` will conclude.
+    """
+    subtotal, tax_total, total = stated_amounts(
+        data.kind, data.subtotal, data.tax_total, data.total
+    )
+    status = data.status
+    if status == InvoiceStatus.DRAFT:
+        raise _refuse("status", "impex.errors.invalid_option")
+    paid = data.paid_total
+    if paid is not None and paid < 0:
+        raise _refuse("paid_total", "impex.errors.invalid_number")
+    if status == InvoiceStatus.CANCELLED:
+        if paid:
+            raise _refuse("paid_total", "invoicing.import.cancelled_with_payment")
+        return ImportPlan(subtotal, tax_total, total, status, Decimal(0), None)
+    magnitude = abs(total)
+    if paid is None:
+        paid = (
+            magnitude
+            if status == InvoiceStatus.PAID and data.kind == InvoiceKind.INVOICE
+            else Decimal("0.00")
+        )
+    paid = round_cents(paid)
+    settled = magnitude > 0 and paid >= magnitude
+    if data.kind == InvoiceKind.INVOICE and status is not None:
+        if status == InvoiceStatus.PAID and not settled:
+            raise _refuse("status", "invoicing.import.status_mismatch")
+        if status == InvoiceStatus.OPEN and settled:
+            raise _refuse("status", "invoicing.import.status_mismatch")
+    if paid > 0 and data.paid_on is None:
+        raise _refuse("paid_on", "invoicing.import.paid_on_required")
+    resolved = (
+        status
+        if status is not None and data.kind == InvoiceKind.INVOICE
+        else (InvoiceStatus.PAID if settled else InvoiceStatus.OPEN)
+    )
+    payment = -paid if data.kind == InvoiceKind.CREDIT_NOTE else paid
+    return ImportPlan(subtotal, tax_total, total, resolved, payment, data.paid_on)
+
+
+def plan_import_update(invoice: Any, data: InvoiceImport) -> Decimal:
+    """Check a re-imported row against the invoice it matched; return the payment to add.
+
+    Issued money is immutable (#207), and the sheet is no exception: a differing kind,
+    client, issue date, currency or total is refused per row as ``invoicing.import.locked``
+    — an unchanged export round-trips because equal is not different. The payment state may
+    only go **up**: the difference between the sheet's ``paid_total`` and what is registered
+    is the payment to add, and a lower figure is refused, since taking a registered payment
+    back is a hand act with a trail. A row that names no payment column changes nothing.
+    """
+    if invoice.status == InvoiceStatus.DRAFT.value:
+        raise _refuse("number", "invoicing.import.locked")
+    if data.kind.value != invoice.kind:
+        raise _refuse("kind", "invoicing.import.locked")
+    if data.company_id != invoice.company_id:
+        raise _refuse("company", "invoicing.import.locked")
+    if data.issue_date != invoice.issue_date:
+        raise _refuse("issue_date", "invoicing.import.locked")
+    if data.currency is not None and data.currency.upper() != invoice.currency:
+        raise _refuse("currency", "invoicing.import.locked")
+    if data.credit_for_id is not None and data.credit_for_id != invoice.credit_for_id:
+        raise _refuse("credit_for", "invoicing.import.locked")
+    subtotal, tax_total, total = stated_amounts(
+        data.kind, data.subtotal, data.tax_total, data.total
+    )
+    # The total first, and the halves only where the sheet actually stated them: a sheet
+    # carrying nothing but a total is not making a claim about the tax split.
+    if total != round_cents(Decimal(invoice.total)):
+        raise _refuse("total", "invoicing.import.locked")
+    if data.subtotal is not None and subtotal != round_cents(Decimal(invoice.subtotal)):
+        raise _refuse("subtotal", "invoicing.import.locked")
+    if data.tax_total is not None and tax_total != round_cents(Decimal(invoice.tax_total)):
+        raise _refuse("tax_total", "invoicing.import.locked")
+
+    registered = abs(round_cents(Decimal(invoice.paid_total)))
+    magnitude = abs(total)
+    paid = data.paid_total
+    if paid is not None and paid < 0:
+        raise _refuse("paid_total", "impex.errors.invalid_number")
+    status = data.status
+    if status == InvoiceStatus.DRAFT:
+        raise _refuse("status", "impex.errors.invalid_option")
+    if status == InvoiceStatus.CANCELLED:
+        if invoice.status == InvoiceStatus.CANCELLED.value:
+            return Decimal(0)
+        if invoice.status == InvoiceStatus.PAID.value or registered or paid:
+            raise _refuse("status", "invoicing.import.cancelled_with_payment")
+        return Decimal(0)
+    if invoice.status == InvoiceStatus.CANCELLED.value:
+        if status is not None or paid:
+            raise _refuse("status", "invoicing.import.locked")
+        return Decimal(0)
+    if paid is None:
+        if status == InvoiceStatus.PAID and data.kind == InvoiceKind.INVOICE:
+            paid = magnitude
+        else:
+            return Decimal(0)
+    paid = round_cents(paid)
+    settled = magnitude > 0 and paid >= magnitude
+    if data.kind == InvoiceKind.INVOICE and status is not None:
+        if status == InvoiceStatus.PAID and not settled:
+            raise _refuse("status", "invoicing.import.status_mismatch")
+        if status == InvoiceStatus.OPEN and settled:
+            raise _refuse("status", "invoicing.import.status_mismatch")
+    delta = paid - registered
+    if delta < 0:
+        raise _refuse("paid_total", "invoicing.import.payments_reduced")
+    if delta > 0 and data.paid_on is None:
+        raise _refuse("paid_on", "invoicing.import.paid_on_required")
+    return -delta if data.kind == InvoiceKind.CREDIT_NOTE else delta
+
+
+def _require_imported(invoice: Any) -> None:
+    """Only a document issued elsewhere may hold an original: a native invoice's document
+    *is* its render, and two documents under one number is the confusion this refuses."""
+    if invoice.origin != InvoiceOrigin.IMPORTED.value:
+        raise AppError("conflict", "errors.invoicing.not_imported", status_code=409)
+
+
+def _require_pdf(content_type: str, data: bytes) -> None:
+    """The original is a PDF, by declared type **and** by its bytes — a renamed PNG is not
+    the document a client received, and the cap is the instance's upload ceiling."""
+    from app.config import settings as app_settings
+
+    if content_type != "application/pdf" or not data.startswith(b"%PDF-"):
+        raise AppError(
+            "validation", "errors.upload_type", status_code=422,
+            fields={"file": "errors.upload_type"},
+        )
+    if len(data) > app_settings.upload_max_bytes:
+        raise AppError(
+            "validation", "errors.upload_too_large", status_code=413,
+            fields={"file": "errors.upload_too_large"},
+        )
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+_NUMBER_NOISE = re.compile(r"[^a-z0-9]+")
+
+
+def _number_key(value: str) -> str:
+    """An invoice number as a file name would spell it: lowercase, separators dropped."""
+    return _NUMBER_NOISE.sub("", value.lower())
+
+
+class _Ambiguous:
+    """Sentinel: a file name that matched more than one number."""
+
+
+_AMBIGUOUS = _Ambiguous()
+
+
+def _match_original(stem: str, by_number: dict[str, Any]) -> Any:
+    """The invoice a PDF's file name names: exactly its number, else the one number the
+    name contains; two contained numbers is ambiguous, none is unmatched."""
+    key = _number_key(stem)
+    if not key:
+        return None
+    if key in by_number:
+        return by_number[key]
+    contained = [number for number in by_number if number and number in key]
+    if len(contained) == 1:
+        return by_number[contained[0]]
+    return _AMBIGUOUS if contained else None
+
+
 async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
     row = (
         await ctx.session.execute(
@@ -1114,11 +1371,35 @@ class _DocumentService:
                 qr_logo=qr_logo,
                 qr_logo_content_type=qr_logo_type,
             ),
-            "tax_groups": _totals_from_rows(
-                list(doc.lines), prices_include_tax=doc.prices_include_tax
-            ).groups,
+            "tax_groups": self._tax_groups(doc, list(doc.lines)),
             **await self._pay_link(doc, kind),
         }
+
+    def document_totals(self, doc: Any, rows: Sequence[Any]) -> Totals:
+        """The totals a document prints: computed from its lines, **unless it was issued
+        elsewhere** — an imported invoice's stored totals are the fact, and its one summary
+        line only exists so the page has a row (``calc.stated_totals``). One answer for the
+        renderer, UBL and the detail read, so none of the three can be a cent apart."""
+        if getattr(doc, "origin", None) == InvoiceOrigin.IMPORTED.value:
+            return stated_totals(doc, tax_name=translate("invoicing.field.tax", doc.locale))
+        return _totals_from_rows(rows, prices_include_tax=doc.prices_include_tax)
+
+    def _tax_groups(self, doc: Any, rows: Sequence[Any]) -> tuple[Any, ...]:
+        return self.document_totals(doc, rows).groups
+
+    async def _original_bytes(self, doc: Any) -> bytes | None:
+        """The stored original of an imported invoice, if it holds one — the PDF every
+        reader serves in place of a render. ``None`` when there is nothing to serve (native,
+        or imported without a file), and also when the file row has gone: the FK is
+        ``SET NULL`` so that is one query answering "no"."""
+        file_id = getattr(doc, "original_file_id", None)
+        if file_id is None:
+            return None
+        stored = await self.ctx.repo(StoredFile).get(file_id)
+        if stored is None:
+            return None
+        files = FileService(self.ctx)
+        return await asyncio.to_thread(lambda: files.open(stored).read())
 
     async def _pay_link(self, doc: Any, kind: str) -> dict[str, Any]:
         """The portal deeplink the QR block encodes (#268), resolved *here*.
@@ -1236,6 +1517,12 @@ class _DocumentService:
         routes follow (#190). A long invoice would otherwise stall every other request on the
         worker for the duration of the layout.
         """
+        # An imported invoice that holds the document it was sent as *is* that document: the
+        # download, the mail attachment and the public link all hand it over untouched rather
+        # than drawing a second one under the same number (docs/INVOICING.md).
+        original = await self._original_bytes(doc)
+        if original is not None:
+            return original, self._document_filename(doc, kind)
         inputs = await self._render_inputs(doc, kind)
         content = await asyncio.to_thread(lambda: render_document_pdf(**inputs))
         return content, self._document_filename(doc, kind)
@@ -1535,6 +1822,30 @@ class InvoiceService(_DocumentService):
                         )
                     ).scalars()
                 }
+        # The original document an imported invoice holds — detail read only, one query for
+        # the batch, and only when at least one row names a file.
+        originals: dict[uuid.UUID, dict[str, Any]] = {}
+        if payments:
+            by_file = {
+                i.original_file_id: i for i in invoices if i.original_file_id is not None
+            }
+            if by_file:
+                stored_rows = (
+                    await self.ctx.session.execute(
+                        self.ctx.repo(StoredFile)
+                        .scoped_select()
+                        .where(StoredFile.id.in_(list(by_file)))
+                    )
+                ).scalars()
+                for stored in stored_rows:
+                    invoice = by_file[stored.id]
+                    originals[invoice.id] = {
+                        "file_id": stored.id,
+                        "filename": stored.filename,
+                        "size_bytes": stored.size_bytes,
+                        "sha256": invoice.original_sha256 or "",
+                        "uploaded_at": stored.created_at,
+                    }
         for invoice in invoices:
             rows = lines_by_doc.get(invoice.id, [])
             invoice.company_name = names.get(invoice.company_id, "")  # type: ignore[attr-defined]
@@ -1545,13 +1856,12 @@ class InvoiceService(_DocumentService):
                         "rate_pct": g.rate_pct, "category": g.category, "name": g.name,
                         "base": g.base, "tax": g.tax,
                     }
-                    for g in _totals_from_rows(
-                        rows, prices_include_tax=invoice.prices_include_tax
-                    ).groups
+                    for g in self._tax_groups(invoice, rows)
                 ]
                 if lines
                 else []
             )
+            invoice.original = originals.get(invoice.id)  # type: ignore[attr-defined]
             invoice.outstanding = outstanding_of(invoice)  # type: ignore[attr-defined]
             invoice.credited = invoice.credited_total != 0  # type: ignore[attr-defined]
             invoice.fully_credited = (  # type: ignore[attr-defined]
@@ -1690,6 +2000,13 @@ class InvoiceService(_DocumentService):
                 self.entity_type, data.custom or {}
             )
         invoice = await self.repo.update(invoice, **values)
+        if "original_file_id" in sent:
+            # The JSON half of attaching an original (the multipart route is the other): a
+            # file already uploaded against this invoice, named by id; ``null`` detaches.
+            if data.original_file_id is None:
+                invoice = await self.detach_original(invoice)
+            else:
+                invoice = await self._adopt_original(invoice, data.original_file_id)
 
         if data.lines is not None:
             settings_row = await self.settings.row()
@@ -2012,9 +2329,14 @@ class InvoiceService(_DocumentService):
         await payments.delete(payment)
         return await self._settle(invoice)
 
-    async def _settle(self, invoice: Invoice) -> Invoice:
+    async def _settle(self, invoice: Invoice, *, notify: bool = True) -> Invoice:
         """Recompute ``paid_total`` from the payments and flip status accordingly — the sum
         is the truth, a stored counter is only its cache.
+
+        ``notify=False`` is the import's: an invoice that was paid three years ago in another
+        system is recorded here, not paid here, and ``invoice.paid`` reaching the notification
+        and automation subscribers eight hundred times over is exactly what a back catalogue
+        must not do (docs/INVOICING.md).
 
         A document settles when it has nothing left to owe **from the side it started on**.
         The old rule read ``paid_total >= total`` guarded by ``total > 0``, which is that
@@ -2052,7 +2374,7 @@ class InvoiceService(_DocumentService):
         # ``invoice.paid`` means money came in. A credit note reaching rest is the opposite
         # (a refund went out, or its source absorbed it), so it stays off this event rather
         # than teaching every future subscriber to re-check the sign.
-        if fully_paid and not was_paid and invoice.total > 0:
+        if notify and fully_paid and not was_paid and invoice.total > 0:
             await emit(
                 "invoice.paid",
                 self.ctx,
@@ -2066,6 +2388,396 @@ class InvoiceService(_DocumentService):
             )
         await self._attach([invoice], payments=True)
         return invoice
+
+    # --- the back catalogue (docs/INVOICING.md, "Bringing the back catalogue in") ----- #
+    async def import_document(self, data: InvoiceImport) -> Invoice:
+        """Record an invoice that was **issued elsewhere**: numbered, dated and totalled as
+        the sheet says, never as a draft, and with nothing recomputed.
+
+        The shape of the write is ``create`` + ``issue`` with three deliberate differences.
+        The **number is the sheet's** (the unique index is the backstop; the descriptor's
+        pre-check is what names the row). The **totals are stored verbatim** and the document
+        gets one summary line — the line exists so the page has a row to print, the totals
+        are the fact, and every breakdown reads ``stated_totals`` (see ``_tax_groups``). And
+        **nothing is emitted**: an invoice paid three years ago is being recorded, not paid,
+        and the notification and automation subscribers must not hear eight hundred of them.
+        The payment the sheet describes lands as an ordinary ``InvoicePayment``, so
+        outstanding, overdue and the dashboards need no special case.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        plan = plan_import(data)
+        company = await _company_row(self.ctx, data.company_id)
+        if data.credit_for_id is not None:
+            await self._import_credit_source(data.credit_for_id)
+        settings_row = await self.settings.row()
+        currency, locale = await _org_defaults(self.ctx)
+        doc_locale = data.locale or locale
+        custom = await self.custom_fields.validate(self.entity_type, data.custom or {})
+        line_row = await self._summary_line_row(
+            plan, description=data.description, number=data.number, locale=doc_locale
+        )
+        # An invoice from the sheet marked cancelled/paid was so *then*; the instants we do
+        # not know are stamped with the day the sheet gives (noon in the org's zone, so it
+        # reads as that date in every report that converts it back), never with "now".
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+
+        def instant(day: date) -> datetime:
+            return datetime.combine(day, time(12, 0), tzinfo=zone)
+
+        invoice = await self.repo.create(
+            company_id=data.company_id,
+            contact_id=None,
+            kind=data.kind.value,
+            credit_for_id=data.credit_for_id,
+            number=data.number,
+            status=(
+                InvoiceStatus.CANCELLED.value
+                if plan.status == InvoiceStatus.CANCELLED
+                else InvoiceStatus.OPEN.value
+            ),
+            customer=_customer_snapshot(company, email=None),
+            currency=(data.currency or currency).upper(),
+            exchange_rate=None,
+            locale=doc_locale,
+            reference=data.reference,
+            notes=sanitize_markdown(data.notes),
+            template_id=settings_row.default_template_id,
+            issue_date=data.issue_date,
+            due_date=data.due_date
+            or (data.issue_date + timedelta(days=settings_row.default_due_days)),
+            delivery_date=data.delivery_date,
+            prices_include_tax=False,
+            subtotal=plan.subtotal,
+            tax_total=plan.tax_total,
+            total=plan.total,
+            sent_at=instant(data.sent_on) if data.sent_on else None,
+            cancelled_at=(
+                instant(data.issue_date)
+                if plan.status == InvoiceStatus.CANCELLED
+                else None
+            ),
+            reminders_paused=not (data.reminders or False),
+            origin=InvoiceOrigin.IMPORTED.value,
+            import_source=data.import_source,
+            imported_at=datetime.now(UTC),
+            custom=custom,
+        )
+        await self.lines.create(**{self.line_fk: invoice.id}, **line_row)
+        await ActivityService(self.ctx).record(
+            self.entity_type, invoice.id, "imported",
+            {"number": data.number, "source": data.import_source or ""},
+        )
+        if plan.status != InvoiceStatus.CANCELLED:
+            await ensure_public_token(self.ctx, invoice)
+            # A credit note writes its source down exactly as a native one does at issue.
+            invoice = await self._apply_credit(invoice)
+            if plan.payment != 0:
+                invoice = await self._register_import_payment(
+                    invoice, amount=plan.payment, paid_on=plan.paid_on,
+                    method=data.payment_method,
+                )
+            if invoice.status == InvoiceStatus.PAID.value and plan.paid_on is not None:
+                invoice = await self.repo.update(invoice, paid_at=instant(plan.paid_on))
+        await self._attach([invoice], payments=True)
+        return invoice
+
+    async def import_update(self, invoice: Invoice, data: InvoiceImport) -> Invoice:
+        """A re-imported row over an invoice that already exists — native or imported.
+
+        The sheet may bring the *process* half up to date (a due date, a reference, when it
+        was sent, the notes) and may **raise** the payment state: ``paid_total`` above what
+        is registered records the difference as a payment on ``paid_on``, which is how "mark
+        these forty paid from the bank statement" works on a register schakl raised itself.
+        What it may never do is move money that has been issued — a differing total, kind,
+        client or issue date is refused per row (``invoicing.import.locked``), and so is a
+        *lower* ``paid_total``: taking a registered payment back is a hand act with a trail.
+        An unchanged export therefore round-trips without touching anything.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        delta = plan_import_update(invoice, data)
+        values: dict[str, Any] = {}
+        for field in ("due_date", "delivery_date", "reference"):
+            value = getattr(data, field)
+            if value is not None and value != getattr(invoice, field):
+                values[field] = value
+        if data.notes is not None and data.notes != (invoice.notes or ""):
+            values["notes"] = sanitize_markdown(data.notes)
+        if data.sent_on is not None and invoice.sent_at is None:
+            zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+            values["sent_at"] = datetime.combine(data.sent_on, time(12, 0), tzinfo=zone)
+        if invoice.origin == InvoiceOrigin.IMPORTED.value:
+            if data.import_source is not None and data.import_source != invoice.import_source:
+                values["import_source"] = data.import_source
+            if data.reminders is not None and data.reminders == invoice.reminders_paused:
+                values["reminders_paused"] = not data.reminders
+        if data.custom:
+            values["custom"] = await self.custom_fields.validate(
+                self.entity_type, {**(invoice.custom or {}), **data.custom}
+            )
+        if values:
+            before = snapshot(invoice, self.audited_fields)
+            invoice = await self.repo.update(invoice, **values)
+            await ActivityService(self.ctx).record_update(
+                self.entity_type, invoice.id, before, snapshot(invoice, self.audited_fields)
+            )
+        if data.status == InvoiceStatus.CANCELLED and invoice.status == InvoiceStatus.OPEN.value:
+            return await self.cancel(invoice.id)
+        if delta != 0:
+            invoice = await self._register_import_payment(
+                invoice, amount=delta, paid_on=data.paid_on, method=data.payment_method
+            )
+        await self._attach([invoice], payments=True)
+        return invoice
+
+    async def _register_import_payment(
+        self, invoice: Invoice, *, amount: Decimal, paid_on: date | None, method: str
+    ) -> Invoice:
+        """The payment a sheet's state implies — ``add_payment`` without the event."""
+        if paid_on is None:  # the plan/check already refused this; defence in depth
+            raise AppError(
+                "validation", "errors.validation", status_code=400,
+                fields={"paid_on": "invoicing.import.paid_on_required"},
+            )
+        await self.ctx.repo(InvoicePayment).create(
+            invoice_id=invoice.id,
+            paid_on=paid_on,
+            amount=amount,
+            method=method,
+            note=translate("invoicing.import.payment_note", invoice.locale),
+        )
+        await ActivityService(self.ctx).record(
+            self.entity_type, invoice.id, "payment_registered",
+            {"amount": float(amount), "method": method},
+        )
+        return await self._settle(invoice, notify=False)
+
+    async def _import_credit_source(self, source_id: uuid.UUID) -> Invoice:
+        """The invoice an imported credit note corrects: issued, and not itself a note."""
+        source = await self.repo.get(source_id)
+        if source is None or source.number is None:
+            raise AppError(
+                "validation", "errors.validation", status_code=400,
+                fields={"credit_for": "impex.errors.unresolved_reference"},
+            )
+        if source.kind == InvoiceKind.CREDIT_NOTE.value:
+            raise AppError(
+                "validation", "errors.validation", status_code=400,
+                fields={"credit_for": "invoicing.import.credit_source"},
+            )
+        return source
+
+    async def _summary_line_row(
+        self, plan: ImportPlan, *, description: str | None, number: str, locale: str
+    ) -> dict[str, Any]:
+        """The one line an imported document prints. Its rate is the document's effective
+        one, named after the tenant's own rate when one matches exactly (a 21% import reads
+        "Btw 21%" like everything else on the register) and after the generic label when
+        none does (a mixed-rate document at 15.00% is nobody's rate)."""
+        pct = effective_rate_pct(plan.subtotal, plan.tax_total)
+        rate = await self.ctx.session.scalar(
+            select(TaxRate)
+            .where(TaxRate.org_id == self.ctx.org.id, TaxRate.rate == pct, TaxRate.active)
+            .order_by(TaxRate.is_default.desc(), TaxRate.position)
+            .limit(1)
+        )
+        if rate is not None and rate.category in UNTAXED_CATEGORIES and plan.tax_total != 0:
+            rate = None  # an exempt rate at "0%" cannot describe a document that charged tax
+        return {
+            "position": 0,
+            "line_kind": LineKind.PRODUCT.value,
+            "description": (description or "").strip()
+            or translate("invoicing.import.line", locale, number=number),
+            "quantity": Decimal(1),
+            "unit": None,
+            "unit_price": plan.subtotal,
+            "tax_rate_id": rate.id if rate is not None else None,
+            "tax_rate_pct": pct,
+            "tax_name": (
+                tax_label(rate.label_i18n, locale)
+                if rate is not None
+                else translate("invoicing.field.tax", locale)
+            ),
+            "tax_category": (
+                rate.category
+                if rate is not None
+                else (TaxCategory.STANDARD.value if plan.tax_total else TaxCategory.ZERO.value)
+            ),
+            "amount": plan.subtotal,
+            "time_entry_ids": [],
+            "subscription_id": None,
+            "domain_id": None,
+            "period_start": None,
+            "period_end": None,
+        }
+
+    # --- the original document -------------------------------------------- #
+    async def attach_original(
+        self, invoice_id: uuid.UUID, *, filename: str, content_type: str, data: bytes
+    ) -> Invoice:
+        """Store the document an imported invoice was actually sent as, and record it.
+
+        The bytes are kept untouched (a document is evidence — the storage rule for
+        screenshots, applied to paper) and the invoice writes down their sha256 itself, so
+        "is this still what was attached" is answerable from the record alone. Replacing is
+        attaching again: the previous file row goes through ``drop_file`` (never a bare
+        storage delete — the blob may be shared) and the trail says both happened.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        invoice = await self.repo.get_or_404(invoice_id)
+        _require_imported(invoice)
+        _require_pdf(content_type, data)
+        stored = await FileService(self.ctx).create(
+            filename=filename or f"{invoice.number}.pdf",
+            content_type="application/pdf",
+            stream=io.BytesIO(data),
+            size_bytes=len(data),
+            entity_type=self.entity_type,
+            entity_id=invoice.id,
+        )
+        return await self._set_original(invoice, stored, sha256=_sha256(data))
+
+    async def _adopt_original(self, invoice: Invoice, file_id: uuid.UUID) -> Invoice:
+        """The ``PATCH {original_file_id}`` half: a file already uploaded **against this
+        invoice** (``POST /files?entity_type=invoice&entity_id=…`` or its JSON twin). A file
+        hanging off anything else is refused as absent — naming another record's file is
+        not a way to read it."""
+        _require_imported(invoice)
+        stored = await self.ctx.repo(StoredFile).get(file_id)
+        if (
+            stored is None
+            or stored.entity_type != self.entity_type
+            or stored.entity_id != invoice.id
+        ):
+            raise AppError(
+                "validation", "errors.validation", status_code=400,
+                fields={"original_file_id": "errors.not_found"},
+            )
+        if stored.id == invoice.original_file_id:
+            return invoice
+        files = FileService(self.ctx)
+        data = await asyncio.to_thread(lambda: files.open(stored).read())
+        _require_pdf(stored.content_type, data)
+        return await self._set_original(invoice, stored, sha256=_sha256(data))
+
+    async def _set_original(self, invoice: Invoice, stored: StoredFile, *, sha256: str) -> Invoice:
+        previous_id = invoice.original_file_id
+        invoice = await self.repo.update(
+            invoice, original_file_id=stored.id, original_sha256=sha256
+        )
+        await ActivityService(self.ctx).record(
+            self.entity_type, invoice.id, "original_attached",
+            {
+                "filename": stored.filename,
+                "sha256": sha256,
+                "size_bytes": stored.size_bytes,
+                "replaced": previous_id is not None,
+            },
+        )
+        if previous_id is not None and previous_id != stored.id:
+            await self._drop_original_file(invoice, previous_id)
+        return invoice
+
+    async def detach_original(self, invoice: Invoice) -> Invoice:
+        """Forget the original: the file row goes (its bytes when nothing else holds them),
+        the invoice renders again, and the trail carries the fingerprint that was there."""
+        _require_imported(invoice)
+        previous_id, previous_sha = invoice.original_file_id, invoice.original_sha256
+        if previous_id is None:
+            return invoice
+        invoice = await self.repo.update(invoice, original_file_id=None, original_sha256=None)
+        await ActivityService(self.ctx).record(
+            self.entity_type, invoice.id, "original_detached", {"sha256": previous_sha or ""}
+        )
+        await self._drop_original_file(invoice, previous_id)
+        return invoice
+
+    async def _drop_original_file(self, invoice: Invoice, file_id: uuid.UUID) -> None:
+        stored = await self.ctx.repo(StoredFile).get(file_id)
+        # Only a file that is *this invoice's* — a pointer that somehow named another
+        # record's file must not take that record's file with it.
+        if (
+            stored is not None
+            and stored.entity_type == self.entity_type
+            and stored.entity_id == invoice.id
+        ):
+            await drop_file(self.ctx, stored)
+
+    async def attach_originals(self, archive: bytes) -> dict[str, Any]:
+        """A zip of PDFs, each matched to an imported invoice by its number.
+
+        A migration has hundreds of these and one drag onto one invoice at a time is not a
+        feature. Matching is by the file's *name*: exactly the number (``2024-0031.pdf``), or
+        a name that contains it (``factuur_2024-0031_klant.pdf``), compared with case and
+        separators stripped so ``2024_0031`` and ``2024-0031`` are the same number. A name
+        containing two numbers is ambiguous and named as such rather than guessed; an
+        invoice that already holds an original is left alone — a batch never replaces a
+        document somebody attached on purpose. Every cap is checked before the work it
+        bounds (§17): the entry count and each declared size before anything is inflated.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        try:
+            zipped = zipfile.ZipFile(io.BytesIO(archive))
+            entries = [e for e in zipped.infolist() if not e.is_dir()]
+        except zipfile.BadZipFile:
+            raise AppError(
+                "validation", "errors.upload_type", status_code=422,
+                fields={"file": "errors.upload_type"},
+            ) from None
+        if len(entries) > MAX_ORIGINALS_PER_ARCHIVE:
+            raise AppError(
+                "validation", "invoicing.import.archive_too_many", status_code=413,
+                fields={"file": "invoicing.import.archive_too_many"},
+                details={"limit": MAX_ORIGINALS_PER_ARCHIVE},
+            )
+        from app.config import settings as app_settings
+
+        for entry in entries:
+            if entry.file_size > app_settings.upload_max_bytes:
+                raise AppError(
+                    "validation", "errors.upload_too_large", status_code=413,
+                    fields={"file": "errors.upload_too_large"},
+                    details={"limit": app_settings.upload_max_bytes, "entry": entry.filename},
+                )
+        candidates = (
+            await self.ctx.session.execute(
+                self.repo.scoped_select().where(
+                    Invoice.origin == InvoiceOrigin.IMPORTED.value,
+                    Invoice.number.is_not(None),
+                )
+            )
+        ).scalars().all()
+        by_norm = {_number_key(i.number): i for i in candidates if i.number}
+        report: dict[str, Any] = {
+            "matched": [], "unmatched": [], "ambiguous": [], "already_attached": [],
+            "not_pdf": [],
+        }
+        for entry in entries:
+            name = posixpath.basename(entry.filename)
+            stem, ext = posixpath.splitext(name)
+            if ext.lower() != ".pdf":
+                report["not_pdf"].append(name)
+                continue
+            invoice = _match_original(stem, by_norm)
+            if invoice is None:
+                report["unmatched"].append(name)
+                continue
+            if invoice is _AMBIGUOUS:
+                report["ambiguous"].append(name)
+                continue
+            if invoice.original_file_id is not None:
+                report["already_attached"].append(
+                    {"number": invoice.number, "filename": name}
+                )
+                continue
+            data = zipped.read(entry)
+            if not data.startswith(b"%PDF-"):
+                report["not_pdf"].append(name)
+                continue
+            await self.attach_original(
+                invoice.id, filename=name, content_type="application/pdf", data=data
+            )
+            report["matched"].append({"number": invoice.number, "filename": name})
+        return report
 
     # --- crediting ------------------------------------------------------------ #
     async def _credited_by_notes(self, source_id: uuid.UUID) -> Decimal:

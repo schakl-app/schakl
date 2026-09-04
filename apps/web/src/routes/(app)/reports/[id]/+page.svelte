@@ -205,8 +205,11 @@
   </p>
 {/if}
 
-{#if warnings.length > 0}
-  <!-- The agency's own notes about this run. Never printed on the client's document (§17). -->
+{#if !reader && warnings.length > 0}
+  <!-- The agency's own notes about this run. Never printed on the client's document (§17),
+       and never drawn over it either: the API already hands a portal caller an empty list,
+       and this is the layout saying the same thing, so the review desk's amber box cannot
+       come back on the client's view the day somebody widens the payload. -->
   <section
     class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950"
   >

@@ -72,6 +72,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/assistant/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assistant Transcribe
+         * @description Speech to text for the assistant's composer.
+         *
+         *     ``ai.use`` is the route permission and, unlike the other two dictation routes, the only
+         *     one: the transcript becomes a message the user still sends, and every tool that message
+         *     can reach carries its own gate.
+         */
+        post: operations["assistant_transcribe_api_v1_ai_assistant_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/companies/{company_id}/digest": {
         parameters: {
             query?: never;
@@ -5109,6 +5133,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/invoice/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Invoice
+         * @description Every column a invoice import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_invoice_api_v1_impex_invoice_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Invoice
+         * @description Export the current filtered invoice list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_invoice_api_v1_impex_invoice_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Invoice
+         * @description Import invoice rows from a spreadsheet, upserting on the first of `number` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_invoice_api_v1_impex_invoice_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/invoice/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Invoice
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_invoice_api_v1_impex_invoice_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/project/columns": {
         parameters: {
             query?: never;
@@ -6586,6 +6690,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/originals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Invoice Originals
+         * @description Attach the original documents of **imported** invoices in one go (docs/INVOICING.md).
+         *
+         *     Each PDF in the archive is matched to an imported invoice by its file name — exactly the
+         *     number, or a name containing it, separators and case ignored — and attached where that
+         *     invoice holds no original yet. The report names every file that matched, matched two
+         *     numbers, matched none, or was not a PDF, and every invoice left alone because it already
+         *     had one. Multipart, so off the MCP surface; the JSON twin is one ``POST /files/inline``
+         *     against the invoice plus ``PATCH {original_file_id}``.
+         */
+        post: operations["attach_invoice_originals_api_v1_invoicing_invoices_originals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/pdf": {
         parameters: {
             query?: never;
@@ -6708,6 +6839,31 @@ export interface paths {
          * @description Assign the number, freeze the bill-to, open the invoice.
          */
         post: operations["issue_invoice_api_v1_invoicing_invoices__invoice_id__issue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/original": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Invoice Original
+         * @description Attach (or replace) the original document of an **imported** invoice.
+         *
+         *     Stored untouched, fingerprinted on the invoice itself, and served in place of a render by
+         *     every reader — the download, the mail attachment, the public link and the portal. A native
+         *     invoice refuses (409): its document *is* its render. Multipart, so off the MCP surface; an
+         *     agent uploads through ``POST /files/inline`` and names the file in ``PATCH``.
+         */
+        post: operations["attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11612,6 +11768,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/schedules/busy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Busy Schedules
+         * @description When these people are already taken — every calendar the instance can read, in one
+         *     answer, for the block about to be planned. Declared before ``/{schedule_id}`` so the path
+         *     segment is never read as an id.
+         */
+        get: operations["busy_schedules_api_v1_tasks_schedules_busy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/schedules/{schedule_id}": {
         parameters: {
             query?: never;
@@ -13887,6 +14065,25 @@ export interface components {
              */
             override_budget: boolean;
         };
+        /**
+         * AssistantTranscribeRequest
+         * @description A spoken question or instruction for the assistant.
+         *
+         *     Same wire shape as the other two, and the third distinct type on purpose: this one asks
+         *     for the ``assistant`` feature and no write permission at all, because what the transcript
+         *     becomes is a chat message the user still has to send.
+         */
+        AssistantTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
         /** AuditEntry */
         AuditEntry: {
             /** Action */
@@ -14260,6 +14457,22 @@ export interface components {
              */
             truncated: boolean;
         };
+        /** Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post */
+        Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post: {
+            /**
+             * File
+             * @description The PDF the client actually received
+             */
+            file: string;
+        };
+        /** Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post */
+        Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post: {
+            /**
+             * File
+             * @description A zip of PDFs, each named after its invoice number
+             */
+            file: string;
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -14442,6 +14655,45 @@ export interface components {
         };
         /** Body_impex_import_hosting_api_v1_impex_hosting_import_post */
         Body_impex_import_hosting_api_v1_impex_hosting_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_invoice_api_v1_impex_invoice_import_post */
+        Body_impex_import_invoice_api_v1_impex_invoice_import_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file; headers are the export's keys
@@ -14872,6 +15124,30 @@ export interface components {
              */
             text?: string | null;
         };
+        /** Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post */
+        Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
         /** Body_impex_inspect_project_api_v1_impex_project_inspect_post */
         Body_impex_inspect_project_api_v1_impex_project_inspect_post: {
             /**
@@ -15140,6 +15416,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the message is about; wins over task_id
+             */
+            task_ids?: string[] | null;
         };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
@@ -15293,6 +15574,71 @@ export interface components {
             values: {
                 [key: string]: string | null;
             };
+        };
+        /**
+         * BusyFeedRead
+         * @description What the scheduling dialog draws beside the block it is about to book.
+         *
+         *     ``unavailable`` names the sources that could not answer: a calendar with a third missing
+         *     looks exactly like a free afternoon, and a conflict check may never look complete when it is
+         *     not (§17). ``sources`` is every provider that exists on this instance, so the legend can say
+         *     which calendars were consulted rather than leaving the viewer to guess.
+         */
+        BusyFeedRead: {
+            /** Items */
+            items: components["schemas"]["BusyItemRead"][];
+            /** Sources */
+            sources: string[];
+            /** Unavailable */
+            unavailable?: string[];
+        };
+        /**
+         * BusyItemRead
+         * @description One stretch of a person's time that is already taken (``app/core/busy.py``).
+         *
+         *     ``title``/``ref``/``href`` are present exactly when the caller may read the row behind it;
+         *     otherwise the window stands alone — the free/busy answer, Google's own rule for a
+         *     colleague's calendar.
+         */
+        BusyItemRead: {
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Href */
+            href?: string | null;
+            /**
+             * Kind
+             * @default busy
+             */
+            kind: string;
+            /** Ref */
+            ref?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Tentative
+             * @default false
+             */
+            tentative: boolean;
+            /** Title */
+            title?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** CalendarFeedItem */
         CalendarFeedItem: {
@@ -16641,6 +16987,11 @@ export interface components {
          *     seventeen is a different sentence, and only the count can say which one the tile means.
          */
         DashboardBudgets: {
+            /**
+             * Almost Budget
+             * @default 0
+             */
+            almost_budget: number;
             /** Items */
             items: components["schemas"]["DashboardBudgetProject"][];
             /**
@@ -16648,6 +16999,11 @@ export interface components {
              * @default 0
              */
             over_budget: number;
+            /**
+             * Over Budget Hours
+             * @default 0
+             */
+            over_budget_hours: number;
             /**
              * Tail Budget Hours
              * @default 0
@@ -16660,6 +17016,11 @@ export interface components {
             tail_spent_hours: number;
             /** Total */
             total: number;
+            /**
+             * Within Budget
+             * @default 0
+             */
+            within_budget: number;
         };
         /**
          * DashboardMineSummary
@@ -18123,6 +18484,8 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /** Task Ids */
+            task_ids?: string[] | null;
         };
         /** GmailImportResult */
         GmailImportResult: {
@@ -20839,6 +21202,11 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
             /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
+            /**
              * Whole Thread
              * @default false
              */
@@ -20866,6 +21234,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionBulkAssign
@@ -20888,6 +21261,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionBulkFailure
@@ -20980,6 +21358,11 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionDirection
@@ -21159,6 +21542,11 @@ export interface components {
             project_name?: string | null;
             /** Review Ids */
             review_ids?: string[];
+            /**
+             * Reviewable
+             * @default false
+             */
+            reviewable: boolean;
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];
@@ -21169,6 +21557,8 @@ export interface components {
             task_id?: string | null;
             /** Task Title */
             task_title?: string | null;
+            /** Tasks */
+            tasks?: components["schemas"]["InteractionTaskRef"][];
         };
         /** InteractionReject */
         InteractionReject: {
@@ -21196,6 +21586,11 @@ export interface components {
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /**
          * InteractionSource
@@ -21207,6 +21602,19 @@ export interface components {
          * @enum {string}
          */
         InteractionStatus: "pending" | "logged";
+        /**
+         * InteractionTaskRef
+         * @description One task on the roster, labelled — the contact ref's shape, one link over.
+         */
+        InteractionTaskRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title?: string | null;
+        };
         /** InteractionUpdate */
         InteractionUpdate: {
             /** Body Text */
@@ -21233,6 +21641,11 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Task Ids
+             * @description Every task the moment is about. Wins over task_id; [] clears the roster.
+             */
+            task_ids?: string[] | null;
         };
         /** InvoiceCreate */
         InvoiceCreate: {
@@ -21309,6 +21722,41 @@ export interface components {
          * @enum {string}
          */
         InvoiceKind: "invoice" | "credit_note";
+        /**
+         * InvoiceOrigin
+         * @description Where a document was *issued*.
+         *
+         *     ``native`` is an invoice this platform raised; ``imported`` is one the agency issued in the
+         *     system it used before schakl and brought in as a record (docs/INVOICING.md, "Bringing the
+         *     back catalogue in"). The distinction decides three things and nothing else: whose totals
+         *     are the fact (an imported document's stored totals, never a recomputation from its one
+         *     summary line), whether the document may carry the original file the client received, and
+         *     whether the accounting push should offer it (it is already in the ledger over there).
+         * @enum {string}
+         */
+        InvoiceOrigin: "native" | "imported";
+        /**
+         * InvoiceOriginalRead
+         * @description The document an imported invoice was actually sent as — what the record holds.
+         */
+        InvoiceOriginalRead: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /** Filename */
+            filename: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
         /**
          * InvoicePaymentAccountRead
          * @description A payment credential this org has connected, as an invoice screen needs it (#267).
@@ -21478,6 +21926,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Import Source */
+            import_source?: string | null;
+            /** Imported At */
+            imported_at?: string | null;
             /** Intents */
             intents?: components["schemas"]["InvoicePaymentIntentRead"][];
             /** Intro */
@@ -21505,6 +21957,9 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** @default native */
+            origin: components["schemas"]["InvoiceOrigin"];
+            original?: components["schemas"]["InvoiceOriginalRead"] | null;
             /**
              * Outstanding
              * @default 0
@@ -21596,6 +22051,8 @@ export interface components {
             locale?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Original File Id */
+            original_file_id?: string | null;
             /** Prices Include Tax */
             prices_include_tax?: boolean | null;
             /** Reference */
@@ -23891,6 +24348,34 @@ export interface components {
             www_proxied: boolean;
         };
         /**
+         * OriginalsBatchReport
+         * @description What a zip of originals did: one line per file, and the invoices it could not serve.
+         *
+         *     ``ambiguous`` names a file whose name matched more than one invoice number (an entry called
+         *     ``2024.pdf`` on a register full of ``2024-…`` numbers), ``unmatched`` one matching none, and
+         *     ``already_attached`` an invoice that had its original and was left alone — a batch never
+         *     replaces a document somebody attached on purpose.
+         */
+        OriginalsBatchReport: {
+            /** Already Attached */
+            already_attached?: components["schemas"]["OriginalsMatch"][];
+            /** Ambiguous */
+            ambiguous?: string[];
+            /** Matched */
+            matched?: components["schemas"]["OriginalsMatch"][];
+            /** Not Pdf */
+            not_pdf?: string[];
+            /** Unmatched */
+            unmatched?: string[];
+        };
+        /** OriginalsMatch */
+        OriginalsMatch: {
+            /** Filename */
+            filename: string;
+            /** Number */
+            number: string;
+        };
+        /**
          * OutstandingRead
          * @description Everything a client still has to be invoiced for, in one round trip.
          *
@@ -24550,6 +25035,50 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /**
+         * PlanBlock
+         * @description One block a spawned occurrence books itself — its **day** stated relative to the
+         *     occurrence, its clock and length absolute, its people optional.
+         *
+         *     A recurring job is rarely one sitting on the deadline: the newsletter is drafted on the
+         *     Tuesday before, reviewed on the Thursday, sent on the first. So the day is a *placement*:
+         *
+         *     * ``due`` — the occurrence's own due date (what every plan stored before this was);
+         *     * ``offset`` — ``days`` before (negative) or after the due date;
+         *     * ``weekday`` — a weekday: in the due date's own week when ``week`` is absent, else the
+         *       ``week``-th such weekday of the due date's month (``-1`` for the last one);
+         *     * ``day`` — day ``day`` of the due date's month, clamped like the anchors are.
+         *
+         *     ``user_ids`` omitted means *the occurrence's own roster*, resolved at spawn time rather than
+         *     frozen here — a recurring task whose assignees change must plan the new people's calendars,
+         *     not whoever happened to be on it when the rule was written.
+         */
+        PlanBlock: {
+            /** Day */
+            day?: number | null;
+            /** Days */
+            days?: number | null;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * On
+             * @default due
+             */
+            on: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Ids */
+            user_ids?: string[] | null;
+            /** Week */
+            week?: number | null;
+            /** Weekday */
+            weekday?: number | null;
+        };
         /** PlanUpdate */
         PlanUpdate: {
             /** Plan */
@@ -24558,6 +25087,38 @@ export interface components {
             trial_days?: number | null;
             /** Trial Ends At */
             trial_ends_at?: string | null;
+        };
+        /**
+         * PlannedBlockRead
+         * @description One block of the next occurrence, resolved: the placement turned into a date.
+         */
+        PlannedBlockRead: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * End Time
+             * Format: time
+             */
+            end_time: string;
+            /**
+             * In Past
+             * @default false
+             */
+            in_past: boolean;
+            /** On */
+            on: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** User Ids */
+            user_ids?: string[] | null;
         };
         /** PortalImpersonateRequest */
         PortalImpersonateRequest: {
@@ -25430,6 +25991,11 @@ export interface components {
             customer_name: string;
             /** Due Date */
             due_date?: string | null;
+            /**
+             * Has Original
+             * @default false
+             */
+            has_original: boolean;
             /** Issue Date */
             issue_date?: string | null;
             /** @default invoice */
@@ -25836,7 +26402,8 @@ export interface components {
          *     The anchors are **optional and absent by default**, which is what keeps every rule stored
          *     before #335 valid and unchanged: with none of them set, the cadence still hangs off the due
          *     date exactly as it did. Setting one pins the rhythm to a calendar the user can name — "elke
-         *     maand op dag 1" rather than "a month after whatever the deadline happens to be".
+         *     maand op dag 1" rather than "a month after whatever the deadline happens to be", and since
+         *     the plan grew placements, "elke maand op de tweede dinsdag" (``on_weekday`` + ``on_week``).
          *
          *     Which anchor a frequency accepts is a property of the frequency, so a mismatched pair is a
          *     422 rather than a field silently ignored: a rule that says "weekly on day 15" and quietly
@@ -25855,6 +26422,8 @@ export interface components {
             on_day?: number | null;
             /** On Month */
             on_month?: number | null;
+            /** On Week */
+            on_week?: number | null;
             /** On Weekday */
             on_weekday?: number | null;
             plan?: components["schemas"]["RecurrencePlan"] | null;
@@ -25871,22 +26440,21 @@ export interface components {
         RecurrenceMode: "after_completion" | "schedule";
         /**
          * RecurrencePlan
-         * @description "Herhaal ook de planning" (#335): the clock a spawned occurrence books itself at.
+         * @description "Herhaal ook de planning" (#335): what a spawned occurrence books onto a calendar.
          *
-         *     The **day** comes from the occurrence — its due date, which the anchors below pin — so this
-         *     carries only what the day cannot say: who, from when, for how long. ``user_id`` omitted means
-         *     *the occurrence's own assignee*, resolved at spawn time rather than frozen here: a recurring
-         *     task whose assignee moves to a colleague must plan the colleague's calendar, not the person
-         *     who happened to write the rule.
+         *     Two shapes, one meaning. The original carried a single clock — ``user_id``, ``start_time``,
+         *     ``duration_minutes`` — for one block on the due date, and every rule stored that way keeps
+         *     working unchanged. ``blocks`` is the same idea with the day made explicit and the count
+         *     made plural (:class:`PlanBlock`); a plan with ``blocks`` ignores the legacy trio, and
+         *     ``app.modules.tasks.recurrence.plan_blocks`` is the one reader that folds both into a list.
          */
         RecurrencePlan: {
+            /** Blocks */
+            blocks?: components["schemas"]["PlanBlock"][];
             /** Duration Minutes */
-            duration_minutes: number;
-            /**
-             * Start Time
-             * Format: time
-             */
-            start_time: string;
+            duration_minutes?: number | null;
+            /** Start Time */
+            start_time?: string | null;
             /** User Id */
             user_id?: string | null;
         };
@@ -25905,6 +26473,8 @@ export interface components {
         };
         /** RecurrencePreviewRead */
         RecurrencePreviewRead: {
+            /** Blocks */
+            blocks?: components["schemas"]["PlannedBlockRead"][];
             /** Following */
             following?: string[];
             /**
@@ -32935,6 +33505,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_transcribe_api_v1_ai_assistant_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */
@@ -42827,6 +43430,134 @@ export interface operations {
             };
         };
     };
+    impex_columns_invoice_api_v1_impex_invoice_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_invoice_api_v1_impex_invoice_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                /** @description Status, as on the list */
+                status?: string | null;
+                company_id?: string | null;
+                /** @description Only rows past their due date */
+                overdue?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_invoice_api_v1_impex_invoice_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_invoice_api_v1_impex_invoice_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_invoice_api_v1_impex_invoice_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_invoice_api_v1_impex_invoice_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     impex_columns_project_api_v1_impex_project_columns_get: {
         parameters: {
             query?: never;
@@ -45765,6 +46496,39 @@ export interface operations {
             };
         };
     };
+    attach_invoice_originals_api_v1_invoicing_invoices_originals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_attach_invoice_originals_api_v1_invoicing_invoices_originals_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OriginalsBatchReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_invoices_zip_api_v1_invoicing_invoices_pdf_get: {
         parameters: {
             query: {
@@ -46000,6 +46764,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["InvoiceIssue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post"];
             };
         };
         responses: {
@@ -52204,7 +53003,7 @@ export interface operations {
                 hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
-                /** @description 'over' keeps only projects at or past their budget; other tokens ignored */
+                /** @description 'over' (at or past budget), 'warn' (75-100 %) or 'ok' (under 75 %) keeps only that burn band; other tokens ignored */
                 burn?: string | null;
             };
             header?: never;
@@ -55689,6 +56488,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduleRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    busy_schedules_api_v1_tasks_schedules_busy_get: {
+        parameters: {
+            query: {
+                user_ids: string[];
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusyFeedRead"];
                 };
             };
             /** @description Validation Error */

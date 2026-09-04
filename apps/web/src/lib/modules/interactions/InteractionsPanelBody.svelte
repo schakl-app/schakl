@@ -43,7 +43,15 @@
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import EmlUploadForm from "./EmlUploadForm.svelte";
-  import { contactChips, type InteractionItem, isGmailRow, kindIcon, withBody } from "./format";
+  import {
+    contactChips,
+    isGmailRow,
+    kindIcon,
+    mayReview,
+    taskChips,
+    type InteractionItem,
+    withBody,
+  } from "./format";
   import { snippetPreview } from "./snippet";
   import { interactionsListHref } from "./scope";
   import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
@@ -126,9 +134,11 @@
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
 
-  // Moving a manual row rides the ordinary write scope; a gmail row stays the mailbox
-  // owner's call (the review rule) — the API enforces both, harder (#147).
-  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
+  // Moving a manual row rides the ordinary write scope; a gmail row stays the review flow's
+  // call — the mailbox owner, or a pending row's named reviewer (`mayReview`) — and the API
+  // enforces both, harder (#147). A *logged* gmail row is still its owner's alone.
+  const mayMove = (item: InteractionItem) =>
+    isGmailRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
 
   /** Where this row also belongs (#147): clickable chips for links beyond the current host. */
   function linkChips(item: InteractionItem): { href: string; label: string }[] {
@@ -139,8 +149,13 @@
         href: fromHref(`/projects/${item.project_id}`, page.url),
         label: item.project_name,
       });
-    if (item.task_id && item.task_title && !host.has("task_id"))
-      chips.push({ href: fromHref(`/tasks/${item.task_id}`, page.url), label: item.task_title });
+    // Every task the moment is about, not only the lead — on a task's own page that task's
+    // chip is dropped, the others stay (the contact rule below, one link over).
+    chips.push(
+      ...taskChips(item)
+        .filter((chip) => !(host.has("task_id") && chip.id === prefill.task_id))
+        .map((chip) => ({ href: fromHref(chip.href, page.url), label: chip.label })),
+    );
     // Every person the moment names (#300), not only the lead. On a contact's own page only
     // *that* person's chip is dropped — a link back to the page you are on says nothing, but
     // the people they were in the meeting *with* are the whole point of a roster, and
@@ -216,7 +231,7 @@
         },
       });
     }
-    if (item.source === "gmail" && isOwner(item)) {
+    if (mayReview(item, me)) {
       entries.push({
         label: t("interactions.reject"),
         icon: X,
@@ -336,8 +351,8 @@
                 {/if}
               </button>
 
-              {#if item.status === "pending" && isOwner(item)}
-                <!-- The owner's call, made where the email shows up. Non-destructive → inline. -->
+              {#if mayReview(item, me)}
+                <!-- The reviewer's call, made where the email shows up. Non-destructive → inline. -->
                 <form method="POST" action="?/approveInteraction" use:enhance={busy.wrap(item.id)}>
                   <input type="hidden" name="id" value={item.id} />
                   <Button

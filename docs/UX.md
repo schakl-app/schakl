@@ -1177,6 +1177,26 @@ contrast bug in dark mode rather than only an inconsistency.
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
+- **A tile about budgets answers "which, how badly, and which are fine" — a partition, not a
+  share** (the budget-status tile, replacing #437's donut). The donut sliced the hours *logged*
+  per project, so a project 300 % over its budget read `10,7 %` beside one comfortably inside
+  its budget reading `17,3 %`, and the only thing on the tile that said anything about budgets
+  was the chip under it. `ProjectBudgetsOverviewWidget` draws the three bands of the one burn
+  scale instead — over budget, almost spent, within budget — the way the tasks tile draws
+  urgency (§5 above: a band behind the two claims, a hairline under the quiet one, the heading
+  carrying the state), with one strip at the top that is the same partition as a single bar,
+  because "half the book is red" should arrive before a name is read. Three rules ride along.
+  **Every heading opens the list it counts**: the counts are the API's over the whole set
+  (`almost_budget` / `within_budget` beside `over_budget`), `?burn=` grew the same three tokens
+  (`budget.burn_level`, the API's copy of `core/burn.ts`), and the list page's pills say the same
+  words, so the destination confirms where you landed. **A verdict comes with its amount**:
+  `over_budget_hours` sums the overrun over the over-budget rows, and each over row leads with
+  its own remainder in words (#340) — "4 over budget" is *that*, `samen 46,5 u eroverheen` is
+  what the agency has to decide about. And **a bar may spill where the question is how far**:
+  `burnOverflowBar` puts the budget line at two thirds of the track so an over-budget row
+  visibly runs past a line every row draws, hatched as well as red (#404); the track still ends
+  at 150 % and the number beside it stays unclamped, which is the rule above, not an exception
+  to it. `BudgetBar` keeps clamping — a cell beside a figure has no room for a line.
 - **And exactly one block that draws it**: `core/ui/BudgetBar.svelte` (#313), `variant="block"` for
   a card, `variant="inline"` for a table cell. It exists because the scale being documented in one
   module did not stop a fourth surface from hand-rolling it: the task card had its own
@@ -1380,6 +1400,23 @@ contrast bug in dark mode rather than only an inconsistency.
   marker (solid eye visible, faint struck eye hidden), and it is a control, never the gate: the API
   applies `files.client_visible` on every path (`docs/STORAGE.md`), which is what let the task page
   drop its `!isPortal` around the strip.
+- **A stored image has one viewer, and it is never a new tab** (`lightbox.svelte.ts`,
+  `LightboxHost`). The strip and the rendered markdown each grew their own answer to a click on a
+  picture: the strip a bare `<dialog>` with the bytes in it, an inline `![alt](file:…)` a
+  `window.open` — the browser's default image page, black, with no way back to the record and no
+  way to the next screenshot. Both now call `openLightbox(images, index)` on a module store (the
+  toast pattern: the click happens inside sanitized `{@html}` five components below anything that
+  could own a dialog), and one host in the app shell draws it. Three rules. **The caller hands over
+  the set, not the picture** — every raster in the strip, every stored image in the body — so ← →,
+  a swipe and the thumbnail rail walk the screenshots in the order the page shows them. **A native
+  `<dialog>` in the top layer**, because the commonest place an inline picture is clicked is inside
+  the e-mail detail `Modal`, and a z-index war is not a design; the cost is that Escape must be
+  answered *and stopped* at the dialog, or the window listeners in `Modal` and `SlideOver` close the
+  record along with the picture. And **the thumbnail the page already had opens the viewer** —
+  drawn blurred under a spinner until the original lands — so a 4 MB screenshot opens instantly and
+  sharpens rather than opening black. Zoom follows the cursor (wheel, pinch, `+` `-` `0`), a
+  double-click toggles fit and actual size, and the two things a new tab was good for — the
+  original in its own tab, a download — stay as buttons in the bar.
 - **An image belongs where the words are, and its width is the author's** (the inline-images
   follow-up). Ctrl+V *into a composer* — the task description, a comment, a reply — uploads the
   screenshot as body content (`POST /files?inline=true`, so it never doubles up in the attachment
@@ -2527,6 +2564,51 @@ contrast bug in dark mode rather than only an inconsistency.
   holding only `:own` sees their own name and no chips: the list has one legal value, and a
   picker that offers one choice is a label pretending to be a control.
 
+  **A clash is seen before it is saved, and a colleague's diary is a shape, not a story.** Inplannen
+  asked for a day, a start and a length and answered with a Google event — so whether the block
+  landed on top of the client call, the dentist or somebody's Friday off was discovered afterwards,
+  on the Agenda, by the person it was done to. The dialog now draws the day beside the form: one
+  column per person named in the chips, the block about to be booked as a dashed ghost over
+  whatever is already there, red where they overlap, and a verdict chip ("Geen overlap" / "Overlap:
+  2") before any drawing — the sentence the view exists to produce, first. Four rules generalise.
+  **Being allowed to book somebody is the reason to see when they are taken**, and it is *only*
+  that: the feed rides `tasks.schedule.write` (`:own` asks about yourself, `:any` about anyone),
+  and whether an interval carries a *title* is each source's own read rule (`app/core/busy.py`,
+  the tag-manager seam applied to a calendar). A planner who may book a colleague but not read
+  their planning sees "Bezet 09:00–11:00"; a colleague's Google appointment is a window and
+  nothing more, whoever asks — Google's own free/busy rule, and the first time any cross-person
+  Google read exists here, deliberately from the cache the sync already keeps and never with the
+  colleague's credential. The interval is never withheld: an unnamed block is honest, an invisible
+  one is a double booking. **An absence is a band, not a block** — nothing can be planned *around*
+  a day off, so leave shades the whole column and a pending request is drawn tentative rather
+  than not at all. **The ghost moves without a round trip** and the calendars refetch only when
+  the day or the people change, debounced: the proposal changed, not the diaries. And **a view
+  with a third missing must never look complete**: the legend names which calendars were read
+  and, in amber, which could not be, because a free-looking afternoon and an unanswered source
+  are the same picture and only a sentence can tell them apart. The columns share the Agenda's
+  own geometry (`core/ui/timegrid-layout`, lifted out of `TimeGrid` rather than copied), so a
+  block sits here exactly where the day view draws it.
+
+  **A recurring job is rarely one sitting, so the plan is placed blocks, not a clock.** "Herhaal
+  ook de planning" booked one block on the deadline, which is right for "backup controleren" and
+  wrong for everything with a draft in it: the newsletter is written on the Tuesday before,
+  reviewed on the Thursday, sent on the first. The plan is a list now, each block stating *when
+  relative to the occurrence* it lands — on the deadline, N days before or after it, a weekday of
+  that week, the n-th weekday of the month, a day of the month — with its own people (chips, like
+  Inplannen; none named means everyone on the task, resolved when the occurrence is created rather
+  than frozen when the rule was written) and its own note. The anchor grew the same vocabulary:
+  "elke maand op de tweede dinsdag" is one control that pins a month by a day *or* by an n-th
+  weekday, never two boxes that could both be filled. Three rules. **The preview resolves every
+  block to a real date** for the next occurrence, in calendar order rather than typing order, and
+  strikes through the one that would land before today — because a placement that reads right
+  ("2 dagen ervoor") and lands wrong (the deadline is tomorrow) is exactly what a sentence cannot
+  show and a date can. **A list is one field**: the editor composes the blocks and posts them as
+  one JSON value (`plan_blocks`), since a list of placed blocks is not a shape a flat form can
+  post as fields, and the API validates every block so the action only has to be honest about the
+  shape. And **the stored shape is not rewritten**: a plan saved as one clock still reads as one
+  block on the due date, through the one reader both sides have (`plan_blocks`), so nothing an
+  agency stored changes its meaning on upgrade.
+
   **A hand-off nobody is told about did not happen.** Completing a recurring task spawned its
   successor and said nothing — the trail read "verplaatst van Open naar Klaar", exactly like an
   ordinary task. Both ends now carry a dated, linked activity line, and the finish prompt is where
@@ -2807,3 +2889,13 @@ contrast bug in dark mode rather than only an inconsistency.
   nobody chose goes back to following the project. Its sibling on the same form: discarding a
   concept reset `billable` to a flat `true` rather than to the day's own seed, which quietly
   billed a retainer client on a form that had just been emptied.
+- **A stored PDF is framed as an `<object>`, never sandboxed, never an `<iframe>`** (`core/ui/PdfFrame`,
+  the imported-invoice work). `DocumentFrame` is right for a page the API rendered — same-origin
+  HTML it measures, scales and sandboxes without scripts. A PDF fails both halves: the `sandbox`
+  attribute switches the browser's own viewer off (a plugin is exactly what the flag blocks), so the
+  frame showed a grey box; and where there is no viewer at all — headless, some mobile browsers —
+  an `<iframe>` pointed at a PDF *downloads it on page load*, which on a detail page is a file
+  landing in someone's folder every time they open the record. An `<object type="application/pdf">`
+  over our own proxy renders where it can and falls through to its content where it cannot: one
+  sentence and the download link, the same file offered on purpose instead of by accident. The
+  height is a viewport share, because nothing inside a PDF viewer can be measured from outside.

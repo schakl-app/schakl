@@ -330,7 +330,12 @@ _ROUTE_MAPS = [
     # (the list) stays a tool.
     RouteMap(
         methods=["POST"],
-        pattern=r"^/api/v1/(files|hr/documents|interactions/upload-eml|companies/[^/]+/logo)$",
+        pattern=(
+            r"^/api/v1/(files|hr/documents|interactions/upload-eml|companies/[^/]+/logo"
+            # An imported invoice's original PDF, one or a zip of them: the JSON twin is
+            # ``POST /files/inline`` against the invoice plus ``PATCH {original_file_id}``.
+            r"|invoicing/invoices/[^/]+/original|invoicing/invoices/originals)$"
+        ),
         mcp_type=MCPType.EXCLUDE,
     ),
     RouteMap(pattern=r"^/api/v1/.*", mcp_type=MCPType.TOOL),

@@ -140,6 +140,50 @@ def compute_totals(lines: list[LineInput], *, prices_include_tax: bool = False) 
     )
 
 
+def effective_rate_pct(subtotal: Decimal, tax_total: Decimal) -> Decimal:
+    """The one rate that turns ``subtotal`` into ``tax_total``, to the cent of a percent.
+
+    An imported document states its totals and not its rate mix, so the only rate it can be
+    described by is the effective one — ``21.00`` for an ordinary Dutch invoice, ``15.00`` for
+    one that was half high and half low. Two decimals because that is what ``tax_rate_pct``
+    holds; zero for a zero (or negative-base) document rather than a division error.
+    """
+    subtotal = Decimal(subtotal)
+    if subtotal == 0:
+        return Decimal("0.00")
+    return (Decimal(tax_total) / subtotal * Decimal(100)).quantize(CENTS, rounding=ROUND_HALF_UP)
+
+
+def stated_totals(doc: Any, *, tax_name: str) -> Totals:
+    """The totals of a document **as stored**, as one tax group — for an imported invoice.
+
+    ``compute_totals`` is the authority for a document this platform priced: lines in, money
+    out. An imported document is the other way round — the money is the fact (it is what the
+    paper the client holds says) and its single summary line exists only so the document has a
+    row to print. Recomputing its tax from that line at a two-decimal effective rate can be a
+    cent off on a large mixed-rate invoice, and a preview that disagrees with the stored total
+    by a cent is a bug somebody will report. So every reader that prints a breakdown — the
+    renderer, UBL, ``InvoiceRead.tax_groups`` — takes this instead, and the numbers are the
+    stored ones by construction.
+    """
+    subtotal = Decimal(doc.subtotal)
+    tax_total = Decimal(doc.tax_total)
+    return Totals(
+        subtotal=subtotal,
+        tax_total=tax_total,
+        total=Decimal(doc.total),
+        groups=(
+            TaxGroup(
+                rate_pct=effective_rate_pct(subtotal, tax_total),
+                category=TaxCategory.STANDARD.value if tax_total else TaxCategory.ZERO.value,
+                name=tax_name,
+                base=subtotal,
+                tax=tax_total,
+            ),
+        ),
+    )
+
+
 def line_nets(
     lines: list[Any], groups: tuple[TaxGroup, ...], include_tax: bool
 ) -> list[Decimal]:

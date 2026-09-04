@@ -333,6 +333,10 @@ class ImpexService:
         for row, entity in resolved:
             self._normalize_phones(row, entity, default_region)
             self._validate_custom(row, defs, custom_keys, entity)
+            if d.validate_row is not None and not row.errors:
+                # The module's own cross-column rule, in the plan phase, so the preview can
+                # name the row and the column (#289) instead of the commit 422-ing whole.
+                row.errors.extend(await d.validate_row(self.ctx, row.values, entity))
             if row.errors:
                 errors.extend(
                     ImportRowError(row=row.index, field=f, message_key=key)

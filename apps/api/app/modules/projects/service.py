@@ -30,7 +30,13 @@ from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.projects.budget import effective_budget, period_bound, period_start_date
+from app.modules.projects.budget import (
+    BURN_LEVELS,
+    burn_level,
+    effective_budget,
+    period_bound,
+    period_start_date,
+)
 from app.modules.projects.models import (
     Project,
     ProjectAssignee,
@@ -295,9 +301,11 @@ class ProjectService:
         # argument). So a burn filter takes the ``dashboard_budgets`` shape instead (#437):
         # fetch the filtered set whole, enrich, filter in Python, cut, and report a total
         # counted over what survived — the SQL COUNT below would count rows the reader never
-        # sees, which is the one lie a filtered list must not tell. Any token but ``over`` is
-        # ignored (a query string anyone can edit falls back rather than 422s, §9).
-        if burn == "over":
+        # sees, which is the one lie a filtered list must not tell. The three tokens are the
+        # three bands of the one burn scale (``budget.burn_level``), so every heading on the
+        # dashboard's budget tile opens the list it counts. Any other token is ignored (a
+        # query string anyone can edit falls back rather than 422s, §9).
+        if burn in BURN_LEVELS:
             items, _ = await self.list(
                 limit=10_000,
                 offset=0,
@@ -310,13 +318,12 @@ class ProjectService:
                 hours=True,
                 count=False,
             )
-            over = [
+            kept = [
                 p
                 for p in items
-                if p.hours.budget_hours  # type: ignore[attr-defined]
-                and p.hours.spent_hours >= p.hours.budget_hours  # type: ignore[attr-defined]
+                if burn_level(p.hours.spent_hours, p.hours.budget_hours) == burn  # type: ignore[attr-defined]
             ]
-            return over[offset : offset + limit], len(over)
+            return kept[offset : offset + limit], len(kept)
 
         conditions = []
         if company_id is not None:
@@ -394,6 +401,9 @@ class ProjectService:
         rows = budgeted[:limit]
         tail = budgeted[limit:]
         await self._attach_company_names(rows)
+        levels = {level: 0 for level in BURN_LEVELS}
+        for p in budgeted:
+            levels[burn_level(p.hours.spent_hours, p.hours.budget_hours)] += 1  # type: ignore[attr-defined, index]
         return DashboardBudgets(
             items=[
                 DashboardBudgetProject(
@@ -411,11 +421,19 @@ class ProjectService:
             # tail's hours, not merely its count.
             tail_spent_hours=sum(p.hours.spent_hours for p in tail),  # type: ignore[attr-defined]
             tail_budget_hours=sum(p.hours.budget_hours or 0 for p in tail),  # type: ignore[attr-defined]
-            # Over the whole set, so the figure agrees with the ``?burn=over`` list it opens.
-            over_budget=sum(
-                1
-                for p in budgeted
-                if p.hours.spent_hours >= p.hours.budget_hours  # type: ignore[attr-defined]
+            # Over the whole set, so each figure agrees with the ``?burn=<level>`` list it
+            # opens — and the hours past the budget with them, because "over" is a verdict and
+            # the agency's next decision needs the amount.
+            over_budget=levels["over"],
+            almost_budget=levels["warn"],
+            within_budget=levels["ok"],
+            over_budget_hours=round(
+                sum(
+                    p.hours.spent_hours - p.hours.budget_hours  # type: ignore[attr-defined]
+                    for p in budgeted
+                    if burn_level(p.hours.spent_hours, p.hours.budget_hours) == "over"  # type: ignore[attr-defined]
+                ),
+                2,
             ),
         )
 

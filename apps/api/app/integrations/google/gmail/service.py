@@ -63,9 +63,7 @@ class ResyncNeeded(Exception):
     """The stored historyId expired (Gmail keeps about a week) — re-baseline, no backfill."""
 
 
-async def poll_connection(
-    session: AsyncSession, org: Org, connection: GoogleConnection
-) -> int:
+async def poll_connection(session: AsyncSession, org: Org, connection: GoogleConnection) -> int:
     """One poll for one mailbox; returns how many interactions were logged."""
     settings_row = await google_settings_row(session, org.id)
     if settings_row is None or not settings_row.gmail_enabled:
@@ -151,9 +149,7 @@ async def _baseline(client, connection: GoogleConnection) -> None:
         connection.gmail_history_id = str(history_id)[:32]
 
 
-async def _history_since(
-    client, connection: GoogleConnection
-) -> tuple[list[str], str | None]:
+async def _history_since(client, connection: GoogleConnection) -> tuple[list[str], str | None]:
     message_ids: list[str] = []
     latest: str | None = None
     page_token: str | None = None
@@ -335,9 +331,7 @@ async def classify(
     mappings = (
         dict(inherited)
         if inherited
-        else matching.resolve_mappings(
-            matches, internal_company_ids=internals.company_ids
-        )
+        else matching.resolve_mappings(matches, internal_company_ids=internals.company_ids)
     )
     pending = matching.decide_status(
         settings_row.gmail_approval_mode,
@@ -416,6 +410,10 @@ async def _ingest_message(
         else datetime.now(UTC)
     )
     subject = headers.get("Subject") or None
+    # Everyone at the agency who was on this message may decide on it beside the mailbox
+    # owner — the email reached them too, and their own copy (if any) was deferred to this
+    # mailbox or deduplicated away, so this row is the only place they could ever review it.
+    reviewers = _colleagues_on(participants, internals) - {connection.user_id}
     row = await interactions_system.record_email(
         ctx,
         owner_user_id=connection.user_id,
@@ -434,10 +432,11 @@ async def _ingest_message(
         deep_link=deep_link(message_id),
         pending=pending,
         mappings=mappings,
+        reviewer_user_ids=reviewers,
     )
 
     if pending:
-        await _notify_pending(ctx, row, subject)
+        await _notify_pending(ctx, row, subject, reviewers)
     else:
         # Logged at birth (auto-approve / trusted thread): the body may load inline — we are
         # already in worker context, no user is waiting.
@@ -445,7 +444,12 @@ async def _ingest_message(
     return 1
 
 
-async def _notify_pending(ctx: SystemContext, row, subject: str | None) -> None:
+async def _notify_pending(
+    ctx: SystemContext, row, subject: str | None, reviewers: set[uuid.UUID] = frozenset()
+) -> None:
+    """One event, every reviewer a recipient. One event rather than one per person because
+    ``interaction.approved`` resolves by entity (``NotificationService.resolve``): whoever
+    decides first retires the row for everybody — which is the whole point of naming them."""
     from app.modules.notifications.service import NotificationService
 
     await NotificationService(ctx).ingest(
@@ -456,10 +460,21 @@ async def _notify_pending(ctx: SystemContext, row, subject: str | None) -> None:
             "subject": subject or "",
             "company_id": str(row.company_id) if row.company_id else None,
             "contact_id": str(row.contact_id) if row.contact_id else None,
-            "_recipients": [row.owner_user_id],
+            "_recipients": [row.owner_user_id, *sorted(reviewers, key=str)],
             "_dedup_key": f"gmail-pending:{row.owner_user_id}:{row.gmail_message_id}",
         },
     )
+
+
+def _colleagues_on(participants: list[dict[str, str]], internals: Internals) -> set[uuid.UUID]:
+    """The org members a message reached, by any address that resolves to them —
+    ``Internals.owner_by_email`` already excludes external logins, so a client's contact
+    person with a portal account never lands in a review set."""
+    return {
+        internals.owner_by_email[email]
+        for email in ((p.get("email") or "").lower() for p in participants)
+        if email in internals.owner_by_email
+    }
 
 
 #: How long a ``gmail_skips`` row is kept. Long enough that "an email from last month never
@@ -577,6 +592,14 @@ class Internals:
     #: Users whose own mailbox is genuinely being polled: active, opted in, holding the Gmail
     #: scope. Deferring to a mailbox that will never poll would lose the email outright.
     syncing_user_ids: frozenset[uuid.UUID] = frozenset()
+    #: Logins this org issued to somebody **outside** it (#274) — the answer the rest of this
+    #: dataclass is built by removing. Kept rather than discarded because it is also a fact
+    #: about a *contact*: a client the agency happens to file on its own company is still a
+    #: client (:func:`~…gmail.matching.is_internal_match`). Both halves, for the same reason
+    #: #274 needed both: the contact link names the portal invitation, and the address is what
+    #: a client invited straight from Instellingen → Gebruikers has instead of one.
+    external_user_ids: frozenset[uuid.UUID] = frozenset()
+    external_emails: frozenset[str] = frozenset()
 
     @property
     def ours(self) -> frozenset[str]:
@@ -628,6 +651,7 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
     pairs = [(row[0], row[1]) for row in rows]
     external = await external_user_ids(session, org_id, {uid for uid, _ in pairs})
     member_emails = frozenset(email for uid, email in pairs if uid not in external)
+    external_emails = frozenset(email for uid, email in pairs if uid in external)
     # The mailboxes that actually poll, and the addresses that reach them. Same predicate the
     # cron offers on (``jobs.google_gmail_poll``) — stated once there and once here is already
     # one copy too many, but the alternative is the cron importing this module to ask.
@@ -657,6 +681,8 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
             company_ids=frozenset(),
             owner_by_email=owner_by_email,
             syncing_user_ids=syncing_user_ids,
+            external_user_ids=frozenset(external),
+            external_emails=external_emails,
         )
     company_rows = await session.execute(
         text(
@@ -671,6 +697,8 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
         company_ids=frozenset(row[0] for row in company_rows),
         owner_by_email=owner_by_email,
         syncing_user_ids=syncing_user_ids,
+        external_user_ids=frozenset(external),
+        external_emails=external_emails,
     )
 
 
@@ -732,12 +760,12 @@ async def _match_contacts(
     addresses = sorted(roles)
     contact_rows = await session.execute(
         text(
-            "SELECT id, lower(email) FROM contacts "
+            "SELECT id, lower(email), user_id FROM contacts "
             "WHERE org_id = :oid AND lower(email) = ANY(:addrs) ORDER BY created_at"
         ),
         {"oid": org_id, "addrs": addresses},
     )
-    found = [(row[0], row[1]) for row in contact_rows]
+    found = [(row[0], row[1], row[2]) for row in contact_rows]
     if not found:
         return []
     # One query for every match's companies — per-contact would be N+1 in the poll loop.
@@ -746,7 +774,7 @@ async def _match_contacts(
             "SELECT contact_id, company_id FROM company_contacts "
             "WHERE org_id = :oid AND contact_id = ANY(:cids) ORDER BY created_at"
         ),
-        {"oid": org_id, "cids": [contact_id for contact_id, _ in found]},
+        {"oid": org_id, "cids": [contact_id for contact_id, _, _ in found]},
     )
     companies: dict[uuid.UUID, list[uuid.UUID]] = {}
     for contact_id, company_id in link_rows:
@@ -761,17 +789,22 @@ async def _match_contacts(
             company_ids=companies.get(contact_id, []),
             role=roles.get(email, "to"),
             is_staff=email in ours,
+            # A login this org handed out to somebody outside it — which stops the company
+            # rule calling a client a colleague on the strength of where they are filed. Both
+            # halves of #274, for the reason #274 needs both: the contact's own link is what a
+            # portal invitation writes, and the address is all a client invited straight from
+            # Instellingen → Gebruikers ever has (no link is ever created for them).
+            is_client_login=email in internals.external_emails
+            or (user_id is not None and user_id in internals.external_user_ids),
         )
-        for contact_id, email in found
+        for contact_id, email, user_id in found
     ]
 
 
 # --------------------------------------------------------------------------- #
 # Body fetch — after approval (or inline on auto-approve)
 # --------------------------------------------------------------------------- #
-async def fetch_body(
-    session: AsyncSession, org: Org, interaction_id: uuid.UUID
-) -> bool:
+async def fetch_body(session: AsyncSession, org: Org, interaction_id: uuid.UUID) -> bool:
     ctx = SystemContext(org=org, session=session)
     ref = await interactions_system.email_ref(ctx, interaction_id)
     if ref is None:
@@ -786,9 +819,7 @@ async def fetch_body(
         return False
     try:
         async with acting_as(session, org, connection) as client:
-            return await _fetch_body_with(
-                client, ctx, interaction_id, message_id, owner_user_id
-            )
+            return await _fetch_body_with(client, ctx, interaction_id, message_id, owner_user_id)
     except Exception as exc:
         from app.integrations.google.client import is_oauth_error
 
@@ -801,9 +832,7 @@ async def fetch_body(
 async def _fetch_body_with(
     client, ctx: SystemContext, interaction_id, message_id: str, owner_user_id
 ) -> bool:
-    response = await client.get(
-        f"{GMAIL_API}/messages/{message_id}", params={"format": "full"}
-    )
+    response = await client.get(f"{GMAIL_API}/messages/{message_id}", params={"format": "full"})
     if response.status_code == 404:
         return False
     response.raise_for_status()
@@ -905,9 +934,7 @@ async def suppress(
     message_id: str | None,
     thread_id: str | None,
 ) -> None:
-    if message_id and not await _suppressed(
-        session, org_id, connection_id, message_id=message_id
-    ):
+    if message_id and not await _suppressed(session, org_id, connection_id, message_id=message_id):
         session.add(
             GmailSuppression(
                 org_id=org_id, connection_id=connection_id, gmail_message_id=message_id

@@ -11,6 +11,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { burnFilterToken } from "$lib/modules/projects/burn-groups";
 import { HOURS_COLUMN, PROJECT_COLUMNS, PROJECTS_TABLE_ID } from "$lib/modules/projects/columns";
 import { PROJECT_STATUS_ALL, PROJECT_WORKING_SET } from "$lib/modules/projects/status";
 import { PROJECT_FILTERS } from "$lib/modules/projects/filters";
@@ -40,10 +41,10 @@ export const load: PageServerLoad = async (event) => {
   const unnamed = filters.unnamed === "1" || undefined;
   const status =
     statusFilter === PROJECT_STATUS_ALL ? undefined : statusFilter || PROJECT_WORKING_SET;
-  // "Over budget" (#437) — what the dashboard donut's aggregate opens. The API filters on the
-  // enriched burn, so the token forces the hours enrichment on: a link arriving with the burn
-  // column hidden must not filter on data that was never computed.
-  const burn = filters.burn === "over" ? "over" : undefined;
+  // A burn band (#437) — what the dashboard's budget tile headings open. The API filters on
+  // the enriched burn, so the token forces the hours enrichment on: a link arriving with the
+  // burn column hidden must not filter on data that was never computed.
+  const burn = burnFilterToken(filters.burn);
 
   // The saved layout decides two things before a row is fetched: how the *server* sorts, and
   // whether the budget burn-down is worth computing at all (#24 — a hidden aggregate costs

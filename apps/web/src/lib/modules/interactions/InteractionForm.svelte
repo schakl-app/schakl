@@ -51,6 +51,7 @@
     PROTECTED_KIND,
   } from "./format";
   import ContactChips from "./ContactChips.svelte";
+  import TaskChips from "./TaskChips.svelte";
   import {
     loadLinkLookups,
     splitLinkOptions,
@@ -59,6 +60,7 @@
     type TaskOption,
   } from "./lookups";
   import { ContactRoster, initialContacts } from "./roster.svelte";
+  import { initialTasks, missingTaskOptions } from "./taskroster";
 
   let {
     interaction = null,
@@ -141,7 +143,16 @@
   // --- assign to client / project / task (#183 follow-up) ------------------------------- //
   let fCompany = $state(own?.company_id ?? "");
   let fProject = $state(own?.project_id ?? "");
-  let fTask = $state(own?.task_id ?? "");
+  // The task link is a roster (`TaskChips`): chip 0 is the lead — what derives the client, what
+  // the close-task offer reads, what an older reader sees as `task_id`. An edit opens on the
+  // row's stored roster; a create starts empty (a host-pinned task rides its hidden input).
+  // svelte-ignore state_referenced_locally
+  const storedTasks = initialTasks(interaction);
+  let fTasks = $state<string[]>(storedTasks.map((task) => task.id));
+  const fTask = $derived(fTasks[0] ?? "");
+  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
+    storedTasks.map((task) => [task.id, task.title]),
+  );
   /**
    * Which link a kind leads with (#263). A phone call or a meeting is primarily *with a
    * person*; a note is primarily *about work*. So the contact picker is up front for every
@@ -191,22 +202,19 @@
               ...l.projects,
             ]
           : l.projects;
-      linkTasks =
-        own?.task_id && own.task_title && !l.tasks.some((task) => task.value === own.task_id)
-          ? [
-              {
-                value: own.task_id,
-                label: own.task_title,
-                project_id: own.project_id ?? null,
-                company_id: own.company_id ?? null,
-                // Unknown, and it never has to be known: this option only exists while editing
-                // an existing moment, and the close checkbox is create-only (`!own` below).
-                assignees: [],
-                assignee_user_id: null,
-              },
-              ...l.tasks,
-            ]
-          : l.tasks;
+      linkTasks = [
+        ...missingTaskOptions(storedTasks, l.tasks, (ref) => ({
+          value: ref.id,
+          label: ref.title as string,
+          project_id: own?.project_id ?? null,
+          company_id: own?.company_id ?? null,
+          // Unknown, and it never has to be known: this option only exists while editing
+          // an existing moment, and the close checkbox is create-only (`!own` below).
+          assignees: [],
+          assignee_user_id: null,
+        })),
+        ...l.tasks,
+      ];
     });
   });
   // A pinned task/project implies the levels above it: resolve the host row once, when the
@@ -281,10 +289,14 @@
     fProject = id;
     const project = linkProjects.find((p) => p.value === id);
     if (project?.company_id && showCompany) fCompany = project.company_id;
-    if (fTask && linkTasks.find((task) => task.value === fTask)?.project_id !== id) fTask = "";
+    // Every chip follows the project, not only the lead: a task of another project is not
+    // on offer under this one, so it cannot stay picked either.
+    fTasks = fTasks.filter(
+      (taskId) => linkTasks.find((task) => task.value === taskId)?.project_id === id,
+    );
   }
+  /** The lead changed (`TaskChips`' `onpick`): it fixes the levels above. */
   function onTaskPicked(id: string) {
-    fTask = id;
     const task = linkTasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
     // A task filed straight under a client, with no project of its own, still fixes the client.
@@ -493,7 +505,9 @@
           },
         ];
       }
-      onTaskPicked(created.id);
+      // Picked as a chip; a first chip is the lead and backfills the levels above.
+      if (!fTasks.includes(created.id)) fTasks = [...fTasks, created.id];
+      if (fTasks[0] === created.id) onTaskPicked(created.id);
     }
   });
 </script>
@@ -688,24 +702,24 @@
         </label>
       {/if}
       {#if showTask}
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
-          <Combobox
+        <div class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.tasks")}</span>
+          <TaskChips
+            bind:picked={fTasks}
             items={taskOptions}
             archived={linkSplit.tasks.retired}
             archivedLabel={t("tasks.picker.archived")}
-            name="task_id"
-            value={fTask}
-            placeholder={t("common.none")}
-            onselect={onTaskPicked}
+            labels={taskLabels}
+            onpick={onTaskPicked}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;
                   taskCreateOpen = true;
                 }
               : undefined}
+            id="interaction-tasks"
           />
-        </label>
+        </div>
       {/if}
     </div>
 

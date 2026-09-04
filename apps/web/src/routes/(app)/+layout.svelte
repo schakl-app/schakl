@@ -37,6 +37,7 @@
   import { measureStyle, providePageMeasure } from "$lib/core/ui/measure.svelte";
   import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
+  import LightboxHost from "$lib/core/ui/LightboxHost.svelte";
   import ToastHost from "$lib/core/ui/ToastHost.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
@@ -600,3 +601,4 @@
 <!-- The app's one toast queue (#364). Mounted beside SessionGuard for the same reason: it belongs
      to the surface that is signed in and doing work, not to /login. -->
 <ToastHost />
+<LightboxHost />

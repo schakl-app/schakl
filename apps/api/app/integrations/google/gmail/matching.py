@@ -117,6 +117,9 @@ class ContactMatch:
     role: str = "to"
     #: This contact is a colleague: their address reaches one of our own mailboxes.
     is_staff: bool = False
+    #: This contact holds a login the agency issued them as a **client** (#274) — so the
+    #: platform has already answered "are they one of us?", and the answer was no.
+    is_client_login: bool = False
 
 
 def internal_only(participants: list[dict[str, str]], ours: AbstractSet[str]) -> bool:
@@ -141,10 +144,20 @@ def is_internal_match(
     record who hold no login). A contact linked to *no* company is an outsider: an unattached
     prospect is precisely the record this feed exists to fill in.
 
+    **A client login outranks both.** The company rule is an inference — "everyone filed on our
+    own record is us" — and a portal invitation is a *statement*: the agency issued this person
+    a client login, which is what ``external_user_ids`` means by not-a-colleague (#274, and the
+    same fact ``ours`` already excludes them from). Where the two disagree the statement wins,
+    or a client the agency happens to keep on its own company — a freelancer, a subsidiary's
+    contact person, a partner — has their whole correspondence dropped as ``no_external_match``
+    while the portal they were invited to sits there working.
+
     One definition, two readers — the ingest gate (:func:`has_external_match`) and the mapping
     ranking (:func:`resolve_mappings`). They were two copies of it, and only one was ever
     written down (#324).
     """
+    if match.is_client_login:
+        return False
     return match.is_staff or (
         bool(match.company_ids)
         and all(company_id in internal_company_ids for company_id in match.company_ids)

@@ -17,9 +17,10 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.core.ai.apitools import forwarding_from
 from app.core.ai.assistant import run_assistant
 from app.core.ai.features import (
     ReportsService,
@@ -29,6 +30,7 @@ from app.core.ai.features import (
     stream_digest,
     stream_report,
     stream_writing_assist,
+    transcribe_assistant_prompt,
     transcribe_time_entry,
 )
 from app.core.ai.providers import ProviderConfig
@@ -40,6 +42,7 @@ from app.core.ai.schemas import (
     AITestResult,
     AIUsageSummary,
     AssistantRequest,
+    AssistantTranscribeRequest,
     DigestRequest,
     ReportCreate,
     ReportGenerateRequest,
@@ -186,11 +189,33 @@ async def writing_assist(
 # --------------------------------------------------------------------------- #
 @router.post("/assistant", dependencies=[require_permission("ai.use")])
 async def assistant(
-    payload: AssistantRequest, ctx: RequestContext = Depends(require_context)
+    payload: AssistantRequest,
+    request: Request,
+    ctx: RequestContext = Depends(require_context),
 ) -> StreamingResponse:
     service = AIService(ctx)
     await _preflight(service, "assistant", override_budget=payload.override_budget)
-    return _stream_response(run_assistant(service, payload))
+    # The request itself rides along: the assistant's API tools re-enter this app in-process
+    # with the caller's own credential and host (``apitools``), so a tool call is gated exactly
+    # as the HTTP request it stands for.
+    return _stream_response(run_assistant(service, payload, forwarding=forwarding_from(request)))
+
+
+@router.post(
+    "/assistant/transcribe",
+    response_model=TimeTranscribeResult,
+    dependencies=[require_permission("ai.use")],
+)
+async def assistant_transcribe(
+    payload: AssistantTranscribeRequest, ctx: RequestContext = Depends(require_context)
+) -> TimeTranscribeResult:
+    """Speech to text for the assistant's composer.
+
+    ``ai.use`` is the route permission and, unlike the other two dictation routes, the only
+    one: the transcript becomes a message the user still sends, and every tool that message
+    can reach carries its own gate.
+    """
+    return await transcribe_assistant_prompt(AIService(ctx), payload)
 
 
 # --------------------------------------------------------------------------- #

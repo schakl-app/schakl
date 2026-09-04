@@ -8,10 +8,20 @@
  */
 import type { AISource } from "./index";
 
+/** What the `tool` event says about a call: the tool's name, and for an API call through the
+ *  catalog (`core/ai/apitools.py`) the operation, its method and module — so the panel can say
+ *  "reads domains…" or "creates a task…" rather than the bare tool name. */
+export interface AIToolEvent {
+  name: string;
+  operation?: string;
+  method?: string;
+  module?: string | null;
+}
+
 export interface AIStreamHandlers {
   onText?: (delta: string) => void;
   /** A quiet status line while a tool runs ("zoekt in uren…"), never silence (#127). */
-  onTool?: (name: string) => void;
+  onTool?: (name: string, detail: AIToolEvent) => void;
   onSources?: (sources: AISource[]) => void;
   /** A mid-stream failure; `message` is an i18n key for `t()`. */
   onError?: (code: string, message: string) => void;
@@ -93,7 +103,12 @@ function dispatch(event: string, raw: string, handlers: AIStreamHandlers): void 
       handlers.onText?.(String(data.text ?? ""));
       break;
     case "tool":
-      handlers.onTool?.(String(data.name ?? ""));
+      handlers.onTool?.(String(data.name ?? ""), {
+        name: String(data.name ?? ""),
+        operation: typeof data.operation === "string" ? data.operation : undefined,
+        method: typeof data.method === "string" ? data.method : undefined,
+        module: typeof data.module === "string" ? data.module : null,
+      });
       break;
     case "sources":
       handlers.onSources?.((data.sources as AISource[]) ?? []);

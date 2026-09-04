@@ -262,12 +262,14 @@ async def _report(
     audience: str = ReportAudience.CLIENT.value,
     published: bool = True,
     period: date = date(2026, 7, 1),
+    warnings: list[dict] | None = None,
 ) -> uuid.UUID:
     from datetime import UTC, datetime
 
     async with async_session_maker() as session:
         await set_current_org(session, org_id)
         report = Report(
+            warnings=warnings or [],
             org_id=org_id,
             company_id=company_id,
             company_name="Acme",
@@ -324,8 +326,11 @@ async def test_a_client_login_reads_only_its_own_published_client_reports(
     theirs = await _company(tenant.org.id, "Theirs")
 
     # Distinct periods, because one report per client per audience per period is the
-    # constraint under test elsewhere — here it just means these four are four rows.
-    published = await _report(tenant.org.id, mine)
+    # constraint under test elsewhere — here it just means these four are four rows. The
+    # published one carries a warning, so the second half of the test has something to hide.
+    published = await _report(
+        tenant.org.id, mine, warnings=[{"code": "reporting.warnings.stale_source"}]
+    )
     draft = await _report(tenant.org.id, mine, published=False, period=date(2026, 5, 1))
     internal = await _report(
         tenant.org.id, mine, audience=ReportAudience.INTERNAL.value,
@@ -357,11 +362,41 @@ async def test_a_client_login_reads_only_its_own_published_client_reports(
         from app.modules.reporting.service import ReportService
 
         service = ReportService(ctx)
-        visible = {row.id for row in (await service.list()).items}
+        rows = (await service.list()).items
+        visible = {row.id for row in rows}
         assert visible == {published}, visible
         assert draft not in visible
         assert internal not in visible
         assert other_client not in visible
+
+        # The agency's notes about the run never reach the client — not the notes, and not
+        # a count of them either: "1 waarschuwing" beside a finished document is a note.
+        assert rows[0].warning_count == 0
+        detail = await service.get(published)
+        assert detail.warnings == []
+        assert detail.warning_count == 0
+
+    # Staff reading the same row get the note and the count: that is the review screen.
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        staff = ReportService(RequestContext(user=tenant.user, org=org, session=session))
+        staff_row = next(row for row in (await staff.list()).items if row.id == published)
+        assert staff_row.warning_count == 1
+        staff_detail = await staff.get(published)
+        assert staff_detail.warning_count == 1
+        assert staff_detail.warnings == [{"code": "reporting.warnings.stale_source"}]
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        ctx = RequestContext(
+            user=tenant.user,
+            org=org,
+            session=session,
+            company_scope=frozenset({mine}),
+            is_portal=True,
+        )
 
         # The file list's gate answers the same way, for the same rows.
         assert await entity_visible(ctx, "report", published) is True

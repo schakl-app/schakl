@@ -380,6 +380,17 @@ still in flight (it runs *before* uvicorn binds).
 The worker writes a heartbeat to Redis every minute; `system/info` reports its last check-in
 and the queue depth.
 
+## The web server's request body limit
+
+The web image sets `BODY_SIZE_LIMIT=40M` (`apps/web/Dockerfile`). SvelteKit's adapter-node
+refuses any request body over **512 kB** by default — before a route runs, with a plain-text
+413 — and the one request the web server proxies that carries real bytes is a dictated clip
+(base64 in JSON, `routes/(app)/ai/[...path]`): a five-minute task dictation is ~1.6 MB encoded
+and met that default on the first live instance. The value is sized to what the API itself
+admits (`MAX_AUDIO_BYTES`, 24 MB decoded, `docs/VOICE.md`), so the two limits cannot disagree in
+the browser's disfavour. Override it in the `web` service's environment if a deployment needs
+another number; a value *below* the API's cap silently reintroduces the 413.
+
 ## Rolling updates: a redeploy is not an outage
 
 **The symptom this section exists to explain: every cloud redeploy used to answer `500` for its

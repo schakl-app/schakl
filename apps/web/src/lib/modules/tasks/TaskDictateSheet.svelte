@@ -42,7 +42,13 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
-  import { MAX_TASK_RECORD_MS, Recorder, VoiceButton, recordingSupported } from "$lib/core/voice";
+  import {
+    MAX_TASK_RECORD_MS,
+    Recorder,
+    VoiceButton,
+    recordingSupported,
+    transcribeClip,
+  } from "$lib/core/voice";
   import { formatMinutes } from "$lib/modules/time/format";
 
   interface Lookup {
@@ -128,6 +134,8 @@
    *  array rather than a Set: it is replaced wholesale on every parse, never mutated. */
   let filled = $state<string[]>([]);
   let micSupported = $state(false);
+  /** Set when the cap, not the speaker, ended the last recording (docs/VOICE.md). */
+  let limitNote = $state<string | null>(null);
 
   onMount(() => {
     micSupported = recordingSupported();
@@ -245,20 +253,29 @@
       return;
     }
     if (!audio) return; // aborted, or nothing captured
+    // The cap ended the recording, not the speaker: say so, and still use what was kept.
+    limitNote = recorder.stoppedAtLimit
+      ? t("voice.limit_reached", { minutes: Math.round(recorder.maxMs / 60_000) })
+      : null;
     status = "voice.transcribing";
     try {
-      const body = await post("/ai/tasks/transcribe", {
+      // The shared helper is what reads a 413 as "too long" whichever layer answered it — the
+      // API's own cap, or the web server's body limit in front of it (docs/VOICE.md).
+      const outcome = await transcribeClip(
+        "/ai/tasks/transcribe",
         audio,
-        language: page.data.locale ?? "nl",
-      });
-      const heard = String(body?.text ?? "").trim();
-      if (!body) return;
-      if (!heard) {
-        error = "voice.error_no_speech";
+        page.data.locale ?? "nl",
+      );
+      if (outcome.budget) {
+        budgetReached = true;
+        return;
+      }
+      if (outcome.error || !outcome.text) {
+        error = outcome.error ?? "voice.error_no_speech";
         return;
       }
       // Append: a second breath adds to the first, it does not replace it.
-      transcript = transcript.trim() ? `${transcript.trim()} ${heard}` : heard;
+      transcript = transcript.trim() ? `${transcript.trim()} ${outcome.text}` : outcome.text;
     } finally {
       status = null;
     }
@@ -401,6 +418,9 @@
             {status ? t(status) : ""}
           </span>
         </div>
+        {#if limitNote}
+          <p class="text-sm text-muted" role="status">{limitNote}</p>
+        {/if}
         {#if error}
           <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
         {/if}

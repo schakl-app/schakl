@@ -24,6 +24,8 @@ const ALLOWED: Record<string, RegExp[]> = {
     // Dictating a whole task (#382): the same two steps, one record over.
     /^tasks\/transcribe$/,
     /^tasks\/parse$/,
+    // A spoken message for the assistant: the transcript lands in its composer.
+    /^assistant\/transcribe$/,
     new RegExp(`^companies/${UUID}/digest$`),
     /^reports\/generate$/,
     /^reports$/,

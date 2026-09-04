@@ -54,14 +54,16 @@
   import {
     contactChips,
     dayLabel,
-    type InteractionItem,
-    type InteractionKindDef,
     isGmailRow,
     kindIcon,
     kindLabel,
     localDay,
+    mayReview,
     participantNames,
     reviewIds,
+    taskChips,
+    type InteractionItem,
+    type InteractionKindDef,
     withBody,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
@@ -252,7 +254,9 @@
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
-  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
+  // A gmail row moves through the review flow — its owner, or a pending row's named reviewer.
+  const mayMove = (item: InteractionItem) =>
+    isGmailRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
   /**
    * `InteractionService.delete`'s own gate (`_writable_or_404`), mirrored — the key the call
    * makes, at the scope it makes it (§15).
@@ -317,12 +321,12 @@
   // thread's (`reviewIds`): one tick, every waiting message of it. The bar's count says how many
   // messages that is, and the API still refuses per row whatever it refuses.
   const bulkFilableIds = $derived(
-    selectedItems.filter((item) => isGmailRow(item) && isOwner(item)).flatMap(reviewIds),
+    selectedItems
+      .filter((item) => isGmailRow(item) && (isOwner(item) || mayReview(item, me)))
+      .flatMap(reviewIds),
   );
   const bulkPendingIds = $derived(
-    selectedItems
-      .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
-      .flatMap(reviewIds),
+    selectedItems.filter((item) => mayReview(item, me)).flatMap(reviewIds),
   );
   /**
    * The rows a delete would actually remove — `mayDelete`, which is the API's own rule, over
@@ -517,7 +521,7 @@
         },
       });
     }
-    if (item.source === "gmail" && item.status === "pending" && isOwner(item)) {
+    if (mayReview(item, me)) {
       entries.push({
         label: t("interactions.reject"),
         icon: X,
@@ -548,8 +552,9 @@
   }
   function linkChips(item: InteractionItem): { visible: LinkChip[]; hidden: LinkChip[] } {
     const org: LinkChip[] = [];
-    if (item.task_id && item.task_title)
-      org.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
+    // Every task the moment is about; the lead shows, the rest join the "+N" (the roster's
+    // own cap, applied one link over).
+    org.push(...taskChips(item).map((chip) => ({ href: chip.href, label: chip.label })));
     if (item.project_id && item.project_name)
       org.push({ href: `/projects/${item.project_id}`, label: item.project_name });
     if (item.company_id && item.company_name)
@@ -905,7 +910,7 @@
 
 {#snippet rowActions(item: InteractionItem)}
   <span class="relative z-10 flex items-center justify-end gap-1.5">
-    {#if item.status === "pending" && isOwner(item)}
+    {#if mayReview(item, me)}
       <!-- Review-and-approve, not a bare approve: open the detail modal so the email can be read
            and a client/project/task assigned before it is shared with the team (#184). -->
       <button

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 
 from app.core.entitlements.service import license_exempt
 from app.core.permissions.deps import no_permission_required, require_permission
@@ -41,6 +41,7 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsRead,
     InvoicingSettingsWrite,
     InvoicingSummary,
+    OriginalsBatchReport,
     OutstandingRead,
     PaymentWrite,
     ProductCreate,
@@ -75,7 +76,6 @@ from app.modules.invoicing.service import (
     QuoteService,
     TaxRateService,
     TemplateService,
-    _totals_from_rows,
 )
 from app.modules.invoicing.ubl import invoice_ubl
 from app.schemas import Page
@@ -893,6 +893,57 @@ async def download_quote_pdf(
     )
 
 
+@router.post(
+    "/invoices/originals",
+    response_model=OriginalsBatchReport,
+    dependencies=[require_permission("invoicing.invoice.write")],
+)
+async def attach_invoice_originals(
+    file: UploadFile = File(..., description="A zip of PDFs, each named after its invoice number"),
+    ctx: RequestContext = Depends(require_context),
+) -> OriginalsBatchReport:
+    """Attach the original documents of **imported** invoices in one go (docs/INVOICING.md).
+
+    Each PDF in the archive is matched to an imported invoice by its file name — exactly the
+    number, or a name containing it, separators and case ignored — and attached where that
+    invoice holds no original yet. The report names every file that matched, matched two
+    numbers, matched none, or was not a PDF, and every invoice left alone because it already
+    had one. Multipart, so off the MCP surface; the JSON twin is one ``POST /files/inline``
+    against the invoice plus ``PATCH {original_file_id}``.
+    """
+    data = await file.read()
+    report = await InvoiceService(ctx).attach_originals(data)
+    return OriginalsBatchReport.model_validate(report)
+
+
+@router.post(
+    "/invoices/{invoice_id}/original",
+    response_model=InvoiceRead,
+    dependencies=[require_permission("invoicing.invoice.write")],
+)
+async def attach_invoice_original(
+    invoice_id: uuid.UUID,
+    file: UploadFile = File(..., description="The PDF the client actually received"),
+    ctx: RequestContext = Depends(require_context),
+) -> InvoiceRead:
+    """Attach (or replace) the original document of an **imported** invoice.
+
+    Stored untouched, fingerprinted on the invoice itself, and served in place of a render by
+    every reader — the download, the mail attachment, the public link and the portal. A native
+    invoice refuses (409): its document *is* its render. Multipart, so off the MCP surface; an
+    agent uploads through ``POST /files/inline`` and names the file in ``PATCH``.
+    """
+    data = await file.read()
+    service = InvoiceService(ctx)
+    invoice = await service.attach_original(
+        invoice_id,
+        filename=file.filename or "",
+        content_type=file.content_type or "application/octet-stream",
+        data=data,
+    )
+    return InvoiceRead.model_validate(await service.get(invoice.id))
+
+
 @router.get(
     "/invoices/{invoice_id}/preview",
     response_class=Response,
@@ -950,7 +1001,9 @@ async def download_ubl(
     if invoice.status == InvoiceStatus.DRAFT.value:
         raise AppError("conflict", "errors.invoicing.wrong_status", status_code=409)
     lines = invoice.lines  # attached by get()
-    totals = _totals_from_rows(lines, prices_include_tax=invoice.prices_include_tax)
+    # Stated totals for an imported document, computed ones for a native — the same answer
+    # the PDF and the detail read give (``service.document_totals``).
+    totals = service.document_totals(invoice, lines)
     seller = (await InvoicingSettingsService(ctx).row()).company_details or {}
     xml = invoice_ubl(invoice, lines, totals, seller)
     filename = f"{invoice.number or invoice_id}.xml"

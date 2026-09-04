@@ -886,6 +886,12 @@ class SnelstartSyncService:
         if invoice_ids:
             stmt = stmt.where(Invoice.id.in_(list(invoice_ids)))
         else:
+            # An invoice *imported* from the previous system is already in the ledger over
+            # there (it was booked when it was issued), so the sweep leaves it out; naming
+            # one explicitly still pushes it, and a duplicate answer adopts (BOE-0021).
+            from app.modules.invoicing.models import InvoiceOrigin
+
+            stmt = stmt.where(Invoice.origin != InvoiceOrigin.IMPORTED.value)
             # Everything not already linked and pushed. A LEFT JOIN rather than a per-invoice
             # existence check: an agency's first push is the whole back catalogue.
             done = select(SnelstartLink.local_id).where(

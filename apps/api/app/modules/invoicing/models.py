@@ -68,6 +68,21 @@ class InvoiceKind(StrEnum):
     CREDIT_NOTE = "credit_note"
 
 
+class InvoiceOrigin(StrEnum):
+    """Where a document was *issued*.
+
+    ``native`` is an invoice this platform raised; ``imported`` is one the agency issued in the
+    system it used before schakl and brought in as a record (docs/INVOICING.md, "Bringing the
+    back catalogue in"). The distinction decides three things and nothing else: whose totals
+    are the fact (an imported document's stored totals, never a recomputation from its one
+    summary line), whether the document may carry the original file the client received, and
+    whether the accounting push should offer it (it is already in the ledger over there).
+    """
+
+    NATIVE = "native"
+    IMPORTED = "imported"
+
+
 class QuoteStatus(StrEnum):
     DRAFT = "draft"
     OPEN = "open"
@@ -514,6 +529,31 @@ class Invoice(
     #: refuses a NULL rather than treating it as a wildcard, which is what stops an empty token
     #: in a URL from matching every un-linked invoice in the table.
     public_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # --- the back catalogue (docs/INVOICING.md, "Bringing the back catalogue in") ------- #
+    #: ``native`` or ``imported`` (:class:`InvoiceOrigin`). Server-defaulted so every row that
+    #: predates the column is what it always was.
+    origin: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=InvoiceOrigin.NATIVE.value,
+        server_default=InvoiceOrigin.NATIVE.value,
+    )
+    #: Free text naming the system it came from ("Moneybird", "Excel 2019–2023") — printed on
+    #: the record, never interpreted.
+    import_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The document the client actually received, for an imported invoice: a stored file
+    #: (``files``, ``ON DELETE SET NULL``). Every reader of "the PDF" — the download, the mail
+    #: attachment, the public link, the portal — serves this when it is set, because a
+    #: document somebody else issued must not be re-drawn under the same number.
+    original_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("files.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    #: The invoice's **own** record of that file's sha256, written when it was attached. The
+    #: blob table knows the hash too, but the point of keeping it here is that the record
+    #: states what it holds: a swapped or re-uploaded file is detectable from the invoice alone.
+    original_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     @classmethod
     def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206

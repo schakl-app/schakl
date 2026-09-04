@@ -171,7 +171,7 @@ async def transcribe_task(
     ctx = service.ctx
     ctx.require("tasks.task.create")
     clip = decode_clip(payload.audio)
-    config = await service.speech_config()
+    config = await service.speech_config(FEATURE)
     await service.ensure_audio_budget(override=payload.override_budget)
     language = (payload.language or service.locale() or "").split("-")[0] or None
     try:

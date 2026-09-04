@@ -308,22 +308,29 @@ async def parse_time_entry(
     )
 
 
-async def transcribe_time_entry(
-    service: AIService, payload: TimeTranscribeRequest
+async def transcribe_dictation(
+    service: AIService,
+    payload: TimeTranscribeRequest,
+    *,
+    feature: str,
+    permission: str | None,
 ) -> TimeTranscribeResult:
-    """Turn a recorded clip into text for the quick-add field (#246).
+    """One recorded clip → its words, for whichever field asked (#246, #382, the assistant).
 
-    Writing a time entry is what this transcript is *for*, so the caller must be able to write
-    one — holding ``ai.use`` alone is not enough. The check is here rather than on the route
-    because the route's declared permission is what makes the surface enumerable (§15), and
-    this is the second, row-shaped half of the same rule.
+    ``feature`` is the host whose toggle gates the microphone, and ``permission`` is the
+    row-shaped half of the rule: the transcript exists to become *something*, and the caller
+    must be allowed to make that something. ``ai.use`` on the route is what keeps the surface
+    enumerable (§15); it is not enough on its own to reach a microphone that bills the tenant's
+    audio budget. ``None`` is the assistant's answer — its transcript becomes a chat message the
+    user still has to send, and the tools that message may reach are gated on their own.
 
-    Nothing is stored: the text goes straight back for the user to read, correct and parse.
+    Nothing is stored. The words go straight back for the speaker to read and correct.
     """
     ctx = service.ctx
-    ctx.require("time.entry.write")
+    if permission is not None:
+        ctx.require(permission)
     clip = decode_clip(payload.audio)
-    config = await service.speech_config()
+    config = await service.speech_config(feature)
     await service.ensure_audio_budget(override=payload.override_budget)
     language = (payload.language or service.locale() or "").split("-")[0] or None
     try:
@@ -336,10 +343,33 @@ async def transcribe_time_entry(
         ) from exc
     # Metered in seconds, never folded into the token counters (#246). A provider that reports
     # no duration still records a request; the row is what the meter counts.
-    await service.record_usage(
-        "time_assist", config.model, 0, 0, audio_seconds=result.seconds
-    )
+    await service.record_usage(feature, config.model, 0, 0, audio_seconds=result.seconds)
     return TimeTranscribeResult(text=result.text)
+
+
+async def transcribe_time_entry(
+    service: AIService, payload: TimeTranscribeRequest
+) -> TimeTranscribeResult:
+    """Turn a recorded clip into text for the quick-add field (#246).
+
+    Writing a time entry is what this transcript is *for*, so the caller must be able to write
+    one — holding ``ai.use`` alone is not enough.
+    """
+    return await transcribe_dictation(
+        service, payload, feature="time_assist", permission="time.entry.write"
+    )
+
+
+async def transcribe_assistant_prompt(
+    service: AIService, payload: TimeTranscribeRequest
+) -> TimeTranscribeResult:
+    """Turn a recorded clip into a message for the assistant's composer.
+
+    No write permission is asked for here: the words land in a field the user reads and sends,
+    and every tool that message can reach is gated on its own key when it is offered and again
+    when it runs (``app/core/ai/apitools.py``).
+    """
+    return await transcribe_dictation(service, payload, feature="assistant", permission=None)
 
 
 # --------------------------------------------------------------------------- #

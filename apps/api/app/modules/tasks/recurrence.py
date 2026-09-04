@@ -52,7 +52,41 @@ def _clamped(year: int, month: int, day: int) -> date:
     return date(year, month, min(day, calendar.monthrange(year, month)[1]))
 
 
-def snap(d: date, freq: str, *, on_weekday=None, on_day=None, on_month=None) -> date:
+def nth_weekday(year: int, month: int, weekday: int, week: int) -> date:
+    """The ``week``-th ``weekday`` of a month — "de tweede dinsdag", or the last one (``-1``).
+
+    A fourth Friday exists in every month, a fifth does not, which is why ``week`` stops at 4
+    and "the last" is its own value rather than 5: a rule that only fires seven months a year
+    is not a rule anybody meant.
+    """
+    if week == -1:
+        last = calendar.monthrange(year, month)[1]
+        d = date(year, month, last)
+        return d - timedelta(days=(d.weekday() - weekday) % 7)
+    first = date(year, month, 1)
+    d = first + timedelta(days=(weekday - first.weekday()) % 7)
+    return d + timedelta(weeks=week - 1)
+
+
+def _in_month(
+    year: int,
+    month: int,
+    fallback_day: int,
+    *,
+    on_weekday=None,
+    on_day=None,
+    on_week=None,
+) -> date:
+    """A monthly-style anchor resolved inside one month: the n-th weekday, a day, or the day
+    the rule was written on."""
+    if on_weekday is not None and on_week is not None:
+        return nth_weekday(year, month, on_weekday, on_week)
+    return _clamped(year, month, on_day if on_day is not None else fallback_day)
+
+
+def snap(
+    d: date, freq: str, *, on_weekday=None, on_day=None, on_month=None, on_week=None
+) -> date:
     """``d`` moved onto its rule's anchor **within its own period** — never into the next one.
 
     The counterpart to :func:`advance`: that one steps a period, this one places a date inside
@@ -62,18 +96,27 @@ def snap(d: date, freq: str, *, on_weekday=None, on_day=None, on_month=None) -> 
     """
     if freq == RecurrenceFreq.WEEKLY.value and on_weekday is not None:
         return d + timedelta(days=on_weekday - d.weekday())
-    if freq == RecurrenceFreq.YEARLY.value and on_day is not None and on_month is not None:
-        return _clamped(d.year, on_month, on_day)
-    if (
-        freq in (RecurrenceFreq.MONTHLY.value, RecurrenceFreq.QUARTERLY.value)
-        and on_day is not None
-    ):
-        return _clamped(d.year, d.month, on_day)
+    anchored = on_day is not None or (on_weekday is not None and on_week is not None)
+    if freq == RecurrenceFreq.YEARLY.value and anchored and on_month is not None:
+        return _in_month(
+            d.year, on_month, d.day, on_weekday=on_weekday, on_day=on_day, on_week=on_week
+        )
+    if freq in (RecurrenceFreq.MONTHLY.value, RecurrenceFreq.QUARTERLY.value) and anchored:
+        return _in_month(
+            d.year, d.month, d.day, on_weekday=on_weekday, on_day=on_day, on_week=on_week
+        )
     return d
 
 
 def advance(
-    d: date, freq: str, interval: int, *, on_weekday=None, on_day=None, on_month=None
+    d: date,
+    freq: str,
+    interval: int,
+    *,
+    on_weekday=None,
+    on_day=None,
+    on_month=None,
+    on_week=None,
 ) -> date:
     """``d`` plus ``interval`` recurrence steps, landed on the rule's anchor where it has one.
 
@@ -96,11 +139,12 @@ def advance(
     total = d.year * 12 + (d.month - 1) + months
     year, month = divmod(total, 12)
     month += 1
-    if freq == RecurrenceFreq.YEARLY.value and on_month is not None and on_day is not None:
+    anchored = on_day is not None or (on_weekday is not None and on_week is not None)
+    if freq == RecurrenceFreq.YEARLY.value and on_month is not None and anchored:
         # A yearly anchor names the whole date, so the stepped month is only there to carry the
         # year: "elk jaar op 15 maart" is 15 March, whatever month the rule was written in.
-        return _clamped(year, on_month, on_day)
-    return _clamped(year, month, on_day if on_day is not None else d.day)
+        month = on_month
+    return _in_month(year, month, d.day, on_weekday=on_weekday, on_day=on_day, on_week=on_week)
 
 
 def _anchors(rec: dict) -> dict:
@@ -109,7 +153,68 @@ def _anchors(rec: dict) -> dict:
         "on_weekday": rec.get("on_weekday"),
         "on_day": rec.get("on_day"),
         "on_month": rec.get("on_month"),
+        "on_week": rec.get("on_week"),
     }
+
+
+# --------------------------------------------------------------------------- #
+# The plan: which blocks an occurrence books, and on which days
+# --------------------------------------------------------------------------- #
+def plan_blocks(rec: dict | None) -> list[dict]:
+    """The rule's planned blocks as one list, whichever shape the plan was stored in.
+
+    A plan written before placements existed is ``{user_id, start_time, duration_minutes}`` —
+    one block on the due date — and reads here as exactly that, so nothing stored changes its
+    meaning. The one reader of both shapes; everything downstream sees a list of blocks.
+    """
+    plan = (rec or {}).get("plan")
+    if not plan:
+        return []
+    blocks = plan.get("blocks")
+    if blocks:
+        return [dict(block) for block in blocks]
+    if plan.get("start_time") is None or plan.get("duration_minutes") is None:
+        return []
+    user_id = plan.get("user_id")
+    return [
+        {
+            "on": "due",
+            "user_ids": [user_id] if user_id else None,
+            "start_time": plan["start_time"],
+            "duration_minutes": plan["duration_minutes"],
+            "note": None,
+        }
+    ]
+
+
+def place_block(block: dict, due: date) -> date:
+    """The day a block's placement resolves to for an occurrence due on ``due``.
+
+    ``weekday`` without a ``week`` is the weekday of the due date's **own week** (Monday-first,
+    so "the Tuesday" of a Friday deadline is three days *before* it, which is what a draft-then-
+    send rhythm means); with a ``week`` it is that weekday of the due date's month. ``day`` is
+    clamped exactly as the anchors are, so "day 31" is the 30th of April.
+    """
+    on = block.get("on") or "due"
+    if on == "offset":
+        return due + timedelta(days=int(block.get("days") or 0))
+    if on == "weekday":
+        weekday = int(block["weekday"])
+        week = block.get("week")
+        if week is None:
+            return due + timedelta(days=weekday - due.weekday())
+        return nth_weekday(due.year, due.month, weekday, int(week))
+    if on == "day":
+        return _clamped(due.year, due.month, int(block["day"]))
+    return due
+
+
+def planned_blocks(rec: dict | None, due: date) -> list[tuple[date, dict]]:
+    """Every block the occurrence due on ``due`` would book, each with its resolved day —
+    in calendar order, so a preview reads as a week rather than as the rule's typing order."""
+    placed = [(place_block(block, due), block) for block in plan_blocks(rec)]
+    placed.sort(key=lambda pair: (pair[0], str(pair[1].get("start_time"))))
+    return placed
 
 
 def next_due(due_date: date | None, rec: dict, *, today: date) -> date:
@@ -393,29 +498,49 @@ async def plan_occurrence(ctx: Any, clone: Task, rec: dict, *, today: date) -> N
     rolling back a spawn the cron will never retry — **inside a SAVEPOINT**, because catching an
     error without one leaves the session poisoned for everything after it (§18).
     """
-    plan = rec.get("plan")
-    if not plan:
+    blocks = planned_blocks(rec, clone.due_date) if clone.due_date is not None else []
+    if not blocks:
         return
-    if clone.due_date is None or clone.due_date < today:
-        return
-    user_id = plan.get("user_id") or clone.assignee_user_id
-    if user_id is None:
-        return
+    # The occurrence's own roster (#375), read once: a block naming nobody is for everyone on
+    # the task, and ``assignee_user_id`` alone would plan a shared job onto one person.
+    roster = [
+        row
+        for row in (
+            await ctx.session.execute(
+                select(TaskAssignee.user_id)
+                .where(TaskAssignee.org_id == clone.org_id, TaskAssignee.task_id == clone.id)
+                .order_by(TaskAssignee.is_primary.desc())
+            )
+        ).scalars()
+    ]
+    if not roster and clone.assignee_user_id is not None:
+        roster = [clone.assignee_user_id]
     from app.modules.tasks.scheduling import TaskScheduleService
 
-    try:
-        async with ctx.session.begin_nested():
-            await TaskScheduleService(ctx).create(
-                ScheduleCreate(
-                    task_id=clone.id,
-                    user_id=uuid.UUID(str(user_id)),
-                    day=clone.due_date,
-                    start_time=time.fromisoformat(str(plan["start_time"])),
-                    duration_minutes=int(plan["duration_minutes"]),
+    service = TaskScheduleService(ctx)
+    for day, block in blocks:
+        # A day already behind us is not booked: a late completion in April must not put a
+        # block on 1 March, and a draft day placed before a deadline that is tomorrow is gone.
+        if day < today:
+            continue
+        people = block.get("user_ids") or roster
+        for user_id in dict.fromkeys(people):
+            try:
+                async with ctx.session.begin_nested():
+                    await service.create(
+                        ScheduleCreate(
+                            task_id=clone.id,
+                            user_id=uuid.UUID(str(user_id)),
+                            day=day,
+                            start_time=time.fromisoformat(str(block["start_time"])),
+                            duration_minutes=int(block["duration_minutes"]),
+                            note=block.get("note") or None,
+                        )
+                    )
+            except Exception:  # noqa: BLE001 — see the docstring: the occurrence outranks its block
+                logger.warning(
+                    "recurrence auto-plan failed for task %s", clone.id, exc_info=True
                 )
-            )
-    except Exception:  # noqa: BLE001 — see the docstring: the occurrence outranks its block
-        logger.warning("recurrence auto-plan failed for task %s", clone.id, exc_info=True)
 
 
 async def spawn_due_for_org(

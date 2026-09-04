@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
 
   import { renderMarkdown } from "$lib/core/markdown";
+  import { openLightbox } from "$lib/core/ui/lightbox.svelte";
 
   let {
     value,
@@ -34,17 +35,29 @@
 
   const html = $derived(mounted && value ? renderMarkdown(value, { images }) : null);
 
-  /** An inline image opens its original in a new tab — a description's screenshot is drawn at
-   *  column width, and the pixels somebody pasted as evidence deserve a full-size view. Only
-   *  for the one `src` the renderer can emit (our own file store). */
+  /** An inline image opens in the app's viewer (`lightbox.svelte.ts`) — a description's
+   *  screenshot is drawn at column width, and the pixels somebody pasted as evidence deserve a
+   *  full-size view. The viewer is handed every stored image in this body, so ← → walk them in
+   *  reading order. Only for the one `src` the renderer can emit (our own file store): a stray
+   *  remote `<img>` is not ours to zoom, and the sanitizer has already dropped it anyway. */
+  function isStored(img: HTMLImageElement): boolean {
+    return new URL(img.src, location.origin).pathname.startsWith("/api/v1/files/");
+  }
+
   function openImage(event: MouseEvent) {
     const target = event.target;
-    if (
-      target instanceof HTMLImageElement &&
-      new URL(target.src, location.origin).pathname.startsWith("/api/v1/files/")
-    ) {
-      window.open(target.src, "_blank", "noopener");
-    }
+    if (!(target instanceof HTMLImageElement) || !isStored(target)) return;
+    // The click is spent here: a description sits inside a click-to-edit host, and a viewer
+    // that closes onto an editor nobody asked for is the new tab's problem in a new shape.
+    event.preventDefault();
+    event.stopPropagation();
+    const stored = Array.from(
+      event.currentTarget instanceof HTMLElement ? event.currentTarget.querySelectorAll("img") : [],
+    ).filter(isStored);
+    openLightbox(
+      stored.map((img) => ({ src: img.src, thumb: null, label: img.alt || null })),
+      stored.indexOf(target),
+    );
   }
 </script>
 
@@ -158,7 +171,7 @@
     height: auto;
     max-height: 24rem;
     border-radius: 0.25rem;
-    /* Clicking opens the original (see openImage) — say so. */
+    /* Clicking opens the viewer (see openImage) — say so. */
     cursor: zoom-in;
   }
   /* A received mail's table is data the sender laid out; it scrolls in its own box rather
