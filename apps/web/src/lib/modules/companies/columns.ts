@@ -20,6 +20,28 @@ export const HOURS_COLUMN = "hours";
 // primary column is meant to absorb — so the client name ended up exactly as wide as its
 // website. The five shown by default sum to 760px beside the two gutters; the name takes the
 // rest, which is what makes it the widest column on a real screen instead of one of five equals.
+/**
+ * The columns a client-portal login never sees. Three are the agency's own bookkeeping —
+ * who at the agency handles the account, when the client was entered, the budget burn (#449:
+ * the API blanks `hours` for a client, so the column would only ever draw dashes) — and the
+ * phone number is the client's own, which they did not open this screen to read. Filtered out
+ * of the *list* the page and its server load both build from, not hidden per cell, so the
+ * column picker cannot offer them either and the load never asks the API to compute the burn.
+ */
+export const PORTAL_HIDDEN_COMPANY_COLUMNS: ReadonlySet<string> = new Set([
+  "assignees",
+  HOURS_COLUMN,
+  "phone",
+  "created_at",
+]);
+
+/** The built-in columns this viewer may choose from. */
+export function companyColumns(isPortal: boolean): ColumnMeta[] {
+  return isPortal
+    ? COMPANY_COLUMNS.filter((column) => !PORTAL_HIDDEN_COMPANY_COLUMNS.has(column.key))
+    : COMPANY_COLUMNS;
+}
+
 export const COMPANY_COLUMNS: ColumnMeta[] = [
   // Klantnummer first: on a list that carries one it is how people refer to the client, and
   // it is short. Shown by default because numbering is on by default — an org that turns it

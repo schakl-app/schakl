@@ -12,12 +12,19 @@ import uuid
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
 from app.modules.tasks.models import Task
+from app.modules.tasks.service import TaskService
 from app.modules.tasks.statuses import load_statuses, non_terminal_keys
 from app.registry import SummarySpec, SummaryTile
 
 
 async def _open_tasks(ctx: RequestContext, company_id: uuid.UUID) -> list[SummaryTile]:
-    repo = ctx.repo(Task)
+    # The service's repository, never a bare ``ctx.repo(Task)``: a portal login's repo carries
+    # ``Task.__portal_horizon_clause__`` (the client's own companies *and* the
+    # ``visible_to_client`` tick), and the tile is one more reader of that count. Built on the
+    # bare repo it counted the agency's whole backlog for the client — "7 open taken" above a
+    # panel and a list that both showed one (#285's failure mode (2), the shape
+    # ``test_portal_task_count_matches_its_list`` already pins for the panel).
+    repo = TaskService(ctx).repo
     # "Open" is every non-terminal *configured* status (#62), never a fixed open/in_progress pair.
     statuses = await load_statuses(ctx.session, ctx.org.id)
     open_keys = non_terminal_keys(statuses)

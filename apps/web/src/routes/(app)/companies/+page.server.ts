@@ -9,7 +9,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
-import { COMPANIES_TABLE_ID, COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
+import { COMPANIES_TABLE_ID, HOURS_COLUMN, companyColumns } from "$lib/modules/companies/columns";
 import { COMPANY_FILTERS } from "$lib/modules/companies/filters";
 import { COMPANY_STATUS_ALL, COMPANY_WORKING_SET } from "$lib/modules/companies/status";
 
@@ -47,8 +47,13 @@ export const load: PageServerLoad = async (event) => {
   // what the API was asked for cannot disagree (core/filters/types.ts).
   const filters = readFilters(event.url, [...COMPANY_FILTERS]);
   const q = filters.q;
+  // The layout question (#373): a client reads their own companies, so the agency's lifecycle
+  // pills, the "my clients" narrowing and the agency-side columns are not part of this screen.
+  const isPortal = event.locals.user?.isPortal ?? false;
   // "My clients" is filtered by the API (any assignee, not just the primary), never in the page.
-  const mine = filters.mine === "1";
+  // A client holds no assignments, so for a portal login the token is dropped rather than sent:
+  // the control is not drawn for them, and a pasted staff link must not open an empty list.
+  const mine = filters.mine === "1" && !isPortal;
   // So is the status pill. It used to narrow `data.companies` in the browser, which was survivable
   // only while the page *was* the list; against a paged list it would filter the fifty rows you
   // happen to hold and report a total counted over all of them. The export already sent `status`
@@ -59,9 +64,14 @@ export const load: PageServerLoad = async (event) => {
   // `all` is how "everything, archive included" says so in a URL you can link to; anything else
   // is that one status. Only the resolution lives here: the *set* is in `status.ts`, beside the
   // pills, so the screen and the export cannot end up with two ideas of what is archived.
-  const statusFilter = filters.status ?? "";
-  const status =
-    statusFilter === COMPANY_STATUS_ALL ? undefined : statusFilter || COMPANY_WORKING_SET;
+  // A client's list is their own companies and nothing about their lifecycle with the agency
+  // is theirs to filter on: no pills, and no narrowing — the horizon already decides the set.
+  const statusFilter = isPortal ? "" : (filters.status ?? "");
+  const status = isPortal
+    ? undefined
+    : statusFilter === COMPANY_STATUS_ALL
+      ? undefined
+      : statusFilter || COMPANY_WORKING_SET;
   const api = apiFor(event);
 
   // The saved column layout comes from the layout load, which does not rerun on filter or sort
@@ -71,7 +81,10 @@ export const load: PageServerLoad = async (event) => {
   // already in flight by the time this resolves.
   const parent = await event.parent();
   const pref = readTablePref(parent.prefs, COMPANIES_TABLE_ID);
-  const resolved = resolveColumns(COMPANY_COLUMNS, pref);
+  // A client's register has no agency-side columns (`PORTAL_HIDDEN_COMPANY_COLUMNS`), and
+  // resolving against the narrowed list is what keeps a saved layout naming `hours` from
+  // asking the API for a roll-up it would blank anyway.
+  const resolved = resolveColumns(companyColumns(isPortal), pref);
 
   //   1. the sort, which the *server* applies — sorting one page of a longer list in the browser
   //      sorts the wrong set. The URL wins over the saved default so a sorted list stays

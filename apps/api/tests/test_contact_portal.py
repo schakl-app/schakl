@@ -601,6 +601,22 @@ async def test_portal_task_count_matches_its_list(client_for) -> None:
         tasks_panel = next(p for p in panels if p["key"] == "tasks.company")
         assert tasks_panel["data"]["open_count"] == len(tasks_panel["data"]["tasks"]) == 1
 
+        # And the vital-signs strip above it, which counted through a bare ``ctx.repo(Task)``
+        # and so read the agency's whole backlog: "4 open taken" over a panel showing one.
+        tiles = (
+            await c.get(f"/api/v1/companies/{company}/summary", headers=portal_headers)
+        ).json()
+        open_tile = next(tile for tile in tiles if tile["key"] == "tasks.open")
+        assert open_tile["value"] == "1"
+        staff_tiles = (await c.get(f"/api/v1/companies/{company}/summary", headers=headers)).json()
+        assert next(tile for tile in staff_tiles if tile["key"] == "tasks.open")["value"] == "4"
+
+        # The client register's budget roll-up is the agency's economics (#449): asked for, it
+        # is still not computed for a client, while staff on the same call get it.
+        mine = (await c.get("/api/v1/companies?hours=true", headers=portal_headers)).json()
+        assert [row["hours"] for row in mine["items"]] == [None] * len(mine["items"])
+        assert len(mine["items"]) >= 1
+
 
 async def test_portal_task_horizon_is_the_client_s_own_companies(client_for) -> None:
     """A ticked task reaches the client it belongs to, and only that one.

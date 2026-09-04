@@ -28,7 +28,7 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
-  import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
+  import { HOURS_COLUMN, companyColumns } from "$lib/modules/companies/columns";
   import type { CompanyFilterKey } from "$lib/modules/companies/filters";
   import {
     COMPANY_STATUS_ALL,
@@ -60,6 +60,11 @@
   // them anyway; this stops a client-role login seeing buttons that only 403.
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
+  // The *layout* question, which is the one `isPortal` is the right signal for (#373): a
+  // client reads their own companies, so the agency's lifecycle pills, the "my clients"
+  // narrowing and the agency-side columns are not part of this screen for them. Every write
+  // control still gates on its own key above.
+  const isPortal = $derived(page.data.user?.isPortal ?? false);
 
   // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
   // Only the status: everything else on a client is a fact about *that* client, and a control
@@ -95,7 +100,7 @@
   // layout, persisting a change, deciding whether a change means the server must recompute — is
   // the shared table layout's job.
   const allColumns = $derived([
-    ...COMPANY_COLUMNS,
+    ...companyColumns(isPortal),
     ...customFieldColumns(data.definitions, data.locale),
   ]);
 
@@ -137,11 +142,13 @@
     {
       kind: "pills",
       key: "mine",
+      hidden: isPortal,
       options: [{ value: "1", label: t("companies.filter.mine") }],
     },
     {
       kind: "pills",
       key: "status",
+      hidden: isPortal,
       options: [
         { value: "", label: t("companies.filter.not_archived") },
         { value: COMPANY_STATUS_ALL, label: t("companies.filter.all") },

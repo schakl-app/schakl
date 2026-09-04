@@ -2302,6 +2302,23 @@ contrast bug in dark mode rather than only an inconsistency.
   could never save. The API being the boundary is why this was not a data *leak*; it is still a
   screen that lies about what the visitor may do, and it is why every settings route declares its
   permission (#19) rather than trusting the call it makes.
+- **A list's chrome is the agency's, and a client reads the same list without it.** Both
+  registers a portal login can open drew the agency's own housekeeping around the rows: Taken
+  offered *Zonder klant of project*, *Naamloos* and *Zonder vervaldatum* (none of which can match
+  a client's list — every task they see is anchored to their company, and an unnamed or undated
+  row is one the agency has yet to finish), and Klanten offered *Mijn klanten*, the lifecycle
+  pills (lead → gearchiveerd) and four agency-side columns: who at the agency handles the account,
+  when the client was entered, the phone number the client itself owns, and the budget burn the
+  API already blanks for them (#449). This is a **layout** question, which is the one `isPortal`
+  is the right signal for (#373), so the pills carry `hidden: isPortal` and the column list is
+  narrowed once (`companyColumns(isPortal)`) for the page *and* its server load — the picker
+  cannot offer what the table cannot draw, and a saved layout naming `hours` no longer asks the
+  API for a roll-up it would withhold. Two siblings on the same pass. The hub's *Open taken* tile
+  counted through a bare `ctx.repo(Task)`, so a client read "4" over a panel and a list that both
+  showed three — §285's failure mode (2) reached through the summary seam; it counts through
+  `TaskService(ctx).repo` now, which is the portal repository for a client. And a project's end
+  date reads as a dash to staff (the field is still to be filled in) and as nothing at all to a
+  client: an end date that was never agreed is not a fact about their project.
 - **A whole *screen* that leaks, not just a control.** The pass above gated the controls inside
   client-reachable pages and missed the page that *is* a write surface: `/tasks/templates` — the
   org-wide task-automation and checklist repositories — hung off the tasks sub-nav and read behind
