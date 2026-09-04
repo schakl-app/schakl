@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -184,6 +184,9 @@ class RecurrencePreviewRead(BaseModel):
     planned_end: time | None = None
     #: Every block the next occurrence would book, each on the day its placement resolves to.
     blocks: list[PlannedBlockRead] = Field(default_factory=list)
+    #: Schedule mode: how many occurrences the rule lays out inside the year ahead — the number of
+    #: tasks saving it will create. ``None`` for after-completion, which creates one at a time.
+    year_count: int | None = None
 
 
 class PlannedBlockRead(BaseModel):
@@ -348,6 +351,15 @@ class TaskUpdate(BaseModel):
     # later. A *completion* ride-along, refused on any update that is not a move into a finished
     # status — never a general "create a time entry via PATCH" back door.
     log_time: TaskLogTime | None = None
+    #: On a task that belongs to a schedule-mode series (the root, or one of its occurrences): does
+    #: a change of **assignee** apply to this one, or to this one and every following occurrence
+    #: (``future``)? The second hands the future over — the sibling rosters, the planned blocks
+    #: already booked on the leaver's calendar, and the rule's own plan people — in one request.
+    #: Only the assignee travels; every other field is this occurrence's own. Absent means
+    #: ``this``, because the screen asks the question and an API caller that did not answer it
+    #: meant the row it named. Nullable rather than defaulted so the generated client keeps it
+    #: optional (``--default-non-nullable``).
+    apply_to: Literal["this", "future"] | None = None
 
 
 class TaskRead(TaskBase):
@@ -378,6 +390,10 @@ class TaskRead(TaskBase):
     # nobody until #335 — which is why a rule could not be read back anywhere: the card had a
     # frequency and no date, so "↻ Maandelijks" was the whole answer to "when is the next one?".
     recurrence_next_run: date | None = None
+    #: The root of the schedule-mode series this occurrence was generated from (``None`` on the
+    #: root itself and on any task that is not a laid-out occurrence). What lets a screen say
+    #: "onderdeel van een reeks" and the hand-off find its siblings.
+    recurrence_source_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     # The hour budget's burn (#313). On a list row only when asked for (``?hours=true``) — a row
@@ -777,10 +793,38 @@ class TaskAIStatusRead(BaseModel):
     ai_status: str | None = None
 
 
+class SeriesOccurrenceRead(BaseModel):
+    """One laid-out occurrence of a schedule-mode series, as the card lists the ones ahead."""
+
+    id: uuid.UUID
+    due_date: date | None
+    status: str
+    is_terminal: bool = False
+
+
+class TaskSeriesRead(BaseModel):
+    """The series a task belongs to (schedule mode): its root, the rule, and what lies ahead.
+
+    Answered on the root and on every occurrence alike, so whichever of the year's tasks is
+    open, the reader sees the same rule and the same list of what is still to come — and a
+    link to where the rule is edited, which is the root and nowhere else.
+    """
+
+    root_id: uuid.UUID
+    root_title: str
+    recurrence: Recurrence
+    #: Occurrences due today or later that are not finished, soonest first — the first few.
+    upcoming: list[SeriesOccurrenceRead] = Field(default_factory=list)
+    #: How many that list stands for in total (it is capped), so a screen can say "12 taken".
+    upcoming_total: int = 0
+
+
 class TaskDetail(TaskRead):
     """The full "card": everything the task detail page renders."""
 
     labels: list[LabelRead] = Field(default_factory=list)
+    #: The schedule-mode series this task is the root or an occurrence of; ``None`` otherwise.
+    series: TaskSeriesRead | None = None
     checklists: list[ChecklistRead] = Field(default_factory=list)
     comments: list[CommentRead] = Field(default_factory=list)
     #: The conversation is longer than the cap and what is above is missing. A capped read that

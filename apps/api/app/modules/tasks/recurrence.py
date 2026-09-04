@@ -1,12 +1,17 @@
 """Recurring tasks (CLAUDE.md §6 automation).
 
-Deliberately simple: a chain has exactly one carrier — the task holding ``recurrence``.
-Two disjoint modes:
+Two disjoint modes, and they hold the rule differently on purpose:
 
-- ``after_completion``: when the carrier is completed, the service calls :func:`spawn_next`;
-  the clone becomes the new carrier.
-- ``schedule``: a daily cron spawns when ``recurrence_next_run`` has arrived, regardless of
-  completion, and advances ``next_run`` onto the clone.
+- ``after_completion``: a chain with exactly one carrier — the task holding ``recurrence``.
+  When it is completed the service calls :func:`spawn_next`; the clone becomes the carrier.
+  Nothing can exist ahead of time, because "when" is "when this one is finished".
+- ``schedule``: a **series** with one root — the task holding ``recurrence`` — and its
+  occurrences laid out a year ahead (:data:`HORIZON_DAYS`), each an ordinary task pointing back
+  through ``recurrence_source_id``. :func:`materialize_series` fills the horizon when the rule
+  is saved and the nightly cron extends it as the horizon slides; ``recurrence_next_run`` is
+  the first date not yet laid out. The root keeps the rule for good: it is the series'
+  template, the place a rule is edited, and the anchor the "this one or all following"
+  hand-off finds its siblings by.
 
 Functions take ``(session, org_id, …)`` — no ``RequestContext`` — so the ARQ worker can call
 them with :func:`app.core.jobs.run_per_org`. Every query filters ``org_id`` explicitly
@@ -261,6 +266,37 @@ def compute_next_run(rec: dict | None, due_date: date | None, *, today: date) ->
     return None
 
 
+#: How far ahead a schedule-mode rule lays out its occurrences (issue: "a year ahead"). A rule
+#: used to hand itself to the next occurrence the night that one fell due, so the calendar knew
+#: about exactly one future task at a time — nothing to plan around, nothing to hand over when
+#: somebody left. The horizon slides: the nightly sweep materializes whatever entered it since.
+HORIZON_DAYS = 365
+#: A ceiling on one materialization, whatever the cadence: a daily rule fills a year in 365
+#: rows, and no rule should be able to fill a table in one request.
+MAX_MATERIALIZED = 400
+
+
+def series_dates(
+    start: date, rec: dict, *, today: date, horizon: date, limit: int = MAX_MATERIALIZED
+) -> list[date]:
+    """The occurrence dates from ``start`` up to and including ``horizon``, never before today.
+
+    ``start`` is the first date not yet materialized (``recurrence_next_run``). A date the sweep
+    missed — the worker was down for a week — is stepped over rather than created late: a task
+    that arrives already overdue is the same failure ``next_due`` refuses on a completion.
+    """
+    freq, interval = rec["freq"], rec.get("interval", 1)
+    anchors = _anchors(rec)
+    due = start
+    while due < today:
+        due = advance(due, freq, interval, **anchors)
+    dates: list[date] = []
+    while due <= horizon and len(dates) < limit:
+        dates.append(due)
+        due = advance(due, freq, interval, **anchors)
+    return dates
+
+
 async def _max_position(session: AsyncSession, org_id: uuid.UUID) -> float:
     result = await session.scalar(
         select(func.max(Task.position)).where(Task.org_id == org_id)
@@ -289,6 +325,9 @@ COPIED_FIELDS = frozenset(
         # The close policy is a property of the work (#157 extended), and so is who may read it.
         "requires_interaction",
         "visible_to_client",
+        # Handed to the clone in after-completion mode; **kept by the root** in schedule mode,
+        # where the root is the series' template and every occurrence is an ordinary task. One
+        # entry, two readers — ``_clone`` decides per mode.
         "recurrence",
         # Copied *because* ``title`` is (#350, #369). ``unnamed`` is a fact about the title, not
         # about the occurrence: it says the stored string is a placeholder nobody typed, written
@@ -311,12 +350,178 @@ NOT_COPIED_FIELDS: dict[str, str] = {
     "status": "starts in the org's default status (#62), never inheriting a finished one",
     "due_date": "computed from the rule (next_due)",
     "recurrence_next_run": "computed from the rule",
+    "recurrence_source_id": "set to the root by materialize_series; never inherited",
     "position": "appended to the board rather than sharing the carrier's slot",
     "completed_at": "nothing has been completed yet",
     "closing_interaction_id": "last month's phone call cannot close this month's work (#157)",
     "ai_status": "a run that touched the carrier says nothing about the clone (#327)",
     "ai_status_at": "same",
 }
+
+
+class _Source:
+    """Everything a clone copies from its carrier, read **once**.
+
+    A year of occurrences is up to 365 clones of one task; reading the links, the roster, the
+    labels and every checklist per clone would be a 5N query fan-out for one save
+    (docs/PERFORMANCE.md). The snapshot is what ``_clone`` writes from, however many times.
+    """
+
+    def __init__(self, task: Task) -> None:
+        self.task = task
+        self.links: list[TaskLink] = []
+        self.assignees: list[TaskAssignee] = []
+        self.labels: list[TaskLabelLink] = []
+        self.checklists: list[tuple[TaskChecklist, list[TaskChecklistItem]]] = []
+
+
+async def _read_source(session: AsyncSession, org_id: uuid.UUID, task: Task) -> _Source:
+    src = _Source(task)
+    # The briefing and design URLs a recurring job needs are *definition*, not output: they
+    # described the work before this occurrence existed and describe the next one too (#335 F4).
+    src.links = list(
+        (
+            await session.execute(
+                select(TaskLink).where(TaskLink.org_id == org_id, TaskLink.task_id == task.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # The people who work it, all of them (#375). ``assignee_user_id`` rides in COPIED_FIELDS and
+    # would leave a shared recurring job repeating onto one person — the roster is definition in
+    # exactly the way the labels are, not this occurrence's output.
+    src.assignees = list(
+        (
+            await session.execute(
+                select(TaskAssignee).where(
+                    TaskAssignee.org_id == org_id, TaskAssignee.task_id == task.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    src.labels = list(
+        (
+            await session.execute(
+                select(TaskLabelLink).where(
+                    TaskLabelLink.org_id == org_id, TaskLabelLink.task_id == task.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    checklists = (
+        (
+            await session.execute(
+                select(TaskChecklist).where(
+                    TaskChecklist.org_id == org_id, TaskChecklist.task_id == task.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    items_by_checklist: dict[uuid.UUID, list[TaskChecklistItem]] = {}
+    if checklists:
+        for item in (
+            (
+                await session.execute(
+                    select(TaskChecklistItem).where(
+                        TaskChecklistItem.org_id == org_id,
+                        TaskChecklistItem.checklist_id.in_([c.id for c in checklists]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            items_by_checklist.setdefault(item.checklist_id, []).append(item)
+    src.checklists = [(c, items_by_checklist.get(c.id, [])) for c in checklists]
+    return src
+
+
+async def _clone(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    src: _Source,
+    *,
+    due: date,
+    status: str,
+    position: float,
+    recurrence: dict | None,
+    recurrence_next_run: date | None,
+    recurrence_source_id: uuid.UUID | None,
+    actor_user_id: uuid.UUID | None,
+    actor_name: str | None,
+) -> Task:
+    """One occurrence, written from the snapshot: the copied fields, the links, the roster, the
+    labels, and the checklists with every item reset to not-done. Attachments and planned blocks
+    stay behind on purpose (they are *this* occurrence's output and *this* occurrence's
+    calendar); the editor says so in words rather than leaving it to be discovered."""
+    task = src.task
+    clone = Task(
+        org_id=org_id,
+        status=status,
+        due_date=due,
+        position=position,
+        recurrence=recurrence,
+        recurrence_next_run=recurrence_next_run,
+        recurrence_source_id=recurrence_source_id,
+        # Everything the rule decided carries over, from the one enumerated set — so a column
+        # added to ``tasks`` cannot quietly stop repeating (see ``COPIED_FIELDS``).
+        **{field: getattr(task, field) for field in COPIED_FIELDS if field != "recurrence"},
+    )
+    session.add(clone)
+    await session.flush()
+    for task_link in src.links:
+        session.add(
+            TaskLink(org_id=org_id, task_id=clone.id, url=task_link.url, title=task_link.title)
+        )
+    for assignee in src.assignees:
+        session.add(
+            TaskAssignee(
+                org_id=org_id,
+                task_id=clone.id,
+                user_id=assignee.user_id,
+                is_primary=assignee.is_primary,
+            )
+        )
+    for link in src.labels:
+        session.add(TaskLabelLink(org_id=org_id, task_id=clone.id, label_id=link.label_id))
+    for checklist, items in src.checklists:
+        new_checklist = TaskChecklist(
+            org_id=org_id,
+            task_id=clone.id,
+            title=checklist.title,
+            position=checklist.position,
+        )
+        session.add(new_checklist)
+        await session.flush()
+        for item in items:
+            session.add(
+                TaskChecklistItem(
+                    org_id=org_id,
+                    checklist_id=new_checklist.id,
+                    title=item.title,
+                    done=False,
+                    position=item.position,
+                )
+            )
+    session.add(
+        TaskActivity(
+            org_id=org_id,
+            task_id=clone.id,
+            actor_user_id=actor_user_id,
+            actor_name=actor_name,
+            action="recurrence_spawned",
+            payload={"source_task_id": str(task.id)},
+        )
+    )
+    await session.flush()
+    return clone
 
 
 async def spawn_next(
@@ -329,136 +534,42 @@ async def spawn_next(
     today: date | None = None,
     ctx: Any | None = None,
 ) -> Task:
-    """Clone the carrier into the next occurrence and hand it the recurrence.
+    """After-completion mode: clone the carrier into the next occurrence and hand it the rule.
 
-    Copies :data:`COPIED_FIELDS`, the label links, the task links, and the checklists with every
-    item reset to not-done. Attachments and planned blocks stay behind on purpose (they are
-    *this* occurrence's output and *this* occurrence's calendar); the editor says so in words
-    rather than leaving it to be discovered. The source task stops recurring.
+    The chain has exactly one carrier — the clone becomes it and the source stops recurring.
+    Schedule mode does not come through here any more (``materialize_series`` lays its
+    occurrences out ahead of time and the root keeps the rule).
 
     ``actor_name`` snapshots whoever completed the carrier, so the spawned task's first activity
-    line keeps naming them after their account is deleted. The cron passes neither and is
-    genuinely the system — that is the distinction the snapshot exists to preserve (issue #64).
+    line keeps naming them after their account is deleted (issue #64).
 
-    ``ctx`` — a request context, or the cron's ``system_context`` — is what lets a rule carrying
-    a ``plan`` book the occurrence onto a calendar (#335). It goes through ``TaskScheduleService``
+    ``ctx`` — a request context, or a ``system_context`` — is what lets a rule carrying a
+    ``plan`` book the occurrence onto a calendar (#335). It goes through ``TaskScheduleService``
     rather than inserting a row, so the Google mirror and the "taak ingepland" notification fire
     exactly as they do for a hand-planned block (#188's one-emit-site rule). Without a context
     the clone is still created; only the block is skipped.
     """
     rec = dict(task.recurrence or {})
-    # The org's local day, resolved by the caller when there is a batch of these — the cron
-    # spawns many in one sweep and one lookup per task would be an N+1 (docs/PERFORMANCE.md).
     today_local = today if today is not None else await org_today(session, org_id)
     due = next_due(task.due_date, rec, today=today_local)
-
     # A fresh occurrence starts in the org's default status (issue #62), not a hardcoded "open".
     default_status = default_key(await load_statuses(session, org_id))
-
-    clone = Task(
-        org_id=org_id,
+    src = await _read_source(session, org_id, task)
+    clone = await _clone(
+        session,
+        org_id,
+        src,
+        due=due,
         status=default_status,
-        due_date=due,
         position=await _max_position(session, org_id) + 1024.0,
-        recurrence_next_run=(
-            due if rec.get("mode") == RecurrenceMode.SCHEDULE.value else None
-        ),
-        # Everything the rule decided carries over, from the one enumerated set — so a column
-        # added to ``tasks`` cannot quietly stop repeating (see ``COPIED_FIELDS``).
-        **{field: getattr(task, field) for field in COPIED_FIELDS if field != "recurrence"},
         recurrence=rec,
+        recurrence_next_run=None,
+        recurrence_source_id=None,
+        actor_user_id=actor_user_id,
+        actor_name=actor_name,
     )
-    session.add(clone)
-    await session.flush()
-
-    # The briefing and design URLs a recurring job needs are *definition*, not output: they
-    # described the work before this occurrence existed and describe the next one too (#335 F4).
-    task_links = (
-        await session.execute(
-            select(TaskLink).where(TaskLink.org_id == org_id, TaskLink.task_id == task.id)
-        )
-    ).scalars().all()
-    for task_link in task_links:
-        session.add(
-            TaskLink(org_id=org_id, task_id=clone.id, url=task_link.url, title=task_link.title)
-        )
-
-    # The people who work it, all of them (#375). ``assignee_user_id`` rides in COPIED_FIELDS and
-    # would leave a shared recurring job repeating onto one person — the roster is definition in
-    # exactly the way the labels above are, not this occurrence's output.
-    for assignee in (
-        await session.execute(
-            select(TaskAssignee).where(
-                TaskAssignee.org_id == org_id, TaskAssignee.task_id == task.id
-            )
-        )
-    ).scalars().all():
-        session.add(
-            TaskAssignee(
-                org_id=org_id,
-                task_id=clone.id,
-                user_id=assignee.user_id,
-                is_primary=assignee.is_primary,
-            )
-        )
-
-    links = (
-        await session.execute(
-            select(TaskLabelLink).where(
-                TaskLabelLink.org_id == org_id, TaskLabelLink.task_id == task.id
-            )
-        )
-    ).scalars().all()
-    for link in links:
-        session.add(TaskLabelLink(org_id=org_id, task_id=clone.id, label_id=link.label_id))
-
-    checklists = (
-        await session.execute(
-            select(TaskChecklist).where(
-                TaskChecklist.org_id == org_id, TaskChecklist.task_id == task.id
-            )
-        )
-    ).scalars().all()
-    for checklist in checklists:
-        new_checklist = TaskChecklist(
-            org_id=org_id,
-            task_id=clone.id,
-            title=checklist.title,
-            position=checklist.position,
-        )
-        session.add(new_checklist)
-        await session.flush()
-        items = (
-            await session.execute(
-                select(TaskChecklistItem).where(
-                    TaskChecklistItem.org_id == org_id,
-                    TaskChecklistItem.checklist_id == checklist.id,
-                )
-            )
-        ).scalars().all()
-        for item in items:
-            session.add(
-                TaskChecklistItem(
-                    org_id=org_id,
-                    checklist_id=new_checklist.id,
-                    title=item.title,
-                    done=False,
-                    position=item.position,
-                )
-            )
-
     task.recurrence = None
     task.recurrence_next_run = None
-    session.add(
-        TaskActivity(
-            org_id=org_id,
-            task_id=clone.id,
-            actor_user_id=actor_user_id,
-            actor_name=actor_name,
-            action="recurrence_spawned",
-            payload={"source_task_id": str(task.id)},
-        )
-    )
     # The hand-off, said on **both** sides (#335 F5). The clone has always announced where it came
     # from; the carrier said nothing at all, so completing a recurring task looked exactly like
     # completing an ordinary one and the next occurrence existed with nobody told.
@@ -476,6 +587,83 @@ async def spawn_next(
     if ctx is not None:
         await plan_occurrence(ctx, clone, rec, today=today_local)
     return clone
+
+
+async def materialize_series(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    root: Task,
+    *,
+    today: date,
+    ctx: Any | None = None,
+    actor_user_id: uuid.UUID | None = None,
+    actor_name: str | None = None,
+    horizon_days: int = HORIZON_DAYS,
+) -> list[Task]:
+    """Schedule mode: lay out every occurrence up to the horizon that does not exist yet.
+
+    The root is the series' **template** and keeps the rule; each occurrence is an ordinary task
+    naming it in ``recurrence_source_id``, with the rule's blocks booked onto the calendar as it
+    is created (``plan_occurrence``). ``recurrence_next_run`` is the first date *not yet* laid
+    out, so calling this twice writes nothing the second time, and the nightly sweep only ever
+    adds what the sliding horizon reached since — one task a night for a daily rule, one a month
+    for a monthly one. Returns what was created.
+    """
+    rec = dict(root.recurrence or {})
+    if rec.get("mode") != RecurrenceMode.SCHEDULE.value:
+        return []
+    start = root.recurrence_next_run or next_due(root.due_date, rec, today=today)
+    horizon = today + timedelta(days=horizon_days)
+    dates = series_dates(start, rec, today=today, horizon=horizon)
+    freq, interval = rec["freq"], rec.get("interval", 1)
+    anchors = _anchors(rec)
+    if not dates:
+        # Nothing entered the window; still keep the pointer honest about where the series is.
+        due = start
+        while due < today:
+            due = advance(due, freq, interval, **anchors)
+        root.recurrence_next_run = due
+        await session.flush()
+        return []
+    default_status = default_key(await load_statuses(session, org_id))
+    src = await _read_source(session, org_id, root)
+    position = await _max_position(session, org_id)
+    created: list[Task] = []
+    for due in dates:
+        position += 1024.0
+        clone = await _clone(
+            session,
+            org_id,
+            src,
+            due=due,
+            status=default_status,
+            position=position,
+            recurrence=None,
+            recurrence_next_run=None,
+            recurrence_source_id=root.id,
+            actor_user_id=actor_user_id,
+            actor_name=actor_name,
+        )
+        created.append(clone)
+        if ctx is not None:
+            await plan_occurrence(ctx, clone, rec, today=today)
+    root.recurrence_next_run = advance(dates[-1], freq, interval, **anchors)
+    session.add(
+        TaskActivity(
+            org_id=org_id,
+            task_id=root.id,
+            actor_user_id=actor_user_id,
+            actor_name=actor_name,
+            action="recurrence_materialized",
+            payload={
+                "count": len(created),
+                "from": dates[0].isoformat(),
+                "until": dates[-1].isoformat(),
+            },
+        )
+    )
+    await session.flush()
+    return created
 
 
 async def plan_occurrence(ctx: Any, clone: Task, rec: dict, *, today: date) -> None:
@@ -543,34 +731,39 @@ async def plan_occurrence(ctx: Any, clone: Task, rec: dict, *, today: date) -> N
                 )
 
 
-async def spawn_due_for_org(
+async def materialize_due_for_org(
     session: AsyncSession, org_id: uuid.UUID, *, ctx: Any | None = None
 ) -> int:
-    """Spawn every schedule-mode occurrence whose ``next_run`` has arrived. Returns count."""
+    """Extend every schedule-mode series whose next date has entered the horizon. Returns the
+    number of occurrences created."""
     # One lookup for the whole sweep: it bounds the query *and* prices every occurrence below,
     # and asking per task would be an N+1 the JSON could never show (docs/PERFORMANCE.md).
     today = await org_today(session, org_id)
-    tasks = (
-        await session.execute(
-            select(Task).where(
-                Task.org_id == org_id,
-                Task.recurrence_next_run.is_not(None),
-                Task.recurrence_next_run <= today,
+    horizon = today + timedelta(days=HORIZON_DAYS)
+    roots = (
+        (
+            await session.execute(
+                select(Task).where(
+                    Task.org_id == org_id,
+                    Task.recurrence_next_run.is_not(None),
+                    Task.recurrence_next_run <= horizon,
+                )
             )
         )
-    ).scalars().all()
-    spawned = 0
-    for task in tasks:
-        rec = task.recurrence or {}
+        .scalars()
+        .all()
+    )
+    created = 0
+    for root in roots:
+        rec = root.recurrence or {}
         if rec.get("mode") != RecurrenceMode.SCHEDULE.value:
             continue
-        await spawn_next(session, org_id, task, actor_user_id=None, today=today, ctx=ctx)
-        spawned += 1
-    return spawned
+        created += len(await materialize_series(session, org_id, root, today=today, ctx=ctx))
+    return created
 
 
 async def spawn_scheduled_recurrences(ctx: dict) -> int:
-    """ARQ cron entry point: materialize scheduled recurrences for every org."""
+    """ARQ cron entry point: keep every org's scheduled series a year ahead."""
     from app.core.jobs import run_per_org, system_context
 
     total = 0
@@ -580,8 +773,8 @@ async def spawn_scheduled_recurrences(ctx: dict) -> int:
         # A cron has nobody to authorize, so it drives the schedule service through the same
         # system context every other background writer uses (`app/core/jobs.py`) — which is what
         # lets an auto-planned occurrence emit its Google mirror and its notification from the
-        # nightly sweep exactly as it does from a completion (#335 phase 5).
-        total += await spawn_due_for_org(session, org.id, ctx=system_context(org, session))
+        # nightly sweep exactly as it does from a save (#335 phase 5).
+        total += await materialize_due_for_org(session, org.id, ctx=system_context(org, session))
 
     await run_per_org(_per_org)
     return total

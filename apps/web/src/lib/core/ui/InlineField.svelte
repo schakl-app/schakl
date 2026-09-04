@@ -45,6 +45,7 @@
     after,
     onopen,
     onclose,
+    beforeSubmit,
   }: {
     /** The field's caption, above both the value and the editor. */
     label: string;
@@ -69,6 +70,13 @@
     onopen?: () => void;
     /** The editor closed, by a save, Annuleren or Esc — a host resets live picks here. */
     onclose?: () => void;
+    /**
+     * Asked with the posted fields before the save leaves — a `false` keeps the editor open and
+     * posts nothing. For the host that has a question to ask first (a task in a series: does
+     * the new assignee apply to this one or to every following?), which then raises its own
+     * dialog and re-submits the form by id once it has an answer.
+     */
+    beforeSubmit?: (formData: FormData) => boolean;
   } = $props();
 
   const busy = new InFlight();
@@ -123,19 +131,25 @@
       {action}
       class="space-y-2"
       {onkeydown}
-      use:enhance={busy.wrap("save", () => async ({ update, result }) => {
-        if (result.type === "success") {
-          // Edits what exists: never reset (docs/UX.md, "Saving must never blank the form").
+      use:enhance={busy.wrap("save", ({ formData, cancel }) => {
+        if (beforeSubmit && !beforeSubmit(formData)) {
+          cancel();
+          return;
+        }
+        return async ({ update, result }) => {
+          if (result.type === "success") {
+            // Edits what exists: never reset (docs/UX.md, "Saving must never blank the form").
+            await update({ reset: false });
+            close();
+            return;
+          }
+          if (result.type === "failure") {
+            const data = result.data as { error?: string } | undefined;
+            error = data?.error ?? "errors.validation";
+            return;
+          }
           await update({ reset: false });
-          close();
-          return;
-        }
-        if (result.type === "failure") {
-          const data = result.data as { error?: string } | undefined;
-          error = data?.error ?? "errors.validation";
-          return;
-        }
-        await update({ reset: false });
+        };
       })}
     >
       {#key session}

@@ -26,7 +26,7 @@
    * past" and the org's own today all live in `app/modules/tasks/recurrence.py`; re-implementing
    * them here would be a second opinion about a question the API already answers (#312).
    */
-  import { Plus, X } from "@lucide/svelte";
+  import { Plus, Trash2 } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import {
@@ -71,6 +71,7 @@
     lastBlockStart = null,
     members = [],
     currentUserId,
+    assigneeIds = [],
     canSchedule = false,
     canScheduleAny = false,
   }: {
@@ -89,6 +90,14 @@
     lastBlockStart?: string | null;
     members?: Member[];
     currentUserId: string;
+    /**
+     * The task's roster, primary first: what a fresh block is *for* by default. A block used to
+     * open with nobody named, which the API reads as "everyone on the task" — true, and drawn
+     * as an empty picker over a placeholder, so the one thing the person planning wants to see
+     * (who this lands on) was the one thing the row did not say. The assignee is the default
+     * now and is shown as such; an emptied row still means the roster, and says whose.
+     */
+    assigneeIds?: string[];
     canSchedule?: boolean;
     canScheduleAny?: boolean;
   } = $props();
@@ -165,7 +174,9 @@
       weekday: "1",
       week: "1",
       day: "1",
-      userIds: [],
+      // The assignee, by default — only where the picker can show a name; a `:own` holder's
+      // block is theirs whatever the roster says (see `blockOf`).
+      userIds: canScheduleAny ? [...assigneeIds] : [],
       start: lastBlockStart || "09:00",
       minutes: allocatedMinutes || 60,
       note: "",
@@ -233,6 +244,17 @@
   const weekdays = $derived(weekdayNames());
   const months = $derived(monthNames());
   const memberName = $derived(new Map(members.map((m) => [m.user_id, memberLabel(m)])));
+  /** The roster as names — what a block naming nobody resolves to, said rather than implied. */
+  const rosterNames = $derived(
+    assigneeIds
+      .map((id) => (id === currentUserId ? t("tasks.schedule.you") : memberName.get(id)))
+      .filter((name): name is string => !!name),
+  );
+  const rosterPlaceholder = $derived(
+    rosterNames.length
+      ? t("tasks.recurrence.plan.person_assignee_named", { names: rosterNames.join(", ") })
+      : t("tasks.recurrence.plan.person_assignee"),
+  );
   // Placements a weekly rule can use: "the n-th weekday of the month" and "day N of the month"
   // say nothing about a week, so they are not offered for one.
   const placements = $derived<Placement[]>(
@@ -280,6 +302,8 @@
     following: string[];
     on_completion: boolean;
     blocks: PreviewBlock[];
+    /** Schedule mode: how many tasks the rule lays out inside the year ahead. */
+    year_count: number | null;
   }
   let preview = $state<Preview | null>(null);
   let previewFailed = $state(false);
@@ -351,7 +375,9 @@
   });
 
   function previewPeople(block: PreviewBlock): string {
-    if (!block.user_ids?.length) return t("tasks.recurrence.plan.roster");
+    if (!block.user_ids?.length) {
+      return rosterNames.length ? rosterNames.join(", ") : t("tasks.recurrence.plan.roster");
+    }
     return block.user_ids
       .map((id) => (id === currentUserId ? t("tasks.schedule.you") : (memberName.get(id) ?? "—")))
       .join(", ");
@@ -567,6 +593,18 @@
               })}
             </span>
           {/if}
+          <!-- Schedule mode creates the year on save: the number of tasks that is, said before
+               the save rather than discovered on the board. -->
+          {#if !preview.on_completion && preview.year_count != null}
+            <span
+              class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+              data-testid="recurrence-year-count"
+            >
+              {preview.year_count === 1
+                ? t("tasks.recurrence.year_count_one")
+                : t("tasks.recurrence.year_count_other", { count: String(preview.year_count) })}
+            </span>
+          {/if}
         {:else}
           <span class="font-medium text-text">{t("tasks.recurrence.next")}:</span>
           <span class="text-text-muted">—</span>
@@ -627,6 +665,24 @@
           <ul class="mt-3 space-y-2" data-testid="plan-blocks">
             {#each rows as row, i (row.key)}
               <li class="rounded-lg border border-border bg-surface-raised p-2.5">
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <span class="text-xs font-medium text-text-muted">
+                    {t("tasks.recurrence.plan.block_n", { n: String(i + 1) })}
+                  </span>
+                  <!-- Removing the last block switches the plan off; the checkbox above already
+                       says so. Labelled, in the block's own header: an unlabelled ✕ at the end
+                       of the inputs read as belonging to the length box beside it, and it was
+                       hidden on a single block, leaving no way to remove what had been added. -->
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-text-muted hover:bg-surface hover:text-red-600"
+                    data-testid="plan-block-remove"
+                    onclick={() => removeRow(row.key)}
+                  >
+                    <Trash2 size={13} />
+                    {t("tasks.recurrence.plan.remove_block")}
+                  </button>
+                </div>
                 <div class="flex flex-wrap items-end gap-2">
                   <div class="min-w-[12rem] flex-1">
                     <label
@@ -733,17 +789,6 @@
                     </label>
                     <DurationInput id="rec-plan-{i}-duration" bind:minutes={row.minutes} />
                   </div>
-                  {#if rows.length > 1}
-                    <button
-                      type="button"
-                      class="mb-1 rounded-lg p-1.5 text-text-muted hover:bg-surface hover:text-red-600"
-                      aria-label={t("tasks.recurrence.plan.remove_block")}
-                      title={t("tasks.recurrence.plan.remove_block")}
-                      onclick={() => removeRow(row.key)}
-                    >
-                      <X size={14} />
-                    </button>
-                  {/if}
                 </div>
                 <div
                   class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]"
@@ -761,7 +806,7 @@
                         id="rec-plan-{i}-people"
                         bind:value={row.userIds}
                         {members}
-                        placeholder={t("tasks.recurrence.plan.person_assignee")}
+                        placeholder={rosterPlaceholder}
                       />
                     {:else}
                       <!-- `:own` plans only yourself, so the field states that rather than offering

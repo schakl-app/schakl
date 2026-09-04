@@ -182,6 +182,27 @@
 
   // --- Planning: one home for "when" (#335) ----------------------------------------------- //
   const recurrence = $derived((task.recurrence ?? null) as Recurrence | null);
+  // The series a schedule-mode rule lays out a year ahead: the root that holds the rule and
+  // what is still to come, answered on the root and on every occurrence alike. An occurrence
+  // carries no rule of its own, so the rule the reader sees is the series' where there is one.
+  interface Series {
+    root_id: string;
+    root_title: string;
+    recurrence: Recurrence;
+    upcoming: { id: string; due_date: string | null; status: string }[];
+    upcoming_total: number;
+  }
+  const series = $derived((task.series ?? null) as Series | null);
+  const isOccurrence = $derived(!!task.recurrence_source_id);
+  const shownRecurrence = $derived(recurrence ?? series?.recurrence ?? null);
+  /** The next task of the series *after* this one — what "volgende" means on a card. */
+  const nextInSeries = $derived(
+    series?.upcoming.find(
+      (row) =>
+        row.id !== task.id && (!task.due_date || !row.due_date || row.due_date > task.due_date),
+    ) ?? null,
+  );
+  const assigneeIds = $derived((task.assignees ?? []).map((a) => a.user_id));
   /** The hour someone last planned by hand — the auto-plan's best guess at "and at what time?". */
   const lastBlockStart = $derived.by(() => {
     const latest = [...(data.schedules ?? [])].sort((a, b) =>
@@ -839,13 +860,86 @@
   let stagedDueDate = $state("");
   let dueReason = $state("");
   let reasonDraft = $state("");
+  // The deadline field's value, owned here so the prompt can put the old date back.
+  // svelte-ignore state_referenced_locally
+  let dueValue = $state(task.due_date ?? "");
   function onDueChanged(value: string) {
     liveDue = value;
     if (dueIsCommitted && task.due_date && value && value > task.due_date) {
       stagedDueDate = value;
       reasonDraft = dueReason;
       reasonModalOpen = true;
+      // Focus moves into the prompt, so Escape is the prompt's to answer: with focus still in
+      // the date field, the keystroke reached the in-place editor's own Escape (which closed
+      // the editor) and left the prompt standing over a field that no longer existed.
+      void tick().then(() =>
+        (
+          document.querySelector('[data-testid="due-reason"]') as HTMLTextAreaElement | null
+        )?.focus(),
+      );
     }
+  }
+  /**
+   * Every way out of the prompt that is not Bevestigen keeps the *old* date. The API refuses an
+   * extension without a reason, so a prompt that could be dismissed — Annuleren, Escape, the
+   * backdrop, or Bevestigen over an empty box — with the new date still in the field left a form
+   * that could not be saved, and nothing beside the date said why. The prompt now has exactly
+   * two answers: a reason, or the date it had.
+   */
+  function keepOldDue() {
+    dueValue = task.due_date ?? "";
+    liveDue = dueValue;
+    dueReason = "";
+    reasonDraft = "";
+    reasonModalOpen = false;
+  }
+  function confirmDueReason() {
+    if (!reasonDraft.trim()) return;
+    dueReason = reasonDraft.trim();
+    reasonModalOpen = false;
+  }
+
+  // --- "This one, or this one and every following" ---------------------------------------- //
+  // A task in a series being handed to somebody else is a question before it is a save: the
+  // following occurrences already exist, each with its own roster and its own planned block, so
+  // "reassign" has two honest meanings and only the person at the keyboard knows which. Both
+  // forms that carry the assignee — the edit form and the in-place editor — are held by the same
+  // guard, raise the same dialog, and re-submit themselves with the answer in a hidden field.
+  let applyTo = $state<"" | "this" | "future">("");
+  let applyToOpen = $state(false);
+  let applyToResubmit: (() => void) | null = null;
+  const hasFollowing = $derived((series?.upcoming_total ?? 0) > 1);
+  function assigneeChangedIn(formData: FormData): boolean {
+    if (formData.has("assignee_contact_id")) {
+      const contact = String(formData.get("assignee_contact_id") ?? "").trim();
+      if (contact !== (task.assignee_contact_id ?? "")) return true;
+    }
+    const raw = formData.get("assignees");
+    if (raw == null) return false;
+    let posted: { user_id: string }[];
+    try {
+      posted = JSON.parse(String(raw));
+    } catch {
+      return false;
+    }
+    const before = new Set(assigneeIds);
+    const after = new Set(posted.map((p) => p.user_id));
+    return before.size !== after.size || [...before].some((id) => !after.has(id));
+  }
+  /** `false` holds the save and asks; the answer re-submits the same form. */
+  function guardAssigneeSubmit(formData: FormData, resubmit: () => void): boolean {
+    if (!hasFollowing || applyTo || !assigneeChangedIn(formData)) return true;
+    applyToResubmit = resubmit;
+    applyToOpen = true;
+    return false;
+  }
+  function answerApplyTo(choice: "this" | "future") {
+    applyTo = choice;
+    applyToOpen = false;
+    const resubmit = applyToResubmit;
+    applyToResubmit = null;
+    // The hidden field carries the answer; let it render before the form is read again.
+    void tick().then(() => resubmit?.());
   }
 
   const today = orgToday();
@@ -922,6 +1016,18 @@
     if (a.action === "recurrence_spawned_next") {
       return t("tasks.activity.recurrence_spawned_next", {
         date: a.payload.due_date ? fmtDayMonth(String(a.payload.due_date)) : "—",
+      });
+    }
+    if (a.action === "recurrence_materialized") {
+      return t("tasks.activity.recurrence_materialized", {
+        count: String(a.payload.count ?? 0),
+        from: a.payload.from ? fmtDayMonth(String(a.payload.from)) : "—",
+        until: a.payload.until ? fmtDayMonth(String(a.payload.until)) : "—",
+      });
+    }
+    if (a.action === "assignees_transferred_future") {
+      return t("tasks.activity.assignees_transferred_future", {
+        count: String(a.payload.count ?? 0),
       });
     }
     if (a.action === "due_extended") {
@@ -1147,14 +1253,16 @@
              stored recurrence: no interval, no anchor, no mode, and no next date at all — the
              one it could not have shown, because `recurrence_next_run` was stored and exposed to
              nobody (#335 F3). Compact here; the Planning card below spells the mode out. -->
-      {#if recurrence}
+      {#if shownRecurrence}
         <a
           href="#planning"
           class="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-brand"
         >
-          ↻ {recurrenceSentence(recurrence, { compact: true })}{task.recurrence_next_run
-            ? ` · ${fmtDayMonth(task.recurrence_next_run)}`
-            : ""}
+          ↻ {recurrenceSentence(shownRecurrence, { compact: true })}{nextInSeries?.due_date
+            ? ` · ${fmtDayMonth(nextInSeries.due_date)}`
+            : !series && task.recurrence_next_run
+              ? ` · ${fmtDayMonth(task.recurrence_next_run)}`
+              : ""}
         </a>
       {/if}
       {#if editMode}
@@ -1291,14 +1399,27 @@
               assignees={task.assignees ?? []}
               contactValue={task.assignee_contact_id ?? ""}
             />
+            <input type="hidden" name="apply_to" value={applyTo} form="task-edit" />
           </div>
         {:else}
           <InlineField
             id="assignee-employees"
             label={t("tasks.field.assignees")}
             canEdit={canEditTask}
-            onopen={() => (assigneeInlineOpen = true)}
-            onclose={() => (assigneeInlineOpen = false)}
+            onopen={() => {
+              assigneeInlineOpen = true;
+              applyTo = "";
+            }}
+            onclose={() => {
+              assigneeInlineOpen = false;
+              applyTo = "";
+            }}
+            beforeSubmit={(formData) =>
+              guardAssigneeSubmit(formData, () =>
+                (
+                  document.getElementById("assignee-employees-form") as HTMLFormElement | null
+                )?.requestSubmit(),
+              )}
           >
             {#snippet read()}
               {#if task.assignee_contact_id}
@@ -1325,6 +1446,7 @@
                 assignees={task.assignees ?? []}
                 contactValue={task.assignee_contact_id ?? ""}
               />
+              <input type="hidden" name="apply_to" value={applyTo} />
             {/snippet}
           </InlineField>
         {/if}
@@ -1826,7 +1948,7 @@
               <DateInput
                 id="due_date"
                 name="due_date"
-                value={task.due_date ?? ""}
+                bind:value={dueValue}
                 formId="task-edit"
                 required
                 onchange={onDueChanged}
@@ -1854,6 +1976,7 @@
               class="max-w-xs"
               onclose={() => {
                 liveDue = task.due_date ?? "";
+                dueValue = liveDue;
                 dueReason = "";
               }}
             >
@@ -1883,7 +2006,7 @@
                 <DateInput
                   id="due_date"
                   name="due_date"
-                  value={task.due_date ?? ""}
+                  bind:value={dueValue}
                   required
                   onchange={onDueChanged}
                 />
@@ -1924,9 +2047,25 @@
         <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
              niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
              editor behind the pencil is where a rule gets made. -->
-        {#if editMode || recurrence || canEditTask}
+        {#if editMode || shownRecurrence || canEditTask}
           <div class="border-t border-border pt-4">
-            {#if editMode}
+            {#if isOccurrence && series}
+              <!-- An occurrence carries no rule of its own: the rule lives on the root, and is
+                   edited there — one rule, one place, whichever of the year's tasks is open. -->
+              <span class="mb-1 block text-xs font-medium text-text-muted">
+                {t("tasks.recurrence.title")}
+              </span>
+              <p class="text-sm text-text">↻ {recurrenceSentence(series.recurrence)}</p>
+              <p class="mt-0.5 text-[11px] text-text-muted">
+                {t("tasks.series.part_of", { title: series.root_title })}
+                {#if canEditTask}
+                  ·
+                  <a href="/tasks/{series.root_id}#planning" class="underline hover:text-brand">
+                    {t("tasks.series.edit_rule")}
+                  </a>
+                {/if}
+              </p>
+            {:else if editMode}
               <RecurrenceEditor
                 formId="task-edit"
                 previewUrl={`/tasks/${task.id}/recurrence-preview`}
@@ -1936,6 +2075,7 @@
                 {lastBlockStart}
                 members={data.members}
                 currentUserId={page.data.user?.id ?? ""}
+                {assigneeIds}
                 {canSchedule}
                 {canScheduleAny}
               />
@@ -1954,7 +2094,11 @@
                   {#if recurrence}
                     <p class="text-sm text-text">↻ {recurrenceSentence(recurrence)}</p>
                     <p class="mt-0.5 text-[11px] text-text-muted">
-                      {#if task.recurrence_next_run}
+                      {#if series}
+                        {t("tasks.recurrence.next")}: {nextInSeries?.due_date
+                          ? fmtDayMonthYear(nextInSeries.due_date)
+                          : "—"}{recurrence.plan ? ` · ${planSummary(recurrence)}` : ""}
+                      {:else if task.recurrence_next_run}
                         {t("tasks.recurrence.next")}: {fmtDayMonthYear(
                           task.recurrence_next_run,
                         )}{recurrence.plan ? ` · ${planSummary(recurrence)}` : ""}
@@ -1978,11 +2122,50 @@
                     {lastBlockStart}
                     members={data.members}
                     currentUserId={page.data.user?.id ?? ""}
+                    {assigneeIds}
                     {canSchedule}
                     {canScheduleAny}
                   />
                 {/snippet}
               </InlineField>
+            {/if}
+            <!-- What lies ahead in the series: the year the rule laid out, as links, this one
+                 marked. The list is capped and says how many it stands for (CLAUDE.md §17). -->
+            {#if series && series.upcoming.length > 0}
+              <div class="mt-3" data-testid="series-upcoming">
+                <span class="mb-1 block text-xs font-medium text-text-muted">
+                  {t("tasks.series.upcoming", { count: String(series.upcoming_total) })}
+                </span>
+                <ul class="flex flex-wrap items-center gap-1.5">
+                  {#each series.upcoming as row (row.id)}
+                    <li>
+                      {#if row.id === task.id}
+                        <span
+                          class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+                        >
+                          {row.due_date ? fmtDayMonth(row.due_date) : "—"} · {t(
+                            "tasks.series.current",
+                          )}
+                        </span>
+                      {:else}
+                        <a
+                          href="/tasks/{row.id}"
+                          class="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted hover:text-brand"
+                        >
+                          {row.due_date ? fmtDayMonth(row.due_date) : "—"}
+                        </a>
+                      {/if}
+                    </li>
+                  {/each}
+                  {#if series.upcoming_total > series.upcoming.length}
+                    <li class="text-[11px] text-text-muted">
+                      {t("tasks.series.more", {
+                        count: String(series.upcoming_total - series.upcoming.length),
+                      })}
+                    </li>
+                  {/if}
+                </ul>
+              </div>
             {/if}
           </div>
         {/if}
@@ -2799,29 +2982,38 @@
       bind:this={editForm}
       method="POST"
       action="?/update"
-      use:enhance={busy.wrap("update", () => async ({ update, result }) => {
-        // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
-        // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
-        // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
-        // in service of.
-        const waiting = pendingSave;
-        pendingSave = null;
-        if (result.type === "success" && !waiting && origin) {
+      use:enhance={busy.wrap("update", ({ formData, cancel }) => {
+        // A task in a series being handed over is a question first (the dialog below); the
+        // answer re-submits this same form with `apply_to` filled in.
+        if (!guardAssigneeSubmit(formData, () => editForm?.requestSubmit())) {
+          cancel();
+          return;
+        }
+        return async ({ update, result }) => {
+          applyTo = "";
+          // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
+          // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
+          // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
+          // in service of.
+          const waiting = pendingSave;
+          pendingSave = null;
+          if (result.type === "success" && !waiting && origin) {
+            dueReason = "";
+            return void goto(origin, { invalidateAll: true });
+          }
+          if (result.type === "success") {
+            editMode = waiting !== null;
+            // …and the marker that opened it goes with it (#402). A task created from a client
+            // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
+            // means the next visit — a reload, the back button off the client's page — reopens
+            // the form over a save that had already happened. An intent is consumed once. The
+            // detour's exit above needs none of this: it leaves this URL behind entirely.
+            if (!editMode) clearEditIntent();
+          }
           dueReason = "";
-          return void goto(origin, { invalidateAll: true });
-        }
-        if (result.type === "success") {
-          editMode = waiting !== null;
-          // …and the marker that opened it goes with it (#402). A task created from a client
-          // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
-          // means the next visit — a reload, the back button off the client's page — reopens
-          // the form over a save that had already happened. An intent is consumed once. The
-          // detour's exit above needs none of this: it leaves this URL behind entirely.
-          if (!editMode) clearEditIntent();
-        }
-        dueReason = "";
-        await update();
-        waiting?.(result.type === "success");
+          await update();
+          waiting?.(result.type === "success");
+        };
       })}
       class="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface/90 px-1 py-3 backdrop-blur"
     >
@@ -2844,7 +3036,14 @@
 {/if}
 
 <!-- Deadline extension requires a reason (logged in the activity feed) -->
-<Modal bind:open={reasonModalOpen} title={t("tasks.detail.due_reason_title")}>
+<Modal
+  bind:open={reasonModalOpen}
+  title={t("tasks.detail.due_reason_title")}
+  closeGuard={() => {
+    keepOldDue();
+    return true;
+  }}
+>
   <div class="space-y-3">
     <p class="text-sm text-text-muted">
       {t("tasks.detail.due_reason_body", {
@@ -2856,22 +3055,54 @@
       rows="3"
       bind:value={reasonDraft}
       placeholder={t("tasks.detail.due_reason_placeholder")}
+      data-testid="due-reason"
       class={inputClass}></textarea>
-    <div class="flex justify-end gap-2">
+    <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_required_hint")}</p>
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (reasonModalOpen = false)}>{t("common.cancel")}</button
+        onclick={keepOldDue}
+      >
+        {t("tasks.detail.due_reason_keep", {
+          date: task.due_date ? fmtDayMonth(task.due_date) : "—",
+        })}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        disabled={!reasonDraft.trim()}
+        onclick={confirmDueReason}
+      >
+        {t("common.confirm")}
+      </button>
+    </div>
+  </div>
+</Modal>
+
+<!-- A task in a series, handed to somebody else: this one, or every following one too. -->
+<Modal bind:open={applyToOpen} title={t("tasks.series.apply_title")}>
+  <div class="space-y-3">
+    <p class="text-sm text-text-muted">{t("tasks.series.apply_body")}</p>
+    <div class="flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
+        onclick={() => (applyToOpen = false)}>{t("common.cancel")}</button
       >
       <button
         type="button"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        onclick={() => {
-          dueReason = reasonDraft.trim();
-          reasonModalOpen = false;
-        }}
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+        onclick={() => answerApplyTo("this")}
       >
-        {t("common.confirm")}
+        {t("tasks.series.apply_this")}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => answerApplyTo("future")}
+      >
+        {t("tasks.series.apply_future")}
       </button>
     </div>
   </div>
@@ -2880,7 +3111,9 @@
 <ConfirmDialog
   bind:open={confirmDelete}
   title={t("tasks.detail.delete")}
-  message={t("tasks.detail.delete_confirm")}
+  message={series && !isOccurrence && series.upcoming_total > 1
+    ? t("tasks.detail.delete_confirm_series", { count: String(series.upcoming_total - 1) })
+    : t("tasks.detail.delete_confirm")}
   action={withOrigin("?/delete", page.url)}
 />
 

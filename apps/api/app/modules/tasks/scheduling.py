@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
+from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.busy import BusyItem, busy_items, registered_busy_sources
@@ -288,7 +289,13 @@ class TaskScheduleService:
         await self._notify_scheduled(block, task)
         return block
 
-    async def update(self, schedule_id: uuid.UUID, data: ScheduleUpdate) -> TaskSchedule:
+    async def update(
+        self, schedule_id: uuid.UUID, data: ScheduleUpdate, *, notify: bool = True
+    ) -> TaskSchedule:
+        """``notify=False`` moves a block without telling its new owner — for the series
+        hand-off, where the person taking over a year of a task has already heard "toegewezen"
+        once and must not hear "ingepland" twelve times over. The Google mirror still fires:
+        an event on the wrong calendar is a fact, a duplicate notification is noise."""
         block = await self._readable_or_404(schedule_id)
         # Editing an existing block needs write on its *current* owner…
         self._ensure_write_for(block.user_id)
@@ -318,7 +325,7 @@ class TaskScheduleService:
         task = await self.ctx.repo(Task).get_or_404(block.task_id)
         await self._emit_saved(block, task)
         # A reassignment tells the new person; a plain move does not re-notify (avoid churn).
-        if block.user_id is not None and block.user_id != old_user_id:
+        if notify and block.user_id is not None and block.user_id != old_user_id:
             await self._notify_scheduled(block, task)
         return block
 
@@ -376,8 +383,9 @@ class TaskScheduleService:
             .scalars()
             .all()
         )
+        company_name = await self._company_name(task.company_id)
         for block in blocks:
-            await self._emit_saved(block, task)
+            await self._emit_saved(block, task, company_name=company_name)
 
     async def log_time(self, schedule_id: uuid.UUID, data: ScheduleLogTime) -> TaskSchedule:
         """Confirm a passed block as a real time entry (#188). The entry is always the *caller's*
@@ -446,12 +454,29 @@ class TaskScheduleService:
     # ------------------------------------------------------------------ #
     # Bus emits (CLAUDE.md §6 — never import the google/notifications internals)
     # ------------------------------------------------------------------ #
-    async def _emit_saved(self, block: TaskSchedule, task: Task) -> None:
+    async def _company_name(self, company_id: uuid.UUID | None) -> str | None:
+        """The client's *label* (``companies.name``, never ``legal_name`` — a calendar is a
+        list, not a document; ``app/core/naming.py``), read with org-scoped SQL rather than an
+        import of the companies module (§6)."""
+        if company_id is None:
+            return None
+        return await self.ctx.session.scalar(
+            sql_text("SELECT name FROM companies WHERE id = :cid AND org_id = :oid"),
+            {"cid": company_id, "oid": self.ctx.org.id},
+        )
+
+    async def _emit_saved(
+        self, block: TaskSchedule, task: Task, *, company_name: str | None = None
+    ) -> None:
         """Mirror the block to the person's Google Calendar (#188), worded in the org timezone.
-        The snapshot is everything the google handler needs — it never re-reads a task."""
+        The snapshot is everything the google handler needs — it never re-reads a task. The
+        client's name rides along because the event is titled by it: a week of "Taak: …" says
+        what kind of thing each block is and never whose work it is."""
         zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
         local_start = block.starts_at.astimezone(zone)
         local_end = block.ends_at.astimezone(zone)
+        if company_name is None:
+            company_name = await self._company_name(task.company_id)
         await emit(
             "task_schedule.saved",
             self.ctx,
@@ -460,6 +485,7 @@ class TaskScheduleService:
                 "user_id": block.user_id,
                 "task_id": task.id,
                 "task_title": task.title,
+                "company_name": company_name,
                 "task_description": task.description,
                 "start_date": local_start.date().isoformat(),
                 "end_date": local_end.date().isoformat(),

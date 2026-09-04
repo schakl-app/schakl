@@ -1407,3 +1407,158 @@ async def test_shared_calendar_selection_sync_and_deselect(client_for, monkeypat
         }
         channels = (await c.get("/api/v1/google/calendar/channels", headers=headers)).json()
         assert [row["calendar_id"] for row in channels] == ["primary"]
+
+
+async def test_a_mirrored_block_is_titled_by_its_client(client_for, monkeypatch) -> None:
+    """"Nova Fietsen: Redesign homepage", never "Taak: …", on a task that has a client.
+
+    A calendar full of task blocks already says what kind of thing each one is; what a glance
+    at a week needs is *whose* work sits where. The name is the client's label (``name``),
+    carried in the emit payload — the mirror never re-reads a task — and a task with no client
+    keeps the old marker, having nothing else to lead with.
+    """
+    from sqlalchemy import select
+
+    t = await make_tenant("gcal-task-client-title")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await c.post(
+            "/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers
+        )
+        assert company.status_code == 201, company.text
+        task = await c.post(
+            "/api/v1/tasks",
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Redesign homepage",
+                "assignee_user_id": str(t.user.id),
+                "company_id": company.json()["id"],
+            },
+            headers=headers,
+        )
+        assert task.status_code == 201, task.text
+        block = await c.post(
+            "/api/v1/tasks/schedules",
+            json={
+                "task_id": task.json()["id"],
+                "day": _BLOCK_DAY,
+                "start_time": "09:00",
+                "duration_minutes": 60,
+            },
+            headers=headers,
+        )
+        assert block.status_code == 201, block.text
+        internal = await c.post(
+            "/api/v1/tasks",
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Kantoor opruimen",
+                "assignee_user_id": str(t.user.id),
+            },
+            headers=headers,
+        )
+        internal_block = await c.post(
+            "/api/v1/tasks/schedules",
+            json={
+                "task_id": internal.json()["id"],
+                "day": _BLOCK_DAY,
+                "start_time": "13:00",
+                "duration_minutes": 60,
+            },
+            headers=headers,
+        )
+        assert internal_block.status_code == 201, internal_block.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        links = (await session.execute(select(CalendarEventLink))).scalars().all()
+        summaries = {link.local_id: link.payload["summary"] for link in links}
+    assert summaries[uuid.UUID(block.json()["id"])] == "Nova Fietsen: Redesign homepage"
+    assert summaries[uuid.UUID(internal_block.json()["id"])] == "Taak: Kantoor opruimen"
+
+
+async def test_retitle_migration_rewrites_pushed_task_events(client_for, monkeypatch) -> None:
+    """``d4a9b3c6f2e7`` retitles what is already in people's calendars, per org, under RLS.
+
+    A ``pushed`` link goes back to ``pending`` with its attempts reset so the sweep re-pushes the
+    new words; a ``delete_pending`` tombstone is left alone; and a tenant the loop is not bound
+    to is untouched — the statement is run exactly as the migration runs it, GUC and all.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    from sqlalchemy import select, text
+
+    spec = importlib.util.spec_from_file_location(
+        "retitle_migration",
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "d4a9b3c6f2e7_google_calendar_retitle_task_events.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    t = await make_tenant("gcal-retitle")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        task = await c.post(
+            "/api/v1/tasks",
+            json={
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Redesign homepage",
+                "assignee_user_id": str(t.user.id),
+                "company_id": company.json()["id"],
+            },
+            headers=headers,
+        )
+        block = await c.post(
+            "/api/v1/tasks/schedules",
+            json={
+                "task_id": task.json()["id"],
+                "day": _BLOCK_DAY,
+                "start_time": "09:00",
+                "duration_minutes": 60,
+            },
+            headers=headers,
+        )
+        assert block.status_code == 201, block.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        # As an install from before this release left it: the old title, already pushed.
+        link.payload = {**link.payload, "summary": "Taak: Redesign homepage"}
+        link.status = "pushed"
+        link.google_event_id = "gev-old"
+        link.attempts = 3
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_org', :org_id, true)"), {"org_id": str(t.org.id)}
+        )
+        await session.execute(module._RETITLE, {"org_id": str(t.org.id)})
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.payload["summary"] == "Nova Fietsen: Redesign homepage"
+        assert link.status == "pending" and link.attempts == 0
+        assert link.google_event_id == "gev-old"  # an update, never a second event

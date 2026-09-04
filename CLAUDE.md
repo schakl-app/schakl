@@ -946,6 +946,42 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   and a 422 would refuse the commonest sentence; an update has no such default, so emptying the
   roster is refused with the field named and absent still means leave alone. The one create that
   is refused is a portal login's — a client is never on the employee roster.
+- **A rule on a schedule lays its year out, and a series has one root** (`recurrence.py`,
+  `docs/UX.md`). Schedule mode handed the rule to the next occurrence the night that one fell due,
+  so the calendar knew about exactly one future task at a time: nothing to plan a quarter around,
+  nothing to hand over when somebody left, and a "repeat also the planning" that booked one block
+  at a time. Saving a schedule-mode rule now creates every occurrence inside the year ahead
+  (`HORIZON_DAYS`), each an ordinary task naming its root in `recurrence_source_id`, with its
+  blocks booked through the schedule service as it is made; the nightly cron only ever adds what
+  the sliding horizon reached. Four rules generalise. **The root keeps the rule and is the
+  template**: one rule, one place, whichever of the year's tasks is open — an occurrence's page
+  says whose series it is and links to where the rule is edited, and never grows a rule of its
+  own. **A pointer that a form re-posts must only move on an actual change**: the edit form posts
+  the whole rule on every save, and recomputing `recurrence_next_run` for a rule that did not move
+  would restart the year from the root's own date and hand the sweep a second copy of every
+  occurrence — so the rule is compared in one canonical shape (`_rule_key`, absent anchors equal
+  to `None` ones) and an unchanged one is dropped from the write. **A changed rhythm re-lays the
+  unfinished future and only that**: an occurrence somebody finished is a record and stays, one
+  whose day has come stays, and every other one goes through `remove_for_task` first so a mirrored
+  block is taken back rather than orphaned — the same set a root takes with it when it is deleted.
+  And **handing a task over is a question before it is a save** (`TaskUpdate.apply_to`): the
+  following occurrences already exist, each with its own roster and its own booked block, so
+  "reassign" has two honest meanings and only the person at the keyboard knows which. Both forms
+  that carry the assignee are held by one guard (`InlineField.beforeSubmit`, the edit form's
+  `cancel()`), raise one dialog, and re-submit with the answer; *all following* moves the sibling
+  rosters, the blocks on the leaver's calendar (to whoever joined in their place, through the
+  schedule service's own update with `notify=False` — one "toegewezen", never twelve "ingepland")
+  and the leaver's name inside the rule's plan, so what is laid out next follows too. Two smaller
+  ones ride along. **A calendar block is titled by whose work it is**: "Nova Fietsen: Nieuwsbrief"
+  rather than "Taak: Nieuwsbrief", the client's label carried in the emit payload because the
+  mirror never re-reads a task, and `d4a9b3c6f2e7` retitles what is already in people's calendars
+  by flipping a pushed link back to pending — an update in place, never a second event. And **a
+  prompt with a required answer offers exactly the answers that leave the form saveable**: the
+  deadline-extension prompt could be dismissed with the new date still in the field and the reason
+  empty, which the API then refused on save with nothing beside the date saying why; it now has a
+  reason or "keep the old date", Bevestigen is disabled over an empty box, every other exit is
+  the second answer, and focus moves into the prompt so Escape is *its* Escape and not the
+  in-place editor's beneath it.
 - **Being allowed to book somebody is the reason to see when they are taken, and only that**
   (`app/core/busy.py`, `docs/UX.md`). The scheduling dialog draws the day beside the form — one
   column per person, the block about to be booked as a ghost over what is already there — and the

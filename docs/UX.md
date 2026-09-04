@@ -2648,6 +2648,41 @@ contrast bug in dark mode rather than only an inconsistency.
   standing in the Agenda and in Google (removable in the same confirm, named with its date), and
   the good news that the rule has already scheduled the next one.
 
+- **A year you can see is a year you can plan, and a hand-off is a question** (the recurrence
+  audit; `RecurrenceEditor`, the task page's Planning card). Four things on the repeat rule were
+  each a small lie of omission, and together they made "op schema" a mode nobody trusted.
+
+  **The tasks exist.** A schedule-mode rule now lays out every occurrence inside the year ahead
+  the moment it is saved, and says so before the save ("11 taken in het komende jaar", beside the
+  next date) and after it (an activity line naming the span). The Planning card lists what is
+  ahead in the series as dated chips — this one marked, capped and counted ("en nog 6") — on the
+  root and on every occurrence alike, and an occurrence's Herhaling row says whose series it is
+  and links to the root, because the rule lives in exactly one place and an occurrence page that
+  offered an editor would have been offering to start a second series.
+
+  **The block says who.** A planned block opened with nobody named, which the API reads as
+  "everyone on the task" — true, and drawn as an empty picker over a placeholder, so the one thing
+  the person planning wanted to see was the one thing the row did not say. The assignee is the
+  default now and shows as a chip; a row emptied on purpose still means the roster and the
+  placeholder names them ("Iedereen op de taak (Jij, Thomas Bakker)"), and the preview under the
+  rows prints the names rather than "de toegewezen persoon".
+
+  **A control that removes something is labelled and always there.** The block's ✕ sat at the
+  end of its input row, read as belonging to the length box beside it, and was hidden on a single
+  block — so the one block somebody had added could not be removed except by unticking the whole
+  plan. Each block has a header now ("Blok 1 · Blok verwijderen"), and removing the last one
+  switches the plan off, which is what the checkbox above already means.
+
+  **Reassigning a task in a series asks "this one, or all following?"** — as a dialog raised by
+  the save itself, from the edit form and the in-place editor alike (`InlineField.beforeSubmit`),
+  never a radio pair defaulting to one answer that nobody reads. The answer re-submits the same
+  form; *all following* hands over rosters, the blocks already on the leaver's calendar and the
+  rule's own plan, and the trail on each side says so. Its sibling on the same card: **a prompt
+  with a required answer must not have an exit that leaves the form unsaveable** — the deadline
+  prompt now offers a reason or "14 okt houden", disables Bevestigen over an empty box, treats
+  Escape and the backdrop as the second answer, and takes focus so Escape is its own (with focus
+  left in the date field, the keystroke closed the in-place editor *under* the prompt and left
+  the prompt standing over nothing).
 - **A page with two orderings cannot be reordered** (#393, the task page). The same card asked
   *when* before it had said *what*: Planning sat above Omschrijving and Checklists, which is not
   a decision anybody made — #335 pulled three scattered widgets into one Planning card and left it

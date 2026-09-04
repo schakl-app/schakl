@@ -226,6 +226,10 @@ export const actions: Actions = {
     if (form.has("freq")) {
       body.recurrence = readRecurrence(form);
     }
+    // "This one, or this one and every following" — the assignee question a task in a series
+    // asks before it saves. Only the one value that changes anything is posted on; the API's
+    // default is the row that was named.
+    if (form.get("apply_to") === "future") body.apply_to = "future";
     // "Ook de uren registreren" (#314): the entry rides along on the finish, in one request and
     // one transaction — a finished task whose hours were lost to a second, failed call is the
     // exact thing this exists to prevent. Times are the time module's wall-clock-as-UTC

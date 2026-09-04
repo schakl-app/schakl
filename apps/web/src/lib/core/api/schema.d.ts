@@ -26532,6 +26532,8 @@ export interface components {
             planned_end?: string | null;
             /** Planned Start */
             planned_start?: string | null;
+            /** Year Count */
+            year_count?: number | null;
         };
         /** RecurringBacklogGroup */
         RecurringBacklogGroup: {
@@ -28166,6 +28168,26 @@ export interface components {
                 [key: string]: number[];
             };
         };
+        /**
+         * SeriesOccurrenceRead
+         * @description One laid-out occurrence of a schedule-mode series, as the card lists the ones ahead.
+         */
+        SeriesOccurrenceRead: {
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Status */
+            status: string;
+        };
         /** ServiceAccessIssued */
         ServiceAccessIssued: {
             /**
@@ -29710,6 +29732,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -29717,6 +29741,7 @@ export interface components {
              * @default false
              */
             requires_interaction: boolean;
+            series?: components["schemas"]["TaskSeriesRead"] | null;
             /** Status */
             status: string;
             /** Title */
@@ -29829,6 +29854,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -30012,6 +30039,8 @@ export interface components {
             recurrence: components["schemas"]["Recurrence"] | null;
             /** Recurrence Next Run */
             recurrence_next_run?: string | null;
+            /** Recurrence Source Id */
+            recurrence_source_id?: string | null;
             /** Remaining Minutes */
             remaining_minutes?: number | null;
             /**
@@ -30077,6 +30106,31 @@ export interface components {
             truncated: boolean;
         };
         /**
+         * TaskSeriesRead
+         * @description The series a task belongs to (schedule mode): its root, the rule, and what lies ahead.
+         *
+         *     Answered on the root and on every occurrence alike, so whichever of the year's tasks is
+         *     open, the reader sees the same rule and the same list of what is still to come — and a
+         *     link to where the rule is edited, which is the root and nowhere else.
+         */
+        TaskSeriesRead: {
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * Root Id
+             * Format: uuid
+             */
+            root_id: string;
+            /** Root Title */
+            root_title: string;
+            /** Upcoming */
+            upcoming?: components["schemas"]["SeriesOccurrenceRead"][];
+            /**
+             * Upcoming Total
+             * @default 0
+             */
+            upcoming_total: number;
+        };
+        /**
          * TaskTranscribeRequest
          * @description A recorded task dictation (#382).
          *
@@ -30100,6 +30154,8 @@ export interface components {
         TaskUpdate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Apply To */
+            apply_to?: ("this" | "future") | null;
             /** Assignee Contact Id */
             assignee_contact_id?: string | null;
             /** Assignee User Id */

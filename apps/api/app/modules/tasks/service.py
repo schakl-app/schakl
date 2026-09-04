@@ -53,6 +53,7 @@ from app.modules.tasks.models import (
     TaskLabelLink,
     TaskLink,
     TaskPriority,
+    TaskSchedule,
     TaskStatusDef,
 )
 from app.modules.tasks.scheduling import TaskScheduleService
@@ -84,8 +85,11 @@ from app.modules.tasks.schemas import (
     LinkCreate,
     LinkRead,
     PlannedBlockRead,
+    Recurrence,
     RecurrencePreview,
     RecurrencePreviewRead,
+    ScheduleUpdate,
+    SeriesOccurrenceRead,
     StatusCreate,
     StatusUpdate,
     TaskAIStatusRead,
@@ -94,6 +98,7 @@ from app.modules.tasks.schemas import (
     TaskListItem,
     TaskLogTime,
     TaskRead,
+    TaskSeriesRead,
     TaskUpdate,
     TemplateChecklistItem,
 )
@@ -104,6 +109,7 @@ from app.modules.tasks.statuses import (
     status_order,
     terminal_keys,
 )
+from app.schemas import AssigneeWrite
 
 logger = logging.getLogger("schakl.tasks")
 
@@ -122,6 +128,22 @@ _TRACKED_FIELDS = (
     "requires_interaction",
     "visible_to_client",
 )
+
+
+def _rule_key(rule: dict | None) -> dict | None:
+    """A repeat rule in one canonical shape, for "did it actually change?".
+
+    A rule stored before #335 lacks the anchor keys and one saved since carries them as
+    ``None``; comparing the raw JSON would read every save of an old rule as a change and
+    re-lay the whole series for nothing.
+    """
+    if not rule:
+        return None
+    return Recurrence.model_validate(rule).model_dump(mode="json")
+
+
+def _is_schedule(rule: dict | None) -> bool:
+    return bool(rule) and rule.get("mode") == RecurrenceMode.SCHEDULE.value
 
 
 def _rank(column: Any, order: Sequence[str]) -> Any:
@@ -981,6 +1003,10 @@ class TaskService:
         # Same redaction as the list row (#449): the portal reads the task, never its estimate.
         detail.allocated_minutes = list_item.allocated_minutes
         detail.assignee_contact_name = list_item.assignee_contact_name
+        # Only a task in a series pays for the two reads; an ordinary task adds nothing to the
+        # card's query budget (tests/test_perf_query_budgets.py).
+        if task.recurrence_source_id is not None or _is_schedule(task.recurrence):
+            detail.series = await self._series_of(task)
 
         checklists = (
             (
@@ -1258,6 +1284,9 @@ class TaskService:
             links=composite_links,
             label_ids=composite_labels,
         )
+        # Schedule mode lays the year out on save: the rule's occurrences exist as tasks, with
+        # their blocks booked, the moment it is stored — not one at a time as the nights pass.
+        await self._materialize(task)
         # Automation trigger (issue #27); deliberately not in the notifications vocabulary,
         # so it fans out to nobody. Status/company/project ride along for condition matching.
         await self._emit_task(
@@ -1460,10 +1489,21 @@ class TaskService:
                     in_past=day < today,
                 )
             )
+        year_count = None
+        if data.recurrence.mode is RecurrenceMode.SCHEDULE:
+            year_count = len(
+                rec_mod.series_dates(
+                    dates[0],
+                    rec,
+                    today=today,
+                    horizon=today + timedelta(days=rec_mod.HORIZON_DAYS),
+                )
+            )
         return RecurrencePreviewRead(
             next_date=dates[0],
             following=dates[1:],
             on_completion=data.recurrence.mode is RecurrenceMode.AFTER_COMPLETION,
+            year_count=year_count,
             planned_start=blocks[0].start_time if blocks else None,
             planned_end=blocks[0].end_time if blocks else None,
             blocks=blocks,
@@ -1572,6 +1612,10 @@ class TaskService:
         values = data.model_dump(exclude_unset=True)
         # A ride-along, not a column: pop it before anything reaches ``repo.update`` (#314).
         values.pop("log_time", None)
+        # "This one, or this one and every following" — a question about the assignee of a task
+        # in a series, answered by the screen and defaulting to the row that was named.
+        apply_to = values.pop("apply_to", None) or "this"
+        today = await org_today(self.ctx.session, self.ctx.org.id)
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             if _fk in values:
                 await ensure_parent_in_tenant(
@@ -1740,12 +1784,24 @@ class TaskService:
             # gate can never be satisfied by last year's phone call.
             values.setdefault("closing_interaction_id", None)
 
-        if "recurrence" in values or "due_date" in values:
+        # The rule, and the date it hangs off, decide the series — and only an *actual* change
+        # re-lays it. The edit form posts the whole rule on every save; recomputing the pointer
+        # for a rule that did not move would restart the year from the root's own date and hand
+        # the nightly sweep a second copy of every occurrence already laid out.
+        rule_changed = "recurrence" in values and _rule_key(values["recurrence"]) != _rule_key(
+            task.recurrence
+        )
+        due_changed = "due_date" in values and values["due_date"] != task.due_date
+        relayout = False
+        if rule_changed or (due_changed and task.recurrence is not None):
+            new_rule = values.get("recurrence", task.recurrence)
             values["recurrence_next_run"] = rec_mod.compute_next_run(
-                values.get("recurrence", task.recurrence),
-                values.get("due_date", task.due_date),
-                today=await org_today(self.ctx.session, self.ctx.org.id),
+                new_rule, values.get("due_date", task.due_date), today=today
             )
+            relayout = _is_schedule(new_rule) or _is_schedule(task.recurrence)
+        elif "recurrence" in values:
+            # Unchanged: keep the stored shape and, above all, the pointer.
+            values.pop("recurrence")
 
         changed = [f for f in _TRACKED_FIELDS if f in values and getattr(task, f) != values[f]]
         status_changed = "status" in values and old_status != new_status
@@ -1855,7 +1911,230 @@ class TaskService:
             await self.ctx.session.refresh(task)
         if task.assignee_contact_id is not None and task.assignee_contact_id != previous_contact:
             await self._notify_contact_assigned(task)
+        if relayout:
+            await self._relayout_series(task, today=today)
+        if apply_to == "future" and (roster_touched or "assignee_contact_id" in values):
+            await self._transfer_future(task, before=before, after=after, today=today)
         return task
+
+    # ------------------------------------------------------------------ #
+    # Schedule-mode series: a year of occurrences from one root
+    # ------------------------------------------------------------------ #
+    def _actor(self) -> tuple[uuid.UUID | None, str | None]:
+        """Who to write on a spawned occurrence's first activity line — nobody for a system
+        context, whose placeholder user exists in no table (``TaskActivity.actor_user_id``'s
+        FK would refuse it; the NULL *is* the system, issue #64)."""
+        if getattr(self.ctx, "is_system", False):
+            return None, None
+        return self.ctx.user.id, _display_name(self.ctx.user)
+
+    async def _materialize(self, root: Task) -> list[Task]:
+        """Lay out what the year ahead is missing for a schedule-mode root (no-op otherwise)."""
+        if not _is_schedule(root.recurrence):
+            return []
+        actor_id, actor_name = self._actor()
+        created = await rec_mod.materialize_series(
+            self.ctx.session,
+            self.ctx.org.id,
+            root,
+            today=await org_today(self.ctx.session, self.ctx.org.id),
+            ctx=self.ctx,
+            actor_user_id=actor_id,
+            actor_name=actor_name,
+        )
+        # The pointer moved on the root and the flush expired its server-side defaults; reload
+        # them here so serialization never lazy-loads (the ``spawn_next`` caller's rule).
+        await self.ctx.session.refresh(root)
+        return created
+
+    async def _future_occurrences(
+        self, root_id: uuid.UUID, *, after: date | None, exclude: uuid.UUID | None = None
+    ) -> list[Task]:
+        """The unfinished occurrences of a series due on or after ``after`` (the root included,
+        it being the first occurrence), soonest first. Through the caller's own repository, so a
+        horizon-scoped or portal login sees exactly the rows it may see."""
+        terminal = terminal_keys(await load_statuses(self.ctx.session, self.ctx.org.id))
+        stmt = (
+            self.repo.scoped_select()
+            .where(
+                or_(Task.recurrence_source_id == root_id, Task.id == root_id),
+                Task.status.not_in(terminal) if terminal else sql_text("true"),
+            )
+            .order_by(Task.due_date.asc().nulls_last(), Task.created_at.asc())
+        )
+        if after is not None:
+            stmt = stmt.where(Task.due_date >= after)
+        if exclude is not None:
+            stmt = stmt.where(Task.id != exclude)
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def _relayout_series(self, root: Task, *, today: date) -> None:
+        """The rule (or the date it hangs off) changed: the occurrences laid out under the old
+        one are wrong by definition, so the unfinished future is removed and laid out again.
+
+        Only what is still *ahead and open* goes — an occurrence somebody already finished is a
+        record of work done and stays, and so does one whose day has come. Each removal goes
+        through the schedule service's announcement (``remove_for_task``), so a block already
+        mirrored to Google is taken back rather than left as a ghost. A rule switched to
+        after-completion, or removed, clears the future the same way and lays out nothing.
+        """
+        for occurrence in await self._future_occurrences(root.id, after=None, exclude=root.id):
+            if occurrence.due_date is not None and occurrence.due_date <= today:
+                continue
+            await TaskScheduleService(self.ctx).remove_for_task(occurrence.id)
+            await self.repo.delete(occurrence)
+        if _is_schedule(root.recurrence):
+            root.recurrence_next_run = rec_mod.compute_next_run(
+                root.recurrence, root.due_date, today=today
+            )
+            await self.ctx.session.flush()
+            await self._materialize(root)
+        else:
+            root.recurrence_next_run = None
+            await self.ctx.session.flush()
+
+    async def _transfer_future(
+        self, task: Task, *, before: set[uuid.UUID], after: set[uuid.UUID], today: date
+    ) -> None:
+        """Hand this task's new assignee to every following occurrence of its series.
+
+        Three things travel, and nothing else does: the sibling **rosters** (and contact
+        assignee) become this task's; a planned **block** booked on a leaver's calendar moves
+        to whoever joined in their place — or is removed when nobody did, because a block on
+        the calendar of someone no longer on the task is a promise nobody is keeping — and the
+        rule's own **plan** on the root renames the leaver, so occurrences not yet laid out
+        follow too. Each block goes through the schedule service (the one emit site, #188), so
+        the Google mirror re-homes the event and nobody is told twice: a colleague taking over
+        twelve months of a task gets one "toegewezen", not twelve "ingepland".
+
+        The caller was allowed to edit *this* task; a sibling they may not edit is skipped, and
+        a block they may not move (``tasks.schedule.write`` on the leaver's calendar) is left
+        where it is inside its own SAVEPOINT (§18) rather than failing the hand-off.
+        """
+        root_id = task.recurrence_source_id or task.id
+        root = task if root_id == task.id else await self.repo.get(root_id)
+        if root is None or not _is_schedule(root.recurrence):
+            return
+        leaving = before - after
+        joining = after - before
+        # Whoever took the star, if they are new; else the first newcomer; else nobody.
+        replacement: uuid.UUID | None = (
+            task.assignee_user_id
+            if task.assignee_user_id in joining
+            else next(iter(sorted(joining, key=str)), None)
+        )
+        links = [
+            AssigneeWrite(user_id=link.user_id, is_primary=link.is_primary)
+            for link in task.assignees
+        ]
+        schedules = TaskScheduleService(self.ctx)
+        moved = 0
+        following = await self._future_occurrences(root_id, after=task.due_date, exclude=task.id)
+        # This task's own blocks move too: "this one and all following" is a hand-off, and a
+        # block left on the leaver's calendar for the very task that was handed over is the
+        # first thing the newcomer would notice missing.
+        for sibling in [task, *following]:
+            if sibling.id != task.id:
+                try:
+                    await self._ensure_task_writable(sibling)
+                except AppError:
+                    continue
+                sibling.assignee_user_id = task.assignee_user_id
+                sibling.assignee_contact_id = task.assignee_contact_id
+                if task.assignee_contact_id is not None:
+                    sibling.visible_to_client = True
+                await self.assignees.replace(sibling.id, links)
+                await self._record(
+                    sibling.id,
+                    "assignees_transferred",
+                    {
+                        "from_task_id": str(task.id),
+                        "assignee_user_id": str(task.assignee_user_id),
+                    },
+                )
+                moved += 1
+            if not leaving:
+                continue
+            blocks = (
+                (
+                    await self.ctx.session.execute(
+                        self.ctx.repo(TaskSchedule)
+                        .scoped_select()
+                        .where(
+                            TaskSchedule.task_id == sibling.id,
+                            TaskSchedule.user_id.in_(list(leaving)),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for block in blocks:
+                try:
+                    async with self.ctx.session.begin_nested():
+                        if replacement is not None:
+                            await schedules.update(
+                                block.id, ScheduleUpdate(user_id=replacement), notify=False
+                            )
+                        else:
+                            await schedules.delete(block.id)
+                except AppError:
+                    logger.warning(
+                        "block %s of task %s not transferred (refused)", block.id, sibling.id
+                    )
+        # The rule's own plan: a block naming the leaver names the newcomer from now on.
+        if leaving and root.recurrence:
+            rec = dict(root.recurrence)
+            plan = dict(rec.get("plan") or {})
+            changed = False
+            if plan.get("user_id") is not None and uuid.UUID(str(plan["user_id"])) in leaving:
+                plan["user_id"] = str(replacement) if replacement else None
+                changed = True
+            blocks_out = []
+            for block in plan.get("blocks") or []:
+                block = dict(block)
+                ids = block.get("user_ids")
+                if ids:
+                    kept = [u for u in ids if uuid.UUID(str(u)) not in leaving]
+                    if len(kept) != len(ids):
+                        if replacement is not None and str(replacement) not in kept:
+                            kept.append(str(replacement))
+                        block["user_ids"] = kept or None
+                        changed = True
+                blocks_out.append(block)
+            if blocks_out:
+                plan["blocks"] = blocks_out
+            if changed:
+                rec["plan"] = plan
+                root.recurrence = rec
+                await self.ctx.session.flush()
+        await self._record(
+            task.id,
+            "assignees_transferred_future",
+            {"count": moved, "assignee_user_id": str(task.assignee_user_id)},
+        )
+
+    async def _series_of(self, task: Task) -> TaskSeriesRead | None:
+        """The series a task is the root or an occurrence of, with what lies ahead (capped)."""
+        root = task
+        if task.recurrence_source_id is not None:
+            root = await self.repo.get(task.recurrence_source_id)
+            if root is None:
+                return None
+        if not _is_schedule(root.recurrence):
+            return None
+        today = await org_today(self.ctx.session, self.ctx.org.id)
+        ahead = await self._future_occurrences(root.id, after=today)
+        return TaskSeriesRead(
+            root_id=root.id,
+            root_title=root.title,
+            recurrence=Recurrence.model_validate(root.recurrence),
+            upcoming=[
+                SeriesOccurrenceRead(id=row.id, due_date=row.due_date, status=row.status)
+                for row in ahead[:6]
+            ],
+            upcoming_total=len(ahead),
+        )
 
     async def _log_time(self, task: Task, log_time: TaskLogTime) -> None:
         """Record the hours a just-finished task took (#314), through the time module's
@@ -1897,6 +2176,19 @@ class TaskService:
     async def delete(self, task_id: uuid.UUID) -> None:
         self.ctx.require("tasks.task.delete")
         task = await self.repo.get_or_404(task_id)
+        # A series root takes the unfinished future it laid out with it: those occurrences exist
+        # only because of this rule, and leaving a year of them behind as orphans is what the
+        # old "one carrier at a time" shape never had to answer for. Each one goes through the
+        # same announcement as the root, so no mirrored block outlives its task.
+        if _is_schedule(task.recurrence):
+            today = await org_today(self.ctx.session, self.ctx.org.id)
+            for occurrence in await self._future_occurrences(
+                task.id, after=None, exclude=task.id
+            ):
+                if occurrence.due_date is not None and occurrence.due_date <= today:
+                    continue
+                await TaskScheduleService(self.ctx).remove_for_task(occurrence.id)
+                await self.repo.delete(occurrence)
         # The card's planned blocks go with it (``task_schedules.task_id`` is ON DELETE CASCADE),
         # and a cascade tells nobody: without this the Google mirror keeps a *pushed* link to a
         # row that no longer exists and the block sits in someone's calendar forever.
