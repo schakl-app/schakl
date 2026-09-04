@@ -129,6 +129,18 @@ async def _make_task(tenant: Tenant, title: str = "A task", **kwargs) -> uuid.UU
     from app.modules.tasks.service import TaskService
 
     kwargs.setdefault("due_date", FAR_FUTURE_DUE)
+    if "company_id" not in kwargs:
+        # A task is always a client's. Written as a row rather than through the companies
+        # service, because that service emits ``company.created`` — the very event several
+        # of these tests count rules firing on.
+        from app.modules.companies.models import Company
+
+        async with async_session_maker() as session:
+            await set_current_org(session, tenant.org.id)
+            stand_in = Company(org_id=tenant.org.id, name="Standaardklant")
+            session.add(stand_in)
+            await session.commit()
+            kwargs["company_id"] = stand_in.id
     async with _ctx(tenant, tenant.user) as ctx:
         task = await TaskService(ctx).create(TaskCreate(title=title, **kwargs))
         return task.id

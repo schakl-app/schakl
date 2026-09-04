@@ -19,7 +19,6 @@
   import { taskTitle, UNNAMED_CLASS } from "$lib/core/unnamed";
   import { splitMemberOptions } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
-  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -54,6 +53,7 @@
   } from "$lib/modules/tasks/statuses";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskDictateSheet from "$lib/modules/tasks/TaskDictateSheet.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -81,10 +81,10 @@
   // after mount; the opener mirrors the two the page already knows, so it is never drawn on a
   // tenant with no speech provider. `micSupported` is the sheet's to answer.
   let dictating = $state(false);
-  // `Nieuwe taak` is create-then-edit again: one click, one placeholder row, straight into edit
-  // mode on the detail page. `busy` is only here so the button can spin — the form carries
-  // nothing but hidden fields, so there is nothing for a reset to blank.
-  const creating = new InFlight();
+  // `Nieuwe taak` opens the dialog (#391): a task is named, dated, held by somebody and a
+  // client's before the row exists, and its action then lands on the task in edit mode for
+  // everything the dialog did not ask.
+  let quickCreateOpen = $state(false);
   const canDictate = $derived(
     canCreate && aiEnabled(page.data.user, "task_assist") && aiEnabled(page.data.user, "speech"),
   );
@@ -342,22 +342,16 @@
     },
     // The dashboard tile's "no client or project" bucket arrives here as `?unlinked=1`; the chip
     // is what makes that a visible filter rather than a silently narrowed list.
-    // The three below are the agency's housekeeping and none of them can match a client's
-    // list: every task a portal login sees is anchored to their company, and an unnamed or
-    // undated row is one the agency has yet to finish — so they are the layout's, not theirs.
+    // The two below are the agency's housekeeping and neither can match a client's list: every
+    // task a portal login sees is anchored to their company, and an unlinked or undated row is
+    // one the agency carried in from before the rules — so they are the layout's, not theirs.
+    // (There is no "unnamed" pill any more: a task is named before it exists, so there is
+    // nothing left for one to gather.)
     {
       kind: "pills",
       key: "unlinked",
       hidden: isPortal,
       options: [{ value: "1", label: t("tasks.filter.unlinked") }],
-    },
-    // The abandoned create-then-edit rows (#350). Reachable, so they can be renamed or deleted;
-    // without it they sit among real work with nothing to gather them by.
-    {
-      kind: "pills",
-      key: "unnamed",
-      hidden: isPortal,
-      options: [{ value: "1", label: t("tasks.filter.unnamed") }],
     },
     // The rows an instance carried into #392, where the deadline became required. Findable so
     // they can be dated — one at a time, or as a selection through the ✎ beside this list.
@@ -415,20 +409,26 @@
           <span class="hidden sm:inline">{t("tasks.dictate.open")}</span>
         </button>
       {/if}
-      <form method="POST" action="?/create" use:enhance={creating.wrap()}>
-        <!-- The list's own filters ride along, so a task made while looking at one client lands
-             on that client — the same carry-through the dictation sheet already does. -->
-        {#if data.filters.company_id}
-          <input type="hidden" name="company_id" value={data.filters.company_id} />
-        {/if}
-        {#if data.filters.project_id}
-          <input type="hidden" name="project_id" value={data.filters.project_id} />
-        {/if}
-        <Button loading={creating.active}>{t("tasks.new")}</Button>
-      </form>
+      <Button type="button" onclick={() => (quickCreateOpen = true)}>{t("tasks.new")}</Button>
     {/if}
   {/snippet}
 </PageHeader>
+
+{#if canCreate}
+  <!-- The list's own filters ride along, so a task made while looking at one client lands on
+       that client — the same carry-through the dictation sheet already does. A pinned client
+       is posted hidden; without one the dialog draws its own picker. -->
+  <TaskQuickCreate
+    bind:open={quickCreateOpen}
+    companyId={data.filters.company_id || null}
+    projectId={data.filters.project_id || null}
+    companies={data.companies}
+    members={data.members}
+    assignees={page.data.user?.id ? [{ user_id: page.data.user.id, is_primary: true }] : []}
+    action="?/create"
+    pickerSlot="tasks_list"
+  />
+{/if}
 
 {#if canDictate}
   <TaskDictateSheet

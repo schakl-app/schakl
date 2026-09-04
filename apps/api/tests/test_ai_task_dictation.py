@@ -19,7 +19,14 @@ from app.core.ai.models import AIUsage
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant, org_today
+from tests.conftest import (
+    FAR_FUTURE_DUE,
+    add_membership,
+    auth_cookie,
+    default_company,
+    make_tenant,
+    org_today,
+)
 
 _password_hash = PasswordHash.recommended()
 
@@ -406,6 +413,7 @@ async def test_create_carries_its_checklist_links_and_labels(client_for) -> None
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Homepageteksten herschrijven",
                 "checklist": {
@@ -451,7 +459,10 @@ async def test_create_without_the_composite_fields_is_unchanged(client_for) -> N
     async with client_for(t.host) as c:
         created = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Gewoon"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Gewoon",
+            },
             headers=headers,
         )
         assert created.status_code == 201, created.text
@@ -473,6 +484,7 @@ async def test_create_checklist_without_a_title_borrows_the_task_s(client_for) -
         created = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, headers),
                 "due_date": FAR_FUTURE_DUE,
                 "title": "Oplevering",
                 "checklist": {"items": [{"title": "Stap"}]},
@@ -500,9 +512,15 @@ async def test_composite_create_never_crosses_a_tenant(client_for) -> None:
         foreign_label = foreign.json()["id"]
 
     async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
         refused = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Iets", "label_ids": [foreign_label]},
-            headers=await auth_cookie(t.user),
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Iets",
+                "label_ids": [foreign_label],
+            },
+            headers=headers,
         )
         assert refused.status_code == 404, refused.text

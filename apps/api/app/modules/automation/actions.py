@@ -111,13 +111,20 @@ async def _task_create(action_ctx: ActionContext, config: dict) -> dict:
     """From a template (``template_id`` + a company) or bare (``title`` [+ ids]).
 
     The company defaults to the triggering entity when the rule fires on a company event —
-    "when a client becomes active, create its onboarding tasks" needs no config at all.
+    "when a client becomes active, create its onboarding tasks" needs no config at all — and
+    to the triggering task's client when it fires on a task, so a follow-up lands beside the
+    work it follows. A task is always a client's (``TaskService.create``): a rule that fires on
+    neither and names no client or project is refused by the system surface, and the refusal
+    surfaces on the run for the rule's author rather than as a task filed under nobody.
     """
+    from app.modules.tasks.system import task_company_system
     from app.modules.tasks.templates import TemplateService
 
     company_id = _uuid_or_none(config.get("company_id"))
     if company_id is None and action_ctx.run.entity_type == "company":
         company_id = _entity_uuid(action_ctx)
+    elif company_id is None and action_ctx.run.entity_type == "task":
+        company_id = await task_company_system(action_ctx.ctx, _entity_uuid(action_ctx))
 
     template_id = _uuid_or_none(config.get("template_id"))
     if template_id is not None:

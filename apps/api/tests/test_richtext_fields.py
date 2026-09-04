@@ -7,7 +7,7 @@ that the markdown source survives otherwise intact.
 
 from __future__ import annotations
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 _XSS = "**keep** <script>alert('x')</script> [doc](https://x.com)"
 
@@ -18,7 +18,10 @@ async def test_checklist_and_item_descriptions_round_trip(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         checklist = (
@@ -58,7 +61,10 @@ async def test_task_description_and_comment_stripped_of_html(client_for) -> None
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "T", "description": _XSS},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "T", "description": _XSS,
+                },
                 headers=headers,
             )
         ).json()
@@ -82,7 +88,10 @@ async def test_comment_notification_excerpt_is_plaintext(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         await c.post(

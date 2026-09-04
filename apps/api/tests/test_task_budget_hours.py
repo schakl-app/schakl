@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.core.auth.models import User
 from app.db import async_session_maker
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 
 def _iso(dt: datetime) -> str:
@@ -45,7 +45,7 @@ async def _task(
         json={
             "due_date": FAR_FUTURE_DUE,
             "title": title,
-            "company_id": company_id,
+            "company_id": company_id or await default_company(client, headers),
             "allocated_minutes": allocated_minutes,
         },
         headers=headers,

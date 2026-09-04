@@ -70,11 +70,12 @@
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. **A deadline nobody stated is not extended,
-   it is set**: create-then-edit writes today over a placeholder row (`unnamed`, #350) and drops
-   the user into the form, so the first date picked there — up to and including the save that
-   names the task — asks for no reason, on the API and on the screen alike; a form that asks
-   someone to explain a default they never chose reads as broken, and the row is the one
-   `?unnamed=1` already lists as unsaved. Approval locks records for non-managers.
+   it is set**: a row an instance carried in from the placeholder era (`unnamed`, #350) holds a
+   date nobody chose, so the first date picked on it — up to and including the save that names
+   it — asks for no reason, on the API and on the screen alike; a form that asks someone to
+   explain a default they never chose reads as broken. No such row is written any more (a task
+   is named before it exists), so this is a rule about history. Approval locks records for
+   non-managers.
    Invoiced implies approved — states never contradict each other.
    **The activity trail is a core capability, not a per-screen nicety** (issue #67, CLAUDE.md §16):
    a mutable record opts into it with `AuditableMixin`, its service records field edits (`created`,
@@ -2106,6 +2107,34 @@ contrast bug in dark mode rather than only an inconsistency.
   keeps it too, because that list is written several items at a time and a redirect per item is
   the wrong shape. A dialog is right where the create is somebody's *side errand*, and wrong
   where it is the thing they came to do.
+- **…and the owner closed the argument: a task is never created unnamed, and never without a
+  client.** The two entries above are the record of a back-and-forth, and this one is the
+  decision that ends it — stated once, so it is not re-litigated by the next agent who finds
+  the placeholder path reasonable on paper. Both directions *were* reasonable on paper; what
+  decided it is what a placeholder row **is** to everybody but its author: a task on somebody's
+  board, in the client's Taken panel, in the export, in an MCP agent's answer to "what is open
+  for this client" — and `unnamed` only ever said so, it never made it not one. So every primary
+  `Nieuwe taak` (the list, the client header, the client's Taken panel) opens `TaskQuickCreate`
+  again, the placeholder body is deleted rather than disabled, `TaskCreate` no longer carries the
+  flag, and the `Naamloos` pill is gone from the list because there is nothing left for it to
+  gather. The flag stays readable (`TaskRead.unnamed`) for the rows an instance already has,
+  which keep their one free deadline move (Principle 4) and italicise as before.
+  The client is the same rule one column over, and it is the half that has teeth. A task with
+  no client is on no client's page, in no client's export, on no report and **outside every
+  company horizon** (CLAUDE.md §15), which is the one place the agency's own work cannot be:
+  an agency that wants a to-do list for itself is a client of itself. Unlike the deadline (#392)
+  it has no honest default, so nothing invents one — the service refuses with the field named
+  (`errors.tasks_company_required`), the update refuses clearing it, the automation surface
+  refuses onto the run rather than filing a task under nobody, and the import names the row.
+  The one indirection allowed is a **project**: naming the project *is* naming the client,
+  because a project has exactly one. On the screen that means the dialog draws its own client
+  picker whenever the surface has not pinned one, with no "Wissen" (an empty pick is the one
+  state the submit refuses — #392's DateInput rule), the dictation sheet holds Aanmaken until a
+  client is picked, and the task page's client picker lost its clear affordance for the same
+  reason. Two smaller things ride along: the dialog **fetches its own lookups** when the host
+  has none on hand (a panel on the client hub carries no roster), so no page pays for a dialog
+  most opens never see; and a whitespace title is refused at the schema, since `min_length`
+  counts characters and three spaces is not a name.
 - **An approve that made a task should end *with* the task, beside the e-mail it came from**
   (the same issue, then task 80a90bfd). Approving a pending e-mail onto a task created in the
   review dialog closed the dialog over the inbox — leaving a task that exists only because of

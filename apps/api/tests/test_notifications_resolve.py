@@ -20,7 +20,7 @@ from app.modules.interactions import system as interactions_system
 from app.modules.notifications.models import Notification, NotificationEvent
 from app.modules.notifications.service import NotificationService
 from app.modules.tasks.reminders import remind_for_org as remind_tasks
-from tests.conftest import auth_cookie, leave_workday, make_tenant
+from tests.conftest import auth_cookie, default_company, leave_workday, make_tenant
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
 
@@ -111,6 +111,7 @@ async def test_finishing_a_task_retires_its_overdue_reminder(client_for) -> None
         res = await c.post(
             "/api/v1/tasks",
             json={
+                "company_id": await default_company(c, owner_headers),
                 "title": "Offerte nabellen",
                 "assignee_user_id": str(member.id),
                 "due_date": (_NOW.date() - timedelta(days=3)).isoformat(),

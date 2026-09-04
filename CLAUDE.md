@@ -936,6 +936,19 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **A task is named before it exists, and it is always a client's** (the owner's decision closing
+  #350/#391, `docs/UX.md`). The placeholder create — one click, a row titled "Naamloze taak",
+  marked `unnamed` so a list could italicise it and `?unnamed=1` could gather it — is deleted
+  rather than disabled: every `Nieuwe taak` opens `TaskQuickCreate`, `TaskCreate` carries no flag,
+  the `Naamloos` pill is gone, and `TaskRead.unnamed` stays read-only for the rows an instance
+  already has. The client is #392's shape one column over, with one difference worth stating: a
+  deadline has an honest default (today) and a client does not, so nothing invents one —
+  `TaskService.create` refuses with the field named (`errors.tasks_company_required`), the update
+  refuses clearing, `create_task_system` refuses onto the automation run, the import names the
+  row — and the one indirection is a **project**, whose client the service takes because a
+  project has exactly one. The column stays nullable for a release (expand/contract), and
+  `tests/conftest.default_company` is the suite's stand-in client, created lazily per host so a
+  test that never makes a task never gains a company row.
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

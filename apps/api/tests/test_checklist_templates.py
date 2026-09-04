@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 from tests.test_task_subresources import add_member
 
 # Items are `{title, description}` since issue #66 (a bare title list is no longer accepted).
@@ -95,7 +95,10 @@ async def test_add_checklist_from_template_copies_items(client_for) -> None:
         ).json()
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
 
@@ -143,7 +146,10 @@ async def test_checklist_templates_tenant_isolation(client_for) -> None:
         assert (await cb.get("/api/v1/tasks/checklist-templates", headers=b_headers)).json() == []
         task = (await cb.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "B"},
+            json={
+                "company_id": await default_company(cb, b_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "B",
+            },
             headers=b_headers,
         )).json()
         assert (

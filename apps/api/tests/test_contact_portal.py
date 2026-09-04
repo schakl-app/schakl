@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 
 async def _tenant_with_contact(client_for, slug: str, *, companies: int = 1):
@@ -642,18 +642,19 @@ async def test_portal_task_horizon_is_the_client_s_own_companies(client_for) -> 
         ).json()
         for payload in (
             {"title": "Van mij", "company_id": mine},
-            # No company at all: the project is the only thing that says whose task this is.
+            # No company named: the project is what says whose task this is, and the API
+            # takes the client off it.
             {"title": "Via project", "project_id": project["id"]},
             {"title": "Van een andere klant", "company_id": theirs},
-            # Attached to nothing — the agency's own housekeeping, ticked by mistake or on
-            # purpose. It belongs to no client, so it reaches none of them.
+            # The agency's own housekeeping, ticked by mistake or on purpose — on the
+            # stand-in client, which is not this contact's, so it reaches them no more than
+            # the company-less row it used to be did.
             {"title": "Intern werk"},
         ):
-            await c.post(
-                "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, **payload, "visible_to_client": True},
-                headers=headers,
-            )
+            body = {"due_date": FAR_FUTURE_DUE, "visible_to_client": True, **payload}
+            if "company_id" not in body and "project_id" not in body:
+                body["company_id"] = await default_company(c, headers)
+            await c.post("/api/v1/tasks", json=body, headers=headers)
 
         await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         async with async_session_maker() as session:

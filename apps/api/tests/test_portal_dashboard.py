@@ -23,7 +23,7 @@ from app.core.auth.models import User
 from app.core.models import DashboardPref
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications.models import Notification, NotificationDelivery, NotificationEvent
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 from tests.test_notifications_emits import _inbox
 
 
@@ -60,7 +60,10 @@ async def _portal(client_for, slug: str):
 async def _task(c, headers, **payload) -> dict:
     r = await c.post(
         "/api/v1/tasks",
-        json={"due_date": FAR_FUTURE_DUE, "visible_to_client": True, **payload},
+        json={
+            "company_id": await default_company(c, headers),
+            "due_date": FAR_FUTURE_DUE, "visible_to_client": True, **payload,
+        },
         headers=headers,
     )
     assert r.status_code == 201, r.text

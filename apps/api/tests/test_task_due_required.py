@@ -25,11 +25,12 @@ from datetime import timedelta
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 
 
 async def _task(c, headers, title: str = "Homepage herzien", **extra) -> dict:
     body = {"title": title, "due_date": FAR_FUTURE_DUE, **extra}
+    body.setdefault("company_id", await default_company(c, headers))
     res = await c.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()
@@ -52,14 +53,20 @@ async def test_a_task_cannot_be_created_without_a_deadline(client_for) -> None:
     t = await make_tenant("due-create")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        refused = await c.post("/api/v1/tasks", json={"title": "Zonder datum"}, headers=headers)
+        refused = await c.post("/api/v1/tasks", json={
+            "company_id": await default_company(c, headers),
+            "title": "Zonder datum",
+        }, headers=headers)
         assert refused.status_code == 422, refused.text
         # The envelope names the field, so the form can put the message under the box rather
         # than printing "er ging iets mis" over a control the user can see (CLAUDE.md §9).
         assert "due_date" in refused.text
 
         explicit_null = await c.post(
-            "/api/v1/tasks", json={"title": "Ook niet", "due_date": None}, headers=headers
+            "/api/v1/tasks", json={
+                "company_id": await default_company(c, headers),
+                "title": "Ook niet", "due_date": None,
+            }, headers=headers
         )
         assert explicit_null.status_code == 422, explicit_null.text
 

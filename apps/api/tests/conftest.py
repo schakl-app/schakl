@@ -117,6 +117,9 @@ async def _clean_db() -> AsyncIterator[None]:
         await conn.execute(
             text(f"TRUNCATE {_DOMAIN_TABLES} RESTART IDENTITY CASCADE")
         )
+    # The stand-in client (``default_company``) went with the tables; a test reusing a slug
+    # must not be handed an id the truncate just removed.
+    _DEFAULT_COMPANIES.clear()
     yield
     # Dispose the pool so each test's event loop gets fresh asyncpg connections.
     await engine.dispose()
@@ -222,6 +225,29 @@ def org_today() -> date:
 #:
 #: A test whose subject *is* the deadline names its own date, from :func:`org_today`.
 FAR_FUTURE_DUE = "2099-12-31"
+
+
+#: One client per tenant, for a task whose client is not what the test is about.
+#:
+#: A task is always a client's (``TaskService.create``), so every task a test makes needs one —
+#: ``FAR_FUTURE_DUE``'s argument, one column over. Created lazily through the API on first use
+#: and remembered per host, so a test that never makes a task never gains a company row (a
+#: seeded one in ``make_tenant`` would move every "how many clients" count in the suite), and a
+#: test that makes ten tasks makes one client. Keyed on the host because that is what the
+#: client is bound to, which is also what lets a helper that holds only ``(c, headers)`` ask.
+_DEFAULT_COMPANIES: dict[str, str] = {}
+
+
+async def default_company(c: AsyncClient, headers: dict[str, str]) -> str:
+    """The id of the tenant's stand-in client, creating it the first time it is asked for."""
+    host = c.base_url.host
+    cached = _DEFAULT_COMPANIES.get(host)
+    if cached is not None:
+        return cached
+    res = await c.post("/api/v1/companies", json={"name": "Standaardklant"}, headers=headers)
+    assert res.status_code == 201, f"default_company for {host}: {res.status_code} {res.text}"
+    _DEFAULT_COMPANIES[host] = res.json()["id"]
+    return _DEFAULT_COMPANIES[host]
 
 
 def leave_workday(index: int = 0) -> date:

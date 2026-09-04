@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 from tests.test_notifications_emits import _inbox
 from tests.test_notifications_fanout import _member
 
@@ -16,7 +16,10 @@ async def test_mention_notifies_a_non_participant(client_for) -> None:
     async with client_for(t.host) as c:
         made = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Brief"},
+            json={
+                "company_id": await default_company(c, owner_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Brief",
+            },
             headers=owner_headers,
         )
         task = made.json()
@@ -46,6 +49,7 @@ async def test_mention_reads_as_its_own_event_not_a_comment(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, owner_headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Brief",
                     "assignee_user_id": str(assignee.id),
@@ -76,7 +80,10 @@ async def test_foreign_mention_id_is_ignored(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, owner_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=owner_headers,
         )).json()
         body = f"@[Outsider](mention:{other.user.id})"
@@ -99,7 +106,10 @@ async def test_task_reference_is_captured_and_org_scoped(client_for) -> None:
         foreign = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Foreign"},
+                json={
+                    "company_id": await default_company(c, other_headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Foreign",
+                },
                 headers=other_headers,
             )
         ).json()
@@ -107,13 +117,19 @@ async def test_task_reference_is_captured_and_org_scoped(client_for) -> None:
     async with client_for(t.host) as c:
         host = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Host"},
+            json={
+                "company_id": await default_company(c, owner_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Host",
+            },
             headers=owner_headers,
         )).json()
         linked = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Linked"},
+                json={
+                    "company_id": await default_company(c, owner_headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Linked",
+                },
                 headers=owner_headers,
             )
         ).json()
@@ -140,13 +156,19 @@ async def test_task_reference_edit_revalidates(client_for) -> None:
     async with client_for(t.host) as c:
         host = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Host"},
+            json={
+                "company_id": await default_company(c, owner_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Host",
+            },
             headers=owner_headers,
         )).json()
         linked = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Linked"},
+                json={
+                    "company_id": await default_company(c, owner_headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Linked",
+                },
                 headers=owner_headers,
             )
         ).json()

@@ -11,19 +11,18 @@
    * client's whole open set — never derived from the five rows on this page. Each heading opens
    * the client's own filtered list (`?due=`), every assignee, so the two counts agree.
    */
-  import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { stateBandClass, stateTextClass, type UiState } from "$lib/core/state";
-  import { InFlight } from "$lib/core/submit.svelte";
   import { orgToday } from "$lib/core/today";
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import { stateIcon } from "$lib/core/ui/state-icons";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import DueDate from "$lib/modules/tasks/DueDate.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
   import {
     DUE_BUCKETS,
     dueLabelKey,
@@ -105,7 +104,7 @@
 
   // The client page's ＋ is create-then-edit, like every other primary create path: the tasks
   // action writes a placeholder row linked to this client and lands on it in edit mode.
-  const creating = new InFlight();
+  let creating = $state(false);
 </script>
 
 {#snippet partition(bucket: DueBucket)}
@@ -222,16 +221,21 @@
   {/snippet}
   {#snippet actions()}
     {#if can(page.data.user, "tasks.task.create")}
-      <!-- Create-then-edit from the client page (#230): one click writes a placeholder row
-           pre-linked to this client and lands on it in edit mode, where every field lives. -->
-      <form method="POST" action="/tasks?/create" use:enhance={creating.wrap()}>
-        <input type="hidden" name="company_id" value={companyId} />
-        <button
-          type="submit"
-          class="text-brand hover:underline disabled:opacity-60"
-          disabled={creating.active}>＋ {t("tasks.new")}</button
-        >
-      </form>
+      <!-- The new-task dialog (#391), this client pinned: named, dated and held by somebody
+           before the row exists; its action lands on the task in edit mode for the rest. The
+           dialog fetches the colleagues itself — this panel has no roster on hand. -->
+      <button
+        type="button"
+        class="text-brand hover:underline"
+        onclick={() => (creating = true)}>＋ {t("tasks.new")}</button
+      >
+      <TaskQuickCreate
+        bind:open={creating}
+        {companyId}
+        assignees={page.data.user?.id ? [{ user_id: page.data.user.id, is_primary: true }] : []}
+        action="/tasks?/create"
+        pickerSlot="company_panel"
+      />
     {/if}
   {/snippet}
 </PanelRows>

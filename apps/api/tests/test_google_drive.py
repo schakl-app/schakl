@@ -15,7 +15,7 @@ from app.integrations.google.drive.models import DriveFolderJob, DriveLink
 from app.integrations.google.drive.service import provision_folder
 from app.integrations.google.models import GoogleConnection, GoogleSettings
 from app.integrations.google.oauth import SCOPE_DRIVE
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, default_company, make_tenant
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
@@ -146,7 +146,9 @@ async def test_links_crud_rollup_and_unlink_never_deletes(client_for, monkeypatc
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Review", "project_id": project["id"]},
+                json={
+                    "due_date": FAR_FUTURE_DUE, "title": "Review", "project_id": project["id"],
+                },
                 headers=headers,
             )
         ).json()
@@ -1387,7 +1389,10 @@ async def test_trashing_bins_the_file_and_drops_every_link_org_wide(
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Review"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Review",
+                },
                 headers=headers,
             )
         ).json()

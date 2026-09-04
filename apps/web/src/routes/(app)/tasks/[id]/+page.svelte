@@ -1334,6 +1334,8 @@
             <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.company")}</label
             >
+            <!-- No "Wissen": a task is a client's, and the API refuses clearing it — a control
+                 that can only produce a refused state is not drawn (#392's DateInput rule). -->
             <Combobox
               items={companyItems}
               archived={companyPicker.retired}
@@ -1342,6 +1344,7 @@
               value={fCompany}
               id="company"
               formId="task-edit"
+              allowEmpty={false}
               onselect={onCompanyPicked}
               oncreate={(name) => {
                 qcCompanyName = name;
@@ -1373,6 +1376,7 @@
                 name="company_id"
                 value={fCompany}
                 id="company"
+                allowEmpty={false}
                 onselect={onCompanyPicked}
                 oncreate={(name) => {
                   qcCompanyName = name;

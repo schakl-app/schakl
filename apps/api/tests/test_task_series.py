@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import Task
 from app.modules.tasks.recurrence import HORIZON_DAYS, spawn_scheduled_recurrences
-from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
+from tests.conftest import add_membership, auth_cookie, default_company, make_tenant, org_today
 
 _PLAN = {"blocks": [{"on": "due", "start_time": "09:00:00", "duration_minutes": 60}]}
 
@@ -40,6 +40,7 @@ async def _make_root(c, headers, *, freq: str = "monthly", **extra) -> dict:
         "recurrence": {"freq": freq, "interval": 1, "mode": "schedule", "plan": _PLAN},
         **extra,
     }
+    body.setdefault("company_id", await default_company(c, headers))
     res = await c.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()

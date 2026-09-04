@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 from tests.test_notifications_emits import _inbox
 from tests.test_notifications_fanout import _member
 
@@ -10,7 +10,10 @@ from tests.test_notifications_fanout import _member
 async def _task_with_comment(c, headers, title: str = "Brief") -> tuple[dict, dict]:
     task = (await c.post(
         "/api/v1/tasks",
-        json={"due_date": FAR_FUTURE_DUE, "title": title},
+        json={
+            "company_id": await default_company(c, headers),
+            "due_date": FAR_FUTURE_DUE, "title": title,
+        },
         headers=headers,
     )).json()
     root = (
@@ -81,7 +84,10 @@ async def test_a_parent_on_another_task_is_a_404(client_for) -> None:
         _, elsewhere = await _task_with_comment(c, headers, title="Other")
         other = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Mine"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Mine",
+            },
             headers=headers,
         )).json()
         refused = await c.post(
@@ -210,6 +216,7 @@ async def test_the_thread_hears_replied_and_everyone_else_hears_commented(client
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, owner_headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Brief",
                     "assignee_user_id": str(assignee.id),
@@ -251,7 +258,10 @@ async def test_a_mention_in_a_reply_still_wins(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Brief"},
+                json={
+                    "company_id": await default_company(c, owner_headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Brief",
+                },
                 headers=owner_headers,
             )
         ).json()
@@ -298,6 +308,7 @@ async def test_every_comment_notification_names_the_comment(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, owner_headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Brief",
                     "assignee_user_id": str(watcher.id),
@@ -343,7 +354,10 @@ async def test_a_capped_conversation_says_that_it_is_capped(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Brief"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Brief",
+            },
             headers=headers,
         )).json()
         detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()

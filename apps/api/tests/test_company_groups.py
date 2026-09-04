@@ -94,11 +94,11 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
     t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "horiz-mod")
 
     async with client_for(t.host) as c:
-        # Rows on both companies, one company-less row.
-        for company, title in ((a, "Task A"), (b, "Task B"), (None, "Task loose")):
-            body = {"title": title, "due_date": FAR_FUTURE_DUE}
-            if company:
-                body["company_id"] = company["id"]
+        # Rows on both companies. (A company-less task is no longer a thing the API writes —
+        # every task is a client's — so the "loose row stays visible" half of this check now
+        # lives on the contact below, which can still be attached to nobody.)
+        for company, title in ((a, "Task A"), (b, "Task B")):
+            body = {"title": title, "due_date": FAR_FUTURE_DUE, "company_id": company["id"]}
             assert (
                 await c.post("/api/v1/tasks", json=body, headers=owner_h)
             ).status_code == 201, title
@@ -121,12 +121,12 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
             )
         ).status_code == 204
 
-        # Tasks: the horizon admits Alpha's and the company-less row, never Beta's.
+        # Tasks: the horizon admits Alpha's, never Beta's.
         titles = {
             r["title"]
             for r in (await c.get("/api/v1/tasks?limit=50", headers=member_h)).json()["items"]
         }
-        assert titles == {"Task A", "Task loose"}
+        assert titles == {"Task A"}
 
         # Projects on Beta are invisible.
         projects = (await c.get("/api/v1/projects?limit=50", headers=member_h)).json()["items"]
@@ -870,9 +870,16 @@ async def test_horizon_reaches_a_tasks_hour_budget(client_for) -> None:
     )
 
     async with client_for(t.host) as c:
+        # On Alpha — inside the member's group — so the task itself is in their horizon while
+        # the hours booked on Beta below are not (a task is always a client's now).
         task = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Klantwerk", "allocated_minutes": 300},
+            json={
+                "company_id": a["id"],
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Klantwerk",
+                "allocated_minutes": 300,
+            },
             headers=owner_h,
         )
         assert task.status_code == 201, task.text

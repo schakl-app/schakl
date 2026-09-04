@@ -602,6 +602,11 @@ export const interactionActions = {
     if (!String(form.get("title") ?? "").trim() || !String(form.get("due_date") ?? "").trim()) {
       return fail(400, { qcError: "errors.required" });
     }
+    // A task is a client's: the dialog draws its own client picker when the e-mail has not
+    // been filed on one yet, and refuses before the round trip; this is the backstop.
+    if (!String(form.get("company_id") ?? "").trim() && !String(form.get("project_id") ?? "")) {
+      return fail(400, { qcError: "errors.tasks_company_required" });
+    }
     const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
     if (!body) return fail(400, { qcError: "errors.tasks_assignee_required" });
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });

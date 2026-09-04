@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import Task
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 _NOW = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
 
@@ -43,6 +43,7 @@ async def test_per_task_flag_blocks_close_without_moment(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "due_date": FAR_FUTURE_DUE,
                     "title": "Bespreken met klant",
                     "requires_interaction": True,
@@ -86,7 +87,10 @@ async def test_unflagged_task_closes_freely(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Gewoon af"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Gewoon af",
+                },
                 headers=headers,
             )
         ).json()
@@ -105,6 +109,7 @@ async def test_flag_rides_recurrence_to_next_occurrence(client_for) -> None:
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "title": "Maandelijks nabellen",
                     "requires_interaction": True,
                     "due_date": "2026-07-31",

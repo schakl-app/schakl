@@ -37,6 +37,7 @@ from app.modules.tasks.models import (
     TaskLink,
     TaskPriority,
     TaskStatus,
+    _projects,
 )
 
 
@@ -114,6 +115,11 @@ async def _task_or_error(ctx: EmitContext, task_id: uuid.UUID) -> Task:
     return task
 
 
+async def task_company_system(ctx: EmitContext, task_id: uuid.UUID) -> uuid.UUID | None:
+    """Whose task this is — for a rule that fires on a task and makes another beside it."""
+    return (await _task_or_error(ctx, task_id)).company_id
+
+
 async def create_task_system(
     ctx: EmitContext,
     *,
@@ -134,11 +140,30 @@ async def create_task_system(
     required (#392), and a 422 raised inside a worker is a task nobody ever sees. Resolved on
     the org's calendar rather than the container's clock (CLAUDE.md §8) — a rule that fires at
     01:00 in Amsterdam must not date its task yesterday.
+
+    ``company_id`` has no such default. A task is always a client's (``TaskService.create``),
+    and unlike a date there is no honest answer a worker could give on the caller's behalf —
+    so it is taken off the named project where there is one, and otherwise the write is
+    refused with the field named. The refusal surfaces on the automation run rather than as a
+    task filed under nobody, which is the outcome a rule author can actually act on.
     """
     if priority not in {p.value for p in TaskPriority}:
         raise AppError("validation", "errors.validation", status_code=422)
     if due_date is None:
         due_date = await org_today(ctx.session, ctx.org.id)
+    if company_id is None and project_id is not None:
+        company_id = await ctx.session.scalar(
+            select(_projects.c.company_id).where(
+                _projects.c.org_id == ctx.org.id, _projects.c.id == project_id
+            )
+        )
+    if company_id is None:
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"company_id": "errors.tasks_company_required"},
+        )
     max_position = float(
         await ctx.session.scalar(
             select(func.max(Task.position)).where(Task.org_id == ctx.org.id)

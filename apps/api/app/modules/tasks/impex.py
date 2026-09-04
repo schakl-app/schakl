@@ -112,10 +112,17 @@ TASK_IMPEX = ImpexDescriptor(
             options=tuple(priority.value for priority in TaskPriority),
             option_label_key="tasks.priority.{option}",
         ),
+        # Required, the way the deadline below is: a task is always a client's, and a sheet
+        # that names none for a row is refused *on that row* in the preview rather than as a
+        # request-level 422 the report cannot point at (CLAUDE.md §17, #289). A project column
+        # alone would do at the service (it takes the client off the project), but a preview
+        # cannot promise that for a project cell it has not resolved yet, so the client is
+        # asked for outright.
         ImpexColumn(
             "company",
             data_type="fk",
             field="company_id",
+            required=True,
             getter=lambda t: getattr(t, "company", None),
         ),
         ImpexColumn(

@@ -24,7 +24,7 @@ from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
 from app.modules.interactions.enrich import MAX_EMAIL_LINKS, SUBMIT_PLAN
 from app.modules.tasks.models import Task, TaskAIStatus, TaskChecklistItem, TaskComment, TaskLink
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 
 _NOW = datetime(2026, 7, 10, 14, 30, tzinfo=UTC)
 
@@ -190,7 +190,10 @@ async def test_enrichment_writes_notes_checklist_deadline_and_links(
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         # The deadline half only writes into a blank (see ``_undate``), so this is a task from
@@ -273,7 +276,10 @@ async def test_the_task_is_the_agencys_whichever_way_the_mail_went(client_for, m
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -314,7 +320,10 @@ async def test_status_moves_queued_to_done_and_is_polled_on_its_own_endpoint(
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         approved = await c.post(
@@ -346,7 +355,10 @@ async def test_off_by_default_and_untouched_without_the_tick(client_for, monkeyp
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         monkeypatch.setattr(
@@ -370,7 +382,10 @@ async def test_an_approve_survives_an_org_with_no_ai_configured(client_for) -> N
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         approved = await c.post(
@@ -415,7 +430,10 @@ async def test_an_email_cannot_reach_a_field_the_plan_has_no_room_for(
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Homepage", "status": "open"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Homepage", "status": "open",
+                },
                 headers=headers,
             )
         ).json()
@@ -480,7 +498,10 @@ async def test_a_link_the_email_does_not_contain_is_dropped(client_for, monkeypa
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -540,7 +561,10 @@ async def test_a_signature_link_is_in_the_body_and_still_does_not_belong_on_the_
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Stages"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Stages",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -604,7 +628,10 @@ async def test_more_links_than_a_shortlist_holds_are_cut_to_the_first_few(
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Veel"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Veel",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -645,6 +672,7 @@ async def test_a_description_a_person_wrote_is_never_overwritten(client_for, mon
             await c.post(
                 "/api/v1/tasks",
                 json={
+                    "company_id": await default_company(c, headers),
                     "title": "Homepage",
                     "description": "Afgesproken met Jan: eerst de staging-omgeving.",
                     "due_date": (org_today() + timedelta(days=30)).isoformat(),
@@ -711,7 +739,10 @@ async def test_the_ride_along_asks_for_the_task_permission_not_the_review_one(
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+                json={
+                    "company_id": await default_company(c, owner_headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+                },
                 headers=owner_headers,
             )
         ).json()
@@ -737,7 +768,10 @@ async def test_tenant_isolation_of_the_status_endpoint(client_for) -> None:
     async with client_for(a.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Van A"},
+            json={
+                "company_id": await default_company(c, a_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Van A",
+            },
             headers=a_headers,
         )).json()
     async with client_for(b.host) as c:
@@ -763,7 +797,10 @@ async def test_a_body_that_never_lands_ends_as_skipped_not_as_a_run_that_waits_f
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -795,7 +832,10 @@ async def test_a_first_attempt_that_cannot_claim_asks_once_more_before_standing_
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
 
@@ -845,7 +885,10 @@ async def test_the_reaper_ends_a_run_whose_worker_is_gone(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
 
@@ -875,7 +918,10 @@ async def test_a_run_that_is_merely_slow_is_left_alone_by_the_reaper(client_for)
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
 
@@ -903,7 +949,10 @@ async def test_an_empty_plan_is_skipped_rather_than_written(client_for, monkeypa
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         await c.post(
@@ -961,7 +1010,10 @@ async def test_an_answer_that_ran_out_of_room_is_not_an_email_with_nothing_in_it
         await _configure_ai(c, headers)
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Homepage"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Homepage",
+            },
             headers=headers,
         )).json()
         await c.post(

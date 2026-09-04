@@ -29,13 +29,16 @@ from datetime import timedelta
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import auth_cookie, make_tenant, org_today
+from tests.conftest import auth_cookie, default_company, make_tenant, org_today
 
 
 async def _task(c, headers, title: str, due, **extra) -> dict:
     res = await c.post(
         "/api/v1/tasks",
-        json={"title": title, "due_date": due.isoformat(), **extra},
+        json={
+            "company_id": await default_company(c, headers),
+            "title": title, "due_date": due.isoformat(), **extra,
+        },
         headers=headers,
     )
     assert res.status_code == 201, res.text

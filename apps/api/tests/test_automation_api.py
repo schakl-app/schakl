@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 
 @pytest.fixture(autouse=True)
@@ -204,7 +204,10 @@ async def test_runs_list_and_rule_filter(client_for) -> None:
 
         created = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Trigger me"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Trigger me",
+            },
             headers=headers,
         )
         assert created.status_code == 201
@@ -240,7 +243,10 @@ async def test_api_is_tenant_scoped(client_for) -> None:
         ).json()
         await ca.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "A's"},
+            json={
+                "company_id": await default_company(ca, headers_a),
+                "due_date": FAR_FUTURE_DUE, "title": "A's",
+            },
             headers=headers_a,
         )
 

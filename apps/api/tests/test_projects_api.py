@@ -92,7 +92,9 @@ async def test_tasks_belong_to_project(client_for) -> None:
 
         task = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Design homepage", "project_id": project_id},
+            json={
+                "due_date": FAR_FUTURE_DUE, "title": "Design homepage", "project_id": project_id,
+            },
             headers=headers,
         )
         assert task.status_code == 201

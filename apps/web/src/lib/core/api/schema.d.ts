@@ -29652,8 +29652,6 @@ export interface components {
             status?: string | null;
             /** Title */
             title: string;
-            /** Unnamed */
-            unnamed?: boolean | null;
             /**
              * Visible To Client
              * @default false
@@ -56131,8 +56129,6 @@ export interface operations {
                 /** @description Deadline window end (inclusive) */
                 due_to?: string | null;
                 q?: string | null;
-                /** @description Only tasks nobody named (create-then-edit rows never finished), or only named ones. Omitted returns both. */
-                unnamed?: boolean | null;
                 /** @description Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. */
                 undated?: boolean | null;
                 /** @description due | title | due_date | priority | status | assignee | …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. */

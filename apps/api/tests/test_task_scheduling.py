@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.auth.models import User
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant
 
 # A fixed weekday well clear of any calendar edge; scheduling has no holiday logic (unlike leave),
 # so any local day works — pin it so the range window is deterministic.
@@ -44,6 +44,7 @@ async def _make_task(client, headers, *, assignee: uuid.UUID | None = None) -> s
     }
     if assignee is not None:
         body["assignee_user_id"] = str(assignee)
+    body.setdefault("company_id", await default_company(client, headers))
     res = await client.post("/api/v1/tasks", json=body, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()["id"]

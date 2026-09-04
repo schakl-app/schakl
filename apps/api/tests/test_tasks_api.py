@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import FAR_FUTURE_DUE, auth_cookie, make_tenant, org_today
+from sqlalchemy import text
+
+from app.db import async_session_maker, set_current_org
+from tests.conftest import FAR_FUTURE_DUE, auth_cookie, default_company, make_tenant, org_today
 from tests.test_notifications_fanout import _member
 
 
@@ -14,7 +18,10 @@ async def test_task_crud_and_status_toggle(client_for) -> None:
     async with client_for(t.host) as c:
         created = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Write plan", "priority": "high"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Write plan", "priority": "high",
+            },
             headers=headers,
         )
         assert created.status_code == 201
@@ -34,7 +41,10 @@ async def test_my_open_tasks(client_for) -> None:
         # Assigned to me and open → shows in My Day.
         await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Mine", "assignee_user_id": str(t.user.id)},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Mine", "assignee_user_id": str(t.user.id),
+            },
             headers=headers,
         )
         # A colleague's → excluded from My Day (only tasks assigned to me appear). A task that
@@ -43,13 +53,19 @@ async def test_my_open_tasks(client_for) -> None:
         other = await _member(t, "collega@example.com")
         await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Theirs", "assignee_user_id": str(other.id)},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Theirs", "assignee_user_id": str(other.id),
+            },
             headers=headers,
         )
         # Mine but done → excluded.
         done = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Done", "assignee_user_id": str(t.user.id)},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Done", "assignee_user_id": str(t.user.id),
+            },
             headers=headers,
         )
         await c.patch(
@@ -81,8 +97,8 @@ async def test_my_open_tasks(client_for) -> None:
             "company_name",
         ]
         assert compact.json()["items"][0]["title"] == "Mine"
-        # The agency's own to-do items belong to no client and are labelled as none.
-        assert compact.json()["items"][0]["company_name"] is None
+        # A task is always a client's, and the tile names the client beside it.
+        assert compact.json()["items"][0]["company_name"] == "Standaardklant"
 
 
 async def test_dashboard_mine_names_the_client(client_for, count_queries) -> None:
@@ -154,7 +170,9 @@ async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_fo
         ).json()
         await c.post(
             "/api/v1/tasks",
-            json={"title": "Late project task", "project_id": project["id"], "due_date": overdue},
+            json={
+                "title": "Late project task", "project_id": project["id"], "due_date": overdue,
+            },
             headers=headers,
         )
         finished = (
@@ -207,11 +225,25 @@ async def test_dashboard_group_without_client_or_project_is_addressable(client_f
             json={"due_date": FAR_FUTURE_DUE, "title": "Client work", "company_id": company["id"]},
             headers=headers,
         )
-        await c.post(
+        loose_end = await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Loose end"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE,
+                "title": "Loose end",
+            },
             headers=headers,
         )
+        # No API writes a task with neither client nor project any more; the bucket still
+        # exists for the rows an instance carried in, so the shape is written where it can
+        # still arrive — the table.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(
+                text("UPDATE tasks SET company_id = NULL WHERE id = :id"),
+                {"id": uuid.UUID(loose_end.json()["id"])},
+            )
+            await session.commit()
 
         groups = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()["items"]
         loose = [g for g in groups if g["entity_type"] == "none"]
@@ -258,13 +290,19 @@ async def test_position_assigned_and_reorder(client_for) -> None:
     async with client_for(t.host) as c:
         first = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "First"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "First",
+            },
             headers=headers,
         )).json()
         second = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Second"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Second",
+                },
                 headers=headers,
             )
         ).json()
@@ -286,7 +324,10 @@ async def test_completed_at_set_and_cleared(client_for) -> None:
     async with client_for(t.host) as c:
         task = (await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "T"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "T",
+            },
             headers=headers,
         )).json()
         assert task["completed_at"] is None
@@ -316,17 +357,26 @@ async def test_due_filters(client_for) -> None:
     async with client_for(t.host) as c:
         await c.post(
             "/api/v1/tasks",
-            json={"title": "Late", "due_date": (today - timedelta(days=2)).isoformat()},
+            json={
+                "company_id": await default_company(c, headers),
+                "title": "Late", "due_date": (today - timedelta(days=2)).isoformat(),
+            },
             headers=headers,
         )
         await c.post(
             "/api/v1/tasks",
-            json={"title": "Today", "due_date": today.isoformat()},
+            json={
+                "company_id": await default_company(c, headers),
+                "title": "Today", "due_date": today.isoformat(),
+            },
             headers=headers,
         )
         await c.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Sometime"},
+            json={
+                "company_id": await default_company(c, headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Sometime",
+            },
             headers=headers,
         )
 
@@ -348,7 +398,10 @@ async def test_task_detail_shape(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Card", "description": "Body"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Card", "description": "Body",
+                },
                 headers=headers,
             )
         ).json()
@@ -486,7 +539,10 @@ async def test_contact_assignee_needs_a_client(client_for) -> None:
         task = (
             await c.post(
                 "/api/v1/tasks",
-                json={"due_date": FAR_FUTURE_DUE, "title": "Internal"},
+                json={
+                    "company_id": await default_company(c, headers),
+                    "due_date": FAR_FUTURE_DUE, "title": "Internal",
+                },
                 headers=headers,
             )
         ).json()
@@ -600,7 +656,10 @@ async def test_tasks_tenant_isolation(client_for) -> None:
     async with client_for(a.host) as ca:
         created = await ca.post(
             "/api/v1/tasks",
-            json={"due_date": FAR_FUTURE_DUE, "title": "Secret"},
+            json={
+                "company_id": await default_company(ca, a_headers),
+                "due_date": FAR_FUTURE_DUE, "title": "Secret",
+            },
             headers=a_headers,
         )
         a_task_id = created.json()["id"]
