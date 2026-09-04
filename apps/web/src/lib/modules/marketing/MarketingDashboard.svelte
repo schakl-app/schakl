@@ -369,7 +369,11 @@
        CLAUDE.md's Cloudflare rule one module over — a health probe is evidence, never the gate.
        So it decides a *sentence* now, and the connect control is offered either way. -->
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
-    {#if !metrics?.can_manage}
+    {#if page.data.user?.isPortal}
+      <!-- A client is told there is nothing here yet, and never which account the agency has
+           not connected: "koppel een Google-account" is a sentence about our desk. -->
+      <p class="text-sm text-text-muted">{t("portal.home.no_data")}</p>
+    {:else if !metrics?.can_manage}
       <p class="text-sm text-text-muted">
         {t(metrics?.needs_connection ? "marketing.empty.ask_admin" : "marketing.empty.no_links")}
       </p>

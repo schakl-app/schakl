@@ -23357,6 +23357,10 @@ export interface components {
         MarketingClientList: {
             /** Rows */
             rows?: components["schemas"]["MarketingClientRow"][];
+            /** Source Labels */
+            source_labels?: {
+                [key: string]: string;
+            };
             /**
              * Total
              * @default 0
@@ -23469,6 +23473,8 @@ export interface components {
              * @default gtm
              */
             kind: string;
+            /** Label */
+            label?: string | null;
             /** Last Error */
             last_error?: string | null;
             /**
@@ -24441,6 +24447,10 @@ export interface components {
             range_days: number;
             /** Rows */
             rows?: components["schemas"]["OverviewRow"][];
+            /** Source Labels */
+            source_labels?: {
+                [key: string]: string;
+            };
             /**
              * Total
              * @default 0
@@ -56108,6 +56118,8 @@ export interface operations {
                 unlinked?: boolean;
                 assignee_user_id?: string | null;
                 assignee_contact_id?: string | null;
+                /** @description Whose work it is: `contact` — assigned to one of the client's own people; `agency` — everything else (assigned to staff, or to nobody yet). The client's homepage draws the two as separate tiles, and a specific person is a different question (`assignee_contact_id` / `assignee_user_id`). */
+                assigned_to?: ("contact" | "agency") | null;
                 /** @description A configured status key */
                 status?: string | null;
                 /** @description Only tasks in a non-terminal status — the working set, any status key */

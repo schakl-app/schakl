@@ -85,6 +85,14 @@ export interface NavItem {
    * expressed. Mirrors `require_permission(key, scope)` on the route it points at.
    */
   requiresScope?: PermissionScope;
+  /**
+   * What the item is called on a **client's** sidebar, where the staff word is wrong rather
+   * than merely unfamiliar: the agency's "Klanten" is, to the person signed in, their own
+   * companies. Omitted means the one label serves both audiences. Picked by `navItemsFor` on
+   * `user.isPortal` — an audience is a layout question (#373), and the tenant's own nav
+   * rename still wins over both.
+   */
+  portalLabel?: () => string;
 }
 
 export interface CompanyPanelSpec {
@@ -272,12 +280,23 @@ export interface EntityPanelSpec {
 /** A widget's grid footprint, so the gallery can show its shape and the layout can honour it. */
 export type WidgetSize = "sm" | "md" | "lg";
 
+/**
+ * What the board hands a widget's loader beside the client. The client portal's homepage is
+ * one company at a time — a contact linked to two clients switches between them, and every
+ * tile must follow the switch, or the board shows one company's marketing over another's
+ * invoices. `companyId` is that selection (`null` on the staff board, and for a portal login
+ * with nothing attached), so a portal loader filters on it and a staff loader ignores it.
+ */
+export interface DashboardWidgetContext {
+  companyId: string | null;
+}
+
 export interface DashboardWidgetSpec {
   /** Unique widget key, e.g. "time.today". */
   key: string;
   module: string;
   /** Server-side data loader (runs in the dashboard's +page.server.ts, API-only). */
-  load: (api: ApiClient) => Promise<unknown>;
+  load: (api: ApiClient, context: DashboardWidgetContext) => Promise<unknown>;
   component: Component<{ data: unknown }>;
   position?: number;
   /** Only offered to holders of this permission — its loader calls an endpoint gated on it. */
@@ -555,10 +574,14 @@ export function navItemsFor(
   // The org's custom labels ride on the pref (org default, merged by the API). Applied to every
   // returned item so the sidebar renders the tenant's own words, declared label as the fallback.
   const labelByKey = new Map((pref ?? []).map((item) => [item.key, item.label]));
+  // The audience's own word first (a client reads "Bedrijven", never the agency's "Klanten"),
+  // and the tenant's rename on top of either.
+  const audienceLabel = (item: NavItem): (() => string) =>
+    user?.isPortal && item.portalLabel ? item.portalLabel : item.label;
   const withLabel = (item: NavItem): NavItem =>
     labelByKey.has(item.key)
-      ? { ...item, label: resolveLabel(labelByKey.get(item.key), item.label) }
-      : item;
+      ? { ...item, label: resolveLabel(labelByKey.get(item.key), audienceLabel(item)) }
+      : { ...item, label: audienceLabel(item) };
   const base = enabledWebModules(enabled)
     .flatMap((m) => m.nav ?? [])
     .filter(
@@ -608,14 +631,16 @@ export function entityPanelsFor(
   entityType: string,
   user: SessionUser | null | undefined,
 ): EntityPanelSpec[] {
-  return [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
-    .filter((p) => p.entityType === entityType)
-    .filter((p) => !p.requiresPermission || can(user, p.requiresPermission, p.requiresScope))
-    // The other axis (#274): a staff subject is not drawn for a client however many permissions
-    // they hold. Filtered here rather than in each host page, so a detail page added tomorrow
-    // inherits it — the same argument that put `requiresPermission` in this function.
-    .filter((p) => p.audience !== "staff" || !user?.isPortal)
-    .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+  return (
+    [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
+      .filter((p) => p.entityType === entityType)
+      .filter((p) => !p.requiresPermission || can(user, p.requiresPermission, p.requiresScope))
+      // The other axis (#274): a staff subject is not drawn for a client however many permissions
+      // they hold. Filtered here rather than in each host page, so a detail page added tomorrow
+      // inherits it — the same argument that put `requiresPermission` in this function.
+      .filter((p) => p.audience !== "staff" || !user?.isPortal)
+      .sort((a, b) => (a.position ?? 100) - (b.position ?? 100))
+  );
 }
 
 /**

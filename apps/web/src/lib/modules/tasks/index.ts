@@ -15,6 +15,7 @@ import { localDayTime } from "./schedule";
 import TasksPanel from "./TasksPanel.svelte";
 import MyTasksWidget from "./MyTasksWidget.svelte";
 import PortalTasksWidget from "./PortalTasksWidget.svelte";
+import PortalWorkWidget from "./PortalWorkWidget.svelte";
 import TasksByGroupWidget from "./TasksByGroupWidget.svelte";
 
 registerWebModule({
@@ -43,9 +44,8 @@ registerWebModule({
   dashboardWidgets: [
     {
       // The client's homepage tile (#450): first on the board, because what is asked of the
-      // client is the one thing on it they are expected to act on. Two reads — "mine" resolved
-      // to the contact behind the session (#453), and the rest of the open work on the account
-      // minus those — so a task is never listed twice.
+      // client is the one thing on it they are expected to act on — the open tasks assigned
+      // to one of the client's own people, on the company the switcher selected.
       key: "tasks.portal",
       module: "tasks",
       audience: "portal",
@@ -54,26 +54,56 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.tasks.portal",
       category: "dashboard.category.tasks",
       size: "lg",
-      load: async (api) => {
-        const [mine, open] = await Promise.all([
-          api.GET("/api/v1/tasks/dashboard-mine", { params: { query: { limit: 20 } } }),
-          api.GET("/api/v1/tasks", {
-            params: {
-              query: { open: true, limit: 20, sort: "due_date", meta: false, count: true },
+      load: async (api, { companyId }) => {
+        const { data } = await api.GET("/api/v1/tasks", {
+          params: {
+            query: {
+              open: true,
+              assigned_to: "contact",
+              company_id: companyId ?? undefined,
+              limit: 20,
+              sort: "due_date",
+              // The contact's name — who at the client this is asked of — is resolved with
+              // the row aggregates, and it is the one thing this tile prints beside the title.
+              meta: true,
+              count: true,
             },
-          }),
-        ]);
-        const mineItems = mine.data?.items ?? [];
-        const mineIds = new Set(mineItems.map((item) => item.id));
-        const others = (open.data?.items ?? []).filter((item) => !mineIds.has(item.id));
-        return {
-          mine: mineItems,
-          mineTotal: mine.data?.total ?? mineItems.length,
-          others,
-          othersTotal: Math.max(0, (open.data?.total ?? others.length) - mineItems.length),
-        };
+          },
+        });
+        const items = data?.items ?? [];
+        return { items, total: data?.total ?? items.length, companyId };
       },
       component: PortalTasksWidget,
+    },
+    {
+      // "Werkzaamheden": what the agency is doing for the client — the account's other open
+      // work, by urgency. The second tile, right under what was asked of them (#451's order).
+      key: "tasks.portal_work",
+      module: "tasks",
+      audience: "portal",
+      position: 6,
+      requiresPermission: "tasks.task.read",
+      descriptionKey: "dashboard.widget_desc.tasks.portal_work",
+      category: "dashboard.category.tasks",
+      size: "lg",
+      load: async (api, { companyId }) => {
+        const { data } = await api.GET("/api/v1/tasks", {
+          params: {
+            query: {
+              open: true,
+              assigned_to: "agency",
+              company_id: companyId ?? undefined,
+              limit: 100,
+              sort: "due",
+              meta: false,
+              count: true,
+            },
+          },
+        });
+        const items = data?.items ?? [];
+        return { items, total: data?.total ?? items.length, companyId };
+      },
+      component: PortalWorkWidget,
     },
     {
       key: "tasks.my_open",

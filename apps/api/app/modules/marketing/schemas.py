@@ -248,6 +248,9 @@ class MarketingConnection(BaseModel):
     #: Which integration this is. A string rather than an enum because the vocabulary belongs to
     #: whoever contributes the connection, not to this module (§6).
     kind: str = "gtm"
+    #: The tenant's own name for this kind of connection, when they set one (the source
+    #: labels' rule, one list over); ``None`` means the catalog name.
+    label: str | None = None
     #: The contributing module's own row id — what its screens address the connection by.
     id: uuid.UUID
     #: What anybody quotes: ``GTM-XXXXXXX``.
@@ -480,7 +483,9 @@ class MarketingSettingsWrite(BaseModel):
     def _known_sources_only(cls, value: dict[str, str] | None) -> dict[str, str] | None:
         if value is None:
             return None
-        known = {source.value for source in MarketingSource}
+        # The connections a client's page names beside the sources are renameable too —
+        # Tag Manager is the one today, and its key is the connection's ``kind``.
+        known = {source.value for source in MarketingSource} | {"gtm"}
         out: dict[str, str] = {}
         for key, label in value.items():
             if key not in known:
@@ -533,6 +538,9 @@ class OverviewResponse(BaseModel):
     compare: MarketingCompareWindow
     rows: list[OverviewRow] = Field(default_factory=list)
     total: int = 0
+    #: The tenant's own source names (#446), so a grid column heading reads the same word the
+    #: dashboard does; absent keys mean the catalog name.
+    source_labels: dict[str, str] = Field(default_factory=dict)
 
 
 # --- My Day widget digest (#254) ------------------------------------------------------------- #
@@ -586,3 +594,5 @@ class MarketingClientList(BaseModel):
     #: Linked clients in the caller's view. ``rows`` is capped, so the screen says "n of this"
     #: rather than letting the cap read as everything (docs/UX.md, no silent caps).
     total: int = 0
+    #: The tenant's own source names (#446); absent keys mean the catalog name.
+    source_labels: dict[str, str] = Field(default_factory=dict)

@@ -64,6 +64,44 @@ billing event's clothes. `tests/test_entitlements.py::test_portal_invites_are_li
 pins it: past the grace window the invite 402s, and the client who already has a login still
 signs in and still sees exactly their own company.
 
+## The client's homepage
+
+The portal dashboard is the same per-user widget board as staff My Day (#254), offering the
+**portal gallery**: every `DashboardWidgetSpec` with `audience: "portal"`. Seven tiles today, in
+their default order — *Jullie taken* (open tasks assigned to one of the client's own contact
+persons, `?assigned_to=contact`), *Werkzaamheden* (the agency's open work on the account,
+`?assigned_to=agency`, by urgency like the staff tile), *Jullie rapportage* (the latest published
+client report as a scaled cover, never its prose), *Marketing* (the curated dashboard), *Mijn
+abonnementen*, *Mijn facturen* and *Mijn domeinnamen*.
+
+Three rules hold the board up:
+
+* **One company at a time.** The switcher above the board selects a company and every loader is
+  handed it (`DashboardWidgetContext.companyId`); the board drops its cached promises when the
+  selection changes. A widget that ignored the context would show one company's rows under
+  another's name — which is what happened before every tile read it.
+* **No inherited template.** The org's dashboard template (Instellingen → Dashboard) is the staff
+  gallery; `GET /dashboard/prefs` gives an external login `source: "none"`, so a client opens on the
+  whole portal gallery until they arrange their own.
+* **The API decides what a tile may hold.** Each tile reads an endpoint the seeded `client` role
+  holds — `tasks.task.read`, `reporting.report.read:own`, `invoicing.invoice.read:own`,
+  `subscriptions.subscription.read:own`, `domains.domain.read` — through the module's portal
+  repository, so a draft subscription or invoice never reaches the page and the tile has nothing
+  to hide.
+
+What a client is *not* shown, and where that is decided: a task's repeat rule (nulled on the API
+for a portal caller, `TaskService._list_items`/`detail`), a planned block's note, budget and time
+entry (`TaskScheduleService.list_in_range`), an agreement's notes and automation level
+(`subscriptions/router._read`), a domain's registrar and the billing decision, a website's hosting,
+owner and uptime (`ColumnMeta.audience`, `columnsForViewer`, and the matching detail rows and
+filters), the marketing page's connect and "ask an admin" sentences (`portal.home.no_data`), the
+picker's health chips, and the OXXA panel (`audience: "staff"`).
+
+The bell is theirs too: a comment that names their contact person (`task.mentioned`) or lands on a
+task assigned to them (`task.commented`) is written to their inbox and mailed at once by default
+(`_external_recipients`, `PORTAL_EVENTS`, `EmailChannel`), and nothing else the agency says to
+itself ever is.
+
 ## Routes
 
 `/api/v1/portal/logins/{entity_type}/{subject_id}` — `GET` state, `POST` invite/re-enable,

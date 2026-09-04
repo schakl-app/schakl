@@ -257,32 +257,39 @@
           </dd>
         </div>
         <!-- Whether the renewal is billed on (#298), with the rule that decided it: a "no"
-             nobody can explain is the one an agency notices a year late. -->
-        <div class="flex justify-between gap-3">
-          <dt class="text-text-muted">{t("domains.invoiceable.legend")}</dt>
-          <dd class="text-right text-text">
-            {domain.invoiceable_effective
-              ? t("domains.invoiceable.yes")
-              : t("domains.invoiceable.no")}
-            <span class="block text-xs text-text-muted">
-              {#if domain.invoiceable != null}
-                {t("domains.invoiceable.source_explicit")}
-              {:else if registers.length > 0}
-                {t("domains.invoiceable.follow_hint_held", {
-                  register: registers.map((key) => t(`domains.register.${key}`)).join(", "),
-                })}
-              {:else if domain.invoiceable_source === "register"}
-                {t("domains.invoiceable.follow_hint_absent")}
-              {:else}
-                {t("domains.invoiceable.follow_hint_none")}
-              {/if}
-            </span>
-          </dd>
-        </div>
-        <div class="flex justify-between">
-          <dt class="text-text-muted">{t("domains.registrar")}</dt>
-          <dd class="text-text">{domain.registrar_provider_name ?? "—"}</dd>
-        </div>
+             nobody can explain is the one an agency notices a year late. The agency's decision,
+             so the agency's row (the list's column is staff-only for the same reason). -->
+        {#if !page.data.user?.isPortal}
+          <div class="flex justify-between gap-3">
+            <dt class="text-text-muted">{t("domains.invoiceable.legend")}</dt>
+            <dd class="text-right text-text">
+              {domain.invoiceable_effective
+                ? t("domains.invoiceable.yes")
+                : t("domains.invoiceable.no")}
+              <span class="block text-xs text-text-muted">
+                {#if domain.invoiceable != null}
+                  {t("domains.invoiceable.source_explicit")}
+                {:else if registers.length > 0}
+                  {t("domains.invoiceable.follow_hint_held", {
+                    register: registers.map((key) => t(`domains.register.${key}`)).join(", "),
+                  })}
+                {:else if domain.invoiceable_source === "register"}
+                  {t("domains.invoiceable.follow_hint_absent")}
+                {:else}
+                  {t("domains.invoiceable.follow_hint_none")}
+                {/if}
+              </span>
+            </dd>
+          </div>
+        {/if}
+        {#if !page.data.user?.isPortal}
+          <!-- The register we renew at is our supplier, not the client's business — the same
+               audience rule the list's registrar column follows. -->
+          <div class="flex justify-between">
+            <dt class="text-text-muted">{t("domains.registrar")}</dt>
+            <dd class="text-text">{domain.registrar_provider_name ?? "—"}</dd>
+          </div>
+        {/if}
         <div class="flex justify-between">
           <dt class="text-text-muted">{t("domains.dns")}</dt>
           <dd class="text-text">{domain.dns_provider_name ?? "—"}</dd>
@@ -407,18 +414,22 @@
         <dt class="text-text-muted">{t("websites.host")}</dt>
         <dd class="text-text">{website.root ? "@ (root)" : "www"}</dd>
       </div>
-      <div class="flex justify-between">
-        <dt class="text-text-muted">{t("websites.technical_owner")}</dt>
-        <dd class="text-text">{website.technical_owner?.label || "—"}</dd>
-      </div>
-      <div class="flex justify-between">
-        <dt class="text-text-muted">{t("websites.hosting")}</dt>
-        <dd class="text-text">{website.hosting_name ?? "—"}</dd>
-      </div>
-      <div class="flex justify-between">
-        <dt class="text-text-muted">{t("websites.uptime")}</dt>
-        <dd class="text-text">{website.uptime_enabled ? t("common.yes") : t("common.no")}</dd>
-      </div>
+      <!-- Who looks after it, where it runs and whether we watch it are the agency's view of a
+           site — the websites list keeps these columns off a client's table for the same reason. -->
+      {#if !page.data.user?.isPortal}
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("websites.technical_owner")}</dt>
+          <dd class="text-text">{website.technical_owner?.label || "—"}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("websites.hosting")}</dt>
+          <dd class="text-text">{website.hosting_name ?? "—"}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("websites.uptime")}</dt>
+          <dd class="text-text">{website.uptime_enabled ? t("common.yes") : t("common.no")}</dd>
+        </div>
+      {/if}
     </dl>
     <form
       id="delete-website-form"

@@ -25,6 +25,19 @@ export function sourceLabel(source: string): string {
 }
 
 /**
+ * A source's name on a screen that carries the tenant's own names beside the rows (#446): the
+ * tenant's word where they typed one, the catalog's otherwise. The metrics payload resolves this
+ * per source on the API (`SourceMetrics.label`); the list screens — the client picker's tiles,
+ * the cross-client grid — carry the map instead and resolve here.
+ */
+export function namedSourceLabel(
+  source: string,
+  labels: Record<string, string> | null | undefined,
+): string {
+  return labels?.[source] || sourceLabel(source);
+}
+
+/**
  * What a client sees a source called when the tenant has not named it (#446) — the same rule
  * the API applies (`portal_source_label`): a keyed source is named for what it measures, a
  * Google source for the product the client already knows. Printed as the settings field's

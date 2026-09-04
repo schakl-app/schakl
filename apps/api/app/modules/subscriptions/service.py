@@ -42,7 +42,7 @@ from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
-from app.core.tenancy import RequestContext
+from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.subscriptions.models import (
@@ -251,9 +251,26 @@ class SubscriptionHours:
 
 
 class SubscriptionService:
+    class _PortalRepository(TenantScopedRepository):
+        """The repository an external (client) login gets — `invoicing`'s shape (#266).
+
+        Overrides ``horizon_condition`` rather than ``_scoped`` so the one predicate is what
+        every path takes: ``get_or_404`` (the detail, the price history), ``scoped_select``
+        (the list, the company panel) and ``scoped_count_select`` (the list's total).
+        """
+
+        def horizon_condition(self):  # noqa: ANN202 — mirrors the base signature
+            return Subscription.__portal_horizon_clause__(self.company_scope)
+
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-        self.repo = ctx.repo(Subscription)
+        self.repo = (
+            self._PortalRepository(
+                ctx.session, ctx.org.id, Subscription, company_scope=ctx.company_scope
+            )
+            if ctx.is_portal
+            else ctx.repo(Subscription)
+        )
         self.prices = ctx.repo(SubscriptionPrice)
         self.lines = ctx.repo(SubscriptionLine)
         self.links = ctx.repo(SubscriptionLink)

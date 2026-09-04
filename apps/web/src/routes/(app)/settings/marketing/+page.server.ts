@@ -4,7 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
-import { PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
+import { LABELLED_CONNECTIONS, PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -37,7 +37,7 @@ export const actions: Actions = {
     // Every source the form draws is posted (#446): an empty value clears that source back to
     // the default on the API, and a source this form does not draw is left as stored.
     const portal_source_labels = Object.fromEntries(
-      PORTAL_LABEL_SOURCES.map((key) => [
+      [...PORTAL_LABEL_SOURCES, ...LABELLED_CONNECTIONS].map((key) => [
         key,
         String(form.get(`portal_label_${key}`) ?? "").trim(),
       ]),

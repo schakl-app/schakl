@@ -53,22 +53,19 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.reporting.latest",
       category: "dashboard.category.marketing",
       size: "lg",
-      load: async (api) => {
+      load: async (api, { companyId }) => {
         // `count: true` (#407): the tile listed four earlier reports and had no way to say a
-        // fifth existed, because no total was ever computed.
+        // fifth existed, because no total was ever computed. On the selected company: the
+        // board is one company at a time. The list row carries everything the cover draws
+        // (period, publication, the PDF's id) — the detail read that fetched the narrative is
+        // gone with the narrative.
         const { data } = await api.GET("/api/v1/reporting/reports", {
-          params: { query: { limit: 4, count: true } },
+          params: { query: { limit: 4, count: true, company_id: companyId ?? undefined } },
         });
         const items = data?.items ?? [];
         const total = data?.total ?? items.length;
         if (items.length === 0) return { latest: null, previous: [], total };
-        // The newest one is fetched in full for its narrative; the rest are links. A list row
-        // deliberately carries no snapshot (docs/PERFORMANCE.md — a row carries what its screen
-        // draws), so the summary needs the detail read.
-        const { data: latest } = await api.GET("/api/v1/reporting/reports/{report_id}", {
-          params: { path: { report_id: items[0].id } },
-        });
-        return { latest: latest ?? null, previous: items.slice(1), total };
+        return { latest: items[0], previous: items.slice(1), total };
       },
       component: ReportingPortalWidget,
     },

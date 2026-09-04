@@ -6,6 +6,7 @@ import { registerWebModule } from "$lib/core/registry";
 import ProjectSubscriptionsPanel from "./ProjectSubscriptionsPanel.svelte";
 import SubscriptionsMrrWidget from "./SubscriptionsMrrWidget.svelte";
 import SubscriptionsPanel from "./SubscriptionsPanel.svelte";
+import SubscriptionsPortalWidget from "./SubscriptionsPortalWidget.svelte";
 
 registerWebModule({
   name: "subscriptions",
@@ -20,6 +21,28 @@ registerWebModule({
       size: "sm",
       load: (api) => api.GET("/api/v1/subscriptions/summary").then((r) => r.data ?? null),
       component: SubscriptionsMrrWidget,
+    },
+    {
+      // The client's own agreements on their homepage. `subscriptions.subscription.read:own`
+      // is what the seeded `client` role holds; the API's portal repository scopes the rows.
+      key: "subscriptions.portal",
+      module: "subscriptions",
+      audience: "portal",
+      position: 20,
+      requiresPermission: "subscriptions.subscription.read",
+      descriptionKey: "dashboard.widget_desc.subscriptions.portal",
+      category: "dashboard.category.finance",
+      size: "lg",
+      load: async (api, { companyId }) => {
+        const { data } = await api.GET("/api/v1/subscriptions", {
+          params: {
+            query: { company_id: companyId ?? undefined, limit: 20, sort: "next_invoice_date" },
+          },
+        });
+        const items = data?.items ?? [];
+        return { items, total: data?.total ?? items.length, companyId };
+      },
+      component: SubscriptionsPortalWidget,
     },
   ],
   nav: [

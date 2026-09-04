@@ -181,7 +181,9 @@
   const canScheduleAny = $derived(can(page.data.user, "tasks.schedule.write", "any"));
 
   // --- Planning: one home for "when" (#335) ----------------------------------------------- //
-  const recurrence = $derived((task.recurrence ?? null) as Recurrence | null);
+  // The API already withholds the rule (and the series) from an external login; a client's page
+  // draws the planned blocks and never the repeat machinery, whatever the payload carries.
+  const recurrence = $derived(isPortal ? null : ((task.recurrence ?? null) as Recurrence | null));
   // The series a schedule-mode rule lays out a year ahead: the root that holds the rule and
   // what is still to come, answered on the root and on every occurrence alike. An occurrence
   // carries no rule of its own, so the rule the reader sees is the series' where there is one.
@@ -192,7 +194,7 @@
     upcoming: { id: string; due_date: string | null; status: string }[];
     upcoming_total: number;
   }
-  const series = $derived((task.series ?? null) as Series | null);
+  const series = $derived(isPortal ? null : ((task.series ?? null) as Series | null));
   const isOccurrence = $derived(!!task.recurrence_source_id);
   const shownRecurrence = $derived(recurrence ?? series?.recurrence ?? null);
   /** The next task of the series *after* this one — what "volgende" means on a card. */

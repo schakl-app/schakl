@@ -32,6 +32,7 @@ from app.core.busy import BusyItem, busy_items, registered_busy_sources
 from app.core.events import emit
 from app.core.members import active_member_clause
 from app.core.permissions.deps import require_permission
+from app.core.scope import entity_visible
 from app.core.tenancy import RequestContext, require_context
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -113,13 +114,24 @@ class TaskScheduleService:
         if task_id is None and (date_from is None or date_to is None):
             raise AppError("required", "errors.required", status_code=422)
         can_any = self.ctx.can("tasks.schedule.read", scope="any")
+        # An external login (a client's contact person) holds ``:own`` and owns no block —
+        # every block is a colleague's — so for them *own* means "on a task I may read": the
+        # planned work on their own account, which is the one thing a client wants from a
+        # planning panel. The task's own portal horizon is the gate (visible to the client,
+        # one of their companies), asked through the record's repository; a task they may not
+        # open answers as if it had no blocks, exactly as the task itself 404s. Without a task
+        # the personal feed stays what it is for everyone: the caller's own blocks, i.e. none.
+        portal = self.ctx.is_portal and not can_any
+        if portal and task_id is not None:
+            if user_ids or not await entity_visible(self.ctx, "task", task_id):
+                return []
         targets: list[uuid.UUID] | None
         if user_ids:
             if not can_any and set(user_ids) - {self.ctx.user.id}:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
             targets = user_ids
         elif task_id is not None:
-            targets = None if can_any else [self.ctx.user.id]
+            targets = None if (can_any or portal) else [self.ctx.user.id]
         else:
             targets = [self.ctx.user.id]
 
@@ -180,8 +192,12 @@ class TaskScheduleService:
                     ends_at=block.ends_at,
                     start=local_start.date(),
                     end=max(local_start.date(), local_end.date()),
-                    note=block.note,
-                    time_entry_id=block.time_entry_id,
+                    # A client reads the window and who is in it, never the planner's
+                    # note, the hour budget or the time entry the block became — those are
+                    # the agency's working notes on its own diary (the tasks list nulls
+                    # ``allocated_minutes`` for a portal caller for the same reason).
+                    note=None if portal else block.note,
+                    time_entry_id=None if portal else block.time_entry_id,
                     created_by_user_id=block.created_by_user_id,
                     created_by_name=block.created_by_name,
                     user_name=full_name or email,
@@ -189,7 +205,7 @@ class TaskScheduleService:
                     project_id=project_id,
                     company_id=company_id,
                     status=status,
-                    allocated_minutes=allocated,
+                    allocated_minutes=None if portal else allocated,
                 )
             )
         return items

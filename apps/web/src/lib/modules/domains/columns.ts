@@ -40,6 +40,8 @@ export const DOMAIN_COLUMNS: ColumnMeta[] = [
     sortKey: "registrar",
     defaultVisible: true,
     width: 200,
+    // The register we renew at is our supplier, not the client's business.
+    audience: "staff",
   },
   { key: "dns", labelKey: "domains.dns", sortKey: "dns", width: 200 },
   { key: "dnssec", labelKey: "domains.dns.dnssec", sortKey: "dnssec", width: 110 },
@@ -73,7 +75,8 @@ export const DOMAIN_COLUMNS: ColumnMeta[] = [
   // Resolved server-side from a three-state flag and the registrar registers (#298), so there
   // is nothing to sort by — a quiet header, like the price beside it. Wider than a plain yes/no
   // because the "volgt register" badge sits beside the answer.
-  { key: "invoiceable", labelKey: "domains.invoiceable.column", width: 170 },
+  // Whether *we* bill the renewal is the agency's decision, not a fact about the domain.
+  { key: "invoiceable", labelKey: "domains.invoiceable.column", width: 170, audience: "staff" },
   {
     key: "created_at",
     labelKey: "table.column.created_at",

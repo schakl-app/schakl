@@ -476,13 +476,22 @@
 />
 
 {#snippet nameCell(sub: Subscription)}
-  <!-- `w-full`, because a button shrinks to fit even as a block box: without it the nowrap
-       from `truncate` would let it grow past the column and be cut mid-letter. -->
-  <button
-    type="button"
-    class="block w-full truncate text-left font-medium text-text hover:text-brand"
-    onclick={() => openEdit(sub)}>{sub.name}</button
-  >
+  {#if data.canWrite}
+    <!-- `w-full`, because a button shrinks to fit even as a block box: without it the nowrap
+         from `truncate` would let it grow past the column and be cut mid-letter. -->
+    <button
+      type="button"
+      class="block w-full truncate text-left font-medium text-text hover:text-brand"
+      onclick={() => openEdit(sub)}>{sub.name}</button
+    >
+  {:else}
+    <!-- A reader — a client on their own agreements — opens the record page; the edit modal
+         behind the button above is a form they may not post. -->
+    <a
+      href={`/subscriptions/${sub.id}`}
+      class="block w-full truncate text-left font-medium text-text hover:text-brand">{sub.name}</a
+    >
+  {/if}
 {/snippet}
 
 {#snippet companyCell(sub: Subscription)}

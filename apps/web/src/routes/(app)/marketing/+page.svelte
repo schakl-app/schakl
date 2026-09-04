@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/state";
   /**
    * Top-level Marketing page (epic #134): pick a client, then work with the same marketing
    * dashboard the client's own tab shows — one shared component, so reading and curating
@@ -66,7 +67,10 @@
 <div class="mb-4 flex items-start justify-between gap-4">
   <div>
     <h1 class="text-xl font-semibold text-text">{navLabel("marketing", t("nav.marketing"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("marketing.page.subtitle")}</p>
+    {#if !page.data.user?.isPortal}
+      <!-- "…per klant" is the agency's sentence; a client's screen is about one. -->
+      <p class="mt-1 text-sm text-text-muted">{t("marketing.page.subtitle")}</p>
+    {/if}
   </div>
   {#if data.canLink}
     <button
@@ -83,15 +87,19 @@
 {#if !data.companyId}
   <MarketingClientTiles
     rows={clients}
+    sourceLabels={data.sourceLabels}
     total={data.clientsTotal}
     hrefFor={clientHref}
     onconnect={data.canLink ? () => (connecting = true) : undefined}
   />
 {:else}
   <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-    <a href={urlFor("", data.range, "")} class="text-sm text-text-muted hover:text-text">
-      ← {t("marketing.clients.all")}
-    </a>
+    {#if !page.data.user?.isPortal || data.clientsTotal > 1}
+      <!-- A client with one company has no picker to go back to (the landing opens on it). -->
+      <a href={urlFor("", data.range, "")} class="text-sm text-text-muted hover:text-text">
+        ← {t("marketing.clients.all")}
+      </a>
+    {/if}
     <a href={`/companies/${data.companyId}`} class="text-sm text-text-muted hover:text-text">
       {selectedName || t("marketing.clients.open_company")} ↗
     </a>

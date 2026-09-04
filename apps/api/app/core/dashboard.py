@@ -95,6 +95,13 @@ async def get_prefs(ctx: RequestContext = Depends(require_context)) -> Dashboard
     own = await _row(ctx, ctx.user.id)
     if own is not None:
         return _read(own, "user")
+    # The org template is the *staff* board: Instellingen → Dashboard arranges the staff
+    # gallery, and the portal gallery shares no key with it. Handing it to a client login
+    # resolved to a layout in which every key was unknown — an empty homepage the moment an
+    # agency curated its own — so an external login inherits nothing and opens on its whole
+    # gallery, exactly as a staff member with no template does.
+    if ctx.is_portal:
+        return DashboardPrefs(widgets=None, columns=None, source="none")
     default = await _row(ctx, None)
     if default is not None:
         return _read(default, "default")

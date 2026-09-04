@@ -1567,6 +1567,37 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   from the hub, because a cutover ends and its queue is where a decision is actually made. On the
   web the composition runs the only direction §6 allows — an integration registers a
   `MarketingConnectorSpec` and the marketing picker mounts it, never the reverse.
+- **The client's homepage is one company at a time, and every tile has to know which** (the
+  portal dashboard review, `docs/PORTAL.md` §"The client's homepage"). A contact linked to two
+  clients had a company switcher that moved exactly one of three tiles: the marketing widget read
+  `?company=`, the task and report tiles read the whole horizon, and the board kept every tile's
+  *previous* promise across the switch — so the switcher visibly did nothing. `DashboardWidgetSpec.load`
+  takes a `DashboardWidgetContext` now (`companyId`, `null` on the staff board) and the board
+  replaces its promises when the company changes. Five rules generalise. **A default that belongs to
+  one audience must not be inherited by the other**: the org's dashboard template is the staff
+  gallery, and a portal login resolving it got a layout in which every key was unknown — an empty
+  homepage the moment an agency curated its own — so `GET /dashboard/prefs` hands an external login
+  no template. **"Asked of you" and "done for you" are one predicate** (`?assigned_to=contact|agency`
+  on `/tasks`): the client's two tiles read it, a task lands in exactly one, and the list they open
+  filters the same way. **An external login's `:own` is "on a record I may read"** where the row's
+  owner is always a colleague — `tasks.schedule.read:own` for a client resolves through the task's
+  portal horizon and returns the blocks with the planner's note, budget and time entry withheld;
+  `subscriptions.subscription.read` became scoped the way `invoicing.invoice.read` did (#266), with
+  `Subscription.__portal_horizon_clause__` hiding drafts, the notes and automation level nulled, and
+  the summary and preset library fenced at `:any`. **A client's contact person is a recipient only
+  when the emitter names them**: `_external_recipients` is honoured for `PORTAL_EVENTS` alone, never
+  through watchers, and an external login mails at once by default because the bell is not where
+  they live — a mentioned contact and the contact a commented task is assigned to are the two cases
+  (`TaskService._portal_users_for`, through the portal-subject seam). And **a column has an
+  audience** (`ColumnMeta.audience: "staff"`, `columnsForViewer`): a domain's registrar, the billing
+  decision, a website's hosting, owner and uptime stay off a client's table *and* its picker, with
+  the filters and detail rows that name them following — an audience is a layout question (#373),
+  not a permission, which is why it is `isPortal` and not a key. Two smaller ones: the tenant's
+  source names (#446) apply for **every** reader now, on the marketing page, the hub and the picker
+  tiles alike, with Tag Manager renameable beside the five sources, while only the vendor-free
+  *default* stays a portal substitution; and the mention picker offers active colleagues only —
+  `/members/lookup` returns a departed account flagged so a record keeps its author's name, and an
+  `@` on a new comment was the one member picker that never split them out.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

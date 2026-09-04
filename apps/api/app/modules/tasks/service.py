@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
@@ -413,9 +413,14 @@ class TaskService:
             # A task's time budget is the agency's estimate of its own work (#449) — like a
             # project's hour budget, not a fact the client is party to. Its burn already stays
             # off a client's rows (`_attach_hours` is gated on `time.entry.read`); this is the
-            # allocated half catching up.
+            # allocated half catching up. The repeat rule is the same kind of fact: how the
+            # agency organises its own recurring work, who it plans it on and when — a client
+            # reads the occurrence in front of them and the blocks planned for it, never the
+            # machinery that spawned it.
             for item in items:
                 item.allocated_minutes = None
+                item.recurrence = None
+                item.recurrence_next_run = None
         task_ids = [t.id for t in tasks]
         if not task_ids:
             return items
@@ -548,6 +553,7 @@ class TaskService:
         unlinked: bool = False,
         assignee_user_id: uuid.UUID | None = None,
         assignee_contact_id: uuid.UUID | None = None,
+        assigned_to: str | None = None,
         status: str | None = None,
         open_only: bool = False,
         label_id: uuid.UUID | None = None,
@@ -594,6 +600,14 @@ class TaskService:
             stmt = stmt.where(Task.id.in_(self.assignees.entity_ids_for_user(assignee_user_id)))
         if assignee_contact_id is not None:
             stmt = stmt.where(Task.assignee_contact_id == assignee_contact_id)
+        # Whose work it is, as a *kind* rather than a person: the client's homepage splits
+        # "what is asked of you" (assigned to one of the client's contact persons) from "what
+        # we are doing for you" (assigned to staff, or to nobody yet — still the agency's
+        # queue). A contact assignee is a column, so the split is one predicate.
+        if assigned_to == "contact":
+            stmt = stmt.where(Task.assignee_contact_id.is_not(None))
+        elif assigned_to == "agency":
+            stmt = stmt.where(Task.assignee_contact_id.is_(None))
         if status is not None:
             stmt = stmt.where(Task.status == status)
         if label_id is not None:
@@ -1000,12 +1014,18 @@ class TaskService:
         list_item = (await self._list_items([task]))[0]
         detail.labels = list_item.labels
         detail.assignees = list_item.assignees
-        # Same redaction as the list row (#449): the portal reads the task, never its estimate.
+        # Same redaction as the list row (#449): the portal reads the task, never its estimate —
+        # nor its repeat rule.
         detail.allocated_minutes = list_item.allocated_minutes
+        detail.recurrence = list_item.recurrence
+        detail.recurrence_next_run = list_item.recurrence_next_run
         detail.assignee_contact_name = list_item.assignee_contact_name
         # Only a task in a series pays for the two reads; an ordinary task adds nothing to the
-        # card's query budget (tests/test_perf_query_budgets.py).
-        if task.recurrence_source_id is not None or _is_schedule(task.recurrence):
+        # card's query budget (tests/test_perf_query_budgets.py). A client never reads the series:
+        # it is the repeat machinery again, one level up (the rule itself is withheld above).
+        if not self.ctx.is_portal and (
+            task.recurrence_source_id is not None or _is_schedule(task.recurrence)
+        ):
             detail.series = await self._series_of(task)
 
         checklists = (
@@ -2680,7 +2700,9 @@ class TaskService:
 
     async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Keep only the mentioned contact ids **this caller can see** (#165) — a reference
-        into the CRM, never a notification: contacts have no inbox here.
+        into the CRM. A contact has no inbox here; the *login* behind one does, and
+        ``_portal_users_for`` is what turns a mention of a client's contact person into a
+        notification to that person.
 
         Through the cross-module reference seam (``core/directory.py``), not a bare
         ``WHERE org_id`` read: a contact's client hangs off ``company_contacts``, so "in this
@@ -2691,6 +2713,20 @@ class TaskService:
             return []
         found = await visible_ids(self.ctx, "contact", ids)
         return [cid for cid in ids if cid in found]
+
+    async def _portal_users_for(self, contact_ids: Iterable[uuid.UUID]) -> list[uuid.UUID]:
+        """The portal logins behind these contacts, through the portal-subject seam (§6 — the
+        tasks module names no contacts column). A contact with no login resolves to nothing;
+        the list is at most the handful a comment names, so a read per id is bounded."""
+        provider = portal_subject_provider("contact")
+        if provider is None:
+            return []
+        users: list[uuid.UUID] = []
+        for contact_id in dict.fromkeys(contact_ids):
+            subject = await provider.load(self.ctx, contact_id)
+            if subject is not None and subject.user_id is not None:
+                users.append(subject.user_id)
+        return users
 
     async def _valid_task_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Keep only the referenced task ids that belong to this org (#197) — a deep link into
@@ -2791,7 +2827,21 @@ class TaskService:
         )
         heard = mentioned_set | set(replied)
         commented = [uid for uid in await self._comment_audience(task) if uid not in heard]
-        if commented:
+        # The client's side of the conversation: a contact person named in the comment hears
+        # "you were mentioned"; the contact a task is assigned to hears "your task was commented
+        # on" — through their portal login, which the notifications module admits only when the
+        # emitter names them (`_external_recipients`) and only for these sentences. A staff
+        # audience of nobody must not silence it: the whole point of assigning a task to the
+        # client is that the client is the audience.
+        external_mentioned = await self._portal_users_for(mentioned_contacts)
+        external_commented = [
+            uid
+            for uid in await self._portal_users_for(
+                [task.assignee_contact_id] if task.assignee_contact_id else []
+            )
+            if uid not in external_mentioned
+        ]
+        if commented or external_commented:
             # Leaving someone out of the recipient list is not enough to stop the general
             # sentence reaching them: the fan-out unions in the task's *watchers*, and commenting
             # auto-watches, so everyone in `heard` is very likely watching. `_exclude` is what
@@ -2801,7 +2851,12 @@ class TaskService:
                 "task.commented",
                 task,
                 commented,
-                {"excerpt": excerpt, **where, "_exclude": list(heard)},
+                {
+                    "excerpt": excerpt,
+                    **where,
+                    "_exclude": list(heard),
+                    "_external_recipients": external_commented,
+                },
             )
         if replied:
             # Same rule one rung up: a mentioned person in this thread is watching it, so the
@@ -2812,8 +2867,13 @@ class TaskService:
                 replied,
                 {"excerpt": excerpt, **where, "_exclude": list(mentioned_set)},
             )
-        if mentioned:
-            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt, **where})
+        if mentioned or external_mentioned:
+            await self._emit_task(
+                "task.mentioned",
+                task,
+                mentioned,
+                {"excerpt": excerpt, **where, "_external_recipients": external_mentioned},
+            )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )

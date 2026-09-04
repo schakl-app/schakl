@@ -48,6 +48,27 @@ export interface ColumnMeta {
    * here rather than handing its slack to a column that cannot use it.
    */
   flex?: boolean;
+  /**
+   * Who the column is for. `"staff"` keeps it off an **external (client) login's** table and
+   * out of their column picker: a domain's registrar or a website's hosting account is the
+   * supplier behind the agency's service, which is not the client's business — and a client
+   * who could tick the column back on in the picker has not had it hidden. An audience is a
+   * layout decision (#373), which is why it is `isPortal` here and not a permission: the
+   * client holds the read that returns the row, and no key names one column of it.
+   */
+  audience?: "staff";
+}
+
+/**
+ * The columns this viewer's table may hold at all — the declared list with the staff-only ones
+ * dropped for a client login. Applied **before** `resolveColumns` (so a saved preference cannot
+ * resurrect one) and before the picker draws its options (so it cannot be chosen).
+ */
+export function columnsForViewer<C extends ColumnMeta>(
+  declared: C[],
+  viewer: { isPortal?: boolean } | null | undefined,
+): C[] {
+  return viewer?.isPortal ? declared.filter((c) => c.audience !== "staff") : declared;
 }
 
 /** A column ready to render: metadata, a resolved label, and optionally its own cell renderer. */

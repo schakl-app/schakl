@@ -51,9 +51,21 @@
   // #325. So a tile keeps the promise it has; only a key we hold none for (a widget just added
   // from the gallery) adopts the incoming one.
   let tileData = $state<Record<string, Promise<unknown>>>({ ...data.widgetData });
+  // Except on the portal when the **company** changes: then every tile is about a different
+  // client and the promise it holds is the previous one's answer. Keeping it drew the first
+  // company's tasks under the second company's name — the switcher visibly did nothing.
+  // The initial value on purpose: the effect below compares against it and moves it along.
+  // svelte-ignore state_referenced_locally
+  let tileCompany = data.portal?.selected ?? null;
   $effect(() => {
     const incoming = data.widgetData;
+    const company = data.portal?.selected ?? null;
     untrack(() => {
+      if (company !== tileCompany) {
+        tileCompany = company;
+        tileData = { ...incoming };
+        return;
+      }
       for (const [key, promise] of Object.entries(incoming)) tileData[key] ??= promise;
     });
   });

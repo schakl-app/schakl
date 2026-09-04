@@ -39,7 +39,10 @@ TASK_PERMISSIONS: list[PermissionSpec] = [
         scopes=SCOPES,
         position=42,
         default_roles=(ROLE_ADMIN,),
-        default_own_roles=(ROLE_MEMBER,),
+        # `client` holds `:own` too: a client's contact person owns no block, so for an
+        # external login *own* resolves to "the blocks on a task I may read" — when the agency
+        # has planned the work on their account (`TaskScheduleService.list_in_range`).
+        default_own_roles=(ROLE_MEMBER, ROLE_CLIENT),
     ),
     PermissionSpec(
         "tasks.schedule.write",

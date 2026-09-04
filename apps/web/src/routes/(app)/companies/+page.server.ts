@@ -81,7 +81,7 @@ export const load: PageServerLoad = async (event) => {
   // already in flight by the time this resolves.
   const parent = await event.parent();
   const pref = readTablePref(parent.prefs, COMPANIES_TABLE_ID);
-  // A client's register has no agency-side columns (`PORTAL_HIDDEN_COMPANY_COLUMNS`), and
+  // A client's register has no agency-side columns (`audience: "staff"` on the column), and
   // resolving against the narrowed list is what keeps a saved layout naming `hours` from
   // asking the API for a roll-up it would blank anyway.
   const resolved = resolveColumns(companyColumns(isPortal), pref);

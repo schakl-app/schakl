@@ -21,7 +21,7 @@
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
-  import { customFieldColumns } from "$lib/core/table/columns";
+  import { columnsForViewer, customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -221,29 +221,35 @@
       archived: companyPicker.retired,
       archivedLabel: companyArchivedLabel(),
     },
-    {
-      kind: "select",
-      key: "hosting",
-      placeholder: t("websites.hosting"),
-      options: hostingItems,
-    },
-    {
-      // Self-describing labels: a Combobox shows the picked one with its placeholder gone, so
-      // a bare "Ja" would leave the bar reading "Ja" with nothing to say Ja to.
-      kind: "select",
-      key: "uptime",
-      placeholder: t("websites.uptime"),
-      options: [
-        { value: "true", label: t("websites.filter.uptime_on") },
-        { value: "false", label: t("websites.filter.uptime_off") },
-      ],
-    },
+    // Filters on columns the viewer's table does not have (core/table/columns.ts, audience):
+    // hosting and uptime are the agency's view of a site.
+    ...(page.data.user?.isPortal
+      ? []
+      : [
+          {
+            kind: "select" as const,
+            key: "hosting" as const,
+            placeholder: t("websites.hosting"),
+            options: hostingItems,
+          },
+          {
+            // Self-describing labels: a Combobox shows the picked one with its placeholder gone,
+            // so a bare "Ja" would leave the bar reading "Ja" with nothing to say Ja to.
+            kind: "select" as const,
+            key: "uptime" as const,
+            placeholder: t("websites.uptime"),
+            options: [
+              { value: "true", label: t("websites.filter.uptime_on") },
+              { value: "false", label: t("websites.filter.uptime_off") },
+            ],
+          },
+        ]),
   ]);
 
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
-    ...WEBSITE_COLUMNS,
+    ...columnsForViewer(WEBSITE_COLUMNS, page.data.user),
     ...customFieldColumns(data.definitions, data.locale),
   ]);
 

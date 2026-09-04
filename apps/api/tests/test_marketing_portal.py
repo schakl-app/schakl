@@ -102,8 +102,10 @@ async def test_portal_reads_a_source_without_its_vendor(client_for, monkeypatch)
         assert saved.json()["portal_source_labels"] == {"seranking": "Bureau Analytics"}
         client = (await c.get(url, headers=portal_headers)).json()["sources"]
         assert client[0]["label"] == "Bureau Analytics"
+        # The tenant's own word is everyone's word: the marketing page prints it as well, so an
+        # agency selling "Bureau Analytics" reads the same name on both sides of the portal.
         staff = (await c.get(url, headers=headers)).json()["sources"]
-        assert staff[0]["label"] is None
+        assert staff[0]["label"] == "Bureau Analytics"
 
         # The drill-down is the same redaction one level down (#447): no console link, and the
         # reason a table could not be read never names the supplier or tells the client to ask

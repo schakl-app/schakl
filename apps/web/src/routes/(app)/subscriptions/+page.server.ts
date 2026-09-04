@@ -69,6 +69,10 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const canManageTypes = can(event.locals.user, "subscriptions.type.manage");
   const canManageTemplates = can(event.locals.user, "subscriptions.template.manage");
+  // The MRR strip and the preset library are the module's own surfaces, at `:any` (#266's
+  // rule): a client holding `:own` reads their agreements and neither of those, so the two
+  // reads are skipped rather than made and refused.
+  const canReadAny = can(event.locals.user, "subscriptions.subscription.read", "any");
   // The saved layout decides how the *server* sorts (#24); the URL wins so a sorted list
   // stays shareable. Filters live in URL params and the API applies them (#153).
   const { prefs } = await event.parent();
@@ -99,12 +103,12 @@ export const load: PageServerLoad = async (event) => {
         },
       },
     }),
-    api.GET("/api/v1/subscriptions/summary"),
+    canReadAny ? api.GET("/api/v1/subscriptions/summary") : Promise.resolve({ data: undefined }),
     // Managers get inactive types too, so a row referencing one still shows its label.
     api.GET("/api/v1/subscriptions/types", {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
-    api.GET("/api/v1/subscriptions/templates"),
+    canReadAny ? api.GET("/api/v1/subscriptions/templates") : Promise.resolve({ data: undefined }),
     // Only to name the inherited level in the form's "follow the organisation" hint. A
     // caller who cannot read invoicing settings (or an instance without the module) simply
     // gets the seeded default in the hint, never an error.

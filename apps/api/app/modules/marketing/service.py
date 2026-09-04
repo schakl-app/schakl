@@ -1367,7 +1367,11 @@ class MarketingService:
         websites = await self._company_websites(company_id)
         website_names = {w.id: w.name for w in websites}
         can_manage = self.ctx.can("marketing.link.manage")
-        portal_labels = await self._portal_source_labels() if self.ctx.is_portal else {}
+        # Read for every caller now, not only the portal: the tenant's own name for a source is
+        # what the marketing page, the client hub and the client's homepage all print, so an
+        # agency selling "Breik. Analytics" reads the same word on every screen that shows it.
+        # Only the vendor-free *default* stays a portal-only substitution (`source_label`).
+        portal_labels = await self._portal_source_labels()
         sources: list[SourceMetrics] = []
         if links:
             metrics_by_link = await self._metrics_for_links(
@@ -1409,6 +1413,7 @@ class MarketingService:
             connections = [
                 MarketingConnection(
                     kind="gtm",
+                    label=portal_labels.get("gtm") or None,
                     id=row.id,
                     external_id=row.public_id,
                     name=row.name,
@@ -1492,11 +1497,18 @@ class MarketingService:
             out[link_id][day] = payload
         return out
 
+    async def _own_source_labels(self) -> dict[str, str]:
+        """The tenant's own names and nothing else — for the screens that print a source name
+        beside no metrics row (the client picker's tiles, the cross-client grid), which resolve
+        the catalog default in the browser."""
+        labels = await self._portal_source_labels()
+        return {k: v for k, v in labels.items() if k != _LOCALE_KEY}
+
     async def _portal_source_labels(self) -> dict[str, str]:
-        """The tenant's client-facing source names (#446), ``{source: label}`` — org-level, one
-        read, and only ever asked for on the portal path. Absent keys mean the code default
-        (:func:`portal_source_label`), translated in the org's own display language: a client
-        reads the tenant's product, in the tenant's language, and never a colleague's."""
+        """The tenant's source names (#446), ``{source: label}`` — org-level, one read. Absent
+        keys mean the code default (:func:`source_label`), translated in the org's own display
+        language where a default is substituted: a client reads the tenant's product, in the
+        tenant's language, and never a colleague's."""
         row = await self.ctx.session.execute(
             select(MarketingSettings.portal_source_labels, OrgSettings.default_locale)
             .select_from(OrgSettings)
@@ -1588,7 +1600,7 @@ class MarketingService:
             ),
             currency=currency,
             deep_link="" if portal else adapter.deep_link(link.external_id, link.config or {}),
-            label=portal_source_label(link.source, portal_labels or {}) if portal else None,
+            label=source_label(link.source, portal_labels or {}, portal=portal),
             primary_metric=resolved_primary(link.source, src_layout, metrics),
             kpis=kpis,
             series=SeriesData(dates=dates, metrics=series_metrics),
@@ -1891,9 +1903,14 @@ class MarketingService:
         if horizon is not None:
             stmt = stmt.where(horizon)
         pairs = (await self.ctx.session.execute(stmt)).all()
+        source_labels = await self._own_source_labels()
         if not pairs:
             return OverviewResponse(
-                range_days=range_days, compare=window, rows=[], total=0
+                range_days=range_days,
+                compare=window,
+                rows=[],
+                total=0,
+                source_labels=source_labels,
             )
 
         links = [pair[0] for pair in pairs]
@@ -1964,7 +1981,11 @@ class MarketingService:
             )
         rows = self._sort_overview(rows, sort)
         return OverviewResponse(
-            range_days=range_days, compare=window, rows=rows, total=len(rows)
+            range_days=range_days,
+            compare=window,
+            rows=rows,
+            total=len(rows),
+            source_labels=source_labels,
         )
 
     def _sort_overview(self, rows: list[OverviewRow], sort: str | None) -> list[OverviewRow]:
@@ -2142,12 +2163,28 @@ class MarketingService:
         ]
         # Alphabetical, case-blind: this is a list somebody scans for a name they already know.
         rows.sort(key=lambda row: row.company_name.casefold())
-        return MarketingClientList(rows=rows[:limit], total=len(rows))
+        return MarketingClientList(
+            rows=rows[:limit], total=len(rows), source_labels=await self._own_source_labels()
+        )
 
 
 #: Private key inside the portal-label map for the locale the defaults translate in — a
 #: source is never called this, so it cannot collide with a stored label.
 _LOCALE_KEY = "__locale"
+
+
+def source_label(source: str, labels: dict[str, str], *, portal: bool) -> str | None:
+    """The name a source carries on this caller's screen, or ``None`` for the catalog default.
+
+    The tenant's own label wins for **everyone** — it is the agency's word for its product and
+    the marketing page, the client hub and the portal must agree on it. Without one, only an
+    external reader gets a substitution (:func:`portal_source_label`'s vendor-free default);
+    staff read the catalog name, which the web resolves itself, so the payload says nothing.
+    """
+    own = labels.get(source)
+    if own:
+        return own
+    return portal_source_label(source, labels) if portal else None
 
 
 def portal_source_label(source: str, labels: dict[str, str]) -> str:

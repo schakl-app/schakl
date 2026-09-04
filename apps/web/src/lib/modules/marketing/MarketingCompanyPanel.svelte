@@ -175,7 +175,11 @@
          whether the ＋ is offered: the pickers behind it each teach their own missing credential,
          and two of the five have nothing to do with Google. -->
     <div class="rounded-lg border border-dashed border-border p-4 text-sm text-text-muted">
-      {#if !canManage}
+      {#if page.data.user?.isPortal}
+        <!-- Agency-facing sentences ("koppel een Google-account", "vraag een beheerder") stay
+             on the agency's side; a client reads that there is nothing to show yet. -->
+        <p>{t("portal.home.no_data")}</p>
+      {:else if !canManage}
         <p>{t(m.needs_connection ? "marketing.empty.ask_admin" : "marketing.empty.no_links")}</p>
       {:else}
         <p>
@@ -292,7 +296,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
               <a href={conn.href} class="text-sm font-semibold text-text hover:text-brand">
-                {t(`marketing.connection.${conn.kind}`)}
+                {conn.label ?? t(`marketing.connection.${conn.kind}`)}
               </a>
               <span class="truncate text-xs text-text-muted">
                 {conn.name} · {conn.external_id}
@@ -313,7 +317,9 @@
                 rel="noopener noreferrer"
                 class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
               >
-                {t("marketing.open_in", { source: t(`marketing.connection.${conn.kind}`) })}
+                {t("marketing.open_in", {
+                  source: conn.label ?? t(`marketing.connection.${conn.kind}`),
+                })}
                 <ExternalLink size={12} />
               </a>
             {/if}

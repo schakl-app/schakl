@@ -17,6 +17,8 @@ registerWebModule({
       key: "companies",
       href: "/companies",
       label: () => t("nav.companies"),
+      // To the client signed in, these are their own companies, not "clients".
+      portalLabel: () => t("nav.companies_portal"),
       module: "companies",
       icon: Building2,
       position: 10,

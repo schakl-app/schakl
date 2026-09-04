@@ -83,6 +83,15 @@ async def list_tasks(
     unlinked: bool = Query(False, description="Only tasks with no client and no project"),
     assignee_user_id: uuid.UUID | None = Query(None),
     assignee_contact_id: uuid.UUID | None = Query(None),
+    assigned_to: Literal["contact", "agency"] | None = Query(
+        None,
+        description=(
+            "Whose work it is: `contact` — assigned to one of the client's own people; "
+            "`agency` — everything else (assigned to staff, or to nobody yet). The client's "
+            "homepage draws the two as separate tiles, and a specific person is a different "
+            "question (`assignee_contact_id` / `assignee_user_id`)."
+        ),
+    ),
     status: str | None = Query(None, max_length=50, description="A configured status key"),
     open_only: bool = Query(
         False,
@@ -135,6 +144,7 @@ async def list_tasks(
         unlinked=unlinked,
         assignee_user_id=assignee_user_id,
         assignee_contact_id=assignee_contact_id,
+        assigned_to=assigned_to,
         status=status,
         open_only=open_only,
         label_id=label_id,

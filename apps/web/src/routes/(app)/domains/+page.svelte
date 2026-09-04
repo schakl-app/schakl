@@ -16,7 +16,7 @@
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
-  import { customFieldColumns } from "$lib/core/table/columns";
+  import { columnsForViewer, customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -211,33 +211,44 @@
         label: t(`domains.status.${status}`),
       })),
     },
-    {
-      kind: "select",
-      key: "registrar",
-      placeholder: t("domains.registrar"),
-      options: providerOptions("registrar"),
-    },
+    // A filter on a column the viewer's table does not have (core/table/columns.ts, audience).
+    ...(page.data.user?.isPortal
+      ? []
+      : [
+          {
+            kind: "select" as const,
+            key: "registrar" as const,
+            placeholder: t("domains.registrar"),
+            options: providerOptions("registrar"),
+          },
+        ]),
     {
       kind: "select",
       key: "dns",
       placeholder: t("domains.dns"),
       options: providerOptions("dns"),
     },
-    {
-      kind: "select",
-      key: "invoiceable",
-      placeholder: t("domains.invoiceable.legend"),
-      options: [
-        { value: "true", label: t("domains.filter.invoiceable_yes") },
-        { value: "false", label: t("domains.filter.invoiceable_no") },
-      ],
-    },
+    // Whether *we* bill the renewal is the agency's decision — the column is staff-only, and
+    // so is a filter on it.
+    ...(page.data.user?.isPortal
+      ? []
+      : [
+          {
+            kind: "select" as const,
+            key: "invoiceable" as const,
+            placeholder: t("domains.invoiceable.legend"),
+            options: [
+              { value: "true", label: t("domains.filter.invoiceable_yes") },
+              { value: "false", label: t("domains.filter.invoiceable_no") },
+            ],
+          },
+        ]),
   ]);
 
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
-    ...DOMAIN_COLUMNS,
+    ...columnsForViewer(DOMAIN_COLUMNS, page.data.user),
     ...customFieldColumns(data.definitions, data.locale),
   ]);
 
