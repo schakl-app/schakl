@@ -691,6 +691,7 @@
   projectId={projectId || null}
   members={(page.data.members as
     { user_id: string; full_name: string | null; email: string }[] | undefined) ?? []}
+  assignees={page.data.user?.id ? [{ user_id: page.data.user.id, is_primary: true }] : []}
   action="?/createInteractionTask"
   error={(page.form?.qcError as string | undefined) ?? null}
   pickerSlot="move_task"

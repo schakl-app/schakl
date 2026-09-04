@@ -135,12 +135,20 @@ async def test_patching_assignees_replaces_the_roster(client_for) -> None:
         assert _ids(patched.json()["assignees"]) == {other}
         assert patched.json()["assignee_user_id"] == other
 
-        # An explicit empty roster is a sentence of its own: assign nobody.
+        # An explicit empty roster used to be a sentence of its own ("assign nobody"). It is the
+        # one sentence a task no longer accepts — somebody is always on it — so it is refused
+        # with the field named, and the roster it would have emptied stands
+        # (``test_task_assignee_required``).
         cleared = await c.patch(
             f"/api/v1/tasks/{task}", json={"assignees": []}, headers=headers
         )
-        assert cleared.json()["assignees"] == []
-        assert cleared.json()["assignee_user_id"] is None
+        assert cleared.status_code == 422, cleared.text
+        assert (
+            cleared.json()["error"]["fields"]["assignee_user_id"]
+            == "errors.tasks_assignee_required"
+        )
+        still = (await c.get(f"/api/v1/tasks/{task}", headers=headers)).json()
+        assert _ids(still["assignees"]) == {other}
 
 
 async def test_a_bare_assignee_column_hands_the_task_over(client_for) -> None:

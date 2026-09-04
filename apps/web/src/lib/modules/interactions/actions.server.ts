@@ -10,6 +10,7 @@ import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
+import { taskCreateBody } from "$lib/modules/tasks/create";
 
 const LINK_FIELDS = ["company_id", "project_id", "task_id", "contact_id"] as const;
 
@@ -589,30 +590,21 @@ export const interactionActions = {
    */
   createInteractionTask: async (event: RequestEvent) => {
     const form = await event.request.formData();
-    const title = String(form.get("title") ?? "").trim();
-    if (!title) return fail(400, { qcError: "errors.required" });
-    const company_id = String(form.get("company_id") ?? "").trim();
-    const project_id = String(form.get("project_id") ?? "").trim();
-    // The whole roster, not one id (#375): the dialog draws `AssigneePicker`, which serialises
-    // every chip into one hidden field. `undefined` is "the dialog did not render the picker"
-    // — an org with no roster to offer — and is not the same as `[]` ("nobody"), so it is never
-    // synthesised here.
-    const assignees = parseAssignees(form.get("assignees"));
-    // Required (#392) — the dialog's field says so, and this is the backstop.
-    const due_date = String(form.get("due_date") ?? "").trim();
-    if (!due_date) return fail(400, { qcError: "errors.required" });
-    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
-      body: {
-        title,
-        company_id: company_id || undefined,
-        project_id: project_id || undefined,
-        assignees,
-        due_date,
-        priority: "normal",
-        requires_interaction: false,
-        visible_to_client: false,
-      },
-    });
+    // The one body builder every "＋ nieuwe taak" posts through (#391): title, deadline (#392)
+    // and somebody on it are all required there, so this action can name the field before the
+    // round trip and cannot drift from the project's to-do list on what a task needs. It also
+    // carries the client contact the picker may have chosen instead of a roster (#453), which
+    // the hand-written body here used to drop. The caller is the picker-less fallback and — on
+    // this surface — also what the dialog opens with: a task made while reading an e-mail is
+    // routinely the reader's own follow-up, so the roster starts as *you*, visible and
+    // removable, and the refusal below is met only by somebody who took that chip off and
+    // put nobody in its place.
+    if (!String(form.get("title") ?? "").trim() || !String(form.get("due_date") ?? "").trim()) {
+      return fail(400, { qcError: "errors.required" });
+    }
+    const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
+    if (!body) return fail(400, { qcError: "errors.tasks_assignee_required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     return {
       inlineCreated: {

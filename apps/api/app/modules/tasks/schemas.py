@@ -247,8 +247,13 @@ class TaskCreate(TaskBase):
     due_date: date
     #: The employees on this task, one starred as primary (#375). ``None`` means *the caller
     #: didn't say* — and ``assignee_user_id`` alone decides, which is the pre-roster shape every
-    #: existing client (and the MCP surface generated from this spec) still posts. ``[]`` is a
-    #: different sentence: assign nobody. Never send a guess.
+    #: existing client (and the MCP surface generated from this spec) still posts. Never send a
+    #: guess. **A task always has someone on it**: a create that names no employee and no
+    #: client contact is handed to the project's responsible, else the client's, else the
+    #: *caller* (``TaskService.create``) — so ``[]`` is not "assign nobody" but "I named nobody,
+    #: resolve it", and the only create refused on this account is a portal login's, which
+    #: cannot hold a task. Every screen asks for the roster explicitly and the update path
+    #: refuses to empty it; the default here is for the callers with nobody in front of them.
     assignees: list[AssigneeWrite] | None = None
     recurrence: Recurrence | None = None
     #: Create-then-edit (#230): this row exists so the user can be landed on its detail page in
@@ -313,7 +318,10 @@ class TaskUpdate(BaseModel):
     #: is a **hand-off** — it replaces the roster with that one person, which is what every
     #: pre-roster caller means by it and the one place a task differs from a client, where the
     #: same field merely moves the star. Adding somebody *beside* the assignee needs this field.
-    #: Absent means neither, and nothing about the roster changes.
+    #: Absent means neither, and nothing about the roster changes. A roster may be handed over
+    #: and may **not** be emptied: ``[]`` with no ``assignee_contact_id`` (or a bare
+    #: ``assignee_user_id: null``) is refused with the field named, the way an explicit ``null``
+    #: deadline is (#392) — a task always has someone on it.
     assignees: list[AssigneeWrite] | None = None
     title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None

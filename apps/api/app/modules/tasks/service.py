@@ -1199,6 +1199,29 @@ class TaskService:
             inherited = await self._default_assignee(
                 values.get("project_id"), values.get("company_id")
             )
+            # …and the chain ends at the **creator**, never at nobody. A task always has
+            # someone on it: an unassigned task is on no one's "mijn taken", in no one's
+            # nudges and on no one's board, so it is the one shape the urgency vocabulary
+            # cannot reach (#392's argument, one column over). Every screen asks for the
+            # roster explicitly (``TaskQuickCreate``, the dictation sheet, the approve
+            # dialogs), so this is the answer for the callers that have nobody in front of
+            # them — an MCP agent, the assistant's ``create_task``, an import row with an
+            # empty assignee cell — and it is the answer ``Nieuwe taak`` has always given:
+            # whoever makes a task and names no one is holding it. A default rather than a
+            # 422 because the alternative — refusing every agent that did not name a
+            # colleague — would refuse the commonest sentence ("maak een taak: …") for the
+            # person who is obviously meant. A client login cannot hold a task (only an
+            # employee is an assignee, #273), so a portal caller that names nobody is refused
+            # with the field named.
+            if inherited is None:
+                inherited = self._creator_as_assignee()
+            if inherited is None:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"assignee_user_id": "errors.tasks_assignee_required"},
+                )
             values["assignee_user_id"] = inherited
             links = self.assignees.normalize(None, fallback_primary=inherited)
         # Status is a tenant-configured key (issue #62): unset falls to the org's default status,
@@ -1283,6 +1306,19 @@ class TaskService:
             await self.add_link(task_id, LinkCreate(**link))
         if label_ids:
             await self.set_task_labels(task_id, list(label_ids))
+
+    def _creator_as_assignee(self) -> uuid.UUID | None:
+        """The caller, when they are somebody a task can be handed to.
+
+        An employee, that is: a portal login is a client (#274) and a client is assigned
+        through ``assignee_contact_id``, never through the roster — so for a portal caller
+        this answers ``None`` and the create refuses rather than putting a client on the
+        employee roster. A system context (a worker) never reaches ``create``: the unattended
+        creators write their rows through ``tasks/system.py`` and state their own defaults.
+        """
+        if self.ctx.is_portal:
+            return None
+        return self.ctx.user.id
 
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
@@ -1547,20 +1583,41 @@ class TaskService:
         )
         if replace_roster:
             values["assignee_user_id"] = self.assignees.primary_of(new_links)
-        if replace_roster or {"assignee_user_id", "assignee_contact_id", "company_id"} & (
-            values.keys()
-        ):
-            # ``roster_size`` is the resulting one: a wholesale replace knows it outright, and
+        # A bare ``assignee_user_id`` is a hand-off (below): it *is* the resulting roster, so it
+        # counts as touching it here and in the write.
+        roster_touched = replace_roster or "assignee_user_id" in values
+        if roster_touched or {"assignee_contact_id", "company_id"} & values.keys():
+            # The resulting roster: a wholesale replace or a hand-off knows it outright, and
             # any other update inherits whatever is stored — so clearing the star on a two-person
             # task does not read as "no employees" and let a client contact in beside them.
-            roster_size = (
-                len(new_links) if replace_roster else len(await self.assignees.for_entity(task.id))
+            resulting_roster = (
+                new_links if roster_touched else await self.assignees.for_entity(task.id)
             )
+            resulting_contact = values.get("assignee_contact_id", task.assignee_contact_id)
+            # Someone is always on a task: the roster may be handed over and may not be
+            # emptied. #392's rule for the deadline, one column over — absent still means leave
+            # alone (a status-only PATCH on a row written before the rule keeps working), and
+            # the one thing that stops being allowed is a request whose *result* names nobody:
+            # ``assignees: []`` with no contact, ``assignee_user_id: null`` with no contact, or
+            # clearing the contact off a task whose roster is already empty. Refused before
+            # anything is written, with the field named so the form puts the sentence under
+            # the picker rather than over the page.
+            if (
+                (roster_touched or "assignee_contact_id" in values)
+                and not resulting_roster
+                and resulting_contact is None
+            ):
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"assignee_user_id": "errors.tasks_assignee_required"},
+                )
             await self._validate_assignee(
                 user_id=values.get("assignee_user_id", task.assignee_user_id),
-                contact_id=values.get("assignee_contact_id", task.assignee_contact_id),
+                contact_id=resulting_contact,
                 company_id=values.get("company_id", task.company_id),
-                roster_size=roster_size,
+                roster_size=len(resulting_roster),
             )
             self._contact_assignee_implies_visible(values)
         reason = values.pop("due_change_reason", None)
@@ -1678,7 +1735,6 @@ class TaskService:
         # Read the old roster before the write; the diff drives who is told (issue #16, #375).
         # A *set* difference, not a "did the star move": adding a second assignee changes nobody's
         # primary and is precisely the event the new person needs to hear about.
-        roster_touched = replace_roster or "assignee_user_id" in values
         before = (
             {link.user_id for link in await self.assignees.for_entity(task.id)}
             if roster_touched

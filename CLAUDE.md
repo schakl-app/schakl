@@ -936,6 +936,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
+  `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
+  one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,
+  the dictation sheet holds Aanmaken until a colleague is picked, and a dialog opened from a
+  contact moment starts with the viewer as its chip. At the API the existing inheritance chain
+  (project's responsible → client's) now ends at the **caller**, because the callers with nobody
+  in front of them (an MCP agent, the assistant, an import cell) mean the person obviously meant
+  and a 422 would refuse the commonest sentence; an update has no such default, so emptying the
+  roster is refused with the field named and absent still means leave alone. The one create that
+  is refused is a portal login's — a client is never on the employee roster.
 - **Being allowed to book somebody is the reason to see when they are taken, and only that**
   (`app/core/busy.py`, `docs/UX.md`). The scheduling dialog draws the day beside the form — one
   column per person, the block about to be booked as a ghost over what is already there — and the

@@ -3321,6 +3321,7 @@
   "errors.tasks_closing_interaction_required": "Deze status vereist een afsluitend contactmoment. Registreer er een en rond de taak daarmee af.",
   "errors.tasks_closing_interaction_not_linked": "Het gekozen contactmoment is niet aan deze taak gekoppeld (of wacht nog op beoordeling).",
   "errors.tasks_assignee_conflict": "Een taak wordt toegewezen aan een medewerker of aan een contactpersoon van de klant, niet aan beide.",
+  "errors.tasks_assignee_required": "Wijs de taak aan minstens één persoon toe.",
   "errors.tasks_assignee_contact_company": "Die contactpersoon hoort niet bij de klant van deze taak. Kies een contactpersoon van het klantbedrijf.",
   "errors.tasks_log_time_not_finishing": "Uren registreren kan alleen samen met het afronden van de taak. Voeg ze anders toe op je urenstaat.",
   "permissions.interactions.interaction.read": "Contactmomenten bekijken",

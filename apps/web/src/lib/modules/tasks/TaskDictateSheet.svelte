@@ -261,11 +261,7 @@
     try {
       // The shared helper is what reads a 413 as "too long" whichever layer answered it — the
       // API's own cap, or the web server's body limit in front of it (docs/VOICE.md).
-      const outcome = await transcribeClip(
-        "/ai/tasks/transcribe",
-        audio,
-        page.data.locale ?? "nl",
-      );
+      const outcome = await transcribeClip("/ai/tasks/transcribe", audio, page.data.locale ?? "nl");
       if (outcome.budget) {
         budgetReached = true;
         return;
@@ -591,15 +587,22 @@
                 {t("tasks.field.assignee")}
                 {#if marked("assignee_user_id")}<Sparkles size={12} class="text-brand" />{/if}
               </span>
+              <!-- Required: somebody is always on a task, so the picker offers no "Geen" and
+                   Aanmaken stays disabled until a colleague is named — the model fills this in
+                   when the speaker said a name, and says nothing when they did not. -->
               <Combobox
                 items={memberPicker.live}
                 name="dictate-assignee"
                 value={draft.assignee_user_id ?? ""}
-                placeholder={t("common.none")}
+                placeholder={t("tasks.assignees.add")}
+                allowEmpty={false}
                 onselect={(v) => draft && (draft.assignee_user_id = v || null)}
                 archived={memberPicker.retired}
                 archivedLabel={memberArchivedLabel()}
               />
+              {#if !draft.assignee_user_id}
+                <p class="mt-1 text-xs text-text-muted">{t("errors.tasks_assignee_required")}</p>
+              {/if}
             </div>
           {/if}
 
@@ -726,7 +729,14 @@
             >
               {t("common.cancel")}
             </button>
-            <Button loading={busy.active} disabled={!draft.title?.trim() || !draft.due_date}>
+            <!-- A picker-less org (no colleague to offer) is not held up by a field it cannot
+                 see: the API then hands the task to the speaker. -->
+            <Button
+              loading={busy.active}
+              disabled={!draft.title?.trim() ||
+                !draft.due_date ||
+                (members.length > 0 && !draft.assignee_user_id)}
+            >
               {t("tasks.dictate.create")}
             </Button>
           </div>

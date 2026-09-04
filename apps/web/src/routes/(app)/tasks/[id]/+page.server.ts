@@ -259,6 +259,9 @@ export const actions: Actions = {
           e.fields?.status ??
           e.fields?.closing_interaction_id ??
           e.fields?.assignee_contact_id ??
+          // …and the roster emptied to nobody, which the API refuses (somebody is always on
+          // a task) and the picker cannot say for itself, its field being hidden.
+          e.fields?.assignee_user_id ??
           // …and the missing reason for a moved deadline, which the in-place editor prints
           // beside the date it refused.
           e.fields?.due_change_reason ??

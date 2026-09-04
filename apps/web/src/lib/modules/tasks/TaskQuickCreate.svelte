@@ -116,8 +116,20 @@
     <form
       method="POST"
       {action}
-      use:enhance={busy.wrap("", () => {
+      use:enhance={busy.wrap("", ({ formData, cancel }) => {
         refusal = null;
+        // Somebody is always on a task. The roster travels as one hidden field, and a hidden
+        // control is barred from constraint validation by definition (docs/UX.md, #392's
+        // `required` lesson) — so the check is made here, before the round trip, and the
+        // sentence lands under the picker. A client contact is somebody too (#453); a form
+        // that drew no picker at all posts no `assignees` and the action assigns the caller.
+        const roster = String(formData.get("assignees") ?? "");
+        const contact = String(formData.get("assignee_contact_id") ?? "").trim();
+        if (roster && !contact && roster.replace(/\s/g, "") === "[]") {
+          refusal = "errors.tasks_assignee_required";
+          cancel();
+          return;
+        }
         return ({ result, update }) => {
           // A redirect closes it too: the list's create lands on the new task in edit mode
           // (#391), and a dialog left open would flash over the page being navigated to.

@@ -2871,6 +2871,32 @@ contrast bug in dark mode rather than only an inconsistency.
   edit form says in one amber line what it will ask for, `?undated=1` gathers them, and the ✎ bulk
   edit dates a whole selection at once. A refusal on the status of somebody's own backlog would
   have been the first thing an agency met after upgrading.
+- **Somebody is always on a task, and the two write paths answer that differently on purpose**
+  (tasks' roster, the sibling of #392 above). *"Bij het aanmaken van een taak — vanaf het bord,
+  via audio of vanuit een contactmoment — moet er altijd minstens één persoon aan toegewezen
+  zijn."* An unassigned task is on no one's board, in no one's *mijn taken* and in no one's
+  nudges: #392's invisibility one column over, so the answer is a required field again. Four
+  rules. **Every door asks, through the one body builder**: `taskCreateBody` now refuses a
+  rendered roster that says nobody (a client contact is somebody, #453), `TaskQuickCreate`
+  cancels that submit before the round trip and prints the sentence under the picker — because
+  the roster travels as one *hidden* field, and a hidden control is barred from constraint
+  validation, so `required` had nowhere to sit — and the dictation sheet's assignee picker lost
+  its "Geen" and holds Aanmaken disabled until a colleague is named. **A dialog opened from a
+  contact moment starts as *you***: the four interaction surfaces (the form, the `.eml` upload,
+  the move dialog, the bulk approve) hand `TaskQuickCreate` the viewer as its opening chip, since
+  a task made while reading an e-mail is routinely the reader's own follow-up. Visible and
+  removable, never a decision taken off screen (#391's rule for the same chip) — and removing it
+  without putting somebody else in its place is what the refusal is for. **The API resolves a
+  create and refuses an update.** `TaskService.create` already handed a task that named nobody to
+  the project's responsible, else the client's; the chain ends at the *caller* now, because the
+  callers with nobody in front of them — an MCP agent, the assistant's `create_task`, an import
+  row with an empty cell — mean the person who is obviously meant, and a 422 there would refuse
+  the commonest sentence spoken to the assistant. An update has no such default: "hand this to
+  nobody" is refused with `assignee_user_id` named (`errors.tasks_assignee_required`), absent
+  still means leave alone so a status move on a pre-rule row keeps working, and the ✎ bulk edit
+  sets the roster and cannot clear it. **The one create that is refused is a client's**: a portal
+  login is not somebody a task can be handed to (#273's roster is employees only), so with no
+  roster and no contact it gets the field named rather than a client on the employee roster.
 - **A field a draft carries is not a field anybody filled in** (#284, `modules/time/billable.ts`).
   The hour form seeds `billable` from the project — false where a subscription covers the work —
   and stops seeding it the moment the person moves the toggle themselves. That second half read
