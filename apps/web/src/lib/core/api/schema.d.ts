@@ -11964,6 +11964,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/ai/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Checklist With Ai
+         * @description Write this task's steps from its title and notes, as one new checklist.
+         */
+        post: operations["generate_checklist_with_ai_api_v1_tasks__task_id__ai_checklist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/ai/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Task With Ai
+         * @description Change this task in words: one typed instruction, applied as the caller.
+         *
+         *     "Add a step for the DNS change, move the deadline to Friday, note that the client wants it
+         *     in blue." The route is the task write it is (§15); the service asks ``ai.use`` and the
+         *     ``:own`` rule before a token is spent (``tasks/assist.py``).
+         */
+        post: operations["revise_task_with_ai_api_v1_tasks__task_id__ai_revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists": {
         parameters: {
             query?: never;
@@ -29525,6 +29569,19 @@ export interface components {
             /** Ai Status */
             ai_status?: string | null;
         };
+        /**
+         * TaskChecklistGenerateRequest
+         * @description Write this task's steps from its title and notes; ``instruction`` is an optional hint.
+         */
+        TaskChecklistGenerateRequest: {
+            /** Instruction */
+            instruction?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -29981,6 +30038,43 @@ export interface components {
              * @default false
              */
             visible_to_client: boolean;
+        };
+        /**
+         * TaskReviseRequest
+         * @description One typed instruction against one existing task — "voeg een stap toe voor de DNS".
+         *
+         *     The words are the caller's own, so nothing here narrows what they may say; what the answer
+         *     may *do* is bounded on the way in (``assist.revision_from_call``).
+         */
+        TaskReviseRequest: {
+            /** Instruction */
+            instruction: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * TaskReviseResult
+         * @description What the revision did, and the card as it now stands.
+         *
+         *     The whole detail rides along because every caller redraws the task after this: the review
+         *     slide-over adopts it, the card reloads. ``changed`` names the kinds of change that landed
+         *     so a screen can say "steps added, deadline moved" in its own words; ``summary`` is the
+         *     model's one sentence to the colleague.
+         */
+        TaskReviseResult: {
+            /** Changed */
+            changed?: string[];
+            /** Summary */
+            summary?: string | null;
+            task: components["schemas"]["TaskDetail"];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * TaskTranscribeRequest
@@ -57077,6 +57171,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskAIStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_checklist_with_ai_api_v1_tasks__task_id__ai_checklist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskChecklistGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_task_with_ai_api_v1_tasks__task_id__ai_revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskReviseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReviseResult"];
                 };
             };
             /** @description Validation Error */

@@ -1141,6 +1141,24 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   writing `open` itself, so a handler on our own Annuleren covered exactly one of them and a
   dismissed sheet kept recording behind a closed panel — and **a field a model filled is marked as
   such**, or "schakl picked this client" and "I picked this client" are the same-looking cell.
+- **A task is changed in words as the person who typed them, and the answer is a diff**
+  (`tasks/assist.py`, `docs/AI.md`). #327 narrowed what a model may write to six fields because an
+  email is an outsider's and a worker applies it unwatched; #382 widened it to the whole form
+  because a dictation is a colleague's and a person confirms it. The box under a task's notes —
+  "voeg een stap toe voor de DNS, deadline vrijdag" — is the third posture and the one that makes
+  the other two legible: the words are a colleague's, the task already exists, and every write
+  lands through `TaskService` **under their name**, behind every rule an ordinary edit meets (a
+  later deadline carries the instruction as its reason). Three rules. **A field left null is a
+  field left alone**, and the description is the one field returned whole rather than as a diff,
+  because a model cannot splice a paragraph into markdown it cannot see the result of. **An id is
+  grounded in the document the model was shown and a link in the instruction itself**, and which
+  list a step sits in is our lookup, never the model's claim — a step "in the other task's list"
+  lands in this task's. And **an empty answer creates nothing** (`errors.ai_empty_answer`), so
+  "stappen schrijven met schakl" never leaves a titled list with no steps on the card. Its sibling
+  is the email enrichment's own fault, found in real use: an *outbound* mail produced a task for
+  the **client** to do, because nothing said whose task it was — the prompt now names the agency
+  and states the point of view, and the document says in words who wrote the message
+  (`written_by`), since `direction: "outbound"` is a token and the sentence is what gets read.
 - **The assistant reaches what the MCP surface reaches, through a catalog, and writes only a
   stated list** (`app/core/ai/apitools.py`, `docs/AI.md`). #127's assistant answered from six
   curated lookups and said "you are read-only", while §12 already handed an external agent every

@@ -960,6 +960,17 @@ class TaskService:
         task = await self.repo.get_or_404(task_id)
         return TaskAIStatusRead(ai_status=task.ai_status)
 
+    async def record_ai_activity(
+        self, task_id: uuid.UUID, action: str, payload: dict[str, Any]
+    ) -> None:
+        """One trail line for an AI change the caller asked for (``tasks/assist.py``).
+
+        Under the caller's name, not the system's: unlike the worker-side enrichment (#327,
+        ``system.record_ai_activity_system``) a person typed the instruction and pressed the
+        button, so the trail says who — the action carries that a model did the writing.
+        """
+        await self._record(task_id, action, payload)
+
     async def detail(self, task_id: uuid.UUID) -> TaskDetail:
         task = await self.repo.get_or_404(task_id)
         detail = TaskDetail.model_validate(task)

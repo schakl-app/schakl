@@ -2125,6 +2125,23 @@ contrast bug in dark mode rather than only an inconsistency.
   dialog) hands in its own `reveal` and answers whether everything is on screen. A control that
   says "toon wat is aangevuld" and visibly does nothing is the one outcome worse than not
   offering it.
+  **A review is where the plan gets fixed, so the plan is editable there, and every way out
+  saves.** The first slide-over drew the checklist read-only ("restructuring is what the card is
+  for"), had no strip for a screenshot, and threw away a corrected title the moment the reader
+  followed the link to the full card. Four things changed, and the last is the rule. The
+  checklist is edited in place (`TaskChecklistEditor`: tick, add, click a step to rename it,
+  remove, a new list) over the task's own endpoints, because the four pages the dialog is drawn
+  on own no action that knows the task. Screenshots and files land on the card's own strip
+  (`FileAttachments` in `direct` mode, Ctrl+V anywhere while the dialog is open — listening in
+  the capture phase so a host page's own strip does not take the paste first). The box under
+  the notes changes the task in words (`TaskAIRevise`, docs/AI.md), the same box the card has.
+  And **Sluiten, Escape, the backdrop and the link to the card all save the changed fields
+  first** (`persist`, through the same host action Opslaan uses), because "I typed it into the
+  review and it was gone on the card" is the one outcome a review desk must not have; an exit
+  that cannot save — an empty title, a later deadline with no reason — keeps the dialog open and
+  says why. Its sibling on the card: a step's title, and a list's, is renamed by clicking the
+  words (`InlineText`'s rule one row down — Enter saves, blur saves what changed, Escape puts
+  the words back), instead of edit mode, ⋯ → Bewerken and a form.
 - **Two names for one record, drawn as two equal fields.** A client has a label ("Bakkerij
   Jansen") and, sometimes, a legal name ("J. Jansen Holding B.V.") that invoices must be
   addressed to (`companies.legal_name`, `docs/INVOICING.md`). Side by side under "Naam" and

@@ -45,11 +45,14 @@ from app.modules.tasks.schemas import (
     StatusRead,
     StatusUpdate,
     TaskAIStatusRead,
+    TaskChecklistGenerateRequest,
     TaskCreate,
     TaskDetail,
     TaskLabelsSet,
     TaskListItem,
     TaskRead,
+    TaskReviseRequest,
+    TaskReviseResult,
     TaskUpdate,
     TemplateApply,
     TemplateCreate,
@@ -502,6 +505,44 @@ async def get_task_ai_status(
     (docs/PERFORMANCE.md: a row carries only what its screen draws).
     """
     return await TaskService(ctx).ai_status(task_id)
+
+
+@router.post(
+    "/{task_id}/ai/revise",
+    response_model=TaskReviseResult,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def revise_task_with_ai(
+    task_id: uuid.UUID,
+    payload: TaskReviseRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskReviseResult:
+    """Change this task in words: one typed instruction, applied as the caller.
+
+    "Add a step for the DNS change, move the deadline to Friday, note that the client wants it
+    in blue." The route is the task write it is (§15); the service asks ``ai.use`` and the
+    ``:own`` rule before a token is spent (``tasks/assist.py``).
+    """
+    from app.modules.tasks.assist import revise_task
+
+    return await revise_task(ctx, task_id, payload)
+
+
+@router.post(
+    "/{task_id}/ai/checklist",
+    response_model=ChecklistRead,
+    status_code=201,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def generate_checklist_with_ai(
+    task_id: uuid.UUID,
+    payload: TaskChecklistGenerateRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistRead:
+    """Write this task's steps from its title and notes, as one new checklist."""
+    from app.modules.tasks.assist import generate_checklist
+
+    return await generate_checklist(ctx, task_id, payload)
 
 
 @router.patch(

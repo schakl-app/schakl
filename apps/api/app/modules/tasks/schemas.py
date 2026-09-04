@@ -796,6 +796,43 @@ class TaskDetail(TaskRead):
 
 
 # --------------------------------------------------------------------------- #
+# Changing a task in words (``tasks/assist.py``)
+# --------------------------------------------------------------------------- #
+class TaskReviseRequest(BaseModel):
+    """One typed instruction against one existing task — "voeg een stap toe voor de DNS".
+
+    The words are the caller's own, so nothing here narrows what they may say; what the answer
+    may *do* is bounded on the way in (``assist.revision_from_call``).
+    """
+
+    instruction: str = Field(min_length=1, max_length=4000)
+    override_budget: bool = False
+
+
+class TaskReviseResult(BaseModel):
+    """What the revision did, and the card as it now stands.
+
+    The whole detail rides along because every caller redraws the task after this: the review
+    slide-over adopts it, the card reloads. ``changed`` names the kinds of change that landed
+    so a screen can say "steps added, deadline moved" in its own words; ``summary`` is the
+    model's one sentence to the colleague.
+    """
+
+    task: TaskDetail
+    summary: str | None = None
+    changed: list[str] = Field(default_factory=list)
+    #: The answer hit the token ceiling; what landed may be short of what was asked.
+    truncated: bool = False
+
+
+class TaskChecklistGenerateRequest(BaseModel):
+    """Write this task's steps from its title and notes; ``instruction`` is an optional hint."""
+
+    instruction: str | None = Field(default=None, max_length=2000)
+    override_budget: bool = False
+
+
+# --------------------------------------------------------------------------- #
 # Templates
 # --------------------------------------------------------------------------- #
 class TemplateItemBase(BaseModel):

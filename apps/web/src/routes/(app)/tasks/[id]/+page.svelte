@@ -6,14 +6,16 @@
     GripVertical,
     Link as LinkIcon,
     Pencil,
+    Sparkles,
     Trash2,
   } from "@lucide/svelte";
   import { tick } from "svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { applyAction, enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -45,6 +47,7 @@
   import { dueBucket, dueNote } from "$lib/modules/tasks/due";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
+  import TaskAIRevise from "$lib/modules/tasks/TaskAIRevise.svelte";
   import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
   import RecurrenceEditor from "$lib/modules/tasks/RecurrenceEditor.svelte";
   import { planSummary, recurrenceSentence, type Recurrence } from "$lib/modules/tasks/recurrence";
@@ -591,6 +594,78 @@
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
   let editingChecklistId = $state<string | null>(null);
   let editingItemId = $state<string | null>(null);
+  // A step's title, and a list's, edited in place in *use* mode: click the words, type, Enter
+  // (`InlineText`'s rule, one row down — renaming a step is the thing people do ten times a
+  // day, and it used to cost edit mode, ⋯ → Bewerken and a form). Blur saves what changed;
+  // Escape puts the words back. The posted form carries the current description too, because
+  // the action reads both and an absent one would clear it.
+  let renamingItemId = $state<string | null>(null);
+  let renamingChecklistId = $state<string | null>(null);
+  let renameDraft = $state("");
+  let renameInput = $state<HTMLInputElement | null>(null);
+  async function startRename(kind: "item" | "checklist", id: string, current: string) {
+    if (!canEditTask) return;
+    renameDraft = current;
+    renamingItemId = kind === "item" ? id : null;
+    renamingChecklistId = kind === "checklist" ? id : null;
+    await tick();
+    renameInput?.focus();
+    renameInput?.select();
+  }
+  function cancelRename() {
+    renamingItemId = null;
+    renamingChecklistId = null;
+  }
+  function renameKeydown(event: KeyboardEvent, current: string) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (renameDraft.trim() && renameDraft.trim() !== current) {
+        (event.currentTarget as HTMLInputElement).form?.requestSubmit();
+      } else {
+        cancelRename();
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRename();
+    }
+  }
+  function renameBlur(event: FocusEvent, current: string) {
+    if (renameDraft.trim() && renameDraft.trim() !== current) {
+      (event.currentTarget as HTMLInputElement).form?.requestSubmit();
+    } else {
+      cancelRename();
+    }
+  }
+
+  // Changing the task in words, and writing its steps from the notes (`tasks/assist.py`).
+  // "Off means invisible" (#126): the tenant's toggle *and* the viewer's right to edit this
+  // task, so the box is never drawn for a press that would answer 409 or 403.
+  const aiAvailable = $derived(canEditTask && aiEnabled(page.data.user, "task_assist"));
+  let generatingChecklist = $state(false);
+  let generateError = $state<string | null>(null);
+  async function generateChecklist() {
+    if (generatingChecklist) return;
+    generatingChecklist = true;
+    generateError = null;
+    try {
+      const res = await fetch(`/api/v1/tasks/${task.id}/ai/checklist`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        generateError = payload?.error?.message ?? "errors.ai_provider_error";
+        return;
+      }
+      await invalidateAll();
+    } catch {
+      generateError = "errors.ai_provider_error";
+    } finally {
+      generatingChecklist = false;
+    }
+  }
 
   // ---------------------------------------------------------------------------------------- //
   // Reordering checklists, and items inside one (edit mode)
@@ -874,6 +949,15 @@
       return t(`tasks.activity.${a.action}`, {
         from: String(a.payload.from ?? ""),
         to: String(a.payload.to ?? ""),
+      });
+    }
+    if (a.action === "ai_revised") {
+      return t("tasks.activity.ai_revised", { summary: String(a.payload.summary ?? "") });
+    }
+    if (a.action === "ai_checklist") {
+      return t("tasks.activity.ai_checklist", {
+        title: String(a.payload.title ?? ""),
+        count: String(a.payload.count ?? ""),
       });
     }
     if (a.action === "attachment_added" || a.action === "attachment_deleted") {
@@ -1935,6 +2019,38 @@
           upload={{ entityType: "task", entityId: task.id }}
           id="task-description-inline"
         />
+        {#if aiAvailable}
+          <!-- Change the task in words (`tasks/assist.py`): one instruction, applied as the
+               viewer, every change on the trail. The page reloads its data afterwards, the
+               way any other write here does. When the task has no checklist yet, the second
+               button writes one from the notes — it lives here because the checklist section
+               is not drawn until there is one (an empty card is the clutter use mode avoids). -->
+          <div class="mt-4">
+            <TaskAIRevise taskId={task.id} onapplied={() => invalidateAll()} />
+            {#if (task.checklists ?? []).length === 0}
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  loading={generatingChecklist}
+                  onclick={generateChecklist}
+                  title={t("tasks.ai.checklist_generate_hint")}
+                >
+                  <Sparkles size={12} class="text-brand" aria-hidden="true" />
+                  {generatingChecklist
+                    ? t("tasks.ai.checklist_busy")
+                    : t("tasks.ai.checklist_generate")}
+                </Button>
+                {#if generateError}
+                  <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                    >{t(generateError)}</span
+                  >
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </section>
   {/snippet}
@@ -1946,9 +2062,33 @@
            is exactly the clutter use mode exists to avoid. -->
     {#if (task.checklists ?? []).length > 0 || editMode}
       <section class="rounded-xl border border-border bg-surface-raised p-5">
-        <h3 class="mb-3 {PANEL_HEADING}">
-          {t("tasks.checklist.title")}
-        </h3>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 class={PANEL_HEADING}>
+            {t("tasks.checklist.title")}
+          </h3>
+          {#if aiAvailable && !editMode}
+            <div class="flex items-center gap-2">
+              {#if generateError}
+                <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                  >{t(generateError)}</span
+                >
+              {/if}
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                loading={generatingChecklist}
+                onclick={generateChecklist}
+                title={t("tasks.ai.checklist_generate_hint")}
+              >
+                <Sparkles size={12} class="text-brand" aria-hidden="true" />
+                {generatingChecklist
+                  ? t("tasks.ai.checklist_busy")
+                  : t("tasks.ai.checklist_generate")}
+              </Button>
+            </div>
+          {/if}
+        </div>
 
         <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
                items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
@@ -2002,7 +2142,40 @@
                       <GripVertical size={14} />
                     </button>
                   {/if}
-                  <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
+                  {#if renamingChecklistId === checklist.id}
+                    <form
+                      method="POST"
+                      action="?/editChecklist"
+                      class="min-w-0 flex-1"
+                      use:enhance={busy.wrap("renameChecklist", () => ({ update }) => {
+                        cancelRename();
+                        void update({ reset: false });
+                      })}
+                    >
+                      <input type="hidden" name="checklist_id" value={checklist.id} />
+                      <input type="hidden" name="description" value={checklist.description ?? ""} />
+                      <input
+                        bind:this={renameInput}
+                        bind:value={renameDraft}
+                        name="title"
+                        required
+                        class="w-full rounded-lg border border-brand px-2 py-0.5 text-sm font-semibold outline-none"
+                        aria-label={t("common.edit")}
+                        onkeydown={(event) => renameKeydown(event, checklist.title)}
+                        onblur={(event) => renameBlur(event, checklist.title)}
+                      />
+                    </form>
+                  {:else if canEditTask && !editMode}
+                    <button
+                      type="button"
+                      class="min-w-0 cursor-text truncate rounded px-1 text-left text-sm font-semibold text-text hover:bg-surface"
+                      title={t("tasks.review.item_edit_hint")}
+                      onclick={() => startRename("checklist", checklist.id, checklist.title)}
+                      >{checklist.title}</button
+                    >
+                  {:else}
+                    <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
+                  {/if}
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="text-xs tabular-nums text-text-muted"
@@ -2204,11 +2377,47 @@
                           aria-label={t("tasks.toggle_done")}>✓</span
                         >
                       {/if}
-                      <span
-                        class="flex-1 text-sm {item.done
-                          ? 'text-text-muted line-through'
-                          : 'text-text'}">{item.title}</span
-                      >
+                      {#if renamingItemId === item.id}
+                        <form
+                          method="POST"
+                          action="?/editItem"
+                          class="min-w-0 flex-1"
+                          use:enhance={busy.wrap("renameItem", () => ({ update }) => {
+                            cancelRename();
+                            void update({ reset: false });
+                          })}
+                        >
+                          <input type="hidden" name="checklist_id" value={checklist.id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="description" value={item.description ?? ""} />
+                          <input
+                            bind:this={renameInput}
+                            bind:value={renameDraft}
+                            name="title"
+                            required
+                            class="w-full rounded-lg border border-brand px-2 py-0.5 text-sm outline-none"
+                            aria-label={t("common.edit")}
+                            onkeydown={(event) => renameKeydown(event, item.title)}
+                            onblur={(event) => renameBlur(event, item.title)}
+                          />
+                        </form>
+                      {:else if canEditTask && !editMode}
+                        <button
+                          type="button"
+                          class="min-w-0 flex-1 cursor-text rounded px-1 text-left text-sm hover:bg-surface {item.done
+                            ? 'text-text-muted line-through'
+                            : 'text-text'}"
+                          title={t("tasks.review.item_edit_hint")}
+                          onclick={() => startRename("item", item.id, item.title)}
+                          >{item.title}</button
+                        >
+                      {:else}
+                        <span
+                          class="flex-1 text-sm {item.done
+                            ? 'text-text-muted line-through'
+                            : 'text-text'}">{item.title}</span
+                        >
+                      {/if}
                       {#if editMode}
                         <ActionsMenu
                           compact
