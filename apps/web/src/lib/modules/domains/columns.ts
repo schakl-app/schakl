@@ -5,8 +5,12 @@
  * and the sort, and the component reads the same list to render headers and cells.
  *
  * `sortKey` mirrors the API's allow-list (`apps/api/app/modules/domains/service.py::SORTABLE`),
- * which covers every column: company by the client's name, registrar/DNS by the provider's
- * name — all server-side, because the list is paginated.
+ * registrar/DNS by the provider's name — all server-side, because the list is paginated.
+ *
+ * **`company` carries no `sortKey`**, though the API can order by it. The list is sectioned by
+ * client, the way the contact and project lists are, and a sort orders rows *within* a section
+ * and never reorders the sections (docs/UX.md), so the header would visibly do nothing. The
+ * column itself stays: the heading names the client, the cell is what links to it.
  *
  * Every non-primary column declares a `width`, because the table lays out `table-fixed` and an
  * undeclared one falls back to a share of whatever is left rather than to its content. The
@@ -20,13 +24,7 @@ export const DOMAINS_TABLE_ID = "domains";
 
 export const DOMAIN_COLUMNS: ColumnMeta[] = [
   { key: "name", labelKey: "domains.name", sortKey: "name", primary: true, width: 240 },
-  {
-    key: "company",
-    labelKey: "domains.company",
-    sortKey: "company",
-    defaultVisible: true,
-    width: 260,
-  },
+  { key: "company", labelKey: "domains.company", defaultVisible: true, width: 260 },
   {
     key: "status",
     labelKey: "domains.status",

@@ -245,6 +245,29 @@
         ]),
   ]);
 
+  // --- grouped by client -----------------------------------------------------
+  // The same shape as the contact and project lists: the sections are the clients *on this
+  // page*, alphabetically. Built from the rows and never from the client picker — that list is
+  // capped at 200 and sorted by name, so on a larger tenant it would both invent empty sections
+  // and drop real domains into "Overig". `company_name` comes from the API beside `company_id`,
+  // one batched lookup for the page, so the heading never depends on the picker either.
+  //
+  // A domain has exactly one client — the column is `NOT NULL`, so there is no "Zonder klant"
+  // section to draw — and `groupBy` returns one key. The Klant column stays: the heading names
+  // the client, the cell is what links to it. It carries no `sortKey` (see `columns.ts`) — a
+  // sort orders rows *within* a section and never reorders the sections (docs/UX.md).
+  const groups = $derived.by(() => {
+    // A plain record, not a Map: `svelte/prefer-svelte-reactivity` rejects a mutated Map even in
+    // a derived, and this one is a throwaway index rather than state.
+    const named: Record<string, string> = {};
+    for (const domain of data.domains) named[domain.company_id] = domain.company_name ?? "";
+    return Object.entries(named)
+      .map(([key, label]) => ({ key, label, collapsible: true }))
+      .sort((a, b) => a.label.localeCompare(b.label, data.locale));
+  });
+
+  const groupOf = (domain: Domain): string => domain.company_id;
+
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
@@ -280,7 +303,9 @@
 {/snippet}
 
 {#snippet companyCell(domain: Domain)}
-  <span class="block truncate text-text-muted">{domain.company_name}</span>
+  <a href="/companies/{domain.company_id}" class="block truncate text-text-muted hover:text-brand"
+    >{domain.company_name}</a
+  >
 {/snippet}
 
 {#snippet statusCell(domain: Domain)}
@@ -380,8 +405,9 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/domains/{domain.id}" class="min-w-0 flex-1">
+      <!-- No client line here: the phone list keeps the sections, so the row already sits
+           under its client's heading and repeating it costs the name its height. -->
       <span class="block truncate font-medium text-text">{domain.name}</span>
-      <span class="mt-0.5 block truncate text-sm text-text-muted">{domain.company_name}</span>
     </a>
     <span class="shrink-0 rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted">
       {t(`domains.status.${domain.status}`)}
@@ -455,6 +481,13 @@
 
 <BulkResult result={form?.bulkResult} />
 
+{#if data.total > data.paging.limit}
+  <!-- Sectioned by client, "Acme (2)" above a client that has seven domains reads as the whole
+       answer. The pager below says which slice this is, but the *group counts* still need saying
+       out loud — a cap is reported, never silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-text-muted">{t("domains.groups_page_only")}</p>
+{/if}
+
 <DataTable
   rows={data.domains}
   columns={table.columns}
@@ -462,6 +495,10 @@
   widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
+  {groups}
+  groupBy={groupOf}
+  collapsed={table.collapsed}
+  oncollapse={table.onCollapse}
   rowHref={(domain) => `/domains/${domain.id}`}
   actions={canDelete ? rowActions : undefined}
   {mobileRow}

@@ -2829,6 +2829,7 @@
   "domains.empty": "No domains yet.",
   "domains.details": "Details",
   "domains.name": "Domain name",
+  "domains.groups_page_only": "The client sections count the domains on this page.",
   "domains.company": "Client",
   "domains.status": "Status",
   "domains.redirect_url": "Redirect to",

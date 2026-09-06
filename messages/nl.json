@@ -2829,6 +2829,7 @@
   "domains.empty": "Nog geen domeinen.",
   "domains.details": "Gegevens",
   "domains.name": "Domeinnaam",
+  "domains.groups_page_only": "De klantsecties tellen de domeinen op deze pagina.",
   "domains.company": "Klant",
   "domains.status": "Status",
   "domains.redirect_url": "Doorverwijzen naar",
