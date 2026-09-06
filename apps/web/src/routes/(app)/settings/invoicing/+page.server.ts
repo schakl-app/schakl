@@ -1,7 +1,9 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
+import { originalsAction } from "$lib/modules/invoicing/originals.server";
 import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import type { BlockSpec } from "$lib/modules/invoicing/templateConfig";
@@ -31,6 +33,13 @@ export const load: PageServerLoad = async (event) => {
     // Hides the HTML/CSS tab rather than offering a control whose save would 403. The API is
     // still the boundary — it refuses the write either way (CLAUDE.md §15).
     canAuthorTemplates: blocks.data?.can_author ?? false,
+    // The migration section mirrors the two gates the API declares on each of its doors
+    // (§15): the spreadsheet needs the bulk key *and* the invoice write, the zip only the
+    // write. Hidden controls get a sentence naming the missing key instead of nothing —
+    // a shipped feature that reads as absent is the fault this section exists to fix.
+    canWriteInvoices: can(event.locals.user, "invoicing.invoice.write"),
+    canImportInvoices:
+      can(event.locals.user, "impex.import") && can(event.locals.user, "invoicing.invoice.write"),
     locale: event.locals.locale,
   };
 };
@@ -41,6 +50,12 @@ function text(form: FormData, key: string): string | undefined {
 }
 
 export const actions: Actions = {
+  /**
+   * Bringing the back catalogue in (docs/INVOICING.md): the same import wizard and zip dialog
+   * the Facturen list offers, hosted here beside the explanation of what they are for.
+   */
+  impex: (event) => impexAction(event, "invoice"),
+  originals: (event) => originalsAction(event),
   saveSeller: async (event) => {
     const form = await event.request.formData();
     const { error } = await apiFor(event).PUT("/api/v1/invoicing/settings", {

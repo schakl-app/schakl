@@ -2410,6 +2410,21 @@ contrast bug in dark mode rather than only an inconsistency.
   while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
   (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
   cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **A feature whose only surface is a generic button in a toolbar reads as absent.** Bringing a
+  back catalogue of invoices in — the spreadsheet and the zip of original PDFs — shipped in
+  v0.40.0 as "Importeren" and "Originelen (zip)" beside Kolommen on Facturen, and the product's
+  own owner, on the latest release, could not find it: "Importeren" is the label every list
+  carries and says nothing about *what* an invoice row is, and "Originelen (zip)" is a word for
+  the thing without the act. Three rules. **A one-time administrative act gets a home in
+  Instellingen** where an admin looks for one, with the explanation *and* the controls, hosted as
+  the same components the list uses (`OriginalsDialog`, `ImportWizard`) so the two cannot drift —
+  the list keeps its controls, because that rule still holds. **A control is named for what it
+  does, and carries a `title` for why**: "Originele pdf's (zip)" with "koppel de pdf's van
+  geïmporteerde facturen in één keer". And **an empty register is where a migration starts**, so
+  the list's empty state points at the section — only when nothing is filtered, or "nog geen
+  facturen" would be answering a search. The section also *names* the missing key rather than
+  hiding the button when a viewer lacks `impex.import`: a hidden control with no sentence is the
+  fault itself, one permission over.
 - **One screen for two audiences, gated on `!isPortal` instead of on the key.** Facturen (#266)
   is the case the rule above does not cover: it is *not* a write surface, so it should not be
   gated whole — a client belongs on it, reading their own invoices. What differs is the **chrome**

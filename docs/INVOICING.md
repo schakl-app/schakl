@@ -704,12 +704,22 @@ for any other (the note mirrors the summary line at the effective rate), but the
 native document whose totals *are* recomputed from that line, so on a large mixed-rate source
 its draft may be a cent off the original — it is a draft, and you edit it before issuing.
 
-**On screen** it is three surfaces and one component. The invoice list carries the shared
+**On screen** it is four surfaces and two shared components. The invoice list carries the shared
 `ImpexBar` (§17 — Export is handed the *resolved* filters, `overdue` included, which is why that
-pill joined `FILTER_PARAMS`) plus an **Originelen (zip)** dialog beside it, gated on
+pill joined `FILTER_PARAMS`) plus an **Originele pdf's (zip)** button beside it, gated on
 `invoicing.invoice.write` and nothing more: attaching forty PDFs you may each attach is the same
-act repeated (§18), and the dialog prints the API's whole report, counts first and then every
-file that did not land by name. The detail page says once where the document came from, frames
+act repeated (§18). The dialog behind it is `modules/invoicing/OriginalsDialog` and it prints the
+API's whole report, counts first and then every file that did not land by name. **The
+explanation lives in Instellingen → Facturatie** ("Bestaande facturen overnemen", right under
+Nummering because moving the sequence on is the migration's last step): the same wizard and the
+same dialog, hosted beside three sentences saying what a row is, what a file name is for and
+where the numbering goes next — because a shipped feature whose only surface was two generic
+buttons beside Kolommen was reported as *missing* by the person who owns the product. A
+migration is an admin's one-time act and Instellingen is where an admin looks for one; the list
+keeps its controls (docs/UX.md, "a list that can travel by spreadsheet says so on the list") and
+its empty state points at the settings section when nothing is filtered. The section names the
+missing key instead of hiding the button when a viewer holds `invoicing.settings.manage` without
+`impex.import`. The detail page says once where the document came from, frames
 the **original** where one is attached and the reconstructed render where none is, and carries an
 **Origineel** card in the aside — filename, size, when, the SHA-256 whole (a fingerprint you can
 only read half of is decoration), and attach / replace / remove on one `<input>` the button and

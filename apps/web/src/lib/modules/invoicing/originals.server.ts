@@ -9,7 +9,10 @@
  * The API is the authority on what a PDF is (type, magic bytes, size) and on which invoice a
  * file belongs to; this only relays its envelope, so a refusal lands as the key the API chose.
  */
+import { fail } from "@sveltejs/kit";
+
 import { apiBaseUrl } from "$lib/core/api/client";
+import type { components } from "$lib/core/api/schema";
 import { apiErrorKey } from "$lib/core/errors";
 import type { ApiEvent } from "$lib/core/session";
 
@@ -33,4 +36,25 @@ export async function postOriginal<T>(
   if (!res.ok) return { error: apiErrorKey(payload).key };
   if (payload == null) return { error: "errors.validation" };
   return { data: payload };
+}
+
+/**
+ * The zip-of-originals form action, spread into every page that hosts `OriginalsDialog` — the
+ * Facturen list and Instellingen → Facturatie. One body, so the two hosts relay the same
+ * request and print the same report; the API answers per file (attached, already attached,
+ * unmatched, ambiguous, not a PDF) rather than refusing the archive over one stray entry.
+ */
+export async function originalsAction(event: ApiEvent) {
+  const form = await event.request.formData();
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return fail(400, { originalsError: "errors.required" });
+  }
+  const result = await postOriginal<components["schemas"]["OriginalsBatchReport"]>(
+    event,
+    "/api/v1/invoicing/invoices/originals",
+    file,
+  );
+  if ("error" in result) return fail(400, { originalsError: result.error });
+  return { originals: result.data };
 }

@@ -11,9 +11,7 @@ import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { INVOICE_COLUMNS, INVOICES_TABLE_ID } from "$lib/modules/invoicing/columns";
 import { INVOICE_FILTERS } from "$lib/modules/invoicing/filters";
-import { postOriginal } from "$lib/modules/invoicing/originals.server";
-
-import type { components } from "$lib/core/api/schema";
+import { originalsAction } from "$lib/modules/invoicing/originals.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -93,25 +91,8 @@ export const actions: Actions = {
   bulkDelete: (event) => bulkDeleteAction(event, "invoice"),
   /** Spreadsheet import/export (§17) — the back catalogue comes in this way (docs/INVOICING.md). */
   impex: (event) => impexAction(event, "invoice"),
-  /**
-   * A zip of original PDFs, each matched to an imported invoice by the number in its filename.
-   * The API answers a report — attached, already attached, unmatched, ambiguous, not a PDF —
-   * rather than refusing the archive over one stray file, and the dialog prints it whole.
-   */
-  originals: async (event) => {
-    const form = await event.request.formData();
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      return fail(400, { originalsError: "errors.required" });
-    }
-    const result = await postOriginal<components["schemas"]["OriginalsBatchReport"]>(
-      event,
-      "/api/v1/invoicing/invoices/originals",
-      file,
-    );
-    if ("error" in result) return fail(400, { originalsError: result.error });
-    return { originals: result.data };
-  },
+  /** A zip of original PDFs, matched to imported invoices by number (`OriginalsDialog`). */
+  originals: (event) => originalsAction(event),
   delete: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
