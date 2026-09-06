@@ -38,6 +38,7 @@
 
   import {
     contactChips,
+    isMailboxRow,
     isMailRow,
     mayReview,
     reviewIds,
@@ -443,7 +444,7 @@
       <p class="whitespace-pre-wrap break-words text-sm text-text-muted">
         {cleanSnippet(di.snippet)}
       </p>
-      {#if di.source === "gmail" && di.status === "logged"}
+      {#if isMailboxRow(di) && di.status === "logged"}
         <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
       {/if}
     {/if}
@@ -472,7 +473,9 @@
         class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
       >
         <ExternalLink size={12} aria-hidden="true" />
-        {t("interactions.open_in_gmail")}
+        {di.source === "outlook"
+          ? t("interactions.open_in_outlook")
+          : t("interactions.open_in_gmail")}
       </a>
     {/if}
   </div>

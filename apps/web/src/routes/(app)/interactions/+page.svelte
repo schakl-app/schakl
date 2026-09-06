@@ -49,12 +49,13 @@
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import GmailRefreshButton from "$lib/integrations/google/GmailRefreshButton.svelte";
+  import OutlookRefreshButton from "$lib/integrations/microsoft/OutlookRefreshButton.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
     contactChips,
     dayLabel,
-    isGmailRow,
+    isMailboxRow,
     kindIcon,
     kindLabel,
     localDay,
@@ -250,13 +251,13 @@
   // An uploaded .eml (#262) has no mailbox behind it, so it edits like a hand-logged row;
   // only gmail rows belong to the review flow.
   const mayEdit = (item: InteractionItem) =>
-    !isGmailRow(item) &&
+    !isMailboxRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
   // A gmail row moves through the review flow — its owner, or a pending row's named reviewer.
   const mayMove = (item: InteractionItem) =>
-    isGmailRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
+    isMailboxRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
   /**
    * `InteractionService.delete`'s own gate (`_writable_or_404`), mirrored — the key the call
    * makes, at the scope it makes it (§15).
@@ -322,7 +323,7 @@
   // messages that is, and the API still refuses per row whatever it refuses.
   const bulkFilableIds = $derived(
     selectedItems
-      .filter((item) => isGmailRow(item) && (isOwner(item) || mayReview(item, me)))
+      .filter((item) => isMailboxRow(item) && (isOwner(item) || mayReview(item, me)))
       .flatMap(reviewIds),
   );
   const bulkPendingIds = $derived(
@@ -411,6 +412,8 @@
   let showUpload = $state(false);
   /** Set when the upload dialog is opened to fill the gaps in one conversation (#342). */
   let gapThreadId = $state<string | null>(null);
+  /** Which mailbox `gapThreadId` came from — the picker asks the owning integration. */
+  let gapSource = $state<"gmail" | "outlook">("gmail");
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   const busy = new InFlight();
@@ -468,7 +471,7 @@
       });
     }
     if (mayMove(item)) {
-      const pending = item.source === "gmail" && item.status === "pending";
+      const pending = isMailboxRow(item) && item.status === "pending";
       entries.push({
         label: pending ? t("interactions.assign") : t("interactions.move"),
         icon: ArrowRightLeft,
@@ -492,12 +495,7 @@
     }
     // Glue an email Gmail didn't thread automatically onto another conversation (#272) —
     // owner-only, logged gmail rows only, mirroring the API's own gate.
-    if (
-      item.kind === "email" &&
-      item.source === "gmail" &&
-      item.status === "logged" &&
-      isOwner(item)
-    ) {
+    if (item.kind === "email" && isMailboxRow(item) && item.status === "logged" && isOwner(item)) {
       entries.push({
         label: t("interactions.add_to_conversation"),
         icon: Link2,
@@ -511,12 +509,13 @@
     // thread id came off this very row, so it asks about a conversation the poller already told
     // us about — no search, no mailbox listing, nothing new to consent to. Owner-only for the
     // same reason every other Gmail action here is: it reads through their grant, not ours.
-    if (item.source === "gmail" && item.gmail_thread_id && isOwner(item)) {
+    if (isMailboxRow(item) && item.gmail_thread_id && isOwner(item)) {
       entries.push({
         label: t("interactions.gmail.thread_open"),
         icon: Search,
         onclick: () => {
           gapThreadId = item.gmail_thread_id ?? null;
+          gapSource = item.source === "outlook" ? "outlook" : "gmail";
           showUpload = true;
         },
       });
@@ -586,6 +585,7 @@
          person who most needs to know the timeline is stale is the one who cannot add rows by
          hand. It draws itself only when this user's own mailbox is actually syncing. -->
     <GmailRefreshButton status={data.gmailStatus} result={form?.gmailRefresh ?? null} />
+    <OutlookRefreshButton status={data.outlookStatus} result={form?.outlookRefresh ?? null} />
     {#if canWrite}
       <!-- An email from outside a connected mailbox is logged from its .eml export (#262). -->
       <button
@@ -1061,12 +1061,18 @@
 <!-- Upload an exported email (#262): the same inline-create dialogs the manual form uses. -->
 <Modal
   bind:open={showUpload}
-  title={gapThreadId ? t("interactions.gmail.title") : t("interactions.eml.title")}
+  title={gapThreadId
+    ? gapSource === "outlook"
+      ? t("interactions.outlook.title")
+      : t("interactions.gmail.title")
+    : t("interactions.eml.title")}
 >
   {#if showUpload}
     <EmlUploadForm
       threadId={gapThreadId}
+      threadSource={gapSource}
       gmailAvailable={data.gmailStatus?.available ?? null}
+      outlookAvailable={data.outlookStatus?.available ?? null}
       onsaved={() => (showUpload = false)}
     />
   {/if}
@@ -1086,7 +1092,7 @@
 
 <Modal
   bind:open={showMove}
-  title={moving?.source === "gmail" && moving?.status === "pending"
+  title={moving && isMailboxRow(moving) && moving.status === "pending"
     ? t("interactions.assign_title")
     : t("interactions.move_title")}
 >

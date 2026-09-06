@@ -80,6 +80,9 @@ _DOMAIN_TABLES = (
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_skips, gmail_suppressions, "
     "google_connections, google_settings, "
+    "microsoft_calendar_event_links, microsoft_calendar_events, microsoft_calendar_channels, "
+    "onedrive_links, onedrive_folder_jobs, outlook_skips, outlook_suppressions, "
+    "microsoft_connections, microsoft_settings, "
     "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
     "cloudflare_zones, cloudflare_accounts, "
     "oxxa_domains, oxxa_accounts, "
@@ -100,8 +103,8 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing", "cloudflare", "oxxa", "mollie", "snelstart",
-    "timeon",
+    "interactions", "google", "microsoft", "marketing", "cloudflare", "oxxa", "mollie",
+    "snelstart", "timeon",
 ]
 
 

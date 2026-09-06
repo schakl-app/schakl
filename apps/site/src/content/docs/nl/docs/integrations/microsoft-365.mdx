@@ -1,0 +1,162 @@
+---
+title: Microsoft 365
+description: "Outlook-agenda, OneDrive en Outlook-mail koppelen met een eigen Entra-app-registratie, en per medewerker aanzetten."
+sidebar:
+  order: 13
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Je bureau werkt in Microsoft 365: de afspraken staan in Outlook, de opleveringen in een
+SharePoint-documentbibliotheek of OneDrive en de klantgeschiedenis in de mailboxen van je
+collega's. De module Microsoft 365 haalt die drie naar het klantdossier toe, in plaats van iedereen
+te vragen anders te gaan werken. Het is de Microsoft-tegenhanger van
+[Google Workspace](/nl/docs/integrations/google-workspace/): dezelfde drie oppervlakken, dezelfde
+regels, en allebei tegelijk koppelen kan.
+
+## Waar je het vindt
+
+- *Instellingen → Microsoft 365* (in de groep **Integraties**): de instelling voor het hele
+  bureau, met de app-registratie, de onderdelen, de OneDrive-indeling en het Outlook-beleid.
+- *Instellingen → Mijn account*, kaart **Microsoft-account**: hier koppelt elke medewerker
+  zichzelf.
+- Daarna zie je het terug in **Agenda** (de bron **Outlook-agenda**), in het paneel **OneDrive**
+  op de klant-, project- en taakpagina, en in **Interacties**.
+
+Microsoft 365 is een gelicentieerde module; onder *Instellingen → Integraties* heet hij
+**Microsoft 365**. Zie [Licenties](/nl/docs/admin/licenses/).
+
+## Je eigen app-registratie
+
+Elk bureau registreert zijn eigen app in Microsoft Entra. Zo blijft de toestemming binnen je eigen
+tenant en bepaal jij welke accounttypen mogen koppelen.
+
+<Steps>
+1. Maak in het Microsoft Entra-beheercentrum een **app-registratie** voor je bureau. Kies bij
+   ondersteunde accounttypen bij voorkeur **alleen accounts in deze organisatiemap**.
+
+2. Voeg onder **API permissions** de gedelegeerde Microsoft Graph-rechten `User.Read`,
+   `offline_access`, `Calendars.ReadWrite`, `Files.ReadWrite.All` en `Mail.Read` toe. Geef
+   beheerderstoestemming als je tenant dat vereist.
+
+3. Maak onder **Certificates & secrets** een clientgeheim aan en noteer de einddatum: een
+   Entra-geheim verloopt, en op die dag stopt elke koppeling met verversen tot hier een nieuw
+   geheim is opgeslagen.
+
+4. Open *Instellingen → Microsoft 365*. Bovenaan staan twee alleen-lezen velden, elk met een knop
+   **Kopiëren**. Plak de **Redirect-URI** bij je app-registratie onder **Authentication → Web →
+   Redirect URIs**. De **Meldings-URL** is waar Microsoft agendawijzigingen heen stuurt; staat er
+   een toegangsproxy voor je host, laat dan de servers van Microsoft daarnaartoe door.
+
+5. Vul de **Toepassings-id**, het **Clientgeheim** en eventueel de **Directory (tenant)** in
+   (`common`, `organizations` of je eigen directory-id) en sla op. Het geheim wordt versleuteld
+   opgeslagen; laat het veld bij een volgende keer opslaan leeg om het bewaarde geheim te
+   behouden.
+
+6. Vink onder **Onderdelen** aan wat je gebruikt: **Agenda**, **OneDrive**, **Outlook-mail**.
+   Alleen wat hier aan staat, wordt straks aan je medewerkers gevraagd.
+</Steps>
+
+### OneDrive-indeling
+
+Vul de **Drive-ID** in (de drive waar je klantmappen in staan: de drive-id van een
+SharePoint-documentbibliotheek, of van een OneDrive), de **Bovenliggende map voor klantmappen
+(ID)** en eventueel de **Sjabloonmap (ID)**. Dat zijn ruwe id's; een mapkiezer is er nog niet. Kies
+bij **Automatiseringsaccount** een al gekoppelde collega: het achtergrondwerk draait onder diens
+toegang. Met **Maak automatisch een map voor elke nieuwe klant** krijgt elke nieuwe klant zijn
+eigen map, een kopie van het sjabloon. Voor klanten die er al waren is er **Mappen voor bestaande
+klanten** met de knop **Mappen aanmaken**, die ook een bestaande map met dezelfde naam adopteert.
+
+### Outlook-beleid
+
+Onder **Nieuwe gekoppelde e-mails** kies je tussen "Eigenaar keurt goed voordat de inhoud wordt
+vastgelegd" (standaard) en "Direct vastleggen, inclusief inhoud". **Vervolgberichten in een
+gekoppeld gesprek** beslist hetzelfde voor een vervolgbericht in een gesprek dat al bij een klant
+is gefiled. **Ook e-mail tussen collega's oppakken** staat uit; interne mail wacht altijd eerst op
+beoordeling. Het beoordelen zelf staat beschreven bij
+[Contactmomenten](/nl/docs/modules/interactions/).
+
+## Elke medewerker koppelt zichzelf
+
+Ga naar *Instellingen → Mijn account*, kaart **Microsoft-account**, en druk op **Microsoft
+koppelen**. Boven de knop somt "Koppelen geeft toegang tot:" precies op wat er gevraagd wordt. Staat
+Outlook-mail aan, dan staat er een vinkje **Koppel ook mijn mailbox (Outlook)** bij.
+
+Eenmaal gekoppeld toont de kaart het gekoppelde adres, de badge **Gekoppeld** of **Aandacht nodig**,
+een lijst van je andere agenda's om op de Agenda aan te vinken, de schakelaar **Mijn e-mail
+vastleggen in het CRM**, het veld **Uitgesloten Outlook-categorie** (berichten met die categorie
+worden nooit vastgelegd) en **Microsoft-account ontkoppelen**. Ontkoppelen verwijdert de bewaarde
+tokens; Microsoft biedt geen manier om ze van hieruit in te trekken, dus verwijder de toegang van de
+app ook op myapps.microsoft.com. Wat al is vastgelegd blijft staan.
+
+<Aside type="caution" title="Inloggen met Microsoft is niet hetzelfde als koppelen">
+Inloggen via Microsoft (single sign-on) en **Microsoft koppelen** zijn twee losse toestemmingen.
+Ook in een bureau dat Microsoft-inloggen verplicht, moet elke medewerker deze knop apart indrukken.
+</Aside>
+
+## Wat de drie onderdelen doen
+
+**Agenda.** Het scherm **Agenda** krijgt de bron **Outlook-agenda** met je eigen afspraken, gelezen
+uit de eigen kopie van schakl. en nooit live bij Microsoft opgehaald. Extra agenda's die je op de
+accountkaart aanvinkte krijgen elk een eigen kleur. Andersom wordt goedgekeurd verlof in je eigen
+Outlook-agenda geschreven als "Verlof: (verloftype)" met de uren per dag in de notities, een
+ingeplande taak als "(klant): (titel)", en een beschikbaarheidsdag van een freelancer als vrije of
+bezette tijd. Trek de aanvraag in, wijs hem af of haal het blok weg en de afspraak verdwijnt weer.
+
+**OneDrive.** De klant-, project- en taakpagina's hebben een paneel **OneDrive**. Je bladert door
+de klantmap met je eigen Microsoft 365-rechten, maakt submappen met **Nieuwe map**, uploadt
+bestanden rechtstreeks vanuit de browser en koppelt bestaande bestanden met **Koppelen aan dit
+record**. **Ontkoppelen** haalt alleen de koppeling weg; **Verwijderen uit OneDrive** zet het
+bestand in de prullenbak, waar het nog hersteld kan worden.
+
+**Outlook-mail.** Elke vijf minuten worden de aangemelde mailboxen verder gelezen vanaf waar de
+vorige uitlezing bleef: de hele mailbox, dus ook een bericht dat een regel naar een submap
+verplaatste. Berichten waarvan een deelnemer een bekende contactpersoon buiten het bureau is, komen
+als "te beoordelen" onder **Interacties**; pas na goedkeuring van de eigenaar wordt de inhoud
+opgehaald en met het team gedeeld. Een bericht dat de worker oversloeg haal je met de hand op met
+een link uit Outlook op het web, een bericht-id of de Message-ID uit "Berichtbron weergeven", of je
+zoekt het op in je eigen mailbox op adres, onderwerp en datum. schakl. verstuurt nooit mail via
+Outlook; uitgaande mail gaat via de transportinstelling onder *Instellingen → E-mail*.
+
+## Rechten
+
+| Recht | Wat het opent | Standaardrollen |
+| --- | --- | --- |
+| `microsoft.settings.manage` | De Microsoft 365-integratie beheren, inclusief **Mappen aanmaken** | Beheerder |
+| `microsoft.connection.manage` | Eigen Microsoft-account koppelen | Beheerder, Medewerker |
+| `microsoft.calendar.read` | Outlook-agenda-afspraken bekijken | Beheerder, Medewerker |
+| `microsoft.onedrive.read` | OneDrive-bestanden bekijken | Beheerder, Medewerker |
+| `microsoft.onedrive.write` | OneDrive-bestanden koppelen en uploaden | Beheerder, Medewerker |
+| `microsoft.onedrive.manage` | OneDrive-map van een record wijzigen of ontkoppelen | Beheerder |
+
+Stel ze per rol in onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **De redirect-URI volgt je eigen hostname.** Verhuist de werkruimte naar een ander domein, dan
+  moet de nieuwe URI opnieuw op de app-registratie worden gezet, anders weigert Microsoft de
+  koppeling.
+- **Het clientgeheim verloopt.** Entra geeft een geheim hooguit 24 maanden. Verloopt het, dan
+  springt elke koppeling op **Aandacht nodig**; sla een nieuw geheim op en koppel opnieuw.
+- **De eerste Outlook-uitlezing haalt niets op.** Die legt alleen het startpunt vast: bestaande
+  mail wordt niet met terugwerkende kracht opgehaald.
+- **De agenda schrijft maar één kant op,** en leest een jaar vooruit. Verlof en ingeplande taken
+  gaan naar Outlook; Outlook-afspraken komen alleen-lezen terug, en een afspraak verder dan een
+  jaar vooruit verschijnt bij de volgende herstart van de cache.
+- **OneDrive-koppelingen zijn verwijzingen.** schakl. bewaart de bytes nooit. Verwijder je een
+  bestand in OneDrive, dan wijst de koppeling nergens meer heen.
+- **Automatische klantmappen doen stilletjes niets** als niet alles klopt: OneDrive aan, het
+  vinkje aan, een automatiseringsaccount gekozen en een drive-id ingevuld.
+- **Google én Microsoft gekoppeld?** Een collega met beide accounts krijgt ingeplande blokken in
+  beide agenda's, de Agenda tekent twee bronnen en het klantdossier toont een Drive-paneel naast een
+  OneDrive-paneel. E-mail blijft één contactmoment per e-mail, welke mailbox hem ook las.
+- **Roteer de serversleutel niet zomaar.** Roteert de beheerder `SCHAKL_ENCRYPTION_KEY`, dan
+  vervalt elke bewaarde koppeling en moet iedereen opnieuw koppelen.
+
+## Lees verder
+
+- [Google Workspace](/nl/docs/integrations/google-workspace/): dezelfde drie onderdelen op het
+  andere platform.
+- [Contactmomenten](/nl/docs/modules/interactions/): de tijdlijn waar de gekoppelde e-mail op
+  landt.
+- [Verlof](/nl/docs/modules/leave/): het verlof dat in de Outlook-agenda wordt geschreven.

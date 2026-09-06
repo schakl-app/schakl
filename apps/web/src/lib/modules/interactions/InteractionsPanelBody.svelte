@@ -45,7 +45,7 @@
   import EmlUploadForm from "./EmlUploadForm.svelte";
   import {
     contactChips,
-    isGmailRow,
+    isMailboxRow,
     kindIcon,
     mayReview,
     taskChips,
@@ -129,7 +129,7 @@
   // An uploaded .eml (#262) edits like a hand-logged row: there is no mailbox behind it, so
   // no review flow owns it. Only gmail rows are off-limits here.
   const mayEdit = (item: InteractionItem) =>
-    !isGmailRow(item) &&
+    !isMailboxRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
@@ -138,7 +138,7 @@
   // call — the mailbox owner, or a pending row's named reviewer (`mayReview`) — and the API
   // enforces both, harder (#147). A *logged* gmail row is still its owner's alone.
   const mayMove = (item: InteractionItem) =>
-    isGmailRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
+    isMailboxRow(item) ? isOwner(item) || mayReview(item, me) : mayEdit(item);
 
   /** Where this row also belongs (#147): clickable chips for links beyond the current host. */
   function linkChips(item: InteractionItem): { href: string; label: string }[] {

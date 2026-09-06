@@ -492,6 +492,18 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "google",
   },
   {
+    // The Microsoft twin: the Entra app registration, the three surfaces, the OneDrive layout
+    // and the Outlook policy — the same four decisions, made by the same person.
+    key: "microsoft",
+    href: "/settings/microsoft",
+    titleKey: "settings.microsoft.title",
+    subtitleKey: "settings.microsoft.subtitle",
+    keywordsKey: "settings.search.microsoft",
+    group: "integrations",
+    permissions: ["microsoft.settings.manage"],
+    module: "microsoft",
+  },
+  {
     key: "ai",
     href: "/settings/ai",
     titleKey: "settings.ai.title",

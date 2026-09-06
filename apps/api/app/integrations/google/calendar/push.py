@@ -19,15 +19,17 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth.models import User
-from app.core.auth.sso import org_base_url
+from app.core import calendarmirror as mirror
+from app.core.calendarmirror import (
+    LOCAL_TYPE_AVAILABILITY,
+    LOCAL_TYPE_LEAVE,
+    LOCAL_TYPE_TASK_SCHEDULE,
+)
 from app.core.events import EmitContext
-from app.core.models import Org, OrgSettings
-from app.core.richtext import markdown_to_plaintext
-from app.i18n import translate
+from app.core.models import Org
 from app.integrations.google.calendar.models import CalendarEventLink, LinkStatus
 from app.integrations.google.calendar.service import CALENDAR_API
 from app.integrations.google.client import acting_as, connection_for, mark_connection_error
@@ -36,9 +38,6 @@ from app.integrations.google.oauth import google_settings_row, has_calendar_writ
 
 logger = logging.getLogger("schakl.google.calendar")
 
-LOCAL_TYPE_LEAVE = "leave_request"
-LOCAL_TYPE_TASK_SCHEDULE = "task_schedule"
-LOCAL_TYPE_AVAILABILITY = "availability"
 MAX_ATTEMPTS = 5
 
 
@@ -95,12 +94,6 @@ async def _pushable_connection(session: AsyncSession, org_id: uuid.UUID, user_id
     return connection
 
 
-async def _org_locale(session: AsyncSession, org_id: uuid.UUID) -> str | None:
-    return await session.scalar(
-        select(OrgSettings.default_locale).where(OrgSettings.org_id == org_id)
-    )
-
-
 def _event_body(payload: dict[str, Any]) -> dict[str, Any]:
     """The Google event from the snapshot: timed within one day, else an all-day span.
 
@@ -126,7 +119,7 @@ def _event_body(payload: dict[str, Any]) -> dict[str, Any]:
     # as busy would block the very hours it exists to advertise. Absent = Google's own default.
     if payload.get("transparency"):
         body["transparency"] = payload["transparency"]
-    timed = bool(payload.get("start_time") and payload.get("end_time") and start_date == end_date)
+    timed = mirror.is_timed(payload)
     if timed:
         zone = payload.get("timezone") or "UTC"
         body["start"] = {"dateTime": f"{start_date}T{payload['start_time']}", "timeZone": zone}
@@ -135,35 +128,10 @@ def _event_body(payload: dict[str, Any]) -> dict[str, Any]:
         exclusive_end = (date.fromisoformat(end_date) + timedelta(days=1)).isoformat()
         body["start"] = {"date": start_date}
         body["end"] = {"date": exclusive_end}
-    rule = _rrule(payload.get("repeat_weeks"), payload.get("repeat_until"), timed=timed)
+    rule = mirror.rrule(payload.get("repeat_weeks"), payload.get("repeat_until"), timed=timed)
     if rule:
         body["recurrence"] = [rule]
     return body
-
-
-def _rrule(repeat_weeks: Any, repeat_until: Any, *, timed: bool) -> str | None:
-    """A weekly RRULE for a rule-shaped row, or ``None`` for a one-off.
-
-    A repeating availability row *is* a recurrence rule, so it mirrors as one event rather than
-    as N — which is what keeps an edit an edit and a delete a delete instead of a diff against
-    whatever the last horizon happened to place.
-
-    ``UNTIL`` follows RFC 5545's typing rule: a DATE for an all-day series, a UTC DATE-TIME for a
-    timed one. The timed form is stamped a **day late** on purpose — an occurrence at 17:00 local
-    in a zone behind UTC falls after 23:59:59Z of its own date, so the honest bound would drop
-    the last occurrence. A cadence is at least a week, so a day of slack can never let an extra
-    one in.
-    """
-    if not repeat_weeks:
-        return None
-    rule = f"RRULE:FREQ=WEEKLY;INTERVAL={int(repeat_weeks)}"
-    if repeat_until:
-        end = date.fromisoformat(str(repeat_until))
-        if timed:
-            rule += f";UNTIL={(end + timedelta(days=1)).strftime('%Y%m%d')}T235959Z"
-        else:
-            rule += f";UNTIL={end.strftime('%Y%m%d')}"
-    return rule
 
 
 # --------------------------------------------------------------------------- #
@@ -177,23 +145,8 @@ async def handle_leave_approved(ctx: EmitContext, payload: dict[str, Any]) -> No
     if connection is None:
         return
 
-    # The event lands on the *requester's* calendar, so their locale words it (#148);
-    # the org default is the fallback, like everywhere (§8).
-    locale = (
-        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
-        or await _org_locale(ctx.session, ctx.org.id)
-    )
-    snapshot = {
-        "summary": await _leave_summary(ctx.session, ctx.org.id, payload, locale),
-        "description": _leave_description(payload, locale),
-        "local_type": LOCAL_TYPE_LEAVE,
-        "local_id": str(request_id),
-        "start_date": str(payload["start_date"]),
-        "end_date": str(payload["end_date"]),
-        "start_time": str(payload["start_time"]) if payload.get("start_time") else None,
-        "end_time": str(payload["end_time"]) if payload.get("end_time") else None,
-        "timezone": await _org_timezone(ctx.session, ctx.org.id),
-    }
+    # What the event says is the platform's rule, not Google's (``app/core/calendarmirror``).
+    snapshot = await mirror.leave_snapshot(ctx.session, ctx.org.id, payload, user_id)
     link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_LEAVE, request_id)
     if link is None:
         link = CalendarEventLink(
@@ -261,31 +214,7 @@ async def handle_availability_saved(ctx: EmitContext, payload: dict[str, Any]) -
     if connection is None:
         return
 
-    locale = (
-        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
-        or await _org_locale(ctx.session, ctx.org.id)
-    )
-    unavailable = payload.get("kind") == "unavailable"
-    summary = translate(
-        "google.calendar.availability_unavailable"
-        if unavailable
-        else "google.calendar.availability_available",
-        locale,
-    )
-    snapshot = {
-        "summary": summary,
-        "description": payload.get("note") or "",
-        "local_type": LOCAL_TYPE_AVAILABILITY,
-        "local_id": str(entry_id),
-        "start_date": str(payload["date"]),
-        "end_date": str(payload["date"]),
-        "start_time": payload.get("start_time"),
-        "end_time": payload.get("end_time"),
-        "repeat_weeks": payload.get("repeat_weeks"),
-        "repeat_until": payload.get("repeat_until"),
-        "transparency": "opaque" if unavailable else "transparent",
-        "timezone": await _org_timezone(ctx.session, ctx.org.id),
-    }
+    snapshot = await mirror.availability_snapshot(ctx.session, ctx.org.id, payload, user_id)
     link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_AVAILABILITY, uuid.UUID(entry_id))
     if link is None:
         link = CalendarEventLink(
@@ -378,23 +307,7 @@ async def handle_task_schedule_saved(ctx: EmitContext, payload: dict[str, Any]) 
             await ctx.session.flush()
         return
 
-    locale = (
-        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
-        or await _org_locale(ctx.session, ctx.org.id)
-    )
-    snapshot = {
-        "summary": _task_summary(
-            payload.get("task_title"), payload.get("company_name"), locale
-        ),
-        "description": _task_description(ctx.org, payload, locale),
-        "local_type": LOCAL_TYPE_TASK_SCHEDULE,
-        "local_id": str(schedule_id),
-        "start_date": str(payload["start_date"]),
-        "end_date": str(payload["end_date"]),
-        "start_time": str(payload["start_time"]) if payload.get("start_time") else None,
-        "end_time": str(payload["end_time"]) if payload.get("end_time") else None,
-        "timezone": payload.get("timezone") or await _org_timezone(ctx.session, ctx.org.id),
-    }
+    snapshot = await mirror.task_schedule_snapshot(ctx.session, ctx.org, payload, user_id)
     if link is None:
         link = CalendarEventLink(
             org_id=ctx.org.id,
@@ -433,84 +346,6 @@ async def handle_task_schedule_gone(ctx: EmitContext, payload: dict[str, Any]) -
     else:
         await ctx.session.delete(link)
         await ctx.session.flush()
-
-
-def _task_summary(title: str | None, company_name: str | None, locale: str | None) -> str:
-    """"Nova Fietsen: Redesign homepage" — the client's name and the task's title.
-
-    The client leads because that is what a glance at a week wants to know: whose work sits
-    where. The old marker ("Taak: …") said what *kind* of record the block was, which a
-    calendar full of them already says, and is kept only for a task with no client — an
-    internal job — where there is nothing else to lead with. ``d4a9b3c6f2e7`` retitled the
-    events already mirrored, so the two shapes never sit side by side on one calendar.
-    """
-    if company_name and title:
-        return f"{company_name}: {title}"
-    if company_name:
-        return company_name
-    base = translate("google.calendar.task_event_title", locale)
-    return f"{base}: {title}" if title else base
-
-
-def _task_description(org: Org, payload: dict[str, Any], locale: str | None) -> str:
-    """The task's own description (flattened from markdown) plus a direct deeplink to the task —
-    Google events have no URL field, so the link lives in the notes text (#188)."""
-    parts: list[str] = []
-    desc = payload.get("task_description")
-    if desc:
-        parts.append(markdown_to_plaintext(desc))
-    parts.append(f"{org_base_url(org)}/tasks/{payload['task_id']}")
-    return "\n\n".join(parts)
-
-
-async def _leave_summary(
-    session: AsyncSession, org_id: uuid.UUID, payload: dict[str, Any], locale: str | None
-) -> str:
-    """"Verlof: Vakantie", never a bare "Verlof" (#148). The tenant's own type label
-    (``label_i18n``) is read with org-scoped SQL — the mirror never imports leave internals."""
-    base = translate("google.calendar.leave_event_title", locale)
-    type_id = payload.get("leave_type_id")
-    if not type_id:
-        return base
-    label_i18n = await session.scalar(
-        text("SELECT label_i18n FROM leave_types WHERE id = :tid AND org_id = :oid"),
-        {"tid": type_id, "oid": org_id},
-    )
-    if not isinstance(label_i18n, dict):
-        return base
-    label = label_i18n.get(locale or "") or label_i18n.get("nl") or label_i18n.get("en")
-    if not label:
-        label = next(iter(label_i18n.values()), None)
-    return f"{base}: {label}" if label else base
-
-
-def _leave_description(payload: dict[str, Any], locale: str | None) -> str:
-    """The per-day breakdown, one line per working day (#148) — Google shows a multi-day
-    all-day span without saying which day costs what; this does."""
-    lines = [
-        translate(
-            "google.calendar.leave_event_day",
-            locale,
-            date=_european_day(row["date"]),
-            hours=f"{row['hours']:g}",
-        )
-        for row in payload.get("breakdown") or []
-    ]
-    return "\n".join(lines)
-
-
-def _european_day(iso_day: str) -> str:
-    year, month, day = iso_day.split("-")
-    return f"{day}-{month}-{year}"
-
-
-async def _org_timezone(session: AsyncSession, org_id: uuid.UUID) -> str:
-    from app.config import settings
-
-    zone = await session.scalar(
-        select(OrgSettings.timezone).where(OrgSettings.org_id == org_id)
-    )
-    return zone or settings.default_timezone
 
 
 # --------------------------------------------------------------------------- #

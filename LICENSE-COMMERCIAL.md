@@ -88,6 +88,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/api/app/integrations/google_analytics/`
 - `apps/api/app/integrations/google_search_console/`
 - `apps/api/app/integrations/google_tag_manager/`
+- `apps/api/app/integrations/microsoft/`
 - `apps/api/app/integrations/mollie/`
 - `apps/api/app/integrations/oxxa/`
 - `apps/api/app/integrations/snelstart/`
@@ -98,6 +99,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/lib/integrations/google/`
 - `apps/web/src/lib/integrations/google_ads/`
 - `apps/web/src/lib/integrations/google_tag_manager/`
+- `apps/web/src/lib/integrations/microsoft/`
 - `apps/web/src/lib/integrations/mollie/`
 - `apps/web/src/lib/integrations/oxxa/`
 - `apps/web/src/lib/integrations/snelstart/`
@@ -109,6 +111,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/routes/(app)/settings/google-ads/`
 - `apps/web/src/routes/(app)/settings/google/`
 - `apps/web/src/routes/(app)/settings/gtm/`
+- `apps/web/src/routes/(app)/settings/microsoft/`
 - `apps/web/src/routes/(app)/settings/mollie/`
 - `apps/web/src/routes/(app)/settings/oxxa/`
 - `apps/web/src/routes/(app)/settings/snelstart/`

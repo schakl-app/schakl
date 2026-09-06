@@ -12,6 +12,7 @@ import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
+import { oneDriveActions } from "$lib/integrations/microsoft/onedrive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import {
@@ -640,4 +641,5 @@ export const actions: Actions = {
   // Contactmomenten + Drive panel contracts (the panels post to their host page).
   ...interactionActions,
   ...driveActions,
+  ...oneDriveActions,
 };

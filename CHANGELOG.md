@@ -4,6 +4,52 @@ _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this 
 
 ## Unreleased
 
+Microsoft 365 as a second connected-workspace integration beside Google Workspace, with the
+rules that were about the agency rather than about a vendor lifted into core so both run one set.
+
+Two migrations: `a3c9e17f5b2d` widens `interactions.gmail_message_id` / `gmail_thread_id` to
+512 characters (a catalog-only change; older code reads them unchanged), and `b7d3f9a2c4e6`
+creates nine additive tables. Six new permission keys, all on the new integration, granted to
+the system roles on first boot by the startup reconciler. Three new environment variables, all
+optional (`SCHAKL_MICROSOFT_CLIENT_ID`, `_CLIENT_SECRET`, `_TENANT_ID`), plus two host settings
+(`SCHAKL_MICROSOFT_LOGIN_BASE_URL`, `_GRAPH_BASE_URL`) nobody sets outside a test stack or a
+sovereign cloud. One behaviour change to note: the `interaction.approved` / `interaction.rejected`
+bus payloads carry `source`. The public API reference is regenerated.
+
+### Microsoft 365 (integration)
+
+- **Outlook calendar, OneDrive and Outlook mail, bring-your-own app registration.** Instellingen
+  → Microsoft 365 holds the Entra app registration (client id, write-only secret, tenant), the
+  three surface toggles, the OneDrive layout (a drive, a parent folder, a template folder, an
+  automation account) and the Outlook policy; each employee connects their own account from
+  Instellingen → Account, with the mailbox opt-in a separate tick. Login and Graph access stay two
+  grants, and the connect consent asks for no `openid`: identity is read from `/me` with the token
+  we store anyway.
+- **Calendar.** The Agenda gains the source *Outlook-agenda* served from a local cache filled by
+  `calendarView/delta` (windowed, re-baselined before the window runs out), kept fresh by Graph
+  change-notification subscriptions with the validation handshake and a poll fallback. Approved
+  leave, planned task blocks and freelance availability mirror one way into the person's Outlook
+  calendar through the same outbox shape Google has; extra calendars are selected per person;
+  the scheduling dialog's conflict check reads the cache as a fourth busy provider.
+- **OneDrive.** Client, project and task pages gain a OneDrive panel: browse as yourself inside
+  the configured SharePoint library or OneDrive, upload straight to Graph through an upload
+  session, link and unlink, delete to the recycle bin, choose or provision a client folder (a
+  template folder is copied whole, asynchronously). The Drive rules hold verbatim: a record's
+  folder is a stored decision, re-pointing it is `manage`, unlink never deletes.
+- **Outlook mail.** Opted-in mailboxes are read forward from an instant (the whole mailbox, so
+  a message an inbox rule moved on arrival is seen), metadata first, matched against contacts
+  outside the agency through the same core gates Gmail uses, landing pending for the owner and
+  the colleagues on the message; the body arrives after approval, in the format it was written.
+  A skipped message can be fetched by an Outlook link, a Graph id or its Message-ID, or found by
+  a named-field search over your own mailbox; the interactions screen draws one refresh button
+  and one message picker per mailbox the viewer holds.
+- **Shared core.** `app/core/mailbox/` (matching, gates, the cross-provider *who polls what*
+  composition, the policy enums) and `app/core/calendarmirror.py` are read by both feeds; the
+  Google package re-exports its old names, so nothing changed for it except that a copy held by
+  a Gmail mailbox now defers to a colleague's Outlook mailbox too.
+- Documented in `docs/MICROSOFT.md` and on the docs site; the checklist for the first run
+  against a live tenant is in §9 of the former.
+
 ### Overzicht
 
 - **Urenoverzicht is Overzicht, and it has a landing page.** The sidebar item, the crumb and the
@@ -30,7 +76,7 @@ _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this 
   hours panel, a task's hours figure, the dashboard tiles — points at `/overview/hours`, and an
   old `/overview?…` link carrying a report filter is redirected there.
 
-No migrations, no new permission keys, two new `GET` endpoints.
+The Overzicht work itself brings no migrations and no new permission keys, two new `GET` endpoints.
 
 ## v0.42.0 — 2026-09-04
 

@@ -1,0 +1,199 @@
+"""microsoft.calendar — subscription/sync state, the local event cache, and the push outbox.
+
+Three tables, the same three jobs Google Calendar has (docs/MICROSOFT.md §4):
+
+- ``microsoft_calendar_channels`` — one row per synced calendar of a connection: the Graph
+  change-notification subscription and the ``deltaLink`` cursor. A subscription that cannot be
+  registered (no public HTTPS — dev boxes) parks on ``watch_status=failed`` and the poll-fallback
+  cron carries it. Graph's ``calendarView/delta`` is bounded to a window fixed when the delta
+  chain starts, so the row also remembers ``window_end`` and re-baselines before it runs out.
+- ``microsoft_calendar_events`` — the minimal local cache the Agenda reads. **Never** queried
+  live from Graph on a page load (docs/PERFORMANCE.md); the sync worker maintains it.
+- ``microsoft_calendar_event_links`` — the push outbox: local record → Graph event. Event-bus
+  handlers only ever write a row here (they run in the emitter's transaction — no external
+  calls); the worker does the Graph I/O. ``payload`` is the shared snapshot
+  (``app/core/calendarmirror``), so the worker never re-reads another module's internals.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
+from app.db import Base
+
+#: The connection's default calendar. Graph addresses it as ``/me/calendar`` (no id needed),
+#: and a named one as ``/me/calendars/{id}``; ``primary`` is our own stable token for the first.
+PRIMARY_CALENDAR = "primary"
+
+
+class WatchStatus(StrEnum):
+    NONE = "none"
+    ACTIVE = "active"
+    FAILED = "failed"  # registration refused (typically: no public HTTPS) → polling carries it
+
+
+class LinkStatus(StrEnum):
+    PENDING = "pending"
+    PUSHED = "pushed"
+    DELETE_PENDING = "delete_pending"
+    FAILED = "failed"
+
+
+class MicrosoftCalendarChannel(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One synced calendar of one connection — and the *selection* too (#440's rule).
+
+    A row here **is** "this calendar syncs for this person": the default calendar's row is
+    created on first sync, and ticking a shared or secondary calendar on the account page creates
+    its row. Each keeps its own delta cursor and subscription.
+    """
+
+    __tablename__ = "microsoft_calendar_channels"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "connection_id", "calendar_id", name="uq_mscal_channels_org_conn_calendar"
+        ),
+    )
+
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    calendar_id: Mapped[str] = mapped_column(
+        String(512), nullable=False, default=PRIMARY_CALENDAR, server_default=PRIMARY_CALENDAR
+    )
+    #: Graph's own name for the calendar, snapshotted when it was selected — what the feeds
+    #: menu prints. Empty for the default (the feed names that one itself).
+    summary: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    #: Graph's subscription id, and the ``clientState`` we minted for it (the webhook's shared
+    #: secret, ``{org}.{connection}.{secret}``).
+    subscription_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    client_state: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    watch_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=WatchStatus.NONE.value, server_default="none"
+    )
+    #: The ``@odata.deltaLink`` the next pull continues from. A URL, so ``Text``.
+    delta_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The end of the window the delta chain was started over: Graph fixes it at the first call
+    #: and never widens it, so the sync re-baselines when it draws near.
+    window_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MicrosoftCalendarEvent(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One cached Graph event, deliberately minimal: what the Agenda chip needs, nothing more
+    (no body, no attendees — the deep link opens Outlook for the rest)."""
+
+    __tablename__ = "microsoft_calendar_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "connection_id",
+            "calendar_id",
+            "graph_event_id",
+            name="uq_mscal_events_org_conn_cal_event",
+        ),
+        Index("ix_mscal_events_org_conn_start_at", "org_id", "connection_id", "start_at"),
+        Index("ix_mscal_events_org_conn_start_date", "org_id", "connection_id", "start_date"),
+    )
+
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("microsoft_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    graph_event_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    #: The series this row is an *occurrence* of (``seriesMasterId``), or ``None`` for a
+    #: one-off. ``calendarView`` expands recurrences, so an occurrence arrives under an id of
+    #: its own and names its master only here — the only way to recognise an occurrence of an
+    #: event schakl pushed as a rule (a repeating availability row) as one of ours.
+    series_master_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    calendar_id: Mapped[str] = mapped_column(
+        String(512), nullable=False, default=PRIMARY_CALENDAR, server_default=PRIMARY_CALENDAR
+    )
+    subject: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    #: ``confirmed`` / ``tentative`` / ``cancelled`` — the Agenda's own vocabulary, derived from
+    #: Graph's ``showAs`` and ``isCancelled`` at sync time.
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="confirmed", server_default="confirmed"
+    )
+    web_link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    change_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Timed events use the instant pair; all-day events the date pair (Graph's ``isAllDay``).
+    all_day: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Graph's all-day end is exclusive (the next day's midnight); stored as-is, made
+    #: inclusive at read time — the same convention the Google cache keeps.
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_at_graph: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MicrosoftCalendarEventLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """The push outbox: one local record ↔ one Graph event (docs/MICROSOFT.md §4)."""
+
+    __tablename__ = "microsoft_calendar_event_links"
+    __table_args__ = (
+        UniqueConstraint("org_id", "local_type", "local_id", name="uq_mscal_links_org_local"),
+        Index("ix_mscal_links_org_status", "org_id", "status"),
+    )
+
+    local_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: No FK — the link must outlive the record so a deleted leave request still deletes its
+    #: pushed event instead of stranding it.
+    local_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("microsoft_connections.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    calendar_id: Mapped[str] = mapped_column(
+        String(512), nullable=False, default=PRIMARY_CALENDAR, server_default=PRIMARY_CALENDAR
+    )
+    graph_event_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    change_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LinkStatus.PENDING.value, server_default="pending"
+    )
+    #: The shared mirror snapshot, taken in the emitter's transaction — the worker builds the
+    #: Graph event from this and never re-reads leave or task internals.
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)

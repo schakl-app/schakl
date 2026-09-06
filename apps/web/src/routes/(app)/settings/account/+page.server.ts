@@ -64,8 +64,13 @@ export const load: PageServerLoad = async (event) => {
   const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
   // The per-user Google connection card (docs/GOOGLE.md §1) — only when the org runs the module.
   const googleEnabled = (event.locals.theme?.enabledModules ?? []).includes("google");
-  const [google, modules, twoFactor] = await Promise.all([
+  // Its Microsoft twin (docs/MICROSOFT.md §1) — the same card shape, the same per-user grant.
+  const microsoftEnabled = (event.locals.theme?.enabledModules ?? []).includes("microsoft");
+  const [google, microsoft, modules, twoFactor] = await Promise.all([
     googleEnabled ? api.GET("/api/v1/google/connections/me") : Promise.resolve({ data: null }),
+    microsoftEnabled
+      ? api.GET("/api/v1/microsoft/connections/me")
+      : Promise.resolve({ data: null }),
     // Whether this org allows local password login (#161): an SSO-enforced org hides the
     // change-password card — there is no local password to change.
     api.GET("/api/v1/meta/modules"),
@@ -80,6 +85,13 @@ export const load: PageServerLoad = async (event) => {
     googleEnabled && google.data?.connected && google.data?.calendar_enabled
       ? api
           .GET("/api/v1/google/calendar/calendars")
+          .then((r) => r.data ?? null)
+          .catch(() => null)
+      : Promise.resolve(null);
+  const microsoftCalendars =
+    microsoftEnabled && microsoft.data?.connected && microsoft.data?.calendar_enabled
+      ? api
+          .GET("/api/v1/microsoft/calendar/calendars")
           .then((r) => r.data ?? null)
           .catch(() => null)
       : Promise.resolve(null);
@@ -102,6 +114,9 @@ export const load: PageServerLoad = async (event) => {
     google: google.data ?? null,
     googleCalendars,
     googleStatus: event.url.searchParams.get("google"),
+    microsoft: microsoft.data ?? null,
+    microsoftCalendars,
+    microsoftStatus: event.url.searchParams.get("microsoft"),
     localLogin: modules.data?.local_login_enabled ?? true,
     twoFactor: twoFactor.data ?? null,
   };
@@ -321,5 +336,34 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { googleSaved: true };
+  },
+
+  // Microsoft connection card contract (lib/integrations/microsoft/MicrosoftAccountCard.svelte).
+  microsoftDisconnect: async (event) => {
+    const { error } = await apiFor(event).POST("/api/v1/microsoft/connections/me/disconnect");
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { microsoftDisconnected: true };
+  },
+
+  microsoftCalendars: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/microsoft/calendar/calendars", {
+      body: { calendar_ids: form.getAll("calendar_ids").map(String).filter(Boolean) },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { microsoftCalendarsSaved: true };
+  },
+
+  microsoftOutlookPrefs: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PATCH("/api/v1/microsoft/connections/me", {
+      body: {
+        outlook_sync_enabled: form.get("outlook_sync_enabled") !== null,
+        outlook_excluded_category:
+          String(form.get("outlook_excluded_category") ?? "").trim() || null,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { microsoftSaved: true };
   },
 };

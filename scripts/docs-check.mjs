@@ -62,6 +62,7 @@ const EXPECTED_INTEGRATIONS = [
   'cloudflare',
   'oxxa',
   'google-workspace',
+  'microsoft-365',
   'marketing-sources',
   'rest-api',
   'mcp',

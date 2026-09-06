@@ -152,6 +152,12 @@ class InteractionDirection(StrEnum):
 class InteractionSource(StrEnum):
     MANUAL = "manual"
     GMAIL = "gmail"
+    #: A message an Outlook mailbox logged through the ``microsoft`` integration — the same
+    #: review flow, thread inheritance and body fetch as a gmail row, keyed by Graph's ids in
+    #: the same two columns (``gmail_message_id`` / ``gmail_thread_id`` are *the mailbox
+    #: provider's* message and thread ids for every ``MAILBOX_SOURCES`` row; the column names
+    #: predate the second provider and a rename is an expand/contract nobody needs).
+    OUTLOOK = "outlook"
     #: A ``.eml`` a person uploaded by hand (#262) — an email row like a gmail one, but the
     #: bytes came from a file, not from a connected mailbox. Distinct from ``MANUAL`` because
     #: the content is a real message (rendered as such, attachments and all) rather than
@@ -162,7 +168,19 @@ class InteractionSource(StrEnum):
 
 #: The sources whose body *is* an email message: rendered as received (never as markdown),
 #: with their attachments. ``MANUAL`` rows carry a person's own note instead.
-EMAIL_SOURCES = frozenset({InteractionSource.GMAIL.value, InteractionSource.UPLOAD.value})
+EMAIL_SOURCES = frozenset(
+    {
+        InteractionSource.GMAIL.value,
+        InteractionSource.OUTLOOK.value,
+        InteractionSource.UPLOAD.value,
+    }
+)
+
+#: The sources with a **connected mailbox** behind them: a row the poller wrote from somebody's
+#: grant, which is what puts it in the owner-only review flow, makes its fields a mirror of a
+#: real message (never edited, only re-filed) and gives it a thread, a deep link and a body the
+#: owning integration can re-fetch. An uploaded ``.eml`` is an email with none of that.
+MAILBOX_SOURCES = frozenset({InteractionSource.GMAIL.value, InteractionSource.OUTLOOK.value})
 
 
 class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base):
@@ -270,8 +288,10 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     source: Mapped[str] = mapped_column(
         String(10), nullable=False, default=InteractionSource.MANUAL.value
     )
-    gmail_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    gmail_thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The mailbox provider's own message id, meaningful only inside the mailbox it came from
+    #: (``owner_user_id``): a Gmail hex id, or a Graph id — which is why the column is wide.
+    gmail_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    gmail_thread_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     #: Gmail-style conversation grouping (#272): a plain (no-FK) id shared by every logged email
     #: row of one thread, so the list folds a conversation to a single row. Only ever set on
     #: **logged, email** rows — a ``NULL`` row is trivially its own singleton group, so nothing

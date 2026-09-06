@@ -159,6 +159,12 @@ x-api-env: &api-env
   SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN: ${SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN:-}
   # Only set when Google has sunset the version this release ships (a 404 on every Ads call).
   SCHAKL_GOOGLE_ADS_API_VERSION: ${SCHAKL_GOOGLE_ADS_API_VERSION:-}
+  # Microsoft 365 (docs/MICROSOFT.md). The app registration is normally configured per-org in
+  # Instellingen -> Microsoft 365 (encrypted in the DB, read by api AND worker); these are the
+  # documented env fallback. Empty = unset (safe default).
+  SCHAKL_MICROSOFT_CLIENT_ID: ${SCHAKL_MICROSOFT_CLIENT_ID:-}
+  SCHAKL_MICROSOFT_CLIENT_SECRET: ${SCHAKL_MICROSOFT_CLIENT_SECRET:-}
+  SCHAKL_MICROSOFT_TENANT_ID: ${SCHAKL_MICROSOFT_TENANT_ID:-common}
   # Optional 2FA-over-SMS gateway (TOTP works without it).
   SCHAKL_SMS_GATEWAY_URL: ${SCHAKL_SMS_GATEWAY_URL:-}
   SCHAKL_SMS_GATEWAY_TOKEN: ${SCHAKL_SMS_GATEWAY_TOKEN:-}

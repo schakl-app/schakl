@@ -1,10 +1,12 @@
 <script lang="ts">
   /**
-   * The messages a Gmail reference resolved to, one of which is about to become a
+   * The messages a mailbox reference resolved to, one of which is about to become a
    * contactmoment (#342).
    *
-   * One component for both ways in, because they answer the same question with the same list:
-   * a pasted link, and "mist er een bericht?" on a conversation we already logged part of.
+   * One component for both ways in — a pasted link, and "mist er een bericht?" on a conversation
+   * we already logged part of — and for both mailboxes: Gmail and Outlook answer the same
+   * question with the same list, built from the same core gates (`app/core/mailbox`), so the
+   * picker is typed on the fields the two candidates share rather than on either API's schema.
    * What differs is only where the id came from.
    *
    * Two states are drawn rather than hidden. **Already logged** keeps the message visible,
@@ -33,9 +35,28 @@
 
   import { fmtDateTime } from "$lib/core/format";
   import { hasMessage, t } from "$lib/core/i18n";
-  import type { components } from "$lib/core/api/schema";
 
-  type Candidate = components["schemas"]["GmailCandidate"];
+  /** What a Gmail and an Outlook candidate share — every field the picker draws. */
+  export interface MailboxCandidate {
+    message_id: string;
+    thread_id?: string | null;
+    subject?: string | null;
+    from_email?: string | null;
+    from_name?: string | null;
+    recipients?: string | null;
+    occurred_at?: string | null;
+    snippet?: string | null;
+    direction?: string;
+    logged?: boolean;
+    interaction_id?: string | null;
+    suppressed?: boolean;
+    skip_reason?: string | null;
+    skip_detail?: Record<string, string>;
+    before_connection?: boolean;
+    never_offered?: boolean;
+  }
+
+  type Candidate = MailboxCandidate;
 
   let {
     messages = [],

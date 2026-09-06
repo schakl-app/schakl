@@ -688,6 +688,23 @@ export function calendarSourcesFor(enabled: string[]): CalendarSourceSpec[] {
 }
 
 /**
+ * The label key of the calendar source registered under `key`, whichever module contributed it.
+ *
+ * A busy-feed provider (`app/core/busy.py`) names itself by the same key its Agenda source uses
+ * (`google.calendar`, `microsoft.calendar`), so the source's own label is the honest name for
+ * "what was read" — and looking it up here is what keeps the tasks module from carrying a list
+ * of integrations it is not allowed to know about (§6). Unfiltered on enablement on purpose: a
+ * name in a feed the API already answered is a name worth printing.
+ */
+export function calendarSourceLabelKey(key: string): string | undefined {
+  for (const mod of _modules.values()) {
+    const spec = (mod.calendarSources ?? []).find((source) => source.key === key);
+    if (spec) return spec.labelKey;
+  }
+  return undefined;
+}
+
+/**
  * The connect surfaces this tenant's enabled integrations contribute, filtered on the
  * permission each one's own POST declares (#310/#411).
  *

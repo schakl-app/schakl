@@ -8,6 +8,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { gmailActions } from "$lib/integrations/google/gmail-actions.server";
+import { outlookActions } from "$lib/integrations/microsoft/outlook-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
 import { interactionView, type RecordField, scopedRecords } from "$lib/modules/interactions/scope";
@@ -241,4 +242,6 @@ export const actions: Actions = {
    * the detail pages host `driveActions`.
    */
   ...gmailActions,
+  // The same four for an Outlook mailbox (docs/MICROSOFT.md §6): one screen, two grants.
+  ...outlookActions,
 };

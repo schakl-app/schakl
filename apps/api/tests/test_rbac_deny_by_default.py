@@ -76,6 +76,9 @@ _EXEMPT_OPERATIONS = frozenset(
         # authenticates with our own per-channel token and 404s anything that doesn't match
         # (docs/GOOGLE.md — webhooks map back to org + connection via our own channel token).
         ("post", "/api/v1/google/calendar/webhook"),
+        # Microsoft Graph change notifications: the same shape, authenticated by our own
+        # per-subscription clientState; anything that doesn't match is swallowed with a 202.
+        ("post", "/api/v1/microsoft/calendar/webhook"),
         # Payment-provider callbacks, same shape and the same reasons (epic #269): no session,
         # no tenant hostname — the org rides in a token we minted, the secret is compared in
         # constant time, and the status is taken from an authenticated re-fetch rather than

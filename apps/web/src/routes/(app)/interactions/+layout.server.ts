@@ -33,11 +33,14 @@ import type { LayoutServerLoad } from "./$types";
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
   const wantsGmail = can(event.locals.user, "google.connection.manage");
+  // The Outlook twin, on the same rule: asked only of someone who could act on the answer.
+  const wantsOutlook = can(event.locals.user, "microsoft.connection.manage");
   const wantsQueue = can(event.locals.user, "interactions.interaction.read");
-  const [kinds, members, gmail, queue] = await Promise.all([
+  const [kinds, members, gmail, outlook, queue] = await Promise.all([
     api.GET("/api/v1/interactions/kinds", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/members/lookup"),
     wantsGmail ? api.GET("/api/v1/google/gmail/status") : Promise.resolve(null),
+    wantsOutlook ? api.GET("/api/v1/microsoft/outlook/status") : Promise.resolve(null),
     wantsQueue
       ? api.GET("/api/v1/interactions", {
           params: { query: { status: "pending", mine: true, limit: 1 } },
@@ -49,6 +52,8 @@ export const load: LayoutServerLoad = async (event) => {
     members: members.data ?? [],
     /** `null` on an instance without the Google module, or for a caller who cannot connect one. */
     gmailStatus: gmail?.data ?? null,
+    /** `null` on an instance without the Microsoft module, or for a caller who cannot connect one. */
+    outlookStatus: outlook?.data ?? null,
     /**
      * How many of the viewer's own contact moments are still unreviewed — the number on the
      * Te beoordelen tab, and the only thing on the screen that says an empty queue is empty

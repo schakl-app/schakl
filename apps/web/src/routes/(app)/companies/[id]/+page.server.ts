@@ -8,6 +8,7 @@ import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
+import { oneDriveActions } from "$lib/integrations/microsoft/onedrive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
@@ -340,6 +341,8 @@ export const actions: Actions = {
   ...interactionActions,
   // Drive panel contract (lib/integrations/google).
   ...driveActions,
+  // OneDrive panel contract (lib/integrations/microsoft).
+  ...oneDriveActions,
   // Documents pinned to the client (core storage): the hub's files panel posts here.
   ...fileActions("company"),
   // Marketing panel contract (lib/modules/marketing): link/unlink GA4/GSC/Ads accounts.

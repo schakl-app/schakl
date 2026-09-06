@@ -14,6 +14,7 @@ import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { taskCreateBody } from "$lib/modules/tasks/create";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
+import { oneDriveActions } from "$lib/integrations/microsoft/onedrive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -256,4 +257,6 @@ export const actions: Actions = {
   ...interactionActions,
   // Drive panel contract (lib/integrations/google).
   ...driveActions,
+  // OneDrive panel contract (lib/integrations/microsoft).
+  ...oneDriveActions,
 };

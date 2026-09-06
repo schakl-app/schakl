@@ -138,7 +138,7 @@ export interface InteractionItem {
 export function mayReview(item: InteractionItem, me: string | null): boolean {
   if (item.reviewable !== undefined) return item.reviewable;
   return (
-    item.source === "gmail" &&
+    isMailboxRow(item) &&
     item.status === "pending" &&
     item.owner_user_id !== null &&
     item.owner_user_id === me
@@ -225,13 +225,17 @@ export function contactChips(
 }
 
 export function isMailRow(item: Pick<InteractionItem, "source">): boolean {
-  return item.source === "gmail" || item.source === "upload";
+  return isMailboxRow(item) || item.source === "upload";
 }
 
-/** Only a Gmail-sourced row belongs to the mailbox owner's review flow (approve / reject /
- *  remap, and no ordinary edit). An uploaded email is an ordinary row of its owner's. */
-export function isGmailRow(item: Pick<InteractionItem, "source">): boolean {
-  return item.source === "gmail";
+/** The sources with a connected mailbox behind them — the API's `MAILBOX_SOURCES`. */
+const MAILBOX_SOURCES = new Set(["gmail", "outlook"]);
+
+/** Only a row from a connected mailbox (Gmail or Outlook) belongs to the mailbox owner's review
+ *  flow (approve / reject / remap, and no ordinary edit). An uploaded email is an ordinary row of
+ *  its owner's. */
+export function isMailboxRow(item: Pick<InteractionItem, "source">): boolean {
+  return MAILBOX_SOURCES.has(item.source);
 }
 
 const _dayFmt = new Map<string, Intl.DateTimeFormat>();
