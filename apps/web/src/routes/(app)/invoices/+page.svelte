@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { CircleMinus, Download, FileArchive, Pencil, Trash2 } from "@lucide/svelte";
+  import { CircleMinus, Download, Pencil, Trash2 } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
@@ -23,7 +23,6 @@
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
-  import OriginalsDialog from "$lib/modules/invoicing/OriginalsDialog.svelte";
   import { docMoney, docStatus, MAX_ARCHIVE_DOCUMENTS } from "$lib/modules/invoicing/types";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
@@ -43,13 +42,6 @@
   const narrowed = $derived(
     Boolean(data.q || data.companyFilter || data.statusFilter || data.overdueFilter),
   );
-
-  // --- originals (docs/INVOICING.md) ------------------------------------------
-  // The zip-of-PDFs dialog is `OriginalsDialog`, shared with Instellingen → Facturatie where
-  // the migration is explained; here it sits beside Importeren, gated on the write key the
-  // API route declares. The button says what it is for (`title`), because "Originelen" beside
-  // a generic "Importeren" was how a shipped feature read as an absent one.
-  let originalsOpen = $state(false);
 
   // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
   // Download and delete, and deliberately nothing else: everything else an invoice has is money
@@ -242,11 +234,16 @@
     {#if data.canReadRegister}
       <!-- Export carries what the screen is narrowed by, so the file *is* the list on screen,
            whole (docs/UX.md) — the API declares exactly these on the export route. A client
-           reads only their own copies, and bulk is not theirs either way (§17). -->
+           reads only their own copies, and bulk is not theirs either way (§17).
+           Export only, by the owner's decision: an invoice import is a one-time migration
+           (a spreadsheet of somebody else's documents plus a zip of their PDFs), not a way of
+           working the list, so both doors live in Instellingen → Facturatie beside their
+           explanation and the empty state below points there. -->
       <ImpexBar
         entity="invoice"
         readPermission="invoicing.invoice.read"
         writePermission="invoicing.invoice.write"
+        importable={false}
         filters={{
           q: data.q,
           company_id: data.companyFilter,
@@ -255,19 +252,7 @@
           sort: data.table.sort,
         }}
         locale={data.locale}
-        {form}
       />
-      {#if data.canWrite}
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
-          title={t("invoicing.originals.button_hint")}
-          onclick={() => (originalsOpen = true)}
-        >
-          <FileArchive class="h-4 w-4" />
-          {t("invoicing.originals.button")}
-        </button>
-      {/if}
     {/if}
     <ColumnPicker
       all={table.pickerColumns}
@@ -485,10 +470,4 @@
   message={t("invoicing.delete_confirm")}
   action="?/delete"
   fields={{ id: deleteId }}
-/>
-
-<OriginalsDialog
-  bind:open={originalsOpen}
-  report={form?.originals ?? null}
-  error={form?.originalsError ?? null}
 />

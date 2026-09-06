@@ -591,9 +591,11 @@
     </form>
   </section>
 
-  <!-- Bringing the back catalogue in (docs/INVOICING.md): the explanation, and the two doors.
-       After Nummering on purpose — the last step of a migration is moving the sequence past
-       the highest number that came in, and that control is the one directly above. -->
+  <!-- Bringing the back catalogue in (docs/INVOICING.md): the explanation, and the two doors —
+       the only two, by the owner's decision: the Facturen list keeps Export and nothing else,
+       because a migration is a one-time act and not a way of working the list. After Nummering
+       on purpose — the last step of a migration is moving the sequence past the highest number
+       that came in, and that control is the one directly above. -->
   <section id="migrate" class={sectionClass} data-testid="invoice-migrate">
     <h2 class="mb-1 text-base font-semibold text-text">
       {t("settings.invoicing.migrate_heading")}

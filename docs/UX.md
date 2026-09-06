@@ -2415,16 +2415,18 @@ contrast bug in dark mode rather than only an inconsistency.
   v0.40.0 as "Importeren" and "Originelen (zip)" beside Kolommen on Facturen, and the product's
   own owner, on the latest release, could not find it: "Importeren" is the label every list
   carries and says nothing about *what* an invoice row is, and "Originelen (zip)" is a word for
-  the thing without the act. Three rules. **A one-time administrative act gets a home in
-  Instellingen** where an admin looks for one, with the explanation *and* the controls, hosted as
-  the same components the list uses (`OriginalsDialog`, `ImportWizard`) so the two cannot drift —
-  the list keeps its controls, because that rule still holds. **A control is named for what it
-  does, and carries a `title` for why**: "Originele pdf's (zip)" with "koppel de pdf's van
-  geïmporteerde facturen in één keer". And **an empty register is where a migration starts**, so
-  the list's empty state points at the section — only when nothing is filtered, or "nog geen
-  facturen" would be answering a search. The section also *names* the missing key rather than
-  hiding the button when a viewer lacks `impex.import`: a hidden control with no sentence is the
-  fault itself, one permission over.
+  the thing without the act. Three rules. **A one-time administrative act gets its home in
+  Instellingen, and only there** (the owner's decision): the explanation *and* the controls, as
+  the shared `ImportWizard` and `OriginalsDialog`, while the Facturen list keeps Export and
+  nothing else — the one deliberate exception to "a list that can travel by spreadsheet says so
+  on the list", because an invoice import is a migration of somebody else's documents and not a
+  way of working the list, and two generic buttons in a toolbar were exactly what hid it. **An
+  empty register is where a migration starts**, so the list's empty state points at the section
+  — only when nothing is filtered, or "nog geen facturen" would be answering a search. And **a
+  section that must hide a control names the missing key**: a viewer holding
+  `invoicing.settings.manage` without `impex.import` reads which permission is missing rather than
+  a step with no button, because a hidden control with no sentence is the fault itself, one
+  permission over.
 - **One screen for two audiences, gated on `!isPortal` instead of on the key.** Facturen (#266)
   is the case the rule above does not cover: it is *not* a write surface, so it should not be
   gated whole — a client belongs on it, reading their own invoices. What differs is the **chrome**

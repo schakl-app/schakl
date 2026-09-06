@@ -3,7 +3,6 @@ import { fail, redirect } from "@sveltejs/kit";
 import { bulkDeleteAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { readFilters } from "$lib/core/filters/types";
-import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -11,7 +10,6 @@ import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { INVOICE_COLUMNS, INVOICES_TABLE_ID } from "$lib/modules/invoicing/columns";
 import { INVOICE_FILTERS } from "$lib/modules/invoicing/filters";
-import { originalsAction } from "$lib/modules/invoicing/originals.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -89,10 +87,6 @@ export const actions: Actions = {
    * allows drafts only and reports the rest per row.
    */
   bulkDelete: (event) => bulkDeleteAction(event, "invoice"),
-  /** Spreadsheet import/export (§17) — the back catalogue comes in this way (docs/INVOICING.md). */
-  impex: (event) => impexAction(event, "invoice"),
-  /** A zip of original PDFs, matched to imported invoices by number (`OriginalsDialog`). */
-  originals: (event) => originalsAction(event),
   delete: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
