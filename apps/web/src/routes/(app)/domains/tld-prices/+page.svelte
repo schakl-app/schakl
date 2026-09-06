@@ -4,7 +4,8 @@
    * pattern). Each row is a TLD: the price in effect, anything scheduled, and how many
    * domains ride it. Prices are append-only history: setting one appends (same-day
    * corrects in place), the bulk increase is the #231 preview-then-apply modal, and a
-   * scheduled row can be deleted before its day comes.
+   * scheduled row can be deleted before its day comes — and so can the current one: a price
+   * entered with the wrong date is otherwise stuck, since a backdated row never outranks it.
    */
   import { Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
@@ -82,8 +83,9 @@
             },
           ]
         : []),
-      // A scheduled row can be undone before its day comes; each names its date.
-      ...(group.upcoming ?? []).map((row) => ({
+      // The current row and every scheduled one can be removed; each names its date. Issued
+      // invoices keep their amount (they snapshot), and the row before it takes over.
+      ...[...(group.current ? [group.current] : []), ...(group.upcoming ?? [])].map((row) => ({
         label: `${t("domains.tld_prices.delete_row")}: ${fmtNumericDate(row.valid_from)}`,
         icon: Trash2,
         danger: true,

@@ -429,11 +429,17 @@ for accounting packages.
   (`unpriced_count`, over the whole filtered set), the page above the table links to the TLD
   price list, and the picker refuses to add the period as a line, because *offered at €0,00*
   is the silent error the old skip was written to avoid. Zero is a sentence here, not a price.
-  One consequence is worth knowing before it is reported as a bug: a TLD price applies **from
-  its `valid_from`**, and a period is priced at its own boundary (#250, history never
-  reprices), so a price entered today prices every renewal still ahead and leaves last month's
-  overdue one unpriced. That is the same rule the cron bills by, and the screen says so — the
-  fix is a price dated before the renewal, or a `price_override` on the domain.
+  A period is priced at its own boundary (#250, history never reprices) by the row in force
+  that day — and **a day before the list's first row takes that first row**
+  (`domains/pricing.py`, the one function the backlog seam and the renewal cron both read). The
+  first price an agency enters is what the TLD costs, not what it costs from today: the stricter
+  reading left every overdue renewal unpriced until somebody backdated a row, and then deleted
+  the one entered first, because the newer row outranks it — a sequence nobody works out from the
+  screen. A **scheduled** row never prices anything before its day (a change that has not
+  happened yet), so "no price" now means exactly that: nothing in force for the TLD, and no
+  `price_override` on the domain. The current row can be deleted from the price list for the
+  same reason a scheduled one always could: a price you can see and cannot remove is a wrong
+  date you cannot fix.
 - **What is still outstanding** (`GET /invoicing/outstanding`): the four buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,

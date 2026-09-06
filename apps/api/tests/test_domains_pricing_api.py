@@ -305,9 +305,18 @@ async def test_renewal_cron_emits_and_advances_a_year(client_for) -> None:
         )
         unpriced = await _domain(c, headers, "gratis.be", company)
         dead = await _domain(c, headers, "dood.nl", company, status="expired")
+        # The list's first row prices a renewal that fell due before it (``pricing.py``);
+        # a row still scheduled prices nothing before its day.
+        await _set_price(c, headers, "eu", "9.00", _iso(today))
+        late = await _domain(c, headers, "laat.eu", company)
+        await _set_price(c, headers, "org", "7.00", _iso(today + timedelta(days=10)))
+        not_yet = await _domain(c, headers, "straks.org", company)
 
     for row in (priced, overridden, unpriced, dead):
         await _force_next_invoice(t.org.id, row["id"], today)
+    overdue = today - timedelta(days=40)
+    for row in (late, not_yet):
+        await _force_next_invoice(t.org.id, row["id"], overdue)
 
     fired: list[dict] = []
 
@@ -322,9 +331,11 @@ async def test_renewal_cron_emits_and_advances_a_year(client_for) -> None:
 
     by_name = {p["name"]: p for p in fired}
     # The priced and the overridden domain billed; the unpriced and the dead one did not.
-    assert set(by_name) == {"cyclus.nl", "afspraak.nl"}
+    assert set(by_name) == {"cyclus.nl", "afspraak.nl", "laat.eu"}
     assert by_name["cyclus.nl"]["amount"] == "12.50"
     assert by_name["afspraak.nl"]["amount"] == "20.00"
+    assert by_name["laat.eu"]["amount"] == "9.00"
+    assert by_name["laat.eu"]["period_start"] == _iso(overdue)
     # In advance: the renewal date opens the year the draft pays for (``period_span``).
     assert by_name["cyclus.nl"]["period_start"] == _iso(today)
     assert by_name["cyclus.nl"]["period_end"] == _iso(add_months(today, 12))
@@ -339,6 +350,36 @@ async def test_renewal_cron_emits_and_advances_a_year(client_for) -> None:
         # Unpriced: untouched, so it bills from the original due date once priced.
         assert after["gratis.be"]["next_invoice_date"] == _iso(today)
         assert after["dood.nl"]["next_invoice_date"] == _iso(today)
+        assert after["laat.eu"]["next_invoice_date"] == _iso(add_months(overdue, 12))
+        assert after["straks.org"]["next_invoice_date"] == _iso(overdue)
+
+
+def test_price_row_at_reads_the_first_row_backwards_and_a_scheduled_one_never() -> None:
+    from dataclasses import dataclass
+    from datetime import date
+
+    from app.modules.domains.pricing import price_row_at
+
+    @dataclass
+    class Row:
+        valid_from: date
+        amount: str
+
+    today = date(2026, 9, 6)
+    first = Row(date(2026, 9, 4), "15.00")
+    later = Row(date(2026, 9, 5), "16.00")
+    scheduled = Row(date(2026, 10, 1), "99.00")
+    rows = [first, later, scheduled]
+    # In force on the day: the newest row on or before it.
+    assert price_row_at(rows, date(2026, 9, 5), today) is later
+    assert price_row_at(rows, date(2026, 9, 4), today) is first
+    # Before the list began: the list's first row, never a later one.
+    assert price_row_at(rows, date(2020, 1, 1), today) is first
+    # A list that is only scheduled prices nothing yet; an empty one prices nothing.
+    assert price_row_at([scheduled], date(2026, 9, 1), today) is None
+    assert price_row_at([], date(2026, 9, 1), today) is None
+    # A scheduled row prices its own day and after, seen from a later today.
+    assert price_row_at(rows, date(2026, 10, 1), date(2026, 10, 2)) is scheduled
 
 
 async def test_domain_due_drafts_one_invoice_idempotently(client_for) -> None:

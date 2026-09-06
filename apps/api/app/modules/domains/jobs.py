@@ -26,6 +26,7 @@ from app.db import async_session_maker, set_current_org
 from app.modules.domains.dns import fetch_dns
 from app.modules.domains.invoiceable import invoiceable_condition
 from app.modules.domains.models import BILLABLE_STATUSES, Domain, DomainTldPrice
+from app.modules.domains.pricing import price_row_at
 from app.modules.domains.service import add_months
 
 logger = logging.getLogger("schakl.domains")
@@ -160,16 +161,20 @@ async def _advance_one(
         return True
     price_row = None
     if domain.tld:
-        price_row = await session.scalar(
-            select(DomainTldPrice)
-            .where(
-                DomainTldPrice.org_id == org.id,
-                DomainTldPrice.tld == domain.tld,
-                DomainTldPrice.valid_from <= invoice_date,
+        # The TLD's whole history (a handful of rows), resolved by the same rule the backlog
+        # prices with: the row in force on the renewal day, else the list's first row for a
+        # day before the list begins — never a row still scheduled (``pricing.price_row_at``).
+        history = list(
+            await session.scalars(
+                select(DomainTldPrice)
+                .where(
+                    DomainTldPrice.org_id == org.id,
+                    DomainTldPrice.tld == domain.tld,
+                )
+                .order_by(DomainTldPrice.valid_from)
             )
-            .order_by(DomainTldPrice.valid_from.desc())
-            .limit(1)
         )
+        price_row = price_row_at(history, invoice_date, today)
     if domain.price_override is not None:
         amount = domain.price_override
         currency = price_row.currency if price_row is not None else org_currency

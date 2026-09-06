@@ -410,10 +410,24 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
         assert report["total_amount"] == "0.00"
         assert report["totals_by_source"]["domain"] == {"count": 1, "amount": "0.00"}
 
-        # A price entered *today* does not reach a renewal that fell due last month: a period
-        # is priced at its own boundary (#250, history never reprices), and a TLD price applies
-        # from its ``valid_from``. The row stays unpriced — the same rule the cron bills by,
-        # and the reason the screen's sentence names the start date.
+        # A *scheduled* price does not reach a renewal that fell due last month: it is a change
+        # that has not happened yet, and the row stays unpriced — the same rule the cron bills by.
+        scheduled = await client.post(
+            "/api/v1/domains/tld-prices",
+            json={"tld": "nl", "amount": "99.00", "valid_from": add_months(today, 1).isoformat()},
+            headers=headers,
+        )
+        assert scheduled.status_code == 200, scheduled.text
+        report = await _backlog(client, headers, source="domain")
+        rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
+        assert [row["period_start"] for row in rows] == [overdue.isoformat()]
+        assert rows[0]["no_price"] is True
+        assert report["unpriced_count"] == 1
+
+        # A price entered *today* is the TLD's first price in force, and the first price an
+        # agency enters is what the TLD costs — so it prices the renewal that fell due before
+        # the list began (``domains/pricing.py``), from the same boundary: the cron did not
+        # move the date, so nothing was lost while it waited.
         priced = await client.post(
             "/api/v1/domains/tld-prices", json={"tld": "nl", "amount": "12.50"}, headers=headers
         )
@@ -422,11 +436,12 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
         report = await _backlog(client, headers, source="domain")
         rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
         assert [row["period_start"] for row in rows] == [overdue.isoformat()]
-        assert rows[0]["no_price"] is True
-        assert report["unpriced_count"] == 1
+        assert rows[0]["no_price"] is False
+        assert rows[0]["amount"] == "12.50"
+        assert report["unpriced_count"] == 0
 
-        # A price dated before the renewal turns the same row into a priced one, from the same
-        # boundary: the cron did not move the date, so nothing was lost while it waited.
+        # A price dated before the renewal is the one in force at the boundary and outranks the
+        # fallback: a backdated correction lands where it was pointed.
         backdated = await client.post(
             "/api/v1/domains/tld-prices",
             json={
