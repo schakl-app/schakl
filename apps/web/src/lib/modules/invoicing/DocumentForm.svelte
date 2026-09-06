@@ -11,6 +11,7 @@
   import { orgToday } from "$lib/core/today";
   import { LOCALES, t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
+  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -42,6 +43,7 @@
     action,
     companies = [],
     companyDefinitions = [],
+    definitions = [],
     contacts = [] as { id: string; name: string; company_ids: string[] }[],
     taxRates,
     products = [],
@@ -58,6 +60,10 @@
     action: string;
     companies?: PickerCompany[];
     companyDefinitions?: FieldDefinition[];
+    /** The tenant's own fields on *this* document type (§13) — an invoice's or a quote's.
+     *  Rendered below the notes; the ones flagged "print on the document" also land on the
+     *  paper, which is decided per definition in Instellingen and not here. */
+    definitions?: FieldDefinition[];
     contacts?: { id: string; name: string; company_ids: string[] }[];
     taxRates: TaxRate[];
     /** The tenant's default products for the line picker (owner request). */
@@ -432,6 +438,17 @@
       scope={{ companyId: (createdCompanyId || companyId || doc?.company_id) ?? null }}
     />
   </div>
+
+  {#if definitions.length > 0}
+    <!-- The tenant's own fields (§13). Posted as one JSON `custom` field; left out entirely
+         when the tenant has none, so the API sees no `custom` key and leaves the column be. -->
+    <CustomFieldsForm
+      {definitions}
+      values={(doc?.custom ?? {}) as Record<string, unknown>}
+      {locale}
+      scope={{ companyId: (createdCompanyId || companyId || doc?.company_id) ?? null }}
+    />
+  {/if}
 
   {#if form?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(String(form.error))}</p>

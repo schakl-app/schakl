@@ -95,9 +95,9 @@ export function periodText(start: string | null | undefined, end: string): strin
 
 /**
  * Lines grouped into their kinds, each keeping its own order — mirrors `_sections()` in
- * `apps/api/app/modules/invoicing/pdf.py`. A document whose lines are all one kind gets a
- * single unlabelled group: a lone "UREN" band subtotalling to the subtotal beneath it is
- * noise, and headers earn their place exactly when two kinds must be told apart.
+ * `apps/api/app/modules/invoicing/render/context.py`. Every kind is labelled, a document of
+ * one kind included: the band is what names the thing being paid for, and the renderer only
+ * skips the lone kind's *subtotal* (which would restate the document's own).
  */
 export function lineSections<T extends { line_kind?: LineKind | null }>(
   lines: T[],
@@ -109,7 +109,6 @@ export function lineSections<T extends { line_kind?: LineKind | null }>(
     buckets.set(key, [...(buckets.get(key) ?? []), line]);
   }
   const ordered = LINE_KINDS.filter((kind) => buckets.has(kind));
-  if (ordered.length <= 1) return [{ kind: "", label: "", lines }];
   return ordered.map((kind) => ({
     kind,
     label: lineKindLabel(kind),

@@ -132,10 +132,13 @@ invoice that owes nothing.
   the line* (`from_time` → hours, the cycle cron → subscription, the renewal cron → domain, a
   product pick or a hand-typed line → product) and travels to the document, which groups and
   subtotals by it. It is presentation and provenance, never money: totals are computed exactly
-  as before. A document whose lines are all one kind gets **no** section headers — a lone
-  "UREN" band subtotalling to the subtotal beneath it is noise; headers earn their place when
-  two kinds must be told apart. A credit note and a quote conversion carry the source
-  document's kinds over.
+  as before. Every kind prints under its own heading, a document of one kind included (owner
+  decision, reversing the earlier "headers earn their place only when two kinds must be told
+  apart"): an invoice carrying nothing but a hosting agreement still says *Abonnementen* over
+  it, because the band is what names the thing being paid for and two months' invoices should
+  read the same shape whether or not one of them also billed hours. What a lone kind skips is
+  its own **subtotal** row, which would restate the document's subtotal directly beneath it.
+  A credit note and a quote conversion carry the source document's kinds over.
   **`domain` split out of `subscription` in #302**, reversing the earlier call that a renewal
   is just a recurring line and the distinction bought nothing. It buys one thing, and it is
   the thing an agency does every month: a register of forty renewals is reconciled line by
@@ -783,11 +786,10 @@ choose from; the picker is not auto-opened either, because modal thrash on every
 change is worse than what it replaced.
 
 The editor **always shows all three sections**, an empty one collapsing to its heading and its
-add control — its job is to state where a line goes. The renderer keeps the opposite rule (a
-document whose lines are all one kind gets no headers, because a lone "UREN" band subtotalling
-to the subtotal beneath it is noise). The divergence is deliberate; do not "fix" either to
-match the other. Section order **is** document order: the server takes `position` from the
-posted array index, so the editor serialises section by section.
+add control — its job is to state where a line goes. The renderer heads every kind it prints
+too (an empty kind simply does not print), and skips only a lone kind's subtotal row. Section
+order **is** document order: the server takes `position` from the posted array index, so the
+editor serialises section by section.
 
 Instellingen → Facturatie carries **Automatisch factureren** (the org's `AutoInvoiceMode`), and
 a subscription or domain overrides it in its own form with a "follow the organisation setting"
@@ -886,6 +888,33 @@ click per document. Four decisions hold it up, and none of them is about zip fil
   exactly. `MAX_IMPORT_ROWS`' reasoning: a cap is what keeps a synchronous batch honest until it
   is a background job. The web mirrors the number to *say* so (`invoicing/types.ts`) rather than
   letting the user press a control that will 422.
+
+### The tenant's own fields reach the paper (`core/customfields/format.py`)
+
+An invoice, a quote and a subscription are customizable (§13), and a definition on any of the
+three may be marked **Op het document tonen** (`config_json.print_on_document` — no migration,
+a flag on the definition, read on the next render). Two things follow from it, and they land
+in two different places on purpose:
+
+- **A document's own field prints in its meta block**, after the catalog's rows: "Projectcode
+  · PRJ-2026-07" under the invoice number and dates. The service resolves the flagged
+  definitions once per render batch (`_RenderShared.printable_fields`) and hands the renderer
+  `(label, value)` **text** in the document's locale (`document_entries`) — the renderer is
+  sandboxed and never sees a definition row, and a tenant's own Jinja design gets the same
+  entries through `meta`. Whether a field prints is the *definition's* decision, so it is not
+  a layout toggle: switching it on in Instellingen changes every invoice that holds a value.
+- **A subscription's field rides every invoice line the agreement raises**, as one clause on
+  the same line: `Hosting Pro · Website: klant.nl` (`subscriptions.document_notes`, joined by
+  `with_note`). Both paths that draft a subscription line call it — the editor's picker
+  (`open_agreements`) and the cycle cron (`advance_subscriptions`, which also emits the clause
+  alone as `detail` for the consumer's no-lines fallback) — so a hand-picked month and a
+  cron-drafted one read the same, which is the seam's whole reason to exist. One line rather
+  than a second row, because the editor's description is a single-line input and a period
+  label already follows it in parentheses.
+
+The value is formatted the way the web formats it (`format_value`: an option's own label, a
+`dd-mm-yyyy` date, *Ja*/*Nee*), and an empty value prints nothing — an empty label on paper is
+worse than the field being absent.
 
 ### What a template may rearrange (`render/blocks.py`)
 

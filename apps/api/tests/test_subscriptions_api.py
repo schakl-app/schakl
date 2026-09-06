@@ -594,3 +594,69 @@ async def test_due_cron_catches_up_a_lagging_cycle_in_one_run(client_for) -> Non
             await c.get(f"/api/v1/subscriptions/{sub['id']}", headers=headers)
         ).json()
         assert after["next_invoice_date"] == _iso(add_months(today, 1))
+
+
+async def test_due_cron_carries_the_agreements_flagged_fields(client_for) -> None:
+    """The cycle cron and the editor's picker draft the same line: a subscription custom
+    field flagged for the document rides each emitted line's description and travels on its
+    own as ``detail`` for the consumer's no-lines fallback."""
+    from app.modules.subscriptions.jobs import advance_subscriptions
+
+    t = await make_tenant("subs-cron-note")
+    headers = await auth_cookie(t.user)
+    today = datetime.now(UTC).date()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Cyclus"}, headers=headers)
+        ).json()
+        r = await c.post(
+            "/api/v1/custom-fields/definitions",
+            json={
+                "entity_type": "subscription",
+                "key": "website",
+                "data_type": "text",
+                "label_i18n": {"nl": "Website", "en": "Website"},
+                "config_json": {"print_on_document": True},
+            },
+            headers=headers,
+        )
+        assert r.status_code == 201, r.text
+        r = await c.post(
+            "/api/v1/subscriptions",
+            json={
+                "company_id": company["id"],
+                "name": "Hosting Pro",
+                "status": "active",
+                "interval": "monthly",
+                "start_date": _iso(add_months(today, -2)),
+                "next_invoice_date": _iso(today),
+                "amount": "25.00",
+                "custom": {"website": "klant.nl"},
+                "lines": [
+                    {"description": "Hosting", "quantity": "1", "unit_amount": "20.00"},
+                    {"description": "SSL", "quantity": "1", "unit_amount": "5.00"},
+                ],
+            },
+            headers=headers,
+        )
+        assert r.status_code == 201, r.text
+
+    fired: list[dict] = []
+
+    async def listener(ctx, payload) -> None:
+        fired.append(payload)
+
+    from app.core import events
+
+    events.subscribe("subscription.due", listener)
+    try:
+        await advance_subscriptions({})
+    finally:
+        events._handlers["subscription.due"].remove(listener)
+
+    assert len(fired) == 1
+    assert fired[0]["detail"] == "Website: klant.nl"
+    assert [line["description"] for line in fired[0]["lines"]] == [
+        "Hosting \u00b7 Website: klant.nl",
+        "SSL \u00b7 Website: klant.nl",
+    ]

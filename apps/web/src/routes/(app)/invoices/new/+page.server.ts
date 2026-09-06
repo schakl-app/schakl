@@ -20,6 +20,7 @@ export const load: PageServerLoad = async (event) => {
     settings,
     companyDefinitions,
     contactDefinitions,
+    definitions,
   ] = await Promise.all([
     api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
     api.GET("/api/v1/contacts", {
@@ -35,6 +36,9 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "invoice" } },
+    }),
   ]);
   return {
     companies: lookupItems(companies, "companies").map((c) => ({
@@ -49,6 +53,7 @@ export const load: PageServerLoad = async (event) => {
     settings: settings.data ?? null,
     companyDefinitions: companyDefinitions.data ?? [],
     contactDefinitions: contactDefinitions.data ?? [],
+    definitions: definitions.data ?? [],
     locale: event.locals.locale,
   };
 };

@@ -19,11 +19,16 @@ Four decisions worth stating, because each has a plausible wrong version:
 * **We charge ``outstanding``, recomputed at creation.** Never ``total``, never a number the
   caller sent. A credited or part-paid invoice that asked for its full total is the exact bug
   ``render/context.py`` already records once for the payment block.
-* **A test-mode payment settles nothing.** It flips the intent to ``paid`` and stops there.
-  The whole loop — create, redirect, webhook, re-fetch, status — is observable, and the one
-  step withheld is the one that would book a real invoice as paid against money that does not
-  exist. An agency that leaves a test key in place gets an obviously-stuck screen instead of
-  silently wrong revenue.
+* **A test-mode payment settles like a live one.** It used to be a deliberate dead end — the
+  intent reached ``paid`` and no ledger row was written — on the argument that a test key
+  left in place would otherwise book real invoices against money that does not exist. The
+  owner reversed that: a rehearsal that stops one step short of the ledger cannot prove the
+  step that matters (the ``InvoicePayment`` row, ``paid_total``, the status flip, the
+  ``invoice.paid`` mail, the thank-you page a client lands on), so the whole client
+  walkthrough could only ever be verified with a real euro. The mode is still **stored on the
+  intent and written into the ledger row's note** (``mollie:tr_… (test)``), the screen still
+  labels the attempt, and a test credential still loses the tiebreak to a live one — what
+  changed is that "did it work?" now has the same answer in both modes.
 * **Settling takes a row lock, and a unique index backs it up.** A provider retries a webhook
   until it gets a 200 (Mollie: ten times over 26 hours), and two deliveries can be in flight
   at once. ``SELECT … FOR UPDATE`` on the intent serialises them; the partial unique index on
@@ -487,11 +492,9 @@ class InvoicePaymentService:
 
         if not snapshot.status.settled or intent.settled_at is not None:
             return intent
-        if intent.mode == "test":
-            # Deliberate dead end (see the module docstring): the loop is fully observable and
-            # the ledger stays clean. `settled_at` is left NULL, which is exactly what the
-            # screen reads to say "testbetaling — niet geboekt".
-            return intent
+        # A test-mode attempt settles too (see the module docstring): the ledger row it writes
+        # carries the mode in its note, so a rehearsal is recognisable in the payments list
+        # and can be deleted by hand like any other registered payment.
         return await self._settle(intent, snapshot)
 
     async def _settle(
@@ -527,7 +530,10 @@ class InvoicePaymentService:
             paid_on=paid_on,
             amount=amount,
             method=ONLINE_METHOD,
-            note=f"{intent.provider}:{intent.external_id}"[:255],
+            note=(
+                f"{intent.provider}:{intent.external_id}"
+                + (" (test)" if intent.mode == "test" else "")
+            )[:255],
             intent_id=intent.id,
         )
         intent = await self.intents.update(

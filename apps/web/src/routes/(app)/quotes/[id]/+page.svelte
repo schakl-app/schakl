@@ -195,6 +195,7 @@
         kind="quote"
         doc={quote}
         action="?/save"
+        definitions={data.definitions}
         contacts={data.contacts}
         taxRates={data.taxRates}
         products={data.products}

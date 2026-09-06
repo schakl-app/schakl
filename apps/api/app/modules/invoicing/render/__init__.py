@@ -13,6 +13,7 @@ The module's public surface, so callers never reach into the internals:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from app.modules.invoicing.render.blocks import (
@@ -69,6 +70,7 @@ def render_document_html(
     tax_groups: list[Any] | None = None,
     pay_url: str | None = None,
     payable_online: bool = False,
+    custom_fields: Sequence[tuple[str, str]] = (),
 ) -> str:
     context = build_context(
         kind=kind,
@@ -80,6 +82,7 @@ def render_document_html(
         tax_groups=tax_groups,
         pay_url=pay_url,
         payable_online=payable_online,
+        custom_fields=custom_fields,
     )
     return render_html(context, config or {})
 
@@ -95,6 +98,7 @@ def render_document_pdf(
     tax_groups: list[Any] | None = None,
     pay_url: str | None = None,
     payable_online: bool = False,
+    custom_fields: Sequence[tuple[str, str]] = (),
 ) -> bytes:
     """Blocking and CPU-bound — callers run it in a thread (``asyncio.to_thread``)."""
     html = render_document_html(
@@ -107,5 +111,6 @@ def render_document_pdf(
         tax_groups=tax_groups,
         pay_url=pay_url,
         payable_online=payable_online,
+        custom_fields=custom_fields,
     )
     return html_to_pdf(html, locale=getattr(doc, "locale", None) or "nl")

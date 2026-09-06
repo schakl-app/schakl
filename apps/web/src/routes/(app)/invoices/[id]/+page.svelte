@@ -296,6 +296,7 @@
           kind="invoice"
           doc={invoice}
           action="?/save"
+          definitions={data.definitions}
           contacts={data.contacts}
           taxRates={data.taxRates}
           products={data.products}
@@ -425,6 +426,7 @@
       canSync={data.canSyncPayment}
       agencyView={data.canReadRegister}
       returning={data.returning}
+      paid={invoice.status === "paid"}
       invoiceId={invoice.id}
       publicUrl={invoice.public_url ?? ""}
       {form}

@@ -538,3 +538,55 @@ async def test_outstanding_needs_invoice_write_and_resolves_the_client_first(cli
         )
         assert cross.status_code == 404
         assert cross.json()["error"]["message"] == "errors.not_found"
+
+
+async def test_a_flagged_subscription_field_rides_every_offered_line(client_for) -> None:
+    """The one fact that tells two hosting agreements apart on an invoice is a field the
+    tenant defined themselves. A subscription custom field flagged ``print_on_document``
+    joins each offered line's description (``Hosting Pro · Website: klant.nl``); one that is
+    not flagged, or holds nothing, changes nothing."""
+    t: Tenant = await make_tenant("out-note")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        for key, flagged in (("website", True), ("intern", False)):
+            r = await c.post(
+                "/api/v1/custom-fields/definitions",
+                json={
+                    "entity_type": "subscription",
+                    "key": key,
+                    "data_type": "text",
+                    "label_i18n": {"nl": key.capitalize(), "en": key.capitalize()},
+                    "config_json": {"print_on_document": flagged},
+                },
+                headers=headers,
+            )
+            assert r.status_code == 201, r.text
+        today = _today()
+        noted = await _subscription(
+            c, headers, company_id,
+            name="Hosting Pro",
+            start_date=(today - timedelta(days=40)).isoformat(),
+            next_invoice_date=today.isoformat(),
+            custom={"website": "klant.nl", "intern": "niet printen"},
+        )
+        plain = await _subscription(
+            c, headers, company_id,
+            name="Onderhoud",
+            start_date=(today - timedelta(days=40)).isoformat(),
+            next_invoice_date=today.isoformat(),
+        )
+        out = await _outstanding(c, headers, company_id)
+
+    by_id = {row["id"]: row for row in out["subscriptions"]}
+
+    def descriptions(sub_id: str) -> list[str]:
+        return [
+            line["description"] for p in by_id[sub_id]["periods"] for line in p["lines"]
+        ]
+
+    noted_lines = descriptions(noted["id"])
+    assert noted_lines and all(d == "Hosting Pro \u00b7 Website: klant.nl" for d in noted_lines)
+    plain_lines = descriptions(plain["id"])
+    assert plain_lines and all(d == "Onderhoud" for d in plain_lines)

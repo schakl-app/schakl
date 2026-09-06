@@ -76,8 +76,15 @@ def _parse_period(payload: dict[str, Any]) -> tuple[date | None, date] | None:
 
 
 def _period_label(period_start: date | None, period_end: date) -> str:
+    """``01-01-2025 - 01-01-2026``: the span the line bills, the way the document's own
+    period field prints it (``render/context.py``) and the editor's picker writes it.
+
+    A spaced hyphen, deliberately. The dates are themselves dashed, so ``01-01-2025-01-01-2026``
+    read as one run of digits and dashes on paper; an en dash would be typographically nicer
+    and lands as ``?`` on the bank statements and ledgers this text is copied into.
+    """
     if period_start:
-        return f"{period_start.strftime('%d-%m-%Y')}-{period_end.strftime('%d-%m-%Y')}"
+        return f"{period_start.strftime('%d-%m-%Y')} - {period_end.strftime('%d-%m-%Y')}"
     return period_end.strftime("%d-%m-%Y")
 
 
@@ -365,10 +372,15 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
 
     raw_lines = payload.get("lines") or []
     if not raw_lines:
+        # ``detail`` is the agreement's own clause (its flagged custom fields — "Website:
+        # klant.nl"), carried separately because this fallback is where the period joins.
+        name = str(payload.get("name") or "")
+        detail = str(payload.get("detail") or "")
         raw_lines = [
             {
                 "description": (
-                    f"{payload.get('name', '')} ({_period_label(period_start, period_end)})"
+                    f"{name}{' \u00b7 ' + detail if detail else ''}"
+                    f" ({_period_label(period_start, period_end)})"
                 ).strip(),
                 "quantity": "1",
                 "unit_amount": payload.get("amount") or "0",

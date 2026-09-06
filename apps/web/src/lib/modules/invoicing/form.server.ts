@@ -1,5 +1,21 @@
 /** Server-side helpers shared by the invoice/quote editor routes (issue #207). */
 
+/**
+ * The tenant's custom fields, as `CustomFieldsForm` posts them: one JSON field. Only when the
+ * form carried one — a form without the field says nothing about `custom`, and the API reads
+ * an absent key as "leave alone" (§18), so a caller that never rendered the fields cannot
+ * blank them.
+ */
+function customFrom(form: FormData): Record<string, unknown> {
+  const raw = form.get("custom");
+  if (raw === null) return {};
+  try {
+    return { custom: JSON.parse(String(raw)) };
+  } catch {
+    return {};
+  }
+}
+
 /** Map the editor's FormData onto the API's document body. Lines ride as one JSON field. */
 export function documentBody(form: FormData): Record<string, unknown> {
   const text = (key: string) => {
@@ -24,6 +40,7 @@ export function documentBody(form: FormData): Record<string, unknown> {
     issue_date: text("issue_date") ?? null,
     prices_include_tax: form.get("prices_include_tax") === "1",
     lines,
+    ...customFrom(form),
   };
 }
 
@@ -41,6 +58,7 @@ export function processBody(form: FormData): Record<string, unknown> {
     notes: text("notes") ?? null,
     template_id: text("template_id") || null,
     exchange_rate: text("exchange_rate"),
+    ...customFrom(form),
   };
 }
 

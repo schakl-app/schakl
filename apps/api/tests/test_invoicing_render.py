@@ -288,11 +288,12 @@ def test_a_block_a_design_places_by_hand_still_honours_its_switch() -> None:
     assert "Betaalgegevens" not in off
 
 
-def test_a_kind_heads_its_own_table_only_when_there_is_more_than_one() -> None:
+def test_every_kind_heads_its_own_table_and_a_lone_kind_skips_its_subtotal() -> None:
     """Three kinds, three headed tables: *Aantal* means hours in one and licences in the next,
-    and a heading eighteen rows up is not there when the reader needs it. One kind gets the
-    plain table — a lone "UREN" over a table that subtotals to the subtotal beneath it is
-    noise, which is the same rule ``_sections`` already applies to the grouping itself.
+    and a heading eighteen rows up is not there when the reader needs it. One kind keeps its
+    heading (owner decision: the band names what is being paid for, and a hosting-only invoice
+    should still say *Abonnementen*) and drops only the subtotal row that would restate the
+    document's own subtotal directly beneath it.
     """
     doc, lines, groups = sample_document("nl", "EUR", TODAY)
 
@@ -309,9 +310,13 @@ def test_a_kind_heads_its_own_table_only_when_there_is_more_than_one() -> None:
     assert many.count('class="group-name col-description"') == 3
     assert many.count("Abonnementen") >= 1
 
+    assert many.count('class="section-total"') == 3
+
     one = render([lines[0]])
-    assert 'class="line-group"' not in one
+    assert one.count('class="line-group"') == 1
+    assert one.count('class="group-name col-description"') == 1
     assert one.count("<thead>") == 1
+    assert 'class="section-total"' not in one
     """The band is drawn by hand *and* skipped in the body loop; getting one of the two wrong
     prints the VAT breakdown twice, or drops it from a template that asked for it."""
     on = _render({"design": "letterhead",
@@ -1144,3 +1149,77 @@ def test_the_pay_line_reads_as_viewing_when_nothing_can_collect() -> None:
     invoice — so the words change and the link stays."""
     assert "Betaal deze factuur online" in _with_qr(config=_LINK_ON, payable_online=True)
     assert "Bekijk deze factuur online" in _with_qr(config=_LINK_ON, payable_online=False)
+
+
+def test_a_documents_own_custom_fields_join_the_meta_block() -> None:
+    """A tenant's flagged field prints beside the document's own details, as text the service
+    already resolved — the renderer never sees a definition. An empty pair prints nothing."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config={},
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+        custom_fields=[("Projectcode", "PRJ-2026-07"), ("Leeg", "")],
+    )
+    assert "Projectcode" in html
+    assert "PRJ-2026-07" in html
+    assert "Leeg" not in html
+
+
+async def test_a_flagged_invoice_field_prints_and_an_unflagged_one_does_not(client_for) -> None:
+    """End to end: the definition decides. Two fields on the invoice, one marked *print on
+    the document*; the preview carries that one's label and value and nothing of the other."""
+    from app.modules.invoicing.render.context import fmt_date
+
+    tenant: Tenant = await make_tenant("render-custom")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        for key, flagged in (("projectcode", True), ("intern", False)):
+            r = await client.post(
+                "/api/v1/custom-fields/definitions",
+                json={
+                    "entity_type": "invoice",
+                    "key": key,
+                    "data_type": "text",
+                    "label_i18n": {"nl": key.capitalize(), "en": key.capitalize()},
+                    "config_json": {"print_on_document": flagged},
+                },
+                headers=headers,
+            )
+            assert r.status_code == 201, r.text
+        r = await client.post(
+            "/api/v1/custom-fields/definitions",
+            json={
+                "entity_type": "invoice",
+                "key": "opgeleverd",
+                "data_type": "date",
+                "label_i18n": {"nl": "Opgeleverd", "en": "Delivered"},
+                "config_json": {"print_on_document": True},
+            },
+            headers=headers,
+        )
+        assert r.status_code == 201, r.text
+        company = await client.post(
+            "/api/v1/companies", json={"name": "Klant BV"}, headers=headers
+        )
+        invoice = await client.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company.json()["id"],
+                "lines": [{"description": "Werk", "quantity": "2", "unit_price": "100"}],
+                "custom": {
+                    "projectcode": "PRJ-77", "intern": "GEHEIM", "opgeleverd": "2026-06-30",
+                },
+            },
+            headers=headers,
+        )
+        assert invoice.status_code == 201, invoice.text
+        preview = await client.get(
+            f"/api/v1/invoicing/invoices/{invoice.json()['id']}/preview", headers=headers
+        )
+    assert preview.status_code == 200
+    assert "Projectcode" in preview.text
+    assert "PRJ-77" in preview.text
+    assert "Opgeleverd" in preview.text
+    assert fmt_date(__import__("datetime").date(2026, 6, 30)) in preview.text
+    assert "GEHEIM" not in preview.text
+    assert "Intern" not in preview.text

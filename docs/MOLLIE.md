@@ -392,10 +392,11 @@ A `test_…` key creates payments in a **fully isolated dataset**. The checkout 
 screen where any final status can be forced, and **webhooks fire identically** — which is what
 makes the whole loop verifiable without money.
 
-**Test payments settle nothing here**, on purpose. The intent reaches `paid`, `settled_at` stays
-`NULL`, no `InvoicePayment` row is written, and the screen says *"testbetaling: niet geboekt"*.
-`docs/PAYMENTS.md` §6 has the reasoning; the short version is that an agency who leaves a test
-key connected gets an obviously-stuck screen rather than silently wrong revenue.
+**Test payments settle here exactly as live ones do**: the intent reaches `paid`, an
+`InvoicePayment` row is written with `mollie:tr_… (test)` as its note, the invoice flips to
+*betaald* and the client lands on the thank-you page. `docs/PAYMENTS.md` §6 has the reasoning
+(it reverses an earlier dead end); the short version is that a rehearsal which stops before the
+ledger cannot prove the ledger, and an agency deletes a rehearsal's payment row by hand.
 
 What Mollie's test mode offers for exercising the failure paths:
 
@@ -498,8 +499,8 @@ each guarding a hazard rather than a behaviour:
 - It **records no headers**, only method, path and JSON body, so the credential cannot end up
   in a pytest failure dump. `test_the_fake_never_records_the_api_key` asserts it.
 - It derives `mode` from the Bearer prefix exactly as `mode_of` does, because `mode` is what
-  decides whether a settle writes a ledger row at all — a fake that always said `live` would
-  make the test-mode dead end untestable.
+  a settled test attempt is recognised by — on the intent and in the ledger row's note — and a
+  fake that always said `live` would leave that marking untested.
 - Every refund and chargeback path is in `FORBIDDEN_FRAGMENTS` and raises `AssertionError`
   *before* the credential gate and before any scripted failure, so no test setup can turn "we
   tried to refund somebody" into a tidy reportable error.

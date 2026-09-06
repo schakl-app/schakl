@@ -65,6 +65,16 @@
   let selectedType = $state("text");
   const showOptions = $derived(selectedType === "select" || selectedType === "multi_select");
 
+  /**
+   * The entity types whose fields can reach paper: a document's own fields print in its meta
+   * block, a subscription's ride every invoice line the agreement raises. Anything else has
+   * no document to print on, so the switch is not drawn (#253: a control that cannot act).
+   */
+  const PRINTABLE = new Set(["invoice", "quote", "subscription"]);
+  const printable = $derived(PRINTABLE.has(data.entityType));
+  const printsOnDocument = (def: Def) =>
+    Boolean((def.config_json as Record<string, unknown> | null)?.print_on_document);
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
@@ -107,6 +117,9 @@
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.key")}</th>
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.type")}</th>
           <th class="px-4 py-2 font-medium">{t("common.required")}</th>
+          {#if printable}
+            <th class="px-4 py-2 font-medium">{t("settings.custom_fields.print_on_document")}</th>
+          {/if}
           <th class="px-4 py-2 text-right font-medium">{t("common.actions")}</th>
         </tr>
       </thead>
@@ -117,6 +130,9 @@
             <td class="px-4 py-2 font-mono text-xs text-text-muted">{def.key}</td>
             <td class="px-4 py-2 text-text-muted">{t(`customfields.type.${def.data_type}`)}</td>
             <td class="px-4 py-2 text-text-muted">{def.required ? t("common.required") : "—"}</td>
+            {#if printable}
+              <td class="px-4 py-2 text-text-muted">{printsOnDocument(def) ? "✓" : "—"}</td>
+            {/if}
             <td class="px-4 py-2">
               <div class="flex items-center justify-end">
                 <ActionsMenu
@@ -194,11 +210,17 @@
         <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.options_hint")}</p>
       </div>
     {/if}
-    <div class="flex items-center gap-4">
+    <div class="flex flex-wrap items-center gap-4">
       <label class="flex items-center gap-2 text-sm text-text">
         <input type="checkbox" name="required" class="h-4 w-4 rounded border-border" />
         {t("common.required")}
       </label>
+      {#if printable}
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="print_on_document" class="h-4 w-4 rounded border-border" />
+          {t("settings.custom_fields.print_on_document")}
+        </label>
+      {/if}
       <div class="flex items-center gap-2">
         <label for="position" class="text-sm text-text"
           >{t("settings.custom_fields.position")}</label
@@ -213,6 +235,9 @@
       </div>
     </div>
   </div>
+  {#if printable}
+    <p class="mt-2 text-xs text-text-muted">{t("settings.custom_fields.print_on_document_hint")}</p>
+  {/if}
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   <div class="mt-4">
     <Button loading={busy.is("create")} disabled={busy.active}>{t("common.create")}</Button>
@@ -241,6 +266,8 @@
         <input type="hidden" name="id" value={editDef.id} />
         <input type="hidden" name="key" value={editDef.key} />
         <input type="hidden" name="data_type" value={editDef.data_type} />
+        <!-- The stored rules travel back whole, so a PATCH of one key cannot drop the rest. -->
+        <input type="hidden" name="config_json" value={JSON.stringify(editDef.config_json ?? {})} />
         <I18nLocaleSwitcher />
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -288,7 +315,7 @@
             <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.options_hint")}</p>
           </div>
         {/if}
-        <div class="flex items-center gap-4">
+        <div class="flex flex-wrap items-center gap-4">
           <label class="flex items-center gap-2 text-sm text-text">
             <FormCheckbox
               name="required"
@@ -297,6 +324,16 @@
             />
             {t("common.required")}
           </label>
+          {#if printable}
+            <label class="flex items-center gap-2 text-sm text-text">
+              <FormCheckbox
+                name="print_on_document"
+                checked={printsOnDocument(editDef)}
+                class="h-4 w-4 rounded border-border"
+              />
+              {t("settings.custom_fields.print_on_document")}
+            </label>
+          {/if}
           <div class="flex items-center gap-2">
             <label for="edit-position" class="text-sm text-text"
               >{t("settings.custom_fields.position")}</label

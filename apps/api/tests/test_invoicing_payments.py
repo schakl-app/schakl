@@ -21,8 +21,8 @@ places that can happen rather than around the endpoints.
   provider and an unknown reference all land on ``last_error`` and answer 200.
 
 The fifth property has no natural place above and is asserted at the bottom: a **test-mode**
-payment reaching ``paid`` writes no ledger row. The whole loop stays observable and the one
-step withheld is the one that would book an invoice as paid against money that does not exist.
+payment reaching ``paid`` settles exactly as a live one does, and is told apart by its mode on
+the intent and the ``(test)`` mark in the ledger row's note — never by a step withheld.
 """
 
 from __future__ import annotations
@@ -580,16 +580,16 @@ async def test_a_callback_for_a_cancelled_invoice_is_recorded_and_not_raised(
 # --------------------------------------------------------------------------------------- #
 # Test mode
 # --------------------------------------------------------------------------------------- #
-async def test_a_test_mode_payment_reaching_paid_writes_no_ledger_row(
+async def test_a_test_mode_payment_reaching_paid_settles_like_a_live_one(
     client_for, mollie
 ) -> None:
-    """The deliberate dead end.
+    """The dead end is gone (docs/PAYMENTS.md §6).
 
     Every step is observable — a checkout opens, the callback arrives, the re-fetch happens, the
-    intent reads ``paid`` — and the one step withheld is the ledger write, because a test-mode
-    payment is money that does not exist. An agency that leaves a test key in place therefore
-    gets an obviously-stuck screen (``paid`` with no ``settled_at``) instead of silently wrong
-    revenue, and the mode came from the credential's own prefix, so nobody had to choose it.
+    intent reads ``paid`` — **and the ledger row is written**, because a rehearsal that stops
+    one step short cannot prove the step an agency wants proven before going live. What marks
+    the rehearsal is visible instead: the intent's ``mode`` (from the credential's own prefix,
+    so nobody chose it) and the ``(test)`` mark on the payment's note.
     """
     t: Tenant = await make_tenant("pay-testmode")
     headers = await auth_cookie(t.user)
@@ -607,12 +607,15 @@ async def test_a_test_mode_payment_reaching_paid_writes_no_ledger_row(
         assert (await _callback(c, _token(account), payment_id)).status_code == 200
 
         after = await _invoice(c, headers, invoice["id"])
-        assert after["status"] == "open"
-        assert after["payments"] == []
+        assert after["status"] == "paid"
+        assert len(after["payments"]) == 1
+        assert after["payments"][0]["method"] == "online"
+        assert after["payments"][0]["note"].endswith(" (test)")
         assert after["intents"][0]["status"] == "paid"
-        assert after["intents"][0]["settled_at"] is None
+        assert after["intents"][0]["mode"] == "test"
+        assert after["intents"][0]["settled_at"] is not None
 
-    assert await _ledger(t.org.id, invoice["id"]) == []
+    assert len(await _ledger(t.org.id, invoice["id"])) == 1
 
 
 # --------------------------------------------------------------------------------------- #

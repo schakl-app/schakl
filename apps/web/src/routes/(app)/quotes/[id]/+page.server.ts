@@ -27,6 +27,7 @@ export const load: PageServerLoad = async (event) => {
     templates,
     settings,
     contactDefinitions,
+    definitions,
     ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
@@ -40,6 +41,9 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "quote" } },
+    }),
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (!quote.data) throw httpError(404);
@@ -52,6 +56,7 @@ export const load: PageServerLoad = async (event) => {
     templates: templates.data ?? [],
     settings: settings.data ?? null,
     contactDefinitions: contactDefinitions.data ?? [],
+    definitions: definitions.data ?? [],
     context,
     panels: panels.map((panel, i) => ({
       key: panel.key,

@@ -38,6 +38,8 @@ from app.core.activity.service import snapshot
 from app.core.billing import resolve_auto_invoice_mode
 from app.core.branding import load_brand_logo, load_org_image
 from app.core.customfields import CustomFieldsService
+from app.core.customfields.format import document_entries
+from app.core.customfields.format import printable as printable_fields
 from app.core.events import emit
 from app.core.hosts import org_base_url
 from app.core.models import OrgSettings
@@ -458,6 +460,9 @@ class _RenderShared:
         self.backgrounds: dict[uuid.UUID | None, tuple[bytes | None, str | None]] = {}
         #: The QR's own mark (#305) — a second per-template image, memoised beside the first.
         self.qr_logos: dict[uuid.UUID | None, tuple[bytes | None, str | None]] = {}
+        #: The tenant's own fields flagged for the paper, per entity type — one definitions
+        #: read for a batch, for the reason everything else here is read once.
+        self.printable_fields: dict[str, list[Any]] = {}
 
 
 def _zip_documents(jobs: Sequence[tuple[str, dict[str, Any]]]) -> bytes:
@@ -1355,9 +1360,21 @@ class _DocumentService:
         config, (background, background_type), (qr_logo, qr_logo_type) = (
             await self._template_render_inputs(doc.template_id, shared)
         )
+        if self.entity_type not in shared.printable_fields:
+            shared.printable_fields[self.entity_type] = printable_fields(
+                await self.custom_fields.definitions(self.entity_type)
+            )
         return {
             "kind": kind,
             "doc": doc,
+            # The tenant's own fields marked "print on the document", as text in the
+            # document's language — the definition decides, so a field switched on in
+            # Instellingen prints on the next render of every invoice that holds a value.
+            "custom_fields": document_entries(
+                shared.printable_fields[self.entity_type],
+                getattr(doc, "custom", None) or {},
+                getattr(doc, "locale", None) or "nl",
+            ),
             "lines": list(doc.lines),
             "seller": shared.seller,
             "config": config,

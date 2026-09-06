@@ -24,7 +24,12 @@ from app.modules.subscriptions.models import (
     SubscriptionPrice,
     SubscriptionStatus,
 )
-from app.modules.subscriptions.service import add_months, period_months
+from app.modules.subscriptions.service import (
+    add_months,
+    document_notes,
+    period_months,
+    with_note,
+)
 
 logger = logging.getLogger("schakl.subscriptions")
 
@@ -46,9 +51,13 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
         .all()
     )
     ctx = SystemContext(org=org, session=session)
+    # The agreement's flagged custom fields, as the clause its lines carry ("Website:
+    # klant.nl") — the same helper the editor's picker uses, so both paths draft one line.
+    notes = await document_notes(ctx, due)
     fired = 0
     for sub in due:
         months = period_months(sub.interval, sub.interval_count)
+        note = notes.get(sub.id, "")
         lines = (
             (
                 await session.execute(
@@ -100,9 +109,12 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
                     "currency": sub.currency,
                     "period_start": add_months(invoice_date, -months).isoformat(),
                     "period_end": invoice_date.isoformat(),
+                    # The clause on its own too, for the consumer's no-lines fallback,
+                    # which builds a line from ``name`` and adds the period itself.
+                    "detail": note,
                     "lines": [
                         {
-                            "description": line.description,
+                            "description": with_note(line.description, note),
                             "quantity": str(line.quantity),
                             "unit_amount": str(line.unit_amount),
                         }
