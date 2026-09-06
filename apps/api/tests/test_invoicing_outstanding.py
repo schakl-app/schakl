@@ -118,6 +118,11 @@ def _ends(periods: list[dict]) -> list[str]:
     return [period["period_end"] for period in periods]
 
 
+def _starts(periods: list[dict]) -> list[str]:
+    """A renewal is billed in advance, so its boundary is where the period *starts*."""
+    return [period["period_start"] for period in periods]
+
+
 async def test_outstanding_enumerates_the_arrears_not_just_the_next_period(client_for) -> None:
     """An agreement seven months in owes seven months, oldest first.
 
@@ -404,8 +409,9 @@ async def test_domain_renewals_are_offered_and_onboarding_never_back_bills(clien
         assert len(offered["periods"]) == 1
         anniversary = date.fromisoformat(recent.json()["next_invoice_date"])
         renewal = offered["periods"][0]
-        assert renewal["period_end"] == anniversary.isoformat()
-        assert renewal["period_start"] == add_months(anniversary, -12).isoformat()
+        # In advance: the renewal date opens the year the invoice pays for, never closes it.
+        assert renewal["period_start"] == anniversary.isoformat()
+        assert renewal["period_end"] == add_months(anniversary, 12).isoformat()
         assert renewal["amount"] == "12.50"
         assert [line["unit_price"] for line in renewal["lines"]] == ["12.50"]
         # Its boundary is still ahead: billing it is billing in advance, a choice, so it is
@@ -413,8 +419,11 @@ async def test_domain_renewals_are_offered_and_onboarding_never_back_bills(clien
         assert renewal["future"] is True
 
         # Nineteen years old, onboarded a second ago: its next anniversary, and nothing else.
+        # In advance, so the anniversary is where the offered year *starts*.
         aged = by_name["oud.nl"]
-        assert _ends(aged["periods"]) == [old.json()["next_invoice_date"]], _ends(aged["periods"])
+        assert _starts(aged["periods"]) == [old.json()["next_invoice_date"]], _starts(
+            aged["periods"]
+        )
         assert aged["truncated"] is False
 
 
@@ -455,7 +464,7 @@ async def test_an_unpriced_renewal_is_named_in_the_picker_not_dropped(client_for
         offered = by_name["ongeprijsd.nl"]
         assert offered["no_price"] is True
         assert offered["no_cycle"] is False
-        assert _ends(offered["periods"]) == [overdue.isoformat()]
+        assert _starts(offered["periods"]) == [overdue.isoformat()]
         period = offered["periods"][0]
         assert period["no_price"] is True
         assert period["amount"] == "0"

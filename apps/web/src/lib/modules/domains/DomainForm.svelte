@@ -201,6 +201,21 @@
       </p>
     </div>
     <div>
+      <label for="{idPrefix}-billed-until" class="mb-1 block text-sm text-text"
+        >{t("domains.billed_until")}</label
+      >
+      <!-- The operator's own statement, never derived: a portfolio migrated from another
+           system was invoiced there up to a date, and every renewal year ending on or before it
+           is neither offered on the backlog nor drafted by the cron. -->
+      <DateInput
+        name="billed_until"
+        id="{idPrefix}-billed-until"
+        value={domain?.billed_until ?? ""}
+        {formId}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("domains.billed_until_hint")}</p>
+    </div>
+    <div>
       <label for="{idPrefix}-price-override" class="mb-1 block text-sm text-text"
         >{t("domains.price_override")}</label
       >

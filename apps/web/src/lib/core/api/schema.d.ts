@@ -950,7 +950,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Domain
-         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`, `billed_until`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_domain_api_v1_bulk_domain_update_post"];
         delete?: never;
@@ -1070,7 +1070,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Subscription
-         * @description Set fields on a selection of subscription records: `status`, `type`, `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_subscription_api_v1_bulk_subscription_update_post"];
         delete?: never;
@@ -6946,6 +6946,32 @@ export interface paths {
          *     modal expands into. A row not in a conversation is its own one-message thread.
          */
         get: operations["get_interaction_thread_api_v1_interactions__interaction_id__thread_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/billed-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Billed Periods
+         * @description Which periods of one agreement or domain a document already holds, and on which
+         *     document — the record's own invoicing history, newest first.
+         *
+         *     The record pages compose it as an invoicing-contributed panel (§6: the domain and
+         *     subscription modules never read the claim tables themselves). Plain ``.read``: a client
+         *     may see which years of their own domain were billed, and the horizon decides which
+         *     documents that means.
+         */
+        get: operations["billed_periods_api_v1_invoicing_billed_periods_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15497,6 +15523,37 @@ export interface components {
              */
             truncated: boolean;
         };
+        /**
+         * BilledPeriod
+         * @description One period of one agreement or domain that a document holds — the record's own
+         *     invoicing history, read off the claim tables the crons consult (#250, #302).
+         *
+         *     Which invoice, what state it is in and when it went out, beside the period: the question
+         *     a record page has to answer is "which years of this domain did we bill, and on what", and
+         *     the claim row alone answers only the first half.
+         */
+        BilledPeriod: {
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /** Invoice Kind */
+            invoice_kind: string;
+            /** Invoice Number */
+            invoice_number: string | null;
+            /** Invoice Status */
+            invoice_status: string;
+            /** Issue Date */
+            issue_date: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Start */
+            period_start: string | null;
+        };
         /** Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post */
         Body_attach_invoice_original_api_v1_invoicing_invoices__invoice_id__original_post: {
             /**
@@ -18392,6 +18449,8 @@ export interface components {
         /** DomainCreate */
         DomainCreate: {
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /**
              * Company Id
              * Format: uuid
@@ -18451,6 +18510,8 @@ export interface components {
         /** DomainRead */
         DomainRead: {
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /**
              * Company Id
              * Format: uuid
@@ -18639,6 +18700,8 @@ export interface components {
         /** DomainUpdate */
         DomainUpdate: {
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Custom */
@@ -31170,6 +31233,8 @@ export interface components {
             /** Amount */
             amount: number | string;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /**
              * Company Id
              * Format: uuid
@@ -31324,6 +31389,8 @@ export interface components {
             /** Amount */
             amount?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /**
              * Company Id
              * Format: uuid
@@ -31676,6 +31743,8 @@ export interface components {
             /** Amount Valid From */
             amount_valid_from?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed Until */
+            billed_until?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Currency */
@@ -49240,6 +49309,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billed_periods_api_v1_invoicing_billed_periods_get: {
+        parameters: {
+            query: {
+                /** @description subscription | domain */
+                source: "subscription" | "domain";
+                /** @description the agreement's or domain's id */
+                source_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BilledPeriod"][];
                 };
             };
             /** @description Validation Error */

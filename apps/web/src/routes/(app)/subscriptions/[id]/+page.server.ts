@@ -1,6 +1,7 @@
 import { error, redirect } from "@sveltejs/kit";
 
 import { can } from "$lib/core/permissions";
+import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 
 import type { PageServerLoad } from "./$types";
@@ -19,13 +20,19 @@ export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "subscriptions.subscription.read")) throw redirect(303, "/");
   const api = apiFor(event);
   const subscription_id = event.params.id;
-  const [subscription, types] = await Promise.all([
+  // Module-contributed panels (the invoiced periods, from `invoicing`) — composed through the
+  // registry, so a tenant without that module never pays for the call (§6).
+  const context = { entityId: subscription_id, periodStart: null };
+  const enabled = event.locals.theme?.enabledModules ?? [];
+  const panels = entityPanelsFor(enabled, "subscription", event.locals.user);
+  const [subscription, types, ...panelData] = await Promise.all([
     api.GET("/api/v1/subscriptions/{subscription_id}", {
       params: { path: { subscription_id }, query: { usage: true } },
     }),
     // The type vocabulary names the row; a client may read it (it is the label on their own
     // agreement, the way `contacts.type.read` is), and an inactive type still names a row.
     api.GET("/api/v1/subscriptions/types", { params: { query: { include_inactive: true } } }),
+    ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (subscription.error || !subscription.data) {
     throw error(subscription.response?.status === 403 ? 403 : 404, "errors.not_found");
@@ -35,5 +42,12 @@ export const load: PageServerLoad = async (event) => {
     types: types.data ?? [],
     canWrite: can(event.locals.user, "subscriptions.subscription.write"),
     locale: event.locals.locale,
+    context,
+    panels: panels.map((panel, i) => ({
+      key: panel.key,
+      titleKey: panel.titleKey,
+      prominence: panel.prominence ?? "primary",
+      data: panelData[i],
+    })),
   };
 };

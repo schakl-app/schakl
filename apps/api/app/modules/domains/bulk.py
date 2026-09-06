@@ -48,6 +48,10 @@ DOMAIN_BULK = BulkDescriptor(
         BulkField("email_provider"),
         BulkField("invoiceable"),
         BulkField("next_invoice_date", clearable=True),
+        # A portfolio migrated from another system was invoiced there up to one date — one
+        # statement over the whole selection, and clearable, since withdrawing it is a decision
+        # somebody makes on purpose over rows they picked.
+        BulkField("billed_until", clearable=True),
     ),
     delete_permission="domains.domain.delete",
     delete_row=_delete,

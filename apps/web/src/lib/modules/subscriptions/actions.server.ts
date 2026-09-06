@@ -58,6 +58,8 @@ export function subscriptionBody(form: FormData) {
     start_date: String(form.get("start_date") ?? "").trim(),
     end_date: String(form.get("end_date") ?? "").trim() || null,
     next_invoice_date: String(form.get("next_invoice_date") ?? "").trim() || null,
+    // "Already invoiced up to": empty withdraws the statement (an explicit null).
+    billed_until: String(form.get("billed_until") ?? "").trim() || null,
     // "" is the inherit choice, and it must reach the API as an explicit null: the column's
     // third state is "follow the org", which is not the same as any level.
     auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),

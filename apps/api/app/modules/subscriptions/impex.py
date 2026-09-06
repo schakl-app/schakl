@@ -52,7 +52,8 @@ from app.modules.subscriptions.service import (
 )
 
 _FIELDS = (
-    "name", "end_date", "next_invoice_date", "included_hours", "notes", "company_id",
+    "name", "end_date", "next_invoice_date", "billed_until", "included_hours", "notes",
+    "company_id",
     "subscription_type_id", "subscription_template_id", "currency", "interval_count",
     "notice_period_days",
 )
@@ -202,6 +203,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             start_date=values["start_date"],
             end_date=values.get("end_date"),
             next_invoice_date=values.get("next_invoice_date"),
+            billed_until=values.get("billed_until"),
             included_hours=values.get("included_hours"),
             notice_period_days=_optional_int(values, "notice_period_days"),
             **({"rollover": rollover} if rollover is not None else {}),
@@ -285,6 +287,14 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
         ImpexColumn("start_date", data_type="date", required=True, clearable=False),
         ImpexColumn("end_date", data_type="date"),
         ImpexColumn("next_invoice_date", data_type="date"),
+        # "Already invoiced up to": not clearable through a file (a blank in an edited export
+        # is a column nobody filled in, and withdrawing it re-opens every period it covered).
+        ImpexColumn(
+            "billed_until",
+            data_type="date",
+            clearable=False,
+            aliases=("gefactureerd tot", "invoiced until", "billed until", "billed through"),
+        ),
         ImpexColumn("included_hours", data_type="number"),
         # The price valid today; a changed value appends to the price history on update.
         ImpexColumn("amount", data_type="number", clearable=False),

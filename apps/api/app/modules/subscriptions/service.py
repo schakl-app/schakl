@@ -38,7 +38,7 @@ from app.core.activity.service import snapshot
 # Calendar arithmetic for a billing cycle lives in core (§6): `domains` bills on one too, and
 # two copies of "which periods has this reached" would drift into a double bill. `add_months`
 # is re-exported under the name this module has always published (`jobs.py` imports it here).
-from app.core.billing import add_months, first_boundary_ahead, period_boundaries
+from app.core.billing import add_months, first_boundary_ahead, period_boundaries, period_span
 from app.core.customfields import CustomFieldsService
 from app.core.customfields.format import document_note
 from app.core.customfields.format import printable as printable_fields
@@ -80,8 +80,8 @@ ENTITY_TYPE = "subscription"
 #: Definition fields the activity trail diffs (§16) — never notes or custom JSONB.
 _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
-    "interval_count", "start_date", "end_date", "next_invoice_date", "included_hours",
-    "notice_period_days", "auto_invoice_mode",
+    "interval_count", "start_date", "end_date", "next_invoice_date", "billed_until",
+    "included_hours", "notice_period_days", "auto_invoice_mode",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
@@ -562,6 +562,9 @@ class SubscriptionService:
                     floor=sub.created_at.date(),
                     end_date=sub.end_date,
                     until=today,
+                    # A period the operator says was invoiced already is not outstanding —
+                    # the same statement the cron reads before it drafts.
+                    billed_until=sub.billed_until,
                 )
                 if sub.next_invoice_date is not None
                 else ([], False)
@@ -576,10 +579,11 @@ class SubscriptionService:
                     (with_note(row.description, note), row.quantity, row.unit_amount)
                     for row in rows
                 ) or ((with_note(sub.name, note), Decimal(1), amount),)
+                period_start, period_end = period_span(boundary, months, advance=False)
                 periods.append(
                     OpenPeriod(
-                        period_start=add_months(boundary, -months),
-                        period_end=boundary,
+                        period_start=period_start,
+                        period_end=period_end,
                         amount=amount,
                         lines=offers,
                         future=boundary > today,
@@ -698,6 +702,7 @@ class SubscriptionService:
             start_date=data.start_date,
             end_date=data.end_date,
             next_invoice_date=data.next_invoice_date,
+            billed_until=data.billed_until,
             auto_invoice_mode=(
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
@@ -740,6 +745,9 @@ class SubscriptionService:
             values["auto_invoice_mode"] = (
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             )
+        if "billed_until" in sent:
+            # Same split: explicit null withdraws the "already invoiced up to" statement.
+            values["billed_until"] = data.billed_until
         if "name" in values:
             values["name"] = values["name"].strip()
         if "notes" in values:

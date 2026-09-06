@@ -325,8 +325,9 @@ async def test_renewal_cron_emits_and_advances_a_year(client_for) -> None:
     assert set(by_name) == {"cyclus.nl", "afspraak.nl"}
     assert by_name["cyclus.nl"]["amount"] == "12.50"
     assert by_name["afspraak.nl"]["amount"] == "20.00"
-    assert by_name["cyclus.nl"]["period_end"] == _iso(today)
-    assert by_name["cyclus.nl"]["period_start"] == _iso(add_months(today, -12))
+    # In advance: the renewal date opens the year the draft pays for (``period_span``).
+    assert by_name["cyclus.nl"]["period_start"] == _iso(today)
+    assert by_name["cyclus.nl"]["period_end"] == _iso(add_months(today, 12))
 
     async with client_for(t.host) as c:
         after = {
@@ -365,8 +366,8 @@ async def test_domain_due_drafts_one_invoice_idempotently(client_for) -> None:
         "tld": "nl",
         "amount": "12.50",
         "currency": "EUR",
-        "period_start": _iso(add_months(today, -12)),
-        "period_end": _iso(today),
+        "period_start": _iso(today),
+        "period_end": _iso(add_months(today, 12)),
     }
     async with async_session_maker() as session:
         org = await session.get(Org, t.org.id)
@@ -382,7 +383,7 @@ async def test_domain_due_drafts_one_invoice_idempotently(client_for) -> None:
         invoice = page["items"][0]
         assert invoice["status"] == "draft"  # a human issues, never the cron
         assert invoice["domain_id"] == str(domain_id)
-        assert invoice["period_end"] == _iso(today)
+        assert invoice["period_end"] == _iso(add_months(today, 12))
         assert invoice["reference"] == "voorbeeld.nl"
         # 12.50 + the seeded default 21% — the org's own tax, not the event's business.
         assert invoice["total"] == "15.13"

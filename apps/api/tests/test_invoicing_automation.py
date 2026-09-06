@@ -117,7 +117,8 @@ async def _row(org_id, invoice_id: str) -> Invoice:
 
 
 def _renewal_period(domain: dict) -> dict:
-    """The year ``domains/jobs.py`` would bill: back one interval from ``next_invoice_date``.
+    """The year ``domains/jobs.py`` would bill: the year *ahead* of ``next_invoice_date`` — a
+    renewal is billed in advance (``app.core.billing.period_span``).
 
     Derived from the domain's own cycle rather than written by hand, because the picker walks
     the same grid — a period the cron will never reach is one no test should assert about.
@@ -125,8 +126,8 @@ def _renewal_period(domain: dict) -> dict:
     boundary = date.fromisoformat(domain["next_invoice_date"])
     return {
         "domain_id": domain["id"],
-        "period_start": add_months(boundary, -12).isoformat(),
-        "period_end": boundary.isoformat(),
+        "period_start": boundary.isoformat(),
+        "period_end": add_months(boundary, 12).isoformat(),
     }
 
 

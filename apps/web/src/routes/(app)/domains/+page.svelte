@@ -169,6 +169,14 @@
       clearable: true,
       clearLabel: t("domains.bulk.renewal_reset"),
     },
+    {
+      // A migrated portfolio was invoiced elsewhere up to one date — one statement over the
+      // selection; clearing it withdraws the statement.
+      key: "billed_until",
+      label: t("impex.column.domain.billed_until"),
+      type: "date",
+      clearable: true,
+    },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.

@@ -53,6 +53,7 @@ _FIELDS = (
     "redirect_url",
     "start_date",
     "next_invoice_date",
+    "billed_until",
     "registrar_provider_id",
     "dns_provider_id",
     "email_provider_id",
@@ -250,6 +251,16 @@ DOMAIN_IMPEX = ImpexDescriptor(
                 "factuurdatum",
                 "next invoice date",
             ),
+        ),
+        # The operator's "already invoiced up to" statement. Not clearable through a file for
+        # the same reason the renewal date is not: a blank in an edited export is a column
+        # nobody filled in, and withdrawing the statement on a thousand rows re-opens every
+        # year it covered on the backlog. Withdraw it in the form or over a selection.
+        ImpexColumn(
+            "billed_until",
+            data_type="date",
+            clearable=False,
+            aliases=("gefactureerd tot", "invoiced until", "billed until", "billed through"),
         ),
         ImpexColumn(
             "registrar_provider",

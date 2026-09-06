@@ -397,7 +397,9 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
 
         report = await _backlog(client, headers, source="domain")
         rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
-        assert [row["period_end"] for row in rows] == [overdue.isoformat()], report["items"]
+        # A renewal is billed in advance: the overdue date is where the year *starts*.
+        assert [row["period_start"] for row in rows] == [overdue.isoformat()], report["items"]
+        assert rows[0]["period_end"] == add_months(overdue, 12).isoformat()
         row = rows[0]
         assert row["no_price"] is True
         assert Decimal(row["amount"]) == 0
@@ -419,7 +421,7 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
         assert priced.json()["valid_from"] == today.isoformat()
         report = await _backlog(client, headers, source="domain")
         rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
-        assert [row["period_end"] for row in rows] == [overdue.isoformat()]
+        assert [row["period_start"] for row in rows] == [overdue.isoformat()]
         assert rows[0]["no_price"] is True
         assert report["unpriced_count"] == 1
 
@@ -437,7 +439,7 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
         assert backdated.status_code == 200, backdated.text
         report = await _backlog(client, headers, source="domain")
         rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
-        assert [row["period_end"] for row in rows] == [overdue.isoformat()]
+        assert [row["period_start"] for row in rows] == [overdue.isoformat()]
         assert rows[0]["no_price"] is False
         assert rows[0]["amount"] == "11.00"
         assert report["unpriced_count"] == 0

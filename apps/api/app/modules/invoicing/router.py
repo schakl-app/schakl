@@ -26,7 +26,9 @@ from app.modules.invoicing.public import (
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
     BacklogGroupBy,
+    BacklogSource,
     BacklogSourceFilter,
+    BilledPeriod,
     DocumentSend,
     ExternalRefRead,
     InvoiceCreate,
@@ -475,6 +477,30 @@ async def uninvoiced(
     return UninvoicedReport.model_validate(
         await InvoiceService(ctx).uninvoiced_report(group=group, limit=limit)
     )
+
+
+@router.get(
+    "/billed-periods",
+    response_model=list[BilledPeriod],
+    dependencies=[require_permission(_READ)],
+)
+async def billed_periods(
+    source: BacklogSource = Query(..., description="subscription | domain"),
+    source_id: uuid.UUID = Query(..., description="the agreement's or domain's id"),
+    ctx: RequestContext = Depends(require_context),
+) -> list[BilledPeriod]:
+    """Which periods of one agreement or domain a document already holds, and on which
+    document — the record's own invoicing history, newest first.
+
+    The record pages compose it as an invoicing-contributed panel (§6: the domain and
+    subscription modules never read the claim tables themselves). Plain ``.read``: a client
+    may see which years of their own domain were billed, and the horizon decides which
+    documents that means.
+    """
+    return [
+        BilledPeriod.model_validate(row)
+        for row in await InvoiceService(ctx).billed_periods(source=source, source_id=source_id)
+    ]
 
 
 @router.get(

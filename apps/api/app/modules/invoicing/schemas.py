@@ -1081,6 +1081,25 @@ class UnbilledRead(BaseModel):
     truncated: bool = False
 
 
+class BilledPeriod(BaseModel):
+    """One period of one agreement or domain that a document holds — the record's own
+    invoicing history, read off the claim tables the crons consult (#250, #302).
+
+    Which invoice, what state it is in and when it went out, beside the period: the question
+    a record page has to answer is "which years of this domain did we bill, and on what", and
+    the claim row alone answers only the first half.
+    """
+
+    period_start: date | None
+    period_end: date
+    invoice_id: uuid.UUID
+    #: ``None`` while the document is still a draft — it has no number yet.
+    invoice_number: str | None
+    invoice_status: str
+    invoice_kind: str
+    issue_date: date | None
+
+
 class OutstandingRead(BaseModel):
     """Everything a client still has to be invoiced for, in one round trip.
 

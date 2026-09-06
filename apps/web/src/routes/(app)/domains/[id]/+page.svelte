@@ -241,6 +241,14 @@
             {/if}
           </dd>
         </div>
+        {#if domain.billed_until}
+          <!-- The operator's "already invoiced up to" statement (a migrated portfolio): drawn
+               only when made, since NULL says nothing. -->
+          <div class="flex justify-between gap-3">
+            <dt class="text-text-muted">{t("domains.billed_until")}</dt>
+            <dd class="text-right text-text">{fmtNumericDate(domain.billed_until)}</dd>
+          </div>
+        {/if}
         <div class="flex justify-between">
           <dt class="text-text-muted">{t("domains.price")}</dt>
           <dd class="text-text">

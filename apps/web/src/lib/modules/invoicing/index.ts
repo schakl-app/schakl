@@ -9,6 +9,7 @@ import { registerWebModule } from "$lib/core/registry";
 
 import InvoicingOutstandingWidget from "./InvoicingOutstandingWidget.svelte";
 import InvoicesPortalWidget from "./InvoicesPortalWidget.svelte";
+import BilledPeriodsPanel from "./BilledPeriodsPanel.svelte";
 import InvoicingPanel from "./InvoicingPanel.svelte";
 import QuotesOpenWidget from "./QuotesOpenWidget.svelte";
 
@@ -100,6 +101,27 @@ registerWebModule({
       requiresScope: "any",
     },
   ],
+  // Which periods of a domain or an agreement a document already holds — invoicing's own
+  // history on the two records whose crons it drafts for. Registered here rather than drawn
+  // by those pages (§6): the claim tables are this module's, and a tenant without invoicing
+  // never renders the block. A register, not a working surface: consulted when a client asks
+  // "was last year billed?", never news.
+  entityPanels: (["domain", "subscription"] as const).map((entityType) => ({
+    key: "invoicing.billed_periods",
+    module: "invoicing",
+    entityType,
+    titleKey: "invoicing.billed_periods.title",
+    position: 60,
+    prominence: "register" as const,
+    requiresPermission: "invoicing.invoice.read",
+    load: async (api, { entityId }) => {
+      const { data } = await api.GET("/api/v1/invoicing/billed-periods", {
+        params: { query: { source: entityType, source_id: entityId } },
+      });
+      return { items: data ?? [] };
+    },
+    component: BilledPeriodsPanel,
+  })),
   companyPanels: [
     {
       key: "invoicing.company",

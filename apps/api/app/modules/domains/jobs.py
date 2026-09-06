@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.billing import period_span
 from app.core.entitlements.service import sku_cron_enabled
 from app.core.events import SystemContext, emit
 from app.core.jobs import run_per_org
@@ -146,7 +147,15 @@ async def _advance_one(
     """
     invoice_date = domain.next_invoice_date
     assert invoice_date is not None
+    # A renewal is billed **in advance**: the invoice raised on the renewal date pays the
+    # register for the year ahead, so that is the period the draft names (``period_span``).
+    period_start, period_end = period_span(invoice_date, 12, advance=True)
     if domain.id not in billing:
+        domain.next_invoice_date = add_months(invoice_date, 12)
+        return True
+    # A year the operator says was invoiced already (``billed_until``) is rolled past without
+    # a draft — the backlog reads the same statement, so the two cannot disagree.
+    if domain.billed_until is not None and period_end <= domain.billed_until:
         domain.next_invoice_date = add_months(invoice_date, 12)
         return True
     price_row = None
@@ -184,8 +193,8 @@ async def _advance_one(
             "auto_invoice_mode": domain.auto_invoice_mode,
             "amount": str(amount),
             "currency": currency,
-            "period_start": add_months(invoice_date, -12).isoformat(),
-            "period_end": invoice_date.isoformat(),
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
         },
     )
     domain.next_invoice_date = add_months(invoice_date, 12)
