@@ -418,6 +418,51 @@ async def test_domain_renewals_are_offered_and_onboarding_never_back_bills(clien
         assert aged["truncated"] is False
 
 
+async def test_an_unpriced_renewal_is_named_in_the_picker_not_dropped(client_for) -> None:
+    """The picker's half of the same rule: a period the org cannot price yet is offered as a
+    row that says so (``no_price``), never as a €0,00 line and never as an absence.
+
+    Before, ``periods`` came back empty for such a domain and the dialog simply had nothing
+    for it — an overdue renewal on a domain whose TLD was never priced was unfindable from the
+    editor, and the agreement-level ``no_price`` flag pointed at a list nobody drew.
+    """
+    tenant: Tenant = await make_tenant("inv-out-unpriced")
+    headers = await auth_cookie(tenant.user)
+    today = _today()
+    async with client_for(tenant.host) as client:
+        company_id = await _company(client, headers)
+        created = await client.post(
+            "/api/v1/domains",
+            json={
+                "name": "ongeprijsd.nl",
+                "company_id": company_id,
+                "start_date": add_months(today, -14).isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        overdue = add_months(today, -1)
+        moved = await client.patch(
+            f"/api/v1/domains/{created.json()['id']}",
+            json={"next_invoice_date": overdue.isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+
+        by_name = {
+            d["name"]: d for d in (await _outstanding(client, headers, company_id))["domains"]
+        }
+        offered = by_name["ongeprijsd.nl"]
+        assert offered["no_price"] is True
+        assert offered["no_cycle"] is False
+        assert _ends(offered["periods"]) == [overdue.isoformat()]
+        period = offered["periods"][0]
+        assert period["no_price"] is True
+        assert period["amount"] == "0"
+        assert period["future"] is False
+        assert period["already_billed"] is False
+
+
 async def test_the_hours_bucket_counts_and_prices_the_whole_backlog(client_for) -> None:
     """The third bucket, and its totals are exact whatever the list does.
 

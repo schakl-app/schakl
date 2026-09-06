@@ -27172,6 +27172,11 @@ export interface components {
             /** Lines */
             lines?: components["schemas"]["SubscriptionLineOffer"][];
             /**
+             * No Price
+             * @default false
+             */
+            no_price: boolean;
+            /**
              * Period End
              * Format: date
              */
@@ -28740,6 +28745,11 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * No Price
+             * @default false
+             */
+            no_price: boolean;
+            /**
              * Period End
              * Format: date
              */
@@ -28788,6 +28798,11 @@ export interface components {
             };
             /** Truncated */
             truncated: boolean;
+            /**
+             * Unpriced Count
+             * @default 0
+             */
+            unpriced_count: number;
         };
         /**
          * RedirectAdopt

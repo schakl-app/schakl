@@ -278,6 +278,24 @@
   </p>
 {/if}
 
+{#if !isHours && (data.backlog?.unpriced_count ?? 0) > 0}
+  <!-- A renewal the org has not priced is listed at zero rather than dropped (the seam used
+       to skip it, and an overdue domain then reached no screen at all). The count is the
+       API's, over the whole filtered set, so it holds past the detail cap. -->
+  <p
+    class="mb-3 rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:text-amber-400"
+  >
+    {data.backlog?.unpriced_count === 1
+      ? t("invoicing.backlog.unpriced_hint_one")
+      : t("invoicing.backlog.unpriced_hint", {
+          count: String(data.backlog?.unpriced_count ?? 0),
+        })}
+    <a href="/domains/tld-prices" class="ml-1 font-medium text-brand hover:underline"
+      >{t("invoicing.backlog.set_tld_prices")}</a
+    >
+  </p>
+{/if}
+
 {#if truncated}
   <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
     {t(isHours ? "invoicing.uninvoiced.truncated" : "invoicing.backlog.truncated", {
@@ -320,7 +338,15 @@
 {/snippet}
 
 {#snippet amountCell(row: Row)}
-  <span class="tabular-nums text-text">{fmtMoney(Number(row.amount))}</span>
+  {#if "no_price" in row && row.no_price}
+    <a
+      href="/domains/tld-prices"
+      class="text-xs text-amber-700 hover:underline dark:text-amber-400"
+      title={t("invoicing.outstanding.no_price")}>{t("invoicing.backlog.no_price")}</a
+    >
+  {:else}
+    <span class="tabular-nums text-text">{fmtMoney(Number(row.amount))}</span>
+  {/if}
 {/snippet}
 
 {#snippet nameCell(row: Row)}

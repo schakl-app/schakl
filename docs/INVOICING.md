@@ -419,6 +419,21 @@ for accounting packages.
   the row it sits on, because every period listed here has already been passed by the cycle.
   `resolve_auto_invoice_mode` lives in `app/core/billing.py` so the report and the `*.due`
   consumers cannot drift about what "follow the organisation" means.
+  **An unpriced renewal is a row, never an omission.** A domain whose TLD has no price (and no
+  `price_override`) used to lose every boundary at the seam — `open_renewals` skipped what it
+  could not price, so an overdue renewal date on such a domain reached neither the backlog nor
+  the picker, and the domain cron (rightly) left the date where it was until a price existed.
+  Three surfaces then agreed that nothing was owed, and the one signpost — "set a price for
+  `.nl`" — was on a fourth screen nobody had a reason to open. The seam now names the period at
+  zero with `no_price` on it: the backlog lists the row, labels it and counts it
+  (`unpriced_count`, over the whole filtered set), the page above the table links to the TLD
+  price list, and the picker refuses to add the period as a line, because *offered at €0,00*
+  is the silent error the old skip was written to avoid. Zero is a sentence here, not a price.
+  One consequence is worth knowing before it is reported as a bug: a TLD price applies **from
+  its `valid_from`**, and a period is priced at its own boundary (#250, history never
+  reprices), so a price entered today prices every renewal still ahead and leaves last month's
+  overdue one unpriced. That is the same rule the cron bills by, and the screen says so — the
+  fix is a price dated before the renewal, or a `price_override` on the domain.
 - **What is still outstanding** (`GET /invoicing/outstanding`): the four buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,

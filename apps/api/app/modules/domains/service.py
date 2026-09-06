@@ -99,6 +99,14 @@ class OpenPeriod:
     lines: tuple[tuple[str, Decimal, Decimal], ...]
     #: The period has not started yet — billing it renews in advance.
     future: bool
+    #: No price resolves at this boundary (no override, no TLD price valid then). The period
+    #: is still **named**, at zero, because a renewal the calendar has passed is outstanding
+    #: whether or not the org has priced its TLD yet — dropping it made a domain with an
+    #: overdue renewal date vanish from the backlog and the picker alike, with nothing on
+    #: either screen saying why. Zero is never a price: the picker refuses to add it as a
+    #: line and the backlog labels it, so the €0,00 that would have been the silent error
+    #: is what tells the reader to set a price.
+    no_price: bool = False
 
 
 @dataclass(frozen=True)
@@ -462,10 +470,14 @@ class DomainService:
             unpriced = False
             for boundary in boundaries:
                 resolved = priced(boundary)
+                # An unpriced boundary is a period all the same: the cycle has reached it and
+                # the cron leaves the date where it is until a price exists, so this is the
+                # one place a reader can learn that a renewal is waiting on a TLD price.
                 if resolved is None:
                     unpriced = True
-                    continue
-                amount, _currency = resolved
+                    amount = Decimal(0)
+                else:
+                    amount, _currency = resolved
                 periods.append(
                     OpenPeriod(
                         period_start=add_months(boundary, -12),
@@ -473,6 +485,7 @@ class DomainService:
                         amount=amount,
                         lines=((domain.name, Decimal(1), amount),),
                         future=boundary > today,
+                        no_price=resolved is None,
                     )
                 )
             now_priced = priced(today)

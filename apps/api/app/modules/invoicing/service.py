@@ -3598,6 +3598,10 @@ class InvoiceService(_DocumentService):
             # backlog page may never show (docs/PERFORMANCE.md).
             "total_count": len(items),
             "total_amount": round_cents(sum((i["amount"] for i in items), Decimal(0))),
+            # Over the whole filtered set, like every other total here: a renewal with no
+            # price counts as work and contributes nothing to the amount, and the page has
+            # to be able to say "n of these are waiting on a price" past the detail cap.
+            "unpriced_count": sum(1 for i in items if i["no_price"]),
             "totals_by_source": totals_by_source,
             "groups": [
                 {**g, "amount": round_cents(g["amount"])}
@@ -3632,6 +3636,7 @@ class InvoiceService(_DocumentService):
                         "period_end": period["period_end"],
                         "amount": Decimal(str(period["amount"] or 0)),
                         "future": period["future"],
+                        "no_price": period.get("no_price", False),
                         "auto_mode": mode.value,
                     }
                 )
@@ -3717,6 +3722,9 @@ class InvoiceService(_DocumentService):
                         "period_end": period.period_end,
                         "amount": period.amount,
                         "future": period.future,
+                        # Only the domain seam knows the word: a subscription period is always
+                        # priced by its own agreement, so absent reads as priced.
+                        "no_price": getattr(period, "no_price", False),
                         "lines": [
                             {
                                 "description": description,

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid as uuid_mod
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 
@@ -355,6 +356,92 @@ async def test_backlog_leaves_out_a_domain_the_agency_does_not_invoice(client_fo
         assert "onze.nl" in names
         assert "hunne.nl" not in names
         assert all(item["source"] == "domain" for item in report["items"])
+
+
+async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> None:
+    """A domain whose TLD has no price is still work — it is work waiting on a price.
+
+    The seam used to *skip* every boundary it could not price, on the sound ground that a
+    €0,00 renewal line is a silent invoicing error. The consequence was worse than the error:
+    a domain whose renewal date had been moved into the past reached neither this backlog nor
+    the editor's picker, while the renewal cron (rightly) left the date where it was until a
+    price existed — three surfaces agreeing that nothing was owed, and the one signpost on a
+    fourth screen. The period is named now, at zero, flagged, and counted over the whole set,
+    and it turns into a priced row the moment the TLD is priced — from the same boundary.
+    """
+    tenant: Tenant = await make_tenant("inv-backlog-unpriced")
+    headers = await auth_cookie(tenant.user)
+    today = _today()
+    async with client_for(tenant.host) as client:
+        company_id = await _company(client, headers, "Klant BV")
+        created = await client.post(
+            "/api/v1/domains",
+            json={
+                "name": "ongeprijsd.nl",
+                "company_id": company_id,
+                "start_date": add_months(today, -14).isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        domain_id = created.json()["id"]
+        # The operator moves the renewal into the past — the case that vanished.
+        overdue = add_months(today, -1)
+        moved = await client.patch(
+            f"/api/v1/domains/{domain_id}",
+            json={"next_invoice_date": overdue.isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["next_invoice_date"] == overdue.isoformat()
+
+        report = await _backlog(client, headers, source="domain")
+        rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
+        assert [row["period_end"] for row in rows] == [overdue.isoformat()], report["items"]
+        row = rows[0]
+        assert row["no_price"] is True
+        assert Decimal(row["amount"]) == 0
+        assert row["future"] is False
+        assert report["unpriced_count"] == 1
+        assert report["total_count"] == 1
+        # Counted as work, worth nothing until priced — the tile must not invent a figure.
+        assert report["total_amount"] == "0.00"
+        assert report["totals_by_source"]["domain"] == {"count": 1, "amount": "0.00"}
+
+        # A price entered *today* does not reach a renewal that fell due last month: a period
+        # is priced at its own boundary (#250, history never reprices), and a TLD price applies
+        # from its ``valid_from``. The row stays unpriced — the same rule the cron bills by,
+        # and the reason the screen's sentence names the start date.
+        priced = await client.post(
+            "/api/v1/domains/tld-prices", json={"tld": "nl", "amount": "12.50"}, headers=headers
+        )
+        assert priced.status_code == 200, priced.text
+        assert priced.json()["valid_from"] == today.isoformat()
+        report = await _backlog(client, headers, source="domain")
+        rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
+        assert [row["period_end"] for row in rows] == [overdue.isoformat()]
+        assert rows[0]["no_price"] is True
+        assert report["unpriced_count"] == 1
+
+        # A price dated before the renewal turns the same row into a priced one, from the same
+        # boundary: the cron did not move the date, so nothing was lost while it waited.
+        backdated = await client.post(
+            "/api/v1/domains/tld-prices",
+            json={
+                "tld": "nl",
+                "amount": "11.00",
+                "valid_from": add_months(overdue, -1).isoformat(),
+            },
+            headers=headers,
+        )
+        assert backdated.status_code == 200, backdated.text
+        report = await _backlog(client, headers, source="domain")
+        rows = [item for item in report["items"] if item["name"] == "ongeprijsd.nl"]
+        assert [row["period_end"] for row in rows] == [overdue.isoformat()]
+        assert rows[0]["no_price"] is False
+        assert rows[0]["amount"] == "11.00"
+        assert report["unpriced_count"] == 0
+        assert report["total_amount"] == "11.00"
 
 
 async def test_renewal_lines_are_their_own_kind_and_keep_their_claim(client_for) -> None:
