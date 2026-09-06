@@ -446,6 +446,53 @@ async def test_an_unpriced_renewal_is_listed_at_zero_and_says_so(client_for) -> 
         assert report["total_amount"] == "11.00"
 
 
+async def test_an_onboarded_domain_with_an_overdue_renewal_is_listed(client_for) -> None:
+    """A domain entered on the day it was onboarded — ``start_date`` defaulting to today, as
+    every imported register row has it — owes its renewal all the same.
+
+    The second way an overdue renewal vanished: the period walk refused any period that began
+    before ``start_date``, anchor included, so a yearly cycle on a domain whose start date is
+    its onboarding day offered nothing at all — priced or not, past or future — while the
+    domain cron billed the same anchor without ever reading ``start_date``. The backlog and
+    the cron disagreeing is the failure the shared seam exists to prevent (``docs/INVOICING.md``).
+    """
+    tenant: Tenant = await make_tenant("inv-backlog-onboarded")
+    headers = await auth_cookie(tenant.user)
+    today = _today()
+    async with client_for(tenant.host) as client:
+        company_id = await _company(client, headers, "Klant BV")
+        priced = await client.post(
+            "/api/v1/domains/tld-prices",
+            json={"tld": "nl", "amount": "12.50", "valid_from": add_months(today, -3).isoformat()},
+            headers=headers,
+        )
+        assert priced.status_code == 200, priced.text
+        # No start_date sent: the API defaults it to today, the onboarding day.
+        created = await client.post(
+            "/api/v1/domains",
+            json={"name": "vandaag.nl", "company_id": company_id},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["start_date"] == today.isoformat()
+        overdue = add_months(today, -1)
+        moved = await client.patch(
+            f"/api/v1/domains/{created.json()['id']}",
+            json={"next_invoice_date": overdue.isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+
+        report = await _backlog(client, headers, source="domain")
+        rows = [item for item in report["items"] if item["name"] == "vandaag.nl"]
+        # Billed in advance: the overdue renewal date is where the year it pays for starts.
+        assert [row["period_start"] for row in rows] == [overdue.isoformat()], report["items"]
+        assert rows[0]["period_end"] == add_months(overdue, 12).isoformat()
+        assert rows[0]["no_price"] is False
+        assert rows[0]["amount"] == "12.50"
+        assert rows[0]["future"] is False
+
+
 async def test_renewal_lines_are_their_own_kind_and_keep_their_claim(client_for) -> None:
     """A hand-built renewal line stamps ``domain``, and the claim survives a re-save.
 
