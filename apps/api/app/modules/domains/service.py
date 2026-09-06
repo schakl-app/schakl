@@ -27,7 +27,7 @@ from app.core.activity.service import snapshot
 
 # Billing-cycle calendar arithmetic lives in core (§6) rather than being re-stated per module
 # that bills on one — a drift between two copies is a double bill or a missed one.
-from app.core.billing import add_months, period_boundaries
+from app.core.billing import add_months, period_boundaries, period_span
 from app.core.customfields import CustomFieldsService
 from app.core.jobs import enqueue
 from app.core.models import OrgSettings
@@ -79,6 +79,7 @@ _AUDITED_FIELDS = (
     "redirect_url",
     "start_date",
     "next_invoice_date",
+    "billed_until",
     "price_override",
     "invoiceable",
     "auto_invoice_mode",
@@ -91,7 +92,12 @@ _AUDITED_FIELDS = (
 
 @dataclass(frozen=True)
 class OpenPeriod:
-    """One outstanding renewal period of one domain, priced at **its own** boundary."""
+    """One outstanding renewal period of one domain, priced at **its own** boundary.
+
+    ``period_start`` is the boundary — the renewal date — and ``period_end`` a year on: a
+    renewal is billed **in advance**, for the year the register is about to grant, never
+    for the year behind it (``app.core.billing.period_span``).
+    """
 
     period_start: date
     period_end: date
@@ -99,6 +105,14 @@ class OpenPeriod:
     lines: tuple[tuple[str, Decimal, Decimal], ...]
     #: The period has not started yet — billing it renews in advance.
     future: bool
+    #: No price resolves at this boundary (no override, no TLD price valid then). The period
+    #: is still **named**, at zero, because a renewal the calendar has passed is outstanding
+    #: whether or not the org has priced its TLD yet — dropping it made a domain with an
+    #: overdue renewal date vanish from the backlog and the picker alike, with nothing on
+    #: either screen saying why. Zero is never a price: the picker refuses to add it as a
+    #: line and the backlog labels it, so the €0,00 that would have been the silent error
+    #: is what tells the reader to set a price.
+    no_price: bool = False
 
 
 @dataclass(frozen=True)
@@ -454,6 +468,12 @@ class DomainService:
                     months=12,
                     floor=domain.created_at.date(),
                     until=today,
+                    # A renewal is billed in advance: the boundary is the day the register
+                    # renews, and the year it pays for starts there (``period_span``).
+                    advance=True,
+                    # A year the operator says was invoiced already is not outstanding — the
+                    # same statement the cron reads before it drafts.
+                    billed_until=domain.billed_until,
                 )
                 if domain.next_invoice_date is not None
                 else ([], False)
@@ -462,17 +482,25 @@ class DomainService:
             unpriced = False
             for boundary in boundaries:
                 resolved = priced(boundary)
+                # An unpriced boundary is a period all the same: the cycle has reached it and
+                # the cron leaves the date where it is until a price exists, so this is the
+                # one place a reader can learn that a renewal is waiting on a TLD price.
                 if resolved is None:
                     unpriced = True
-                    continue
-                amount, _currency = resolved
+                    amount = Decimal(0)
+                else:
+                    amount, _currency = resolved
+                period_start, period_end = period_span(boundary, 12, advance=True)
                 periods.append(
                     OpenPeriod(
-                        period_start=add_months(boundary, -12),
-                        period_end=boundary,
+                        period_start=period_start,
+                        period_end=period_end,
                         amount=amount,
                         lines=((domain.name, Decimal(1), amount),),
+                        # Not due yet: the renewal date is still ahead, so raising it now is
+                        # billing the year before the register has renewed it.
                         future=boundary > today,
+                        no_price=resolved is None,
                     )
                 )
             now_priced = priced(today)
@@ -546,6 +574,7 @@ class DomainService:
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
             next_invoice_date=next_invoice_date,
+            billed_until=data.billed_until,
             registrar_provider_id=registrar_id,
             dns_provider_id=dns_id,
             registry_contact_party_type=rc_type,
@@ -610,6 +639,9 @@ class DomainService:
                 )
             else:
                 values["next_invoice_date"] = None
+        if "billed_until" in sent:
+            # Explicit null withdraws the statement — the ``exclude_unset`` split again.
+            values["billed_until"] = data.billed_until
         if "price_override" in sent:
             values["price_override"] = data.price_override
         if "invoiceable" in sent:

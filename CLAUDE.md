@@ -1149,6 +1149,22 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   as an overdue deadline, and the strip's *Factuurdatum verstreken* opens the backlog — before it,
   the answer to "why is this not on nog te factureren" was that nothing on that page said it
   should be.
+- **A renewal is billed in advance, and "already invoiced up to" is the operator's own statement**
+  (`app/core/billing.period_span`, `docs/INVOICING.md`). A domain renewing on 01-10-2026 read
+  "01-10-2025 – 01-10-2026" on the backlog, the picker and the drafted line: every renewal period
+  was written as the year *behind* its invoice date, when the invoice raised that day pays the
+  register for the year ahead. Which way a period runs is a property of what is sold, stated once
+  in core and read by the cron, the offer and the backlog alike — a retainer's month is still
+  billed once served — and the claim rows written on the old shape are **shifted by migration**,
+  because under the new reading `period_end = B` names the boundary a year earlier and every
+  renewal ever invoiced would have been offered again. The `start_date` bound got the floor's
+  exemption in the same pass: it bounds what the walk reaches, never the anchor, since a portfolio
+  onboarded in one afternoon carries that afternoon as every start date. And what the floor cannot
+  say — this was invoiced *elsewhere* up to a date — is a column on the record
+  (`billed_until`), read by the backlog and the picker through `period_boundaries` and by each
+  cron before it drafts, the anchor included; the other direction of the same claim tables
+  (`GET /invoicing/billed-periods`) is what `invoicing` contributes to the domain and subscription
+  pages, so a record page finally answers "which years did we bill, and on what".
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

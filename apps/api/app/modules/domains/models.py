@@ -115,6 +115,12 @@ class Domain(
     #: this is only about the paper. The vocabulary is ``invoicing``'s ``AutoInvoiceMode``, put
     #: on the ``domain.due`` event so this module never reads invoicing's settings (§6).
     auto_invoice_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: Everything up to this date has already been invoiced — elsewhere, before this record
+    #: existed here, by whoever ran the books before. The operator's own statement, never
+    #: derived: a renewal year ending on or before it is not outstanding, the backlog does not
+    #: list it and the cron rolls past it without drafting. ``NULL`` says nothing (the
+    #: ``created_at`` floor still keeps onboarding an old domain from back-billing its history).
+    billed_until: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # --- providers (catalog, §89): SET NULL so deleting a provider never deletes a domain --- #
     registrar_provider_id: Mapped[uuid.UUID | None] = mapped_column(

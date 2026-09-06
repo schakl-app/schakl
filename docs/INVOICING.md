@@ -419,6 +419,21 @@ for accounting packages.
   the row it sits on, because every period listed here has already been passed by the cycle.
   `resolve_auto_invoice_mode` lives in `app/core/billing.py` so the report and the `*.due`
   consumers cannot drift about what "follow the organisation" means.
+  **An unpriced renewal is a row, never an omission.** A domain whose TLD has no price (and no
+  `price_override`) used to lose every boundary at the seam — `open_renewals` skipped what it
+  could not price, so an overdue renewal date on such a domain reached neither the backlog nor
+  the picker, and the domain cron (rightly) left the date where it was until a price existed.
+  Three surfaces then agreed that nothing was owed, and the one signpost — "set a price for
+  `.nl`" — was on a fourth screen nobody had a reason to open. The seam now names the period at
+  zero with `no_price` on it: the backlog lists the row, labels it and counts it
+  (`unpriced_count`, over the whole filtered set), the page above the table links to the TLD
+  price list, and the picker refuses to add the period as a line, because *offered at €0,00*
+  is the silent error the old skip was written to avoid. Zero is a sentence here, not a price.
+  One consequence is worth knowing before it is reported as a bug: a TLD price applies **from
+  its `valid_from`**, and a period is priced at its own boundary (#250, history never
+  reprices), so a price entered today prices every renewal still ahead and leaves last month's
+  overdue one unpriced. That is the same rule the cron bills by, and the screen says so — the
+  fix is a price dated before the renewal, or a `price_override` on the domain.
 - **What is still outstanding** (`GET /invoicing/outstanding`): the four buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,
@@ -458,6 +473,46 @@ for accounting packages.
   historic draft a night for as many nights as the lag, which reads as a daily fault rather
   than as arrears. Every period the calendar has passed is owed now, the backlog lists all of
   them, and the agency is owed the whole answer the next morning.
+- **A renewal is billed in advance, and which way a period runs is stated once**
+  (`app/core/billing.period_span`). Every renewal period was written as the year *behind* its
+  invoice date — `[date − 12m, date]` — so a domain renewing on 01-10-2026 read "01-10-2025 –
+  01-10-2026" on the backlog, in the picker and on the drafted line, when the invoice raised on
+  that date pays the register for the year *ahead*. The direction is a property of what is
+  sold, not a setting: a retainer's month is billed once it has been served (`subscription.due`
+  on X still covers `[X − period, X]`), a registration is paid for before the register grants
+  it. `period_span(boundary, months, advance=…)` is the one place that says so; the domain cron,
+  `open_renewals`, the picker and the backlog all read it, and `period_boundaries` takes
+  `advance` so its `start_date` bound bites on the boundary a period actually begins at. The
+  rows written on the old shape were **shifted, not reinterpreted**: a claim in
+  `invoice_domain_periods` and the provenance on an `invoice_lines` row both said "boundary B is
+  billed" as `period_end = B`, which under the new reading names the boundary a year *earlier* —
+  left alone, every renewal ever invoiced would have been offered again, the duplicate the claim
+  tables exist to prevent, re-entered through the upgrade. Migration `c8e4f2a7b9d1` moves both
+  a year forward. `invoices.period_*` (the header line a cron-raised renewal prints) is left as
+  issued: it is not a claim key, and the document is what the client received. Its sibling,
+  found on the live register the same week: **the `start_date` bound is on what the walk
+  reaches, never on the anchor** — a portfolio onboarded in one afternoon carries that afternoon
+  as every `start_date`, so the anchor's period began before it on all 170 domains, and the
+  guard hid the whole register from the backlog while the cron billed each renewal that night.
+  The floor already had this exemption; the start-date guard now has it too.
+- **"Already invoiced up to" is the operator's statement, and both halves read it**
+  (`domains.billed_until`, `subscriptions.billed_until`). An agency arriving from another
+  system brings agreements and domains that were invoiced *there* up to a date, and the
+  `created_at` floor cannot say so: it is when the row was made, and an agreement onboarded
+  with a year of history and a cycle date deliberately set into the past is both "reached" and
+  "settled". So the record carries the date itself — set on create, edit, over a selection and
+  by import (not clearable by file, the renewal date's rule: a blank in an edited export is a
+  column nobody filled in) — and a period ending on or before it is not outstanding: the
+  backlog and the picker drop it through `period_boundaries(billed_until=…)`, **the anchor
+  included**, and each cron rolls its cycle past it without drafting. One statement, read on
+  both sides, because a backlog that hid a period the cron drafted that night is exactly the
+  failure the shared seam exists to prevent. `NULL` says nothing, so an instance that types
+  nothing bills as it did. Its other half is what the picker could never show: **which periods
+  a record *has* been billed for, and on what** — `GET /invoicing/billed-periods` reads the
+  claim tables in the other direction (through the caller's own document repository, so a
+  portal login sees the claims of the documents it may read and no others) and `invoicing`
+  contributes it to the domain and subscription pages as a register panel (§6: those modules
+  never read the claim tables), newest year first, each row naming its invoice and its state.
 - **Quotes → invoices**: `convert` (accepted only) copies the lines *with their snapshots* —
   the deal keeps the prices it was accepted at. The quote flips to `invoiced` and points at
   the invoice; deleting that draft reverts it to `accepted`.

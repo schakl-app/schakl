@@ -95,6 +95,32 @@ def add_months(day: date, months: int) -> date:
     return date(year, month, min(day.day, last_day))
 
 
+def period_span(boundary: date, months: int, *, advance: bool) -> tuple[date, date]:
+    """The period a charge raised at ``boundary`` covers — ``(start, end)``.
+
+    Two directions, and which one applies is a property of what is being sold, not a setting:
+
+    - **In arrears** (``advance=False``): the charge at ``boundary`` covers the period that
+      *ends* there, ``[boundary − months, boundary]``. A retainer's month is billed once it has
+      been served, which is the cycle cron's original semantics (``subscription.due`` on date
+      X covers ``[X − period, X]``).
+    - **In advance** (``advance=True``): the charge at ``boundary`` covers the period that
+      *starts* there, ``[boundary, boundary + months]``. A domain renewal is this: the register
+      renews the registration on the expiry date for the year ahead, and the invoice raised on
+      that date pays for that year. Labelling it as the year behind — which is what every
+      renewal read as until this existed, "01-10-2025 – 01-10-2026" on a renewal due
+      01-10-2026 — is a claim about the wrong twelve months, and the operator who set the date
+      knew which year they meant.
+
+    Stated once, here, because a renewal's period is written by three callers (the cron's
+    payload, the picker's offer, the backlog's row) and read back by the claim tables; a
+    direction restated in each would drift the day one of them was edited.
+    """
+    if advance:
+        return boundary, add_months(boundary, months)
+    return add_months(boundary, -months), boundary
+
+
 def first_boundary_ahead(start_date: date, months: int, today: date) -> date:
     """The first boundary of the ``start_date`` grid that has not passed yet.
 
@@ -127,6 +153,8 @@ def period_boundaries(
     end_date: date | None = None,
     until: date | None = None,
     limit: int = MAX_OPEN_PERIODS,
+    advance: bool = False,
+    billed_until: date | None = None,
 ) -> tuple[list[date], bool]:
     """Every period boundary an agreement has reached, oldest first, and whether the cap bit.
 
@@ -142,7 +170,8 @@ def period_boundaries(
     Three things bound the walk, and each answers a different way of being wrong:
 
     - **``start_date``** — a period whose start falls before the agreement began was never
-      served, so it is not billable however far back the grid reaches.
+      served, so it is not billable however far back the grid reaches. Like the floor it
+      bounds the walk and never the anchor (see below).
     - **``floor``** — the day the record became this system's problem (its ``created_at``).
       A domain registered in 2005 and onboarded last month has *reached* twenty boundaries
       and owes none of them; #250's rule that onboarding an old record never back-bills
@@ -163,6 +192,16 @@ def period_boundaries(
     to it is offered too: the calendar has passed the cycle — a worker that did not run, an
     anchor set into the past on purpose, a resumed agreement — and each of those periods is
     outstanding whether the cron catches up tonight or nobody ever drafts it.
+
+    ``advance`` says which period a boundary stands for (:func:`period_span`): it decides
+    where the ``start_date`` bound bites, since a period billed in advance *begins* at its
+    boundary and one billed in arrears *ends* there. ``billed_until`` is the operator's own
+    statement that everything up to that date has already been invoiced — by the system this
+    record was migrated from, on paper, by a predecessor — and a period wholly inside it
+    (its end on or before the date) is not outstanding, **the anchor included**. The floor
+    cannot say this: ``created_at`` is when the row was made, and an agreement onboarded with
+    a year of history and a renewal date deliberately set into the past is both "reached" and
+    "settled". Applied before the cap, so a settled year never costs an open one its place.
     """
     if months <= 0:
         return [], False
@@ -173,8 +212,17 @@ def period_boundaries(
         # The floor bounds what the walk *reaches*, never where the cycle *sits*.
         if boundary != anchor and floor is not None and boundary < floor:
             break
-        # A period that would begin before the agreement did was never served.
-        if add_months(boundary, -months) < start_date:
+        span_start, span_end = period_span(boundary, months, advance=advance)
+        # A period that would begin before the agreement did was never served — but, like
+        # the floor, this bounds only what the walk *reaches*. The anchor is the cycle's own
+        # statement of what is billed next, and a portfolio onboarded in one afternoon has
+        # every ``start_date`` on that afternoon: refusing the anchor's period for beginning
+        # before it hid 170 renewals from a backlog while the cron billed every one of them.
+        if boundary != anchor and span_start < start_date:
+            break
+        # Everything up to ``billed_until`` is settled, and every earlier period with it —
+        # the anchor included, since it is the first boundary this walk looks at.
+        if billed_until is not None and span_end <= billed_until:
             break
         out.append(boundary)
         boundary = add_months(boundary, -months)
@@ -182,7 +230,12 @@ def period_boundaries(
     if until is not None:
         boundary = add_months(anchor, months)
         while boundary <= until and (end_date is None or boundary <= end_date):
-            out.append(boundary)
+            settled = (
+                billed_until is not None
+                and period_span(boundary, months, advance=advance)[1] <= billed_until
+            )
+            if not settled:
+                out.append(boundary)
             # A rolling window rather than an unbounded list: only the newest survive the cap
             # below anyway, and ``until`` is a date, so the walk itself always terminates.
             if len(out) > limit + 1:

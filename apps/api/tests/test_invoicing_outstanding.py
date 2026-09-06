@@ -118,6 +118,11 @@ def _ends(periods: list[dict]) -> list[str]:
     return [period["period_end"] for period in periods]
 
 
+def _starts(periods: list[dict]) -> list[str]:
+    """A renewal is billed in advance, so its boundary is where the period *starts*."""
+    return [period["period_start"] for period in periods]
+
+
 async def test_outstanding_enumerates_the_arrears_not_just_the_next_period(client_for) -> None:
     """An agreement seven months in owes seven months, oldest first.
 
@@ -404,8 +409,9 @@ async def test_domain_renewals_are_offered_and_onboarding_never_back_bills(clien
         assert len(offered["periods"]) == 1
         anniversary = date.fromisoformat(recent.json()["next_invoice_date"])
         renewal = offered["periods"][0]
-        assert renewal["period_end"] == anniversary.isoformat()
-        assert renewal["period_start"] == add_months(anniversary, -12).isoformat()
+        # In advance: the renewal date opens the year the invoice pays for, never closes it.
+        assert renewal["period_start"] == anniversary.isoformat()
+        assert renewal["period_end"] == add_months(anniversary, 12).isoformat()
         assert renewal["amount"] == "12.50"
         assert [line["unit_price"] for line in renewal["lines"]] == ["12.50"]
         # Its boundary is still ahead: billing it is billing in advance, a choice, so it is
@@ -413,9 +419,57 @@ async def test_domain_renewals_are_offered_and_onboarding_never_back_bills(clien
         assert renewal["future"] is True
 
         # Nineteen years old, onboarded a second ago: its next anniversary, and nothing else.
+        # In advance, so the anniversary is where the offered year *starts*.
         aged = by_name["oud.nl"]
-        assert _ends(aged["periods"]) == [old.json()["next_invoice_date"]], _ends(aged["periods"])
+        assert _starts(aged["periods"]) == [old.json()["next_invoice_date"]], _starts(
+            aged["periods"]
+        )
         assert aged["truncated"] is False
+
+
+async def test_an_unpriced_renewal_is_named_in_the_picker_not_dropped(client_for) -> None:
+    """The picker's half of the same rule: a period the org cannot price yet is offered as a
+    row that says so (``no_price``), never as a €0,00 line and never as an absence.
+
+    Before, ``periods`` came back empty for such a domain and the dialog simply had nothing
+    for it — an overdue renewal on a domain whose TLD was never priced was unfindable from the
+    editor, and the agreement-level ``no_price`` flag pointed at a list nobody drew.
+    """
+    tenant: Tenant = await make_tenant("inv-out-unpriced")
+    headers = await auth_cookie(tenant.user)
+    today = _today()
+    async with client_for(tenant.host) as client:
+        company_id = await _company(client, headers)
+        created = await client.post(
+            "/api/v1/domains",
+            json={
+                "name": "ongeprijsd.nl",
+                "company_id": company_id,
+                "start_date": add_months(today, -14).isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        overdue = add_months(today, -1)
+        moved = await client.patch(
+            f"/api/v1/domains/{created.json()['id']}",
+            json={"next_invoice_date": overdue.isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+
+        by_name = {
+            d["name"]: d for d in (await _outstanding(client, headers, company_id))["domains"]
+        }
+        offered = by_name["ongeprijsd.nl"]
+        assert offered["no_price"] is True
+        assert offered["no_cycle"] is False
+        assert _starts(offered["periods"]) == [overdue.isoformat()]
+        period = offered["periods"][0]
+        assert period["no_price"] is True
+        assert period["amount"] == "0"
+        assert period["future"] is False
+        assert period["already_billed"] is False
 
 
 async def test_the_hours_bucket_counts_and_prices_the_whole_backlog(client_for) -> None:

@@ -1007,6 +1007,10 @@ class PeriodOffer(BaseModel):
     #: The period has not ended yet: billing it is billing in advance, which is a choice
     #: rather than a mistake, so it is offered and labelled instead of withheld.
     future: bool = False
+    #: No price resolves at this boundary (domains only: no override and no TLD price valid
+    #: then). The period is named, at zero, and **not** offered as a line — a €0,00 renewal on
+    #: a document is the silent error; a row that says "no price" is the fix's signpost.
+    no_price: bool = False
 
 
 class BillableSubscription(BaseModel):
@@ -1075,6 +1079,25 @@ class UnbilledRead(BaseModel):
     #: The detail list was capped. Over a limit is an error or a flag, never a silent
     #: truncation that reads as "this is everything" (§17's parsing rule, applied to a read).
     truncated: bool = False
+
+
+class BilledPeriod(BaseModel):
+    """One period of one agreement or domain that a document holds — the record's own
+    invoicing history, read off the claim tables the crons consult (#250, #302).
+
+    Which invoice, what state it is in and when it went out, beside the period: the question
+    a record page has to answer is "which years of this domain did we bill, and on what", and
+    the claim row alone answers only the first half.
+    """
+
+    period_start: date | None
+    period_end: date
+    invoice_id: uuid.UUID
+    #: ``None`` while the document is still a draft — it has no number yet.
+    invoice_number: str | None
+    invoice_status: str
+    invoice_kind: str
+    issue_date: date | None
 
 
 class OutstandingRead(BaseModel):
@@ -1174,6 +1197,10 @@ class RecurringBacklogItem(BaseModel):
     #: The period has not ended yet: billing it bills in advance, which is ordinary for a
     #: retainer and worth flagging rather than hiding.
     future: bool = False
+    #: A domain renewal the org has not priced (no override, no TLD price valid at the
+    #: boundary): listed at zero and labelled, because the cron leaves such a domain where
+    #: it is and this list is the only place anyone learns it is waiting.
+    no_price: bool = False
     #: The level this agreement's cron runs at, already resolved against the org default —
     #: what it will do at its **next** boundary, never a claim about this row. Every period
     #: here has been passed by the cycle already, so none of them will bill themselves.
@@ -1210,6 +1237,9 @@ class RecurringBacklogReport(BaseModel):
     items: list[RecurringBacklogItem]
     total_count: int
     total_amount: Decimal
+    #: How many of the (filtered) rows carry no price, over the whole set rather than the
+    #: capped detail — the number the page's "set your TLD prices" line prints.
+    unpriced_count: int = 0
     #: Each source's whole-set figures, **ignoring** ``source`` — what the page's tiles are.
     #: A tile that only counted the source already selected would summarise nothing, so these
     #: are computed over everything even when the list beside them is narrowed to one.

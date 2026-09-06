@@ -217,6 +217,13 @@
       type: "fk",
       options: companyItems,
     },
+    {
+      // Agreements migrated from another system were invoiced there up to one date.
+      key: "billed_until",
+      label: t("impex.column.subscription.billed_until"),
+      type: "date",
+      clearable: true,
+    },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.

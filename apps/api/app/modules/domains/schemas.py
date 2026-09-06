@@ -94,6 +94,9 @@ class DomainBase(BaseModel):
     #: How far the renewal cron takes this domain's invoice by itself, overriding the org
     #: default; ``None`` inherits. Only about the paper — nothing here renews a registration.
     auto_invoice_mode: AutoInvoiceMode | None = None
+    #: Everything up to this date is already invoiced (elsewhere, or before this record
+    #: existed here): a renewal year ending on or before it is never offered or drafted.
+    billed_until: date | None = None
     custom: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -122,6 +125,8 @@ class DomainUpdate(BaseModel):
     #: the service re-resolves register-expiry-else-anniversary, which is the answer somebody
     #: reaching for "empty this" on a billing date actually wants. Absent leaves it alone.
     next_invoice_date: date | None = None
+    #: Explicit ``null`` withdraws the statement; absent leaves it alone.
+    billed_until: date | None = None
     registrar_provider_id: uuid.UUID | None = None
     dns_provider_id: uuid.UUID | None = None
     registry_contact: PartyRef | None = None
@@ -162,6 +167,7 @@ class DomainRead(BaseModel):
     tld: str | None = None
     price_override: Decimal | None = None
     next_invoice_date: date | None = None
+    billed_until: date | None = None
     #: What a connected register last **observed** the registration to expire on; ``None`` when
     #: no register holds this domain or none has been read. Kept in its own field beside the
     #: date schakl **decided** (CLAUDE.md §10): they are allowed to differ, and a screen that

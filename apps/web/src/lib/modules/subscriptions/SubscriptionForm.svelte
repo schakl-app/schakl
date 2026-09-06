@@ -391,6 +391,16 @@
           />
         </div>
       {/if}
+      <!-- On create too: an agreement migrated from another system was invoiced there up to a
+           date, and saying so at onboarding is what keeps the settled months off the backlog
+           from the first night. -->
+      <div>
+        <label for="sub-billed-until" class="mb-1 block text-sm font-medium text-text"
+          >{t("subscriptions.field.billed_until")}</label
+        >
+        <DateInput name="billed_until" id="sub-billed-until" value={editing?.billed_until ?? ""} />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.field.billed_until_hint")}</p>
+      </div>
     </div>
     <!-- How far the cycle cron takes this agreement's invoice. Asked here rather than
          inferred, because an agency automating twelve hosting retainers still assembles by

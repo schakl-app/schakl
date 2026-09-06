@@ -101,6 +101,9 @@ export const actions: Actions = {
         // the register's expiry, else the anniversary of the start date. So it is an explicit
         // null, not `undefined` — "leave it alone" is what not sending the key means.
         next_invoice_date: String(form.get("next_invoice_date") ?? "").trim() || null,
+        // Empty withdraws the "already invoiced up to" statement — an explicit null, because
+        // absent means leave alone.
+        billed_until: String(form.get("billed_until") ?? "").trim() || null,
         // Empty clears the override: the TLD list price applies again.
         price_override: String(form.get("price_override") ?? "").trim() || null,
         // Three-state (#298): "" clears the decision back to *follow the register*.

@@ -197,6 +197,11 @@ class Subscription(
     #: rule that a derived cycle date never lands in the past) — the create form doesn't ask
     #: for it. An explicit date is the operator's and is honoured wherever the cron would.
     next_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: Everything up to this date has already been invoiced — by the system this agreement was
+    #: migrated from, on paper, by a predecessor. The operator's own statement, never derived:
+    #: a period ending on or before it is not outstanding, the backlog does not list it and the
+    #: cron rolls past it without drafting. ``NULL`` says nothing.
+    billed_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: How far the billing cron takes this agreement's invoice on its own, overriding the
     #: org's default. ``NULL`` means *inherit*, not *off* — the same three-state discipline
     #: the leave schedules use (§14). The vocabulary belongs to ``invoicing``

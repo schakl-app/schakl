@@ -7,6 +7,7 @@
   import { page } from "$app/state";
   import { dateLocale, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { entityPanelComponent } from "$lib/core/registry";
   import Card from "$lib/core/ui/Card.svelte";
   import PageHeader from "$lib/core/ui/PageHeader.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -36,6 +37,14 @@
   );
   const lines = $derived(sub.lines ?? []);
   const usage = $derived(sub.usage ?? null);
+
+  // Typed entity panels (the invoiced periods, contributed by `invoicing`) — composed, never
+  // imported, the way the domain page does it.
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  function panelComponent(key: string) {
+    return entityPanelComponent(enabled, "subscription", key);
+  }
+  const emptyLookups = { members: [], companies: [], projects: [], tasks: [] };
 </script>
 
 <svelte:head>
@@ -91,6 +100,13 @@
           {sub.next_invoice_date ? fmtNumericDate(sub.next_invoice_date) : "—"}
         </dd>
       </div>
+      {#if sub.billed_until}
+        <!-- The operator's "already invoiced up to" statement: drawn only when made. -->
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-muted">{t("subscriptions.field.billed_until")}</dt>
+          <dd class="text-text">{fmtNumericDate(sub.billed_until)}</dd>
+        </div>
+      {/if}
       {#if sub.included_hours != null}
         <div class="flex justify-between gap-3">
           <dt class="text-text-muted">{t("subscriptions.field.included_hours")}</dt>
@@ -139,4 +155,13 @@
       <p class="whitespace-pre-line text-sm text-text">{sub.notes}</p>
     </Card>
   {/if}
+
+  {#each data.panels as panel (panel.key)}
+    {@const PanelComponent = panelComponent(panel.key)}
+    {#if PanelComponent}
+      <Card title={t(panel.titleKey)} kind={panel.prominence === "register" ? "register" : "panel"}>
+        <PanelComponent data={panel.data} context={data.context} lookups={emptyLookups} />
+      </Card>
+    {/if}
+  {/each}
 </div>

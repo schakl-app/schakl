@@ -141,6 +141,9 @@ class SubscriptionBase(BaseModel):
     start_date: date
     end_date: date | None = None
     next_invoice_date: date | None = None
+    #: Everything up to this date is already invoiced (by the system this agreement came from,
+    #: or on paper): a period ending on or before it is never offered or drafted.
+    billed_until: date | None = None
     #: How far the billing cron takes this agreement's invoice by itself, overriding the org
     #: default. ``None`` inherits, and never means *off* — the three-state discipline §14 uses
     #: for leave schedules. The vocabulary is core's, because `invoicing` resolves it and this
@@ -182,6 +185,8 @@ class SubscriptionUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     next_invoice_date: date | None = None
+    #: Explicit ``null`` withdraws the statement; absent leaves it alone.
+    billed_until: date | None = None
     #: How far the billing cron takes this agreement's invoice by itself, overriding the org
     #: default. ``None`` inherits, and never means *off* — the three-state discipline §14 uses
     #: for leave schedules. The vocabulary is core's, because `invoicing` resolves it and this
@@ -232,6 +237,7 @@ class SubscriptionRead(BaseModel):
     start_date: date
     end_date: date | None
     next_invoice_date: date | None
+    billed_until: date | None = None
     #: ``None`` = inherit the org's default automation level (never *off*).
     auto_invoice_mode: AutoInvoiceMode | None = None
     included_hours: Decimal | None

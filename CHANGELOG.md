@@ -2,6 +2,89 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.44.0 — 2026-09-06
+
+A domain renewal is billed in advance, so the period on the backlog, in the picker and on the
+drafted line is the year the invoice pays for rather than the year behind it. A domain or an
+agreement that was invoiced elsewhere up to a date can now say so, and both records show which
+periods they have been billed for and on what. An unpriced renewal is listed at zero instead of
+vanishing from the backlog. The domain register is sectioned by client, like contacts and projects.
+
+One migration, head revision `c8e4f2a7b9d1`: it adds `domains.billed_until` and
+`subscriptions.billed_until` (nullable, nothing backfilled) and **rewrites the renewal claim
+rows** — `invoice_domain_periods` and the provenance on `invoice_lines` shift one year forward
+so a renewal invoiced under the old period shape is not offered again under the new one. No new
+permission keys: `GET /invoicing/billed-periods` rides `invoicing.invoice.read`. Two response
+fields are new on the backlog (`no_price` per row, `unpriced_count` on the report) and on the
+picker's period offers (`no_price`). The public API reference and the typed client are
+regenerated.
+
+### Invoicing
+
+- **A renewal is billed in advance, and which way a period runs is stated once.** Every renewal
+  period was written as the year behind its invoice date, so a domain renewing on 01-10-2026 read
+  "01-10-2025 – 01-10-2026" wherever it appeared. `app/core/billing.period_span` now says which
+  way a period runs per kind of thing sold — a retainer's month once served, a registration before
+  the register grants it — and the domain cron, the outstanding seam, the picker and the backlog
+  all read it. `period_boundaries` takes the direction too, so its start-date bound bites on the
+  boundary a period actually begins at.
+- **The claim rows already written are shifted, not reinterpreted.** Migration `c8e4f2a7b9d1`
+  moves `invoice_domain_periods` and the `invoice_lines` provenance one year forward, which is
+  what those rows meant all along; left alone, every renewal ever invoiced would have been offered
+  again. An issued invoice's own `period_start`/`period_end` header stays as the client received
+  it — it is not a claim key.
+- **The start-date bound is on what the walk reaches, never on the anchor.** A portfolio onboarded
+  in one afternoon carries that afternoon as every start date, so the anchor's period began before
+  it on every live domain and the guard hid the whole register from "nog te factureren" while the
+  cron billed each renewal that night. The floor already had this exemption; the start-date guard
+  now has it too, pinned end to end on the backlog endpoint.
+- **"Already invoiced up to" is the operator's own statement** (`billed_until` on domains and
+  subscriptions). Set on create, in the edit form ("Gefactureerd tot"), over a bulk selection and
+  by import (not clearable through a file). A period ending on or before it is not outstanding:
+  the backlog and the picker drop it, the anchor included, and each cron rolls its cycle past it
+  without drafting. `NULL` says nothing, so an instance that types nothing bills as it did.
+- **Gefactureerde termijnen.** `GET /invoicing/billed-periods` reads the claim tables in the other
+  direction, through the caller's own document repository so a portal login sees only the
+  documents it may read. The domain and subscription pages draw it as a register panel, newest
+  period first, each row naming its invoice, its state and its issue date. The subscription page
+  composes typed entity panels for the first time to receive it.
+- **An unpriced renewal is a row, never an omission.** A domain whose TLD has no price (and no
+  price override) used to lose every boundary at the seam, so an overdue renewal reached neither
+  the backlog nor the picker while the cron rightly left the date alone. The backlog now lists the
+  row at zero labelled "geen prijs", links to the TLD price list and prints one amber line naming
+  how many rows wait on a price; the picker names the period and refuses to add it as a €0,00
+  line. The screen states the rule that bites next: a TLD price applies from its start date and a
+  period is priced at its own boundary, so a price entered today prices every renewal still ahead
+  and leaves last month's unpriced — date the price before the renewal, or give the domain its
+  own price.
+- The picker's and backlog's "not due yet" label became direction-neutral ("nog niet
+  verschuldigd").
+
+### Domains
+
+- **The register is sectioned by client**, collapsible, in the shape the contact and project lists
+  already have. A domain has exactly one client, so there is no "Zonder klant" section; the
+  heading comes from the client name the row already carries, never from the capped client picker.
+  The Klant column stays as the link and loses its sort, because a sort orders rows within a
+  section and never reorders the sections. The phone row drops its client line, and the list says
+  so above the table whenever the pager holds rows back.
+
+### Upgrade notes
+
+- `alembic upgrade head` runs unattended at start-up as usual. `c8e4f2a7b9d1` adds two nullable
+  columns and **updates existing rows** in `invoice_domain_periods` and `invoice_lines`
+  (`period_start := period_end`, `period_end := period_end + 1 year`). Take the usual backup
+  before upgrading; the downgrade shifts them back.
+- After the upgrade, every domain renewal on the backlog and in the picker reads the year ahead
+  of its invoice date. Renewals invoiced before the upgrade are not re-offered.
+- Domains with overdue renewals on a TLD without a price now appear on "nog te factureren" at
+  zero. Give the extension a price dated before the renewal, or the domain a price override, and
+  the row prices itself.
+- Agencies that onboarded domains or agreements invoiced in another system can set
+  "Gefactureerd tot" on each record (edit form, bulk edit or import) to keep those periods off the
+  backlog and out of the cron.
+- The API reference and the generated typed client are regenerated for the new route and fields.
+
 ## v0.43.0 — 2026-09-06
 
 Microsoft 365 as a second connected-workspace integration beside Google Workspace, with the

@@ -119,7 +119,13 @@
           quantity: "1",
           unitPrice: String(Number(period.amount)),
           amount: Number(period.amount),
-          blocked: period.already_billed ? t("invoicing.line.subscription_billed") : "",
+          // An unpriced renewal is named so the reader learns it is waiting, and refused as
+          // a line so it never lands on a document at €0,00 (docs/INVOICING.md, #302).
+          blocked: period.already_billed
+            ? t("invoicing.line.subscription_billed")
+            : period.no_price
+              ? t("invoicing.outstanding.no_price")
+              : "",
         });
       }
     }

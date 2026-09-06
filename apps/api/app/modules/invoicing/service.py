@@ -109,6 +109,7 @@ from app.modules.invoicing.render import (
 from app.modules.invoicing.render.qr import pair_was_replaced, qr_svg, readable_pair
 from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
+    BacklogSource,
     DocumentSend,
     InvoiceCreate,
     InvoiceCredit,
@@ -3598,6 +3599,10 @@ class InvoiceService(_DocumentService):
             # backlog page may never show (docs/PERFORMANCE.md).
             "total_count": len(items),
             "total_amount": round_cents(sum((i["amount"] for i in items), Decimal(0))),
+            # Over the whole filtered set, like every other total here: a renewal with no
+            # price counts as work and contributes nothing to the amount, and the page has
+            # to be able to say "n of these are waiting on a price" past the detail cap.
+            "unpriced_count": sum(1 for i in items if i["no_price"]),
             "totals_by_source": totals_by_source,
             "groups": [
                 {**g, "amount": round_cents(g["amount"])}
@@ -3632,6 +3637,7 @@ class InvoiceService(_DocumentService):
                         "period_end": period["period_end"],
                         "amount": Decimal(str(period["amount"] or 0)),
                         "future": period["future"],
+                        "no_price": period.get("no_price", False),
                         "auto_mode": mode.value,
                     }
                 )
@@ -3717,6 +3723,9 @@ class InvoiceService(_DocumentService):
                         "period_end": period.period_end,
                         "amount": period.amount,
                         "future": period.future,
+                        # Only the domain seam knows the word: a subscription period is always
+                        # priced by its own agreement, so absent reads as priced.
+                        "no_price": getattr(period, "no_price", False),
                         "lines": [
                             {
                                 "description": description,
@@ -3845,6 +3854,54 @@ class InvoiceService(_DocumentService):
                 claims.scoped_select().where(spec.model.invoice_id == invoice_id)
             ):
                 await claims.delete(row)
+
+    async def billed_periods(
+        self, *, source: BacklogSource, source_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
+        """Every period of one agreement or domain that a document holds, newest first.
+
+        The other direction of the claim tables: ``_with_claims`` asks "is this period taken"
+        for a picker, this asks "what has this record been billed for" for the record's own
+        page. Read through **this caller's** document repository, so a portal login sees the
+        claims of the documents it may read and no others (a draft's claim would name a
+        document the horizon hides, #266) — the claim row itself carries no company.
+
+        One read for the claims and one for their documents, whatever the count: a domain
+        with ten years of renewals is twenty rows, not ten round trips.
+        """
+        spec = _CLAIM_SOURCES[0] if source == "subscription" else _CLAIM_SOURCES[1]
+        claims = list(
+            await self.ctx.session.scalars(
+                self.ctx.repo(spec.model)
+                .scoped_select()
+                .where(getattr(spec.model, spec.column) == source_id)
+            )
+        )
+        if not claims:
+            return []
+        invoices = {
+            invoice.id: invoice
+            for invoice in await self.ctx.session.scalars(
+                self.repo.scoped_select().where(
+                    Invoice.id.in_({claim.invoice_id for claim in claims})
+                )
+            )
+        }
+        out = [
+            {
+                "period_start": claim.period_start,
+                "period_end": claim.period_end,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.number,
+                "invoice_status": invoice.status,
+                "invoice_kind": invoice.kind,
+                "issue_date": invoice.issue_date,
+            }
+            for claim in claims
+            if (invoice := invoices.get(claim.invoice_id)) is not None
+        ]
+        out.sort(key=lambda row: row["period_end"], reverse=True)
+        return out
 
     async def _release_time_entries(self, invoice_id: uuid.UUID) -> None:
         """Un-bill exactly the entries this invoice billed (delete/cancel path)."""

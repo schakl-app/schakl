@@ -33,6 +33,10 @@ SUBSCRIPTION_BULK = BulkDescriptor(
         BulkField("status"),
         BulkField("type"),
         BulkField("company"),
+        # Agreements migrated from another system were invoiced there up to one date — one
+        # statement over the whole selection; clearable, because withdrawing it is a decision
+        # made on purpose over rows somebody picked.
+        BulkField("billed_until", clearable=True),
     ),
     delete_permission="subscriptions.subscription.delete",
     delete_row=_delete,
