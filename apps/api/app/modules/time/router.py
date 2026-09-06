@@ -22,6 +22,8 @@ from app.modules.time.schemas import (
     ProductivityRow,
     ProductivityStats,
     ProjectCost,
+    ProjectTimeRow,
+    ProjectTimeStats,
     RevenueStats,
     TeamTimeSummary,
     TimeEntryCreate,
@@ -165,6 +167,26 @@ async def productivity_stats(
         date_from=date_from,
         date_to=date_to,
         rows=[ProductivityRow.model_validate(r) for r in rows],
+    )
+
+
+@router.get(
+    "/stats/projects",
+    response_model=ProjectTimeStats,
+    dependencies=[require_permission("time.report.read")],
+)
+async def project_time_stats(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> ProjectTimeStats:
+    """Per-project minutes (all / billable / approved / invoiced) and the billable worth —
+    what the projects report joins onto each budget. Unbounded dates mean all time."""
+    rows = await TimeService(ctx).project_stats(date_from=date_from, date_to=date_to)
+    return ProjectTimeStats(
+        date_from=date_from,
+        date_to=date_to,
+        rows=[ProjectTimeRow.model_validate(r) for r in rows],
     )
 
 

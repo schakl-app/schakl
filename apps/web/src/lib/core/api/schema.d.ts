@@ -7868,6 +7868,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/stats/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoicing Revenue Stats
+         * @description What was invoiced in ``year`` beside the year before: per month, per client, per kind,
+         *     excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth.
+         */
+        get: operations["invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/summary": {
         parameters: {
             query?: never;
@@ -12754,6 +12775,27 @@ export interface paths {
          * @description Per-employee hours/billable/approved aggregates (managers).
          */
         get: operations["productivity_stats_api_v1_time_stats_productivity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/stats/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Time Stats
+         * @description Per-project minutes (all / billable / approved / invoiced) and the billable worth —
+         *     what the projects report joins onto each budget. Unbounded dates mean all time.
+         */
+        get: operations["project_time_stats_api_v1_time_stats_projects_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -22829,6 +22871,65 @@ export interface components {
             /** Template Id */
             template_id?: string | null;
         };
+        /**
+         * InvoicingRevenueStats
+         * @description What the agency **invoiced** in a year, beside the year before it.
+         *
+         *     This is the ledger's answer, as opposed to ``time/stats/revenue`` — which prices the hours
+         *     people *logged* and therefore says what the year was worth, not what was billed. Both are
+         *     wanted and they are different numbers: an agency that bills retainers up front or writes
+         *     hours off sees them drift apart, and the gap is the interesting figure.
+         *
+         *     Every figure is in the org currency (foreign documents convert through their stored
+         *     exchange rate, 1 when unset — the ``summary`` rule). A month is the document's
+         *     ``issue_date``, the Dutch bookkeeping convention; drafts and cancelled documents are not
+         *     revenue and never count; a credit note carries negated totals, so it nets out of the month
+         *     it was issued in rather than the month it corrects — again, the bookkeeping convention.
+         */
+        InvoicingRevenueStats: {
+            /** By Kind */
+            by_kind: components["schemas"]["RevenueKind"][];
+            /** Credited Excl */
+            credited_excl: number;
+            /** Invoice Count */
+            invoice_count: number;
+            /** Months Excl */
+            months_excl: number[];
+            /** Months Incl */
+            months_incl: number[];
+            /** Months Previous Excl */
+            months_previous_excl: number[];
+            /** Months Previous Incl */
+            months_previous_incl: number[];
+            /** Other Excl */
+            other_excl: number;
+            /** Other Incl */
+            other_incl: number;
+            /** Other Previous Excl */
+            other_previous_excl: number;
+            /** Outstanding Count */
+            outstanding_count: number;
+            /** Outstanding Incl */
+            outstanding_incl: number;
+            /** Paid Incl */
+            paid_incl: number;
+            /** Previous Excl */
+            previous_excl: number;
+            /** Previous Incl */
+            previous_incl: number;
+            /** Previous Tax */
+            previous_tax: number;
+            /** Top Clients */
+            top_clients: components["schemas"]["RevenueClient"][];
+            /** Total Excl */
+            total_excl: number;
+            /** Total Incl */
+            total_incl: number;
+            /** Total Tax */
+            total_tax: number;
+            /** Year */
+            year: number;
+        };
         /** InvoicingSettingsRead */
         InvoicingSettingsRead: {
             auto_invoice_mode: components["schemas"]["AutoInvoiceMode"];
@@ -26328,6 +26429,11 @@ export interface components {
             /** Minutes */
             minutes: number;
             /**
+             * Revenue
+             * @default 0
+             */
+            revenue: number;
+            /**
              * User Id
              * Format: uuid
              */
@@ -26543,6 +26649,42 @@ export interface components {
          * @enum {string}
          */
         ProjectStatus: "active" | "on_hold" | "completed" | "archived";
+        /**
+         * ProjectTimeRow
+         * @description A project's logged time, split the way a budget page reads it, plus what the billable
+         *     part is worth at the loggers' effective rates (``revenue``'s chain, #226).
+         */
+        ProjectTimeRow: {
+            /** Approved Minutes */
+            approved_minutes: number;
+            /** Billable Amount */
+            billable_amount: number;
+            /** Billable Minutes */
+            billable_minutes: number;
+            /** Invoiced Minutes */
+            invoiced_minutes: number;
+            /** Minutes */
+            minutes: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Unrated Minutes */
+            unrated_minutes: number;
+        };
+        /**
+         * ProjectTimeStats
+         * @description Every project with time in the window, one grouped query (``/stats/projects``).
+         */
+        ProjectTimeStats: {
+            /** Date From */
+            date_from: string | null;
+            /** Date To */
+            date_to: string | null;
+            /** Rows */
+            rows: components["schemas"]["ProjectTimeRow"][];
+        };
         /** ProjectUpdate */
         ProjectUpdate: {
             /** Assignees */
@@ -28414,6 +28556,37 @@ export interface components {
             /** Footer Text */
             footer_text?: string | null;
             schedule?: components["schemas"]["ReportSchedule"];
+        };
+        /**
+         * RevenueClient
+         * @description One client's share of a year's invoiced revenue, and the same client a year earlier.
+         */
+        RevenueClient: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Excl */
+            excl: number;
+            /** Incl */
+            incl: number;
+            /** Name */
+            name: string;
+            /** Previous Excl */
+            previous_excl: number;
+        };
+        /**
+         * RevenueKind
+         * @description Revenue by what was billed (``LineKind``): hours, subscriptions, domains, products.
+         */
+        RevenueKind: {
+            /** Excl */
+            excl: number;
+            /** Kind */
+            kind: string;
+            /** Previous Excl */
+            previous_excl: number;
         };
         /**
          * RevenueStats
@@ -49466,6 +49639,37 @@ export interface operations {
             };
         };
     };
+    invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get: {
+        parameters: {
+            query: {
+                year: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingRevenueStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_v1_invoicing_summary_get: {
         parameters: {
             query?: never;
@@ -59654,6 +59858,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductivityStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_time_stats_api_v1_time_stats_projects_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTimeStats"];
                 };
             };
             /** @description Validation Error */

@@ -42,6 +42,21 @@ async def test_productivity_stats(client_for) -> None:
         assert rows[str(member.id)]["minutes"] == 30
         assert rows[str(member.id)]["billable_minutes"] == 0
         assert rows[str(member.id)]["active_days"] == 1
+        # Nobody has a rate yet, so the hours are worth nothing rather than something invented.
+        assert rows[str(t.user.id)]["revenue"] == 0.0
+
+        # A rate prices the billable hour; the member's non-billable half hour stays at zero.
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}",
+            json={"hourly_rate": "120.00"},
+            headers=owner_headers,
+        )
+        stats = (
+            await c.get("/api/v1/time/stats/productivity", params=params, headers=owner_headers)
+        ).json()
+        rows = {r["user_id"]: r for r in stats["rows"]}
+        assert rows[str(t.user.id)]["revenue"] == 120.0
+        assert rows[str(member.id)]["revenue"] == 0.0
 
 
 async def test_revenue_stats(client_for) -> None:
@@ -121,6 +136,83 @@ async def test_revenue_stats(client_for) -> None:
         assert stats["top_clients"][0]["company_id"] == company["id"]
         assert stats["top_clients"][0]["revenue"] == 200.0
         assert stats["other_revenue"] == 0.0
+
+
+async def test_project_stats_are_one_grouped_query(client_for, count_queries) -> None:
+    """``/stats/projects``: per project, the minutes split and the billable worth — what the
+    projects report joins onto each budget instead of asking ``/cost`` per row."""
+    t = await make_tenant("stats-projects")
+    headers = await auth_cookie(t.user)
+    member = await add_member(t)
+    member_headers = await auth_cookie(member)
+    now = datetime.now(UTC)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        projects = []
+        for name in ("Site", "Campagne", "Hosting"):
+            projects.append(
+                (
+                    await c.post(
+                        "/api/v1/projects",
+                        json={"name": name, "company_id": company["id"], "currency": "EUR"},
+                        headers=headers,
+                    )
+                ).json()
+            )
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}",
+            json={"hourly_rate": "100.00"},
+            headers=headers,
+        )
+        # Site: 90 billable minutes at € 100 (€ 150) + 60 non-billable; Campagne: 30 billable by
+        # the unrated member (reported, not priced); Hosting: nothing. Plus an entry on the
+        # client with no project, which no budget could read and so is left out.
+        for body, who in (
+            ({"minutes": 90, "project_id": projects[0]["id"]}, headers),
+            ({"minutes": 60, "project_id": projects[0]["id"], "billable": False}, headers),
+            ({"minutes": 30, "project_id": projects[1]["id"]}, member_headers),
+            ({"minutes": 45}, headers),
+        ):
+            res = await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": now.isoformat(), "company_id": company["id"], **body},
+                headers=who,
+            )
+            assert res.status_code == 201, res.text
+
+        assert (
+            await c.get("/api/v1/time/stats/projects", headers=member_headers)
+        ).status_code == 403
+
+        with count_queries() as counter:
+            res = await c.get("/api/v1/time/stats/projects", headers=headers)
+        assert res.status_code == 200, res.text
+        rows = {r["project_id"]: r for r in res.json()["rows"]}
+        assert set(rows) == {projects[0]["id"], projects[1]["id"]}
+        site = rows[projects[0]["id"]]
+        assert site["minutes"] == 150
+        assert site["billable_minutes"] == 90
+        assert site["billable_amount"] == 150.0
+        assert site["unrated_minutes"] == 0
+        campagne = rows[projects[1]["id"]]
+        assert campagne["minutes"] == 30
+        assert campagne["billable_amount"] == 0.0
+        assert campagne["unrated_minutes"] == 30
+        # One grouped statement plus the request's context reads — never one per project.
+        assert len(counter) <= 8, "\n".join(counter.statements)
+
+        # A window that excludes today reads as empty, not as an error.
+        empty = (
+            await c.get(
+                "/api/v1/time/stats/projects",
+                params={"date_from": "2000-01-01", "date_to": "2000-01-31"},
+                headers=headers,
+            )
+        ).json()
+        assert empty["rows"] == []
 
 
 async def test_team_summary_is_one_bounded_dashboard_payload(client_for) -> None:

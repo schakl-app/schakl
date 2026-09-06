@@ -63,11 +63,19 @@ export const TAILS: Record<string, string> = {
   runs: "automation.runs",
   marketing: "marketing.tab.title",
   revenue: "overview.tab.revenue",
-  productivity: "overview.tab.productivity",
 };
 
 /** Root-specific tail labels — the same segment reads differently per section (#229). */
 export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
+  // The section's tabs, named as the tab row names them: `/overview/projects` is the projects
+  // *report*, not the projects list, and `/overview/hours` is the report the section opened on
+  // before it grew a landing page.
+  overview: {
+    hours: "overview.tab.hours",
+    projects: "overview.tab.projects",
+    employees: "overview.tab.employees",
+    revenue: "overview.tab.revenue",
+  },
   leave: {
     availability: "leave.availability.title",
   },

@@ -1698,7 +1698,8 @@ contrast bug in dark mode rather than only an inconsistency.
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
   "?"; on mobile the grid becomes a per-day agenda list.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
-  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet; Abonnementen:
+  Verlof: Mijn verlof | Team; Overzicht: Overzicht | Omzet | Projecten | Medewerkers | Uren |
+  Marketing; Abonnementen:
   Abonnementen | Standaardabonnementen | Abonnementstypes) — not nested sidebars. The
   convention (owner call, #229): the tab row sits at the **very top of the section, above
   the page heading**, rendered by the section's `+layout.svelte` as pill-styled `<a>` links
@@ -1725,6 +1726,36 @@ contrast bug in dark mode rather than only an inconsistency.
   its crumb "Urenoverzicht" would read `Urenoverzicht › Omzet` two clicks later — a lie about where
   revenue lives. The sidebar item is named for the page it opens; the breadcrumb literal is named
   for the section that holds all four tabs.
+- **A section named for one of its tabs is a section with a missing landing page.** Until the
+  Overzicht rework the sidebar item read *Urenoverzicht*, `/overview` *was* the hours report, and
+  the revenue and productivity tabs hung off a page about something else — so the one question a
+  manager opens the section for ("how is the year going?") had no screen, and turnover meant the
+  value of logged hours because that was the only figure the section could compute. The section is
+  **Overzicht** now, and its landing page is the year at a glance: six vital signs on the
+  `SummaryStrip` (invoiced excl. and incl. VAT with the change against the year before, what is
+  outstanding, hours logged, what they were worth, budgets over), the month-by-month chart, and
+  three rankings — clients, budgets, team — each a `Card` whose "show all" is the tab that explains
+  it. Four rules generalise. **A tile links to the rows it counts and a card links to its tab**, so
+  nothing on the landing page is a dead end and nothing is drawn twice at the same depth. **Two
+  answers to "omzet" stay two sections**: *Gefactureerd* is the ledger's (`invoicing/stats/revenue`,
+  drawn only where the module is on and the viewer holds `invoicing.invoice.read:any` — #266's
+  scope, mirrored on the tab exactly as on a control), *Waarde van geboekte uren* is what the
+  billable hours were worth (`time/stats/revenue`), and the Omzet tab prints both with the gap as a
+  tile rather than picking one and calling it turnover; the landing page draws the ledger's where it
+  can and says in one line when it is drawing the hours' worth instead. **A report over a year
+  takes `?year=` and nothing else invents a period** (`YearStepper`, `readYear`): the year is the
+  view, the stepper is two links, and a VAT toggle rides beside it in the same URL. And **a report
+  that lists rows is the shared `DataTable`** — Projecten joins the projects API's budget burn onto
+  the time module's one grouped all-time aggregate (`time/stats/projects`) in the load, keeps the
+  server sort on the columns the API can order by and honestly none on the rest, and pages through
+  the shared pager; its strip is the whole set's burn bands (`dashboard-budgets`, #407) so a tile
+  saying "4 over budget" opens a list of four. Medewerkers is Productiviteit renamed for what it
+  lists, with rolling presets in the tab row (`modules/time/periods.ts`, #316's rule) and the value
+  of each colleague's billable hours beside their bar. The hours report is the **Uren** tab, its
+  five lookups in `hours/+layout.server.ts` so the landing page never pays for them, and every link
+  that used to point at `/overview?…` — the client hub's hours panel, a task's hours figure, the
+  dashboard tiles — points at `/overview/hours?…`; a bookmark that still carries a report filter is
+  301'd there by the landing load rather than shown a dashboard it did not ask for.
 - **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
   screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
   to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings

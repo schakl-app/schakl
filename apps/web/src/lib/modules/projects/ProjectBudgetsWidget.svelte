@@ -70,7 +70,7 @@
                  hover in words: the tile and the lists answer the same question with the same
                  sentence (#340). -->
                 <a
-                  href="/overview?project_id={project.id}"
+                  href="/overview/hours?project_id={project.id}"
                   title={project.burn?.title}
                   class="shrink-0 tabular-nums hover:underline {project.pct != null &&
                   project.pct >= 100

@@ -38,6 +38,7 @@ from app.modules.invoicing.schemas import (
     InvoicePaymentRefresh,
     InvoiceRead,
     InvoiceUpdate,
+    InvoicingRevenueStats,
     InvoicingSettingsRead,
     InvoicingSettingsWrite,
     InvoicingSummary,
@@ -400,6 +401,22 @@ async def list_providers(ctx: RequestContext = Depends(require_context)) -> list
 )
 async def summary(ctx: RequestContext = Depends(require_context)) -> InvoicingSummary:
     return InvoicingSummary.model_validate(await InvoiceService(ctx).summary())
+
+
+@router.get(
+    "/stats/revenue",
+    response_model=InvoicingRevenueStats,
+    dependencies=[require_permission(_READ, _MODULE)],
+)
+async def invoicing_revenue_stats(
+    year: int = Query(..., ge=2000, le=2100),
+    ctx: RequestContext = Depends(require_context),
+) -> InvoicingRevenueStats:
+    """What was invoiced in ``year`` beside the year before: per month, per client, per kind,
+    excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth."""
+    return InvoicingRevenueStats.model_validate(
+        await InvoiceService(ctx).revenue_stats(year=year)
+    )
 
 
 # --- time bridge -------------------------------------------------------------------- #

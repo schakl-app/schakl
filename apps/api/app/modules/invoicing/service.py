@@ -3891,6 +3891,205 @@ class InvoiceService(_DocumentService):
         }
 
 
+    async def revenue_stats(self, *, year: int) -> dict[str, Any]:
+        """A year's invoiced revenue beside the year before it (``InvoicingRevenueStats``).
+
+        Three grouped statements over the issued, non-cancelled documents of two years — the
+        month series, the per-client ranking and the per-kind split — and never a row per
+        invoice, so the cost is the same at forty documents and at four thousand
+        (``tests/test_invoicing_stats.py`` pins it). The money is the document's stored
+        totals through its exchange rate, exactly as ``summary`` reads them: a credit note's
+        negated totals net a month down, a cancelled document is not revenue, a draft is not
+        yet anything.
+
+        Demands ``invoicing.invoice.read:any`` in the service and not only at the route:
+        this is the agency's turnover, an org-wide figure the company horizon could not narrow
+        to one client's share without inventing a "share" the document never stated (#266).
+        A restricted staff membership still reads it — over their own horizon, spliced as the
+        summary splices it — because reporting on the clients you serve is the job.
+        """
+        self.ctx.require("invoicing.invoice.read:any")
+        if self.ctx.is_portal:
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        scope = self.ctx.company_scope
+        empty_months = [0.0] * 12
+        if scope is not None and not scope:
+            return {
+                "year": year,
+                "months_excl": list(empty_months), "months_incl": list(empty_months),
+                "months_previous_excl": list(empty_months),
+                "months_previous_incl": list(empty_months),
+                "total_excl": 0.0, "total_tax": 0.0, "total_incl": 0.0,
+                "previous_excl": 0.0, "previous_tax": 0.0, "previous_incl": 0.0,
+                "invoice_count": 0, "paid_incl": 0.0,
+                "outstanding_incl": 0.0, "outstanding_count": 0, "credited_excl": 0.0,
+                "top_clients": [], "other_excl": 0.0, "other_incl": 0.0,
+                "other_previous_excl": 0.0, "by_kind": [],
+            }
+        base = "COALESCE(i.exchange_rate, 1)"
+        issued = "i.status IN ('open', 'paid') AND i.issue_date IS NOT NULL"
+        horizon_sql = "" if scope is None else " AND i.company_id IN :companies"
+        params: dict[str, Any] = {
+            "oid": self.ctx.org.id,
+            "start": date(year - 1, 1, 1),
+            "end": date(year + 1, 1, 1),
+            "year": year,
+        }
+        if scope is not None:
+            params["companies"] = list(scope)
+
+        def _scoped_text(sql: str):  # noqa: ANN202 — a bound `IN` needs the expanding param
+            stmt = text(sql)
+            return stmt if scope is None else stmt.bindparams(
+                bindparam("companies", expanding=True)
+            )
+
+        month_rows = (
+            await self.ctx.session.execute(
+                _scoped_text(
+                    f"""
+                    SELECT CAST(EXTRACT(YEAR FROM i.issue_date) AS int) AS y,
+                           CAST(EXTRACT(MONTH FROM i.issue_date) AS int) AS m,
+                           COALESCE(SUM(i.subtotal * {base}), 0) AS excl,
+                           COALESCE(SUM(i.tax_total * {base}), 0) AS tax,
+                           COALESCE(SUM(i.total * {base}), 0) AS incl,
+                           COUNT(*) AS n,
+                           COALESCE(SUM(i.paid_total * {base}), 0) AS paid,
+                           COALESCE(SUM({OUTSTANDING_SQL} * {base})
+                               FILTER (WHERE i.status = 'open'), 0) AS outstanding,
+                           COUNT(*) FILTER (
+                               WHERE i.status = 'open'
+                                 AND {OUTSTANDING_SQL} > 0
+                           ) AS outstanding_count,
+                           COALESCE(SUM(-i.subtotal * {base})
+                               FILTER (WHERE i.kind = 'credit_note'), 0) AS credited
+                    FROM invoices i
+                    WHERE i.org_id = :oid AND {issued}
+                      AND i.issue_date >= :start AND i.issue_date < :end{horizon_sql}
+                    GROUP BY 1, 2
+                    """  # noqa: S608 - splices constant SQL and a bound `IN`, never a value
+                ),
+                params,
+            )
+        ).mappings().all()
+        months = {
+            "excl": list(empty_months), "incl": list(empty_months),
+            "previous_excl": list(empty_months), "previous_incl": list(empty_months),
+        }
+        totals = {
+            "excl": 0.0, "tax": 0.0, "incl": 0.0,
+            "previous_excl": 0.0, "previous_tax": 0.0, "previous_incl": 0.0,
+        }
+        invoice_count = 0
+        paid = outstanding = credited = 0.0
+        outstanding_count = 0
+        for row in month_rows:
+            current = row["y"] == year
+            prefix = "" if current else "previous_"
+            months[f"{prefix}excl"][row["m"] - 1] = round(float(row["excl"]), 2)
+            months[f"{prefix}incl"][row["m"] - 1] = round(float(row["incl"]), 2)
+            totals[f"{prefix}excl"] += float(row["excl"])
+            totals[f"{prefix}tax"] += float(row["tax"])
+            totals[f"{prefix}incl"] += float(row["incl"])
+            if current:
+                invoice_count += int(row["n"])
+                paid += float(row["paid"])
+                outstanding += float(row["outstanding"])
+                outstanding_count += int(row["outstanding_count"])
+                credited += float(row["credited"])
+
+        client_rows = (
+            await self.ctx.session.execute(
+                _scoped_text(
+                    f"""
+                    SELECT i.company_id, c.name,
+                           COALESCE(SUM(i.subtotal * {base})
+                               FILTER (WHERE EXTRACT(YEAR FROM i.issue_date) = :year), 0)
+                               AS excl,
+                           COALESCE(SUM(i.total * {base})
+                               FILTER (WHERE EXTRACT(YEAR FROM i.issue_date) = :year), 0)
+                               AS incl,
+                           COALESCE(SUM(i.subtotal * {base})
+                               FILTER (WHERE EXTRACT(YEAR FROM i.issue_date) <> :year), 0)
+                               AS previous_excl
+                    FROM invoices i
+                    JOIN companies c ON c.id = i.company_id AND c.org_id = i.org_id
+                    WHERE i.org_id = :oid AND {issued}
+                      AND i.issue_date >= :start AND i.issue_date < :end{horizon_sql}
+                    GROUP BY i.company_id, c.name
+                    ORDER BY excl DESC, c.name ASC
+                    """  # noqa: S608
+                ),
+                params,
+            )
+        ).mappings().all()
+        top = [
+            {
+                "company_id": r["company_id"],
+                "name": r["name"],
+                "excl": round(float(r["excl"]), 2),
+                "incl": round(float(r["incl"]), 2),
+                "previous_excl": round(float(r["previous_excl"]), 2),
+            }
+            for r in client_rows[:10]
+        ]
+        tail = client_rows[10:]
+
+        kind_rows = (
+            await self.ctx.session.execute(
+                _scoped_text(
+                    f"""
+                    SELECT l.line_kind,
+                           COALESCE(SUM(l.amount * {base})
+                               FILTER (WHERE EXTRACT(YEAR FROM i.issue_date) = :year), 0)
+                               AS excl,
+                           COALESCE(SUM(l.amount * {base})
+                               FILTER (WHERE EXTRACT(YEAR FROM i.issue_date) <> :year), 0)
+                               AS previous_excl
+                    FROM invoice_lines l
+                    JOIN invoices i ON i.id = l.invoice_id AND i.org_id = l.org_id
+                    WHERE l.org_id = :oid AND {issued}
+                      AND i.issue_date >= :start AND i.issue_date < :end{horizon_sql}
+                    GROUP BY l.line_kind
+                    ORDER BY excl DESC
+                    """  # noqa: S608
+                ),
+                params,
+            )
+        ).mappings().all()
+
+        return {
+            "year": year,
+            "months_excl": months["excl"],
+            "months_incl": months["incl"],
+            "months_previous_excl": months["previous_excl"],
+            "months_previous_incl": months["previous_incl"],
+            "total_excl": round(totals["excl"], 2),
+            "total_tax": round(totals["tax"], 2),
+            "total_incl": round(totals["incl"], 2),
+            "previous_excl": round(totals["previous_excl"], 2),
+            "previous_tax": round(totals["previous_tax"], 2),
+            "previous_incl": round(totals["previous_incl"], 2),
+            "invoice_count": invoice_count,
+            "paid_incl": round(paid, 2),
+            "outstanding_incl": round(outstanding, 2),
+            "outstanding_count": outstanding_count,
+            "credited_excl": round(credited, 2),
+            "top_clients": top,
+            "other_excl": round(sum(float(r["excl"]) for r in tail), 2),
+            "other_incl": round(sum(float(r["incl"]) for r in tail), 2),
+            "other_previous_excl": round(sum(float(r["previous_excl"]) for r in tail), 2),
+            "by_kind": [
+                {
+                    "kind": r["line_kind"],
+                    "excl": round(float(r["excl"]), 2),
+                    "previous_excl": round(float(r["previous_excl"]), 2),
+                }
+                for r in kind_rows
+            ],
+        }
+
+
 # --------------------------------------------------------------------------- #
 # Quotes
 # --------------------------------------------------------------------------- #

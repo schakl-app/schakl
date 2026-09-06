@@ -2,6 +2,36 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## Unreleased
+
+### Overzicht
+
+- **Urenoverzicht is Overzicht, and it has a landing page.** The sidebar item, the crumb and the
+  section are *Overzicht* now; `/overview` opens on the year at a glance — invoiced excl. and
+  incl. VAT against the year before, what is outstanding, hours logged and what they were worth,
+  budgets over — with the month-by-month chart and the three rankings (biggest clients, hottest
+  budgets, the team) each opening the tab that explains it. Six tabs: Overzicht, Omzet, Projecten,
+  Medewerkers, Uren, Marketing.
+- **Omzet is the ledger's.** `GET /api/v1/invoicing/stats/revenue?year=` answers what was
+  invoiced per month, per client and per kind (hours, subscriptions, domains, products), excl. and
+  incl. VAT, beside the year before — drafts and cancelled documents excluded, credit notes netted
+  in the month they were issued, foreign currency through the stored rate. The tab prints it with
+  an excl./incl. toggle in the URL and keeps the value of the logged hours as its own section,
+  with the gap between the two as a tile. Needs `invoicing.invoice.read:any`; where the invoicing
+  module is off the tab shows the hours' worth and says so.
+- **Projecten** is a report over every running budget: the budget burn from the projects module
+  beside all-time hours, billable hours, invoiced hours and the billable value from
+  `GET /api/v1/time/stats/projects` (one grouped query, never a `/cost` call per row), on the
+  shared table with the whole set's burn bands as its strip.
+- **Medewerkers** is Productiviteit renamed for what it lists, with rolling period presets (this
+  month, last month, the quarter, the year) and each colleague's billable value beside their
+  hours; the productivity rows carry `revenue` now. `/overview/productivity` redirects.
+- **Uren** is the hours report as it was, one tab over. Every link into it — the client hub's
+  hours panel, a task's hours figure, the dashboard tiles — points at `/overview/hours`, and an
+  old `/overview?…` link carrying a report filter is redirected there.
+
+No migrations, no new permission keys, two new `GET` endpoints.
+
 ## v0.42.0 — 2026-09-04
 
 Search Console as its own read surface with an honest answer about AI visibility, a task that

@@ -169,7 +169,7 @@
                    the figure opens the report rows it is a total of (#15). Loud only when it is
                    gone (Principle 4): the section already says which band this is. -->
               <a
-                href={`/overview?project_id=${project.id}`}
+                href={`/overview/hours?project_id=${project.id}`}
                 title={row.burn?.title}
                 class="shrink-0 text-right hover:underline"
               >

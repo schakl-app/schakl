@@ -77,7 +77,7 @@ registerWebModule({
         return {
           entries: data?.items ?? [],
           total: data?.total ?? 0,
-          viewAllHref: `/overview?${query.toString()}`,
+          viewAllHref: `/overview/hours?${query.toString()}`,
         };
       },
       component: EntriesPanel,
