@@ -54,6 +54,10 @@ class SubscriptionTypeBase(BaseModel):
     active: bool = True
     #: Task templates spawned on a subscription's first activation (#142).
     task_template_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: Whether an invoice raised on the cycle date covers the period *after* it (hosting,
+    #: licences — paid for before delivery) or the one *before* it (a retainer, billed once
+    #: served). The default is the cron's original reading, so an untouched type bills as it did.
+    billed_in_advance: bool = False
 
 
 class SubscriptionTypeCreate(SubscriptionTypeBase):
@@ -66,6 +70,7 @@ class SubscriptionTypeUpdate(BaseModel):
     position: int | None = None
     active: bool | None = None
     task_template_ids: list[uuid.UUID] | None = None
+    billed_in_advance: bool | None = None
 
 
 class SubscriptionTypeRead(SubscriptionTypeBase):
@@ -75,6 +80,17 @@ class SubscriptionTypeRead(SubscriptionTypeBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class SubscriptionTypeSaved(SubscriptionTypeRead):
+    """The save answer, with what the save reached beyond the type itself.
+
+    Flipping ``billed_in_advance`` re-reads every period of the agreements that follow this type,
+    the ones already invoiced included (their claims are shifted, see
+    ``SubscriptionTypeService.update``); the count comes back so the screen can *say so*.
+    """
+
+    shifted_subscriptions: int = 0
 
 
 class SubscriptionTemplateBase(BaseModel):
@@ -88,6 +104,8 @@ class SubscriptionTemplateBase(BaseModel):
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule = Field(default_factory=RolloverRule)
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
+    #: The preset's own say on the type's ``billed_in_advance``: ``None`` follows the type.
+    billed_in_advance: bool | None = None
     lines: list[SubscriptionLineWrite] = Field(default_factory=list)
     notes: str | None = None
     position: int = 0
@@ -107,6 +125,8 @@ class SubscriptionTemplateUpdate(BaseModel):
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule | None = None
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
+    #: Explicit ``null`` goes back to following the type; absent leaves it alone.
+    billed_in_advance: bool | None = None
     lines: list[SubscriptionLineWrite] | None = None
     notes: str | None = None
     position: int | None = None
@@ -126,9 +146,12 @@ class SubscriptionTemplateSaved(SubscriptionTemplateRead):
 
     A rename carries over to the agreements created from this preset that still bear its old
     name; the count comes back so the screen can *say so* rather than change rows silently.
+    A change to ``billed_in_advance`` reaches every agreement made from it the same way (the
+    periods they already invoiced are re-read and their claims shifted), and is counted too.
     """
 
     renamed_subscriptions: int = 0
+    shifted_subscriptions: int = 0
 
 
 class SubscriptionBase(BaseModel):
@@ -245,6 +268,9 @@ class SubscriptionRead(BaseModel):
     notice_period_days: int | None
     notes: str | None
     custom: dict[str, Any] = Field(default_factory=dict)
+    #: Resolved, read-only: the preset's override, else the type's, else in arrears. Which
+    #: period the next invoice covers — so a screen can say "16-05-2026 – 16-05-2027" and mean it.
+    billed_in_advance: bool = False
     #: The price valid today (from the history), and its monthly equivalent for MRR.
     amount: Decimal | None = None
     monthly_equivalent: float | None = None

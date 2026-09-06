@@ -148,6 +148,13 @@ export const SUBSCRIPTION_TEMPLATE_COLUMNS: ColumnMeta[] = [
     align: "right",
     width: 140,
   },
+  // Which period an invoice covers: the preset's own say, or "—" when it follows the type.
+  {
+    key: "billing",
+    labelKey: "subscriptions.field.billing_direction",
+    sortKey: "billing",
+    width: 120,
+  },
   { key: "notes", labelKey: "subscriptions.field.notes", width: 260 },
 ];
 
@@ -171,6 +178,14 @@ export const SUBSCRIPTION_TYPE_COLUMNS: ColumnMeta[] = [
     align: "right",
     defaultVisible: true,
     width: 140,
+  },
+  // In advance or in arrears — the decision the type exists to hold (docs/INVOICING.md).
+  {
+    key: "billing",
+    labelKey: "subscriptions.field.billing_direction",
+    sortKey: "billing",
+    defaultVisible: true,
+    width: 120,
   },
   {
     key: "active",

@@ -78,6 +78,14 @@ class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     #: into the tasks module's tables (§6, the ``SubscriptionLink`` rule): validated against the
     #: bare table on write, and a template deleted later is simply skipped when spawning.
     task_template_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    #: Which period an invoice raised on the cycle date covers — the year *ahead* of it (hosting,
+    #: licences, a registration: paid for before it is delivered) or the month *behind* it (a
+    #: retainer, billed once served). A property of what is sold, so it lives on the kind
+    #: (``app.core.billing.period_span``); ``False`` is the cycle cron's original reading, which
+    #: is what keeps an instance that never touches this billing exactly as it did.
+    billed_in_advance: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -114,6 +122,11 @@ class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
     rollover: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The preset's own say on ``SubscriptionType.billed_in_advance``: ``NULL`` follows the
+    #: agreement's type, a value overrides it for every agreement made from this preset. Unlike
+    #: the money it is **not** copied onto the agreement — it is read live, so the preset stays
+    #: the one place a "we bill this in advance" decision is made and corrected.
+    billed_in_advance: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Default invoice lines: ``[{description, quantity, unit_amount}]`` — a prefill blob, not
     #: rows to query, so JSONB rather than a child table.
     lines: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

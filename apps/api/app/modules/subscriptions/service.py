@@ -177,6 +177,104 @@ def period_months(interval: str, interval_count: int) -> int:
     return _INTERVAL_MONTHS[interval] * max(1, interval_count)
 
 
+#: The event `invoicing` shifts its claims on: which way these agreements' periods now run.
+DIRECTION_CHANGED = "subscription.direction_changed"
+
+
+def _direction(
+    sub: Subscription,
+    types: dict[uuid.UUID, bool],
+    templates: dict[uuid.UUID, bool | None],
+) -> bool:
+    if sub.subscription_template_id is not None:
+        override = templates.get(sub.subscription_template_id)
+        if override is not None:
+            return override
+    if sub.subscription_type_id is not None:
+        return types.get(sub.subscription_type_id, False)
+    return False
+
+
+async def billing_directions(
+    session: Any, org_id: uuid.UUID, subs: Sequence[Subscription]
+) -> dict[uuid.UUID, bool]:
+    """Whether each agreement bills its period **in advance** — the one resolution every reader
+    takes (the backlog, the picker, the cycle cron, the agreement's own read).
+
+    The direction is a property of what is sold, so it lives on the subscription **type**
+    (``billed_in_advance``, ``app.core.billing.period_span``); a standard subscription may say
+    otherwise for the agreements made from it (``NULL`` follows the type); an agreement with
+    neither bills in arrears, which is the cycle cron's original reading. Nothing is stored on
+    the agreement, so a type corrected in Instellingen reaches every agreement of that kind at
+    once — the failure this exists to end was a hosting agreement that could only ever offer
+    the year *behind* its renewal date, because "arrears" was written into the module rather
+    than onto the kind of thing sold.
+
+    Two batched reads, org-filtered like every bare-table read here, whatever the number of
+    agreements (docs/PERFORMANCE.md).
+    """
+    type_ids = {s.subscription_type_id for s in subs if s.subscription_type_id is not None}
+    template_ids = {
+        s.subscription_template_id for s in subs if s.subscription_template_id is not None
+    }
+    types: dict[uuid.UUID, bool] = {}
+    if type_ids:
+        types = dict(
+            (
+                await session.execute(
+                    select(SubscriptionType.id, SubscriptionType.billed_in_advance).where(
+                        SubscriptionType.org_id == org_id, SubscriptionType.id.in_(type_ids)
+                    )
+                )
+            ).all()
+        )
+    templates: dict[uuid.UUID, bool | None] = {}
+    if template_ids:
+        templates = dict(
+            (
+                await session.execute(
+                    select(
+                        SubscriptionTemplate.id, SubscriptionTemplate.billed_in_advance
+                    ).where(
+                        SubscriptionTemplate.org_id == org_id,
+                        SubscriptionTemplate.id.in_(template_ids),
+                    )
+                )
+            ).all()
+        )
+    return {sub.id: _direction(sub, types, templates) for sub in subs}
+
+
+async def _emit_direction_shift(
+    ctx: RequestContext,
+    subs: Sequence[Subscription],
+    before: dict[uuid.UUID, bool],
+    after: dict[uuid.UUID, bool],
+) -> int:
+    """Tell `invoicing` which agreements now read their periods the other way round.
+
+    A claim says "boundary B is billed" as ``period_end = B``, and under the other reading that
+    names the boundary a period *earlier*: left alone, every period ever invoiced would be
+    offered again — the duplicate the claim tables exist to prevent, re-entered through a
+    settings screen. The renewal fix shifted the rows by migration because *every* renewal
+    changed reading at once; here the change is one tenant's decision about one kind, so it is
+    shifted at the moment it is made, in this transaction, by the module that owns the claims.
+    Returns how many agreements were reached, so the screen can say so.
+    """
+    items = [
+        {
+            "subscription_id": str(sub.id),
+            "months": period_months(sub.interval, sub.interval_count),
+            "advance": after[sub.id],
+        }
+        for sub in subs
+        if before.get(sub.id, False) != after.get(sub.id, False)
+    ]
+    if items:
+        await emit(DIRECTION_CHANGED, ctx, {"items": items})
+    return len(items)
+
+
 #: Between a line's description and the agreement's document note: "Hosting · Website: klant.nl".
 NOTE_SEPARATOR = " \u00b7 "
 
@@ -424,6 +522,7 @@ class SubscriptionService:
         ):
             lines_by_sub.setdefault(line.subscription_id, []).append(line)
 
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         out: list[BillablePeriod] = []
         for sub in subs:
             boundary = sub.next_invoice_date
@@ -441,14 +540,19 @@ class SubscriptionService:
             ) or Decimal(0)
             months = period_months(sub.interval, sub.interval_count)
             rows = lines_by_sub.get(sub.id) or []
+            span = (
+                period_span(boundary, months, advance=directions[sub.id])
+                if boundary
+                else (None, None)
+            )
             out.append(
                 BillablePeriod(
                     subscription_id=sub.id,
                     name=sub.name,
                     currency=sub.currency,
                     amount=amount,
-                    period_start=add_months(boundary, -months) if boundary else None,
-                    period_end=boundary,
+                    period_start=span[0],
+                    period_end=span[1],
                     lines=tuple(
                         (row.description, row.quantity, row.unit_amount) for row in rows
                     )
@@ -536,9 +640,11 @@ class SubscriptionService:
 
         today = await self._org_today()
         notes = await document_notes(self.ctx, subs)
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         out: list[OpenAgreement] = []
         for sub in subs:
             history = prices_by_sub.get(sub.id) or []
+            advance = directions[sub.id]
             note = notes.get(sub.id, "")
 
             def price_at(day: date, rows: list[SubscriptionPrice] = history) -> Decimal:
@@ -565,6 +671,8 @@ class SubscriptionService:
                     # A period the operator says was invoiced already is not outstanding —
                     # the same statement the cron reads before it drafts.
                     billed_until=sub.billed_until,
+                    # Which period a boundary stands for is the kind's decision, read once.
+                    advance=advance,
                 )
                 if sub.next_invoice_date is not None
                 else ([], False)
@@ -579,7 +687,7 @@ class SubscriptionService:
                     (with_note(row.description, note), row.quantity, row.unit_amount)
                     for row in rows
                 ) or ((with_note(sub.name, note), Decimal(1), amount),)
-                period_start, period_end = period_span(boundary, months, advance=False)
+                period_start, period_end = period_span(boundary, months, advance=advance)
                 periods.append(
                     OpenPeriod(
                         period_start=period_start,
@@ -774,7 +882,20 @@ class SubscriptionService:
                 ENTITY_TYPE, data.custom or {}
             )
 
+        # Pointing the agreement at another type or preset may flip which way its periods
+        # run; what it already invoiced has to follow (see ``_emit_direction_shift``).
+        rekeyed = "subscription_type_id" in sent or "subscription_template_id" in sent
+        direction_before = (
+            await billing_directions(self.ctx.session, self._org_id, [sub]) if rekeyed else {}
+        )
         sub = await self.repo.update(sub, **values)
+        if rekeyed:
+            await _emit_direction_shift(
+                self.ctx,
+                [sub],
+                direction_before,
+                await billing_directions(self.ctx.session, self._org_id, [sub]),
+            )
 
         # A price change appends to the history — never mutates it (#30's decision).
         if "amount" in sent and data.amount is not None:
@@ -1334,10 +1455,12 @@ class SubscriptionService:
         for link in link_rows:
             links_by_sub.setdefault(link.subscription_id, []).append(link)
 
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         for sub in subs:
             amount = current.get(sub.id)
             months = period_months(sub.interval, sub.interval_count)
             sub.company_name = company_names.get(sub.company_id, "")  # type: ignore[attr-defined]
+            sub.billed_in_advance = directions[sub.id]  # type: ignore[attr-defined]
             sub.amount = amount  # type: ignore[attr-defined]
             sub.monthly_equivalent = (  # type: ignore[attr-defined]
                 round(float(amount) / months, 2) if amount is not None else None
@@ -1398,14 +1521,46 @@ class SubscriptionTypeService:
 
     async def update(
         self, subscription_type_id: uuid.UUID, data: SubscriptionTypeUpdate
-    ) -> SubscriptionType:
+    ) -> tuple[SubscriptionType, int]:
+        """Save the type, and carry a **direction** change over to the agreements of this kind.
+
+        Returns the type and how many agreements now read their periods the other way. Only the
+        agreements that actually *follow* the type move — one whose standard subscription says
+        otherwise keeps that — and each one's invoiced periods are shifted with it by
+        `invoicing`, in this transaction (``_emit_direction_shift``). Said in the answer rather
+        than done quietly: it is a bulk change to what the backlog offers.
+        """
         self.ctx.require("subscriptions.type.manage")
         sub_type = await self.repo.get_or_404(subscription_type_id)
         if data.task_template_ids is not None:
             await self._ensure_task_templates(data.task_template_ids)
-        return await self.repo.update(
+        flips = (
+            data.billed_in_advance is not None
+            and data.billed_in_advance != sub_type.billed_in_advance
+        )
+        subs: list[Subscription] = []
+        before: dict[uuid.UUID, bool] = {}
+        if flips:
+            subs = list(
+                await self.ctx.session.scalars(
+                    self.ctx.repo(Subscription)
+                    .scoped_select()
+                    .where(Subscription.subscription_type_id == sub_type.id)
+                )
+            )
+            before = await billing_directions(self.ctx.session, self._org_id, subs)
+        sub_type = await self.repo.update(
             sub_type, **data.model_dump(mode="json", exclude_unset=True)
         )
+        shifted = 0
+        if flips and subs:
+            shifted = await _emit_direction_shift(
+                self.ctx,
+                subs,
+                before,
+                await billing_directions(self.ctx.session, self._org_id, subs),
+            )
+        return sub_type, shifted
 
     async def delete(self, subscription_type_id: uuid.UUID) -> None:
         self.ctx.require("subscriptions.type.manage")
@@ -1453,6 +1608,10 @@ class SubscriptionTemplateService:
         self.types = ctx.repo(SubscriptionType)
         self.subscriptions = ctx.repo(Subscription)
 
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
     async def list(self) -> Sequence[SubscriptionTemplate]:
         stmt = self.repo.scoped_select().order_by(
             SubscriptionTemplate.position, func.lower(SubscriptionTemplate.name)
@@ -1467,10 +1626,16 @@ class SubscriptionTemplateService:
 
     async def update(
         self, template_id: uuid.UUID, data: SubscriptionTemplateUpdate
-    ) -> tuple[SubscriptionTemplate, int]:
-        """Save the preset, and carry a **rename** over to the agreements it created.
+    ) -> tuple[SubscriptionTemplate, int, int]:
+        """Save the preset, and carry a **rename** — and a **direction** change — over to the
+        agreements it created.
 
-        Returns the preset and how many agreements followed. The rename touches only rows that
+        Returns the preset, how many agreements were renamed and how many now read their
+        periods the other way (``billed_in_advance``, read live through the preset rather than
+        copied, so a change here *is* a change to them; their invoiced periods are shifted by
+        `invoicing` in this transaction, ``_emit_direction_shift``).
+
+        The rename touches only rows that
         both came from this preset and *still carry its old name*: an agreement someone
         deliberately renamed ("Hosting Basis — extra IP") is that tenant's own wording, and a
         catalog edit must not overwrite it. Renaming an agreement is therefore also how it
@@ -1487,13 +1652,35 @@ class SubscriptionTemplateService:
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
         old_name = template.name
-        template = await self.repo.update(
-            template, **self._values(data, data.model_dump(exclude_unset=True))
+        sent = data.model_dump(exclude_unset=True)
+        flips = (
+            "billed_in_advance" in sent
+            and sent["billed_in_advance"] != template.billed_in_advance
         )
+        subs: list[Subscription] = []
+        before: dict[uuid.UUID, bool] = {}
+        if flips:
+            subs = list(
+                await self.ctx.session.scalars(
+                    self.subscriptions.scoped_select().where(
+                        Subscription.subscription_template_id == template.id
+                    )
+                )
+            )
+            before = await billing_directions(self.ctx.session, self._org_id, subs)
+        template = await self.repo.update(template, **self._values(data, sent))
         renamed = 0
         if template.name != old_name:
             renamed = await self._rename_agreements(template, old_name)
-        return template, renamed
+        shifted = 0
+        if flips and subs:
+            shifted = await _emit_direction_shift(
+                self.ctx,
+                subs,
+                before,
+                await billing_directions(self.ctx.session, self._org_id, subs),
+            )
+        return template, renamed, shifted
 
     async def _rename_agreements(self, template: SubscriptionTemplate, old_name: str) -> int:
         subs = list(

@@ -30,6 +30,8 @@ function sortTypes(
         return st.key;
       case "tasks":
         return (st.task_template_ids ?? []).length;
+      case "billing":
+        return st.billed_in_advance ? 1 : 0;
       case "active":
         return st.active ? 0 : 1;
       default:

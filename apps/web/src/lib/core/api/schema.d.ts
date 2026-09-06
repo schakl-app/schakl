@@ -12407,7 +12407,11 @@ export interface paths {
         delete: operations["delete_subscription_type_api_v1_subscriptions_types__type_id__delete"];
         options?: never;
         head?: never;
-        /** Update Subscription Type */
+        /**
+         * Update Subscription Type
+         * @description Flipping ``billed_in_advance`` re-reads the periods of every agreement of this kind;
+         *     ``shifted_subscriptions`` reports how many, so the screen can say so.
+         */
         patch: operations["update_subscription_type_api_v1_subscriptions_types__type_id__patch"];
         trace?: never;
     };
@@ -31389,6 +31393,11 @@ export interface components {
             /** Amount */
             amount?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
             /** Billed Until */
             billed_until?: string | null;
             /**
@@ -31484,6 +31493,8 @@ export interface components {
         SubscriptionTemplateCreate: {
             /** Amount */
             amount?: number | string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Currency
              * @default EUR
@@ -31519,6 +31530,8 @@ export interface components {
         SubscriptionTemplateRead: {
             /** Amount */
             amount?: string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Created At
              * Format: date-time
@@ -31576,10 +31589,14 @@ export interface components {
          *
          *     A rename carries over to the agreements created from this preset that still bear its old
          *     name; the count comes back so the screen can *say so* rather than change rows silently.
+         *     A change to ``billed_in_advance`` reaches every agreement made from it the same way (the
+         *     periods they already invoiced are re-read and their claims shifted), and is counted too.
          */
         SubscriptionTemplateSaved: {
             /** Amount */
             amount?: string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Created At
              * Format: date-time
@@ -31628,6 +31645,11 @@ export interface components {
              */
             renamed_subscriptions: number;
             rollover?: components["schemas"]["RolloverRule"];
+            /**
+             * Shifted Subscriptions
+             * @default 0
+             */
+            shifted_subscriptions: number;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**
@@ -31640,6 +31662,8 @@ export interface components {
         SubscriptionTemplateUpdate: {
             /** Amount */
             amount?: number | string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /** Currency */
             currency?: string | null;
             /** Included Hours */
@@ -31668,6 +31692,11 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
             /** Key */
             key: string;
             /** Label I18N */
@@ -31689,6 +31718,11 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
             /**
              * Created At
              * Format: date-time
@@ -31723,10 +31757,70 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * SubscriptionTypeSaved
+         * @description The save answer, with what the save reached beyond the type itself.
+         *
+         *     Flipping ``billed_in_advance`` re-reads every period of the agreements that follow this type,
+         *     the ones already invoiced included (their claims are shifted, see
+         *     ``SubscriptionTypeService.update``); the count comes back so the screen can *say so*.
+         */
+        SubscriptionTypeSaved: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Shifted Subscriptions
+             * @default 0
+             */
+            shifted_subscriptions: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** SubscriptionTypeUpdate */
         SubscriptionTypeUpdate: {
             /** Active */
             active?: boolean | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /** Label I18N */
             label_i18n?: {
                 [key: string]: string;
@@ -59709,7 +59803,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                    "application/json": components["schemas"]["SubscriptionTypeSaved"];
                 };
             };
             /** @description Validation Error */

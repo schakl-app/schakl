@@ -501,6 +501,36 @@ for accounting packages.
   as every `start_date`, so the anchor's period began before it on all 170 domains, and the
   guard hid the whole register from the backlog while the cron billed each renewal that night.
   The floor already had this exemption; the start-date guard now has it too.
+- **Which way a subscription's period runs is the type's decision, not the module's**
+  (`subscription_types.billed_in_advance`, `subscription_templates.billed_in_advance`,
+  `subscriptions.service.billing_directions`). The rule above stated the direction for exactly two
+  things — a renewal in advance, a retainer in arrears — and wrote *arrears* into the subscriptions
+  module for every agreement. A hosting or licence agreement is sold the way a registration is: the
+  invoice raised on the cycle date pays for the year **ahead**. Found on a live instance the day
+  after: a yearly "Webhosting & Licenties" renewing on 16-05-2026 could only ever offer
+  "16-05-2025 – 16-05-2026", the operator said "invoiced up to 16-05-2026" to be rid of that year,
+  and the agreement vanished from the backlog with nothing to invoice — the cron then rolled it a
+  year on, drafting nothing. Four rules. **The direction lives on the kind**: `billed_in_advance`
+  on the subscription type (`NOT NULL DEFAULT false`, the cron's original reading, so an untouched
+  instance bills as it did), with the standard subscription carrying an optional override (`NULL`
+  follows the type) — read **live**, not copied onto the agreement like the money is, because a
+  "we sell this in advance" decision has one place to be made and corrected. **One resolution,
+  every reader**: `billing_directions` is called by `open_agreements` (the backlog and the picker),
+  `billable_periods`, the cycle cron and the agreement's own read (`SubscriptionRead
+  .billed_in_advance`), so a screen and the cron cannot disagree about which twelve months a date
+  stands for. **A flip carries the claims with it**: a claim says "boundary B is billed" as
+  `period_end = B`, which under the other reading names the boundary a period earlier, and the
+  period the document paid for would be offered again — the renewal fix shifted every claim by
+  migration because every renewal changed at once; here one tenant changes one kind, so the type
+  and preset services emit `subscription.direction_changed` for the agreements that actually
+  *follow* them (one whose preset says otherwise stays put) and `invoicing` moves
+  `invoice_subscription_periods` and the lines' provenance in the same transaction, one statement
+  per row in an order that never lands on a neighbour's old value, and walks back the same way.
+  An agreement re-pointed at another type or preset gets the same treatment. And **a bulk change
+  is said, not done quietly**: the save answers `shifted_subscriptions` and the screen prints it,
+  the shape `renamed_subscriptions` already had. Deliberately **no** per-agreement column: the
+  direction is a property of what is sold, and an agreement that needs the other one is an
+  agreement of another kind.
 - **"Already invoiced up to" is the operator's statement, and both halves read it**
   (`domains.billed_until`, `subscriptions.billed_until`). An agency arriving from another
   system brings agreements and domains that were invoiced *there* up to a date, and the

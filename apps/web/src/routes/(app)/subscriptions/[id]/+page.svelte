@@ -107,6 +107,15 @@
           <dd class="text-text">{fmtNumericDate(sub.billed_until)}</dd>
         </div>
       {/if}
+      <!-- Resolved through the preset and the type: which period the next invoice covers. -->
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-muted">{t("subscriptions.field.billing_direction")}</dt>
+        <dd class="text-text">
+          {sub.billed_in_advance
+            ? t("subscriptions.billing_direction.advance_short")
+            : t("subscriptions.billing_direction.arrears_short")}
+        </dd>
+      </div>
       {#if sub.included_hours != null}
         <div class="flex justify-between gap-3">
           <dt class="text-text-muted">{t("subscriptions.field.included_hours")}</dt>

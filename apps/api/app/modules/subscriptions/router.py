@@ -21,6 +21,7 @@ from app.modules.subscriptions.schemas import (
     SubscriptionTemplateUpdate,
     SubscriptionTypeCreate,
     SubscriptionTypeRead,
+    SubscriptionTypeSaved,
     SubscriptionTypeUpdate,
     SubscriptionUpdate,
 )
@@ -77,16 +78,20 @@ async def create_subscription_type(
 
 @router.patch(
     "/types/{type_id}",
-    response_model=SubscriptionTypeRead,
+    response_model=SubscriptionTypeSaved,
     dependencies=[require_permission("subscriptions.type.manage")],
 )
 async def update_subscription_type(
     type_id: uuid.UUID,
     payload: SubscriptionTypeUpdate,
     ctx: RequestContext = Depends(require_context),
-) -> SubscriptionTypeRead:
-    sub_type = await SubscriptionTypeService(ctx).update(type_id, payload)
-    return SubscriptionTypeRead.model_validate(sub_type)
+) -> SubscriptionTypeSaved:
+    """Flipping ``billed_in_advance`` re-reads the periods of every agreement of this kind;
+    ``shifted_subscriptions`` reports how many, so the screen can say so."""
+    sub_type, shifted = await SubscriptionTypeService(ctx).update(type_id, payload)
+    saved = SubscriptionTypeSaved.model_validate(sub_type)
+    saved.shifted_subscriptions = shifted
+    return saved
 
 
 @router.delete(
@@ -142,9 +147,10 @@ async def update_subscription_template(
 ) -> SubscriptionTemplateSaved:
     """A rename carries over to the agreements made from this preset that still bear its old
     name; ``renamed_subscriptions`` reports how many, so the screen can say so."""
-    template, renamed = await SubscriptionTemplateService(ctx).update(template_id, payload)
+    template, renamed, shifted = await SubscriptionTemplateService(ctx).update(template_id, payload)
     saved = SubscriptionTemplateSaved.model_validate(template)
     saved.renamed_subscriptions = renamed
+    saved.shifted_subscriptions = shifted
     return saved
 
 

@@ -134,7 +134,16 @@ export async function createSubscriptionType(event: RequestEvent) {
   const key = slugify(label_i18n.nl || label_i18n.en || "");
   if (!key) return fail(400, { qcError: "errors.label_no_key" });
   const { data, error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
-    body: { key, label_i18n, position: 0, active: true, task_template_ids: [] },
+    // A type made inline bills in arrears until somebody says otherwise in Instellingen — the
+    // cron's original reading, and the only default that changes nothing for an existing type.
+    body: {
+      key,
+      label_i18n,
+      position: 0,
+      active: true,
+      task_template_ids: [],
+      billed_in_advance: false,
+    },
   });
   if (error || !data) return fail(400, { qcError: createErrorKey(error, response) });
   const name = label_i18n.nl || label_i18n.en || key;

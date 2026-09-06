@@ -12,7 +12,11 @@ from arq import cron
 from app.core.events import subscribe
 from app.modules.invoicing.bulk import INVOICE_BULK
 from app.modules.invoicing.emails import INVOICING_EMAIL_KINDS
-from app.modules.invoicing.events import on_domain_due, on_subscription_due
+from app.modules.invoicing.events import (
+    on_domain_due,
+    on_subscription_direction_changed,
+    on_subscription_due,
+)
 from app.modules.invoicing.impex import INVOICE_IMPEX
 from app.modules.invoicing.jobs import invoicing_daily, invoicing_payments_reconcile
 from app.modules.invoicing.panels import invoicing_company_panel
@@ -61,3 +65,6 @@ registry.register(module)
 subscribe("subscription.due", on_subscription_due)
 # Domain renewals (#250) follow the same seam: the domains cron owns the cycle, this drafts.
 subscribe("domain.due", on_domain_due)
+# A type or preset that flips which way its agreements' periods run moves the claims those
+# agreements already hold with it — the module that owns the claims does the moving.
+subscribe("subscription.direction_changed", on_subscription_direction_changed)

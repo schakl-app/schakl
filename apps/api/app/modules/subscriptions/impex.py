@@ -357,6 +357,7 @@ async def _create_type(ctx: RequestContext, values: dict[str, Any]) -> Any:
             label_i18n=merge_locale_labels(values) or {},
             position=_optional_int(values, "position") or 0,
             active=values.get("active") is not False,
+            billed_in_advance=values.get("billed_in_advance") is True,
         )
     )
 
@@ -370,6 +371,8 @@ async def _update_type(ctx: RequestContext, sub_type: Any, values: dict[str, Any
         fields["position"] = _optional_int(values, "position") or 0
     if "active" in values and values["active"] is not None:
         fields["active"] = values["active"]
+    if "billed_in_advance" in values and values["billed_in_advance"] is not None:
+        fields["billed_in_advance"] = values["billed_in_advance"]
     if fields:
         # ``key`` is immutable by omission — which is also why it is the natural key.
         await SubscriptionTypeService(ctx).update(sub_type.id, SubscriptionTypeUpdate(**fields))
@@ -391,6 +394,9 @@ SUBSCRIPTION_TYPE_IMPEX = ImpexDescriptor(
         *locale_label_columns(aliases={"nl": ("label", "naam"), "en": ("label", "name")}),
         ImpexColumn("position", data_type="number", clearable=False, aliases=("volgorde",)),
         ImpexColumn("active", data_type="bool", clearable=False, aliases=("actief",)),
+        ImpexColumn(
+            "billed_in_advance", data_type="bool", clearable=False, aliases=("vooraf",)
+        ),
         # ``task_template_ids`` is a list of ids into the tasks module — a list has no honest
         # single-cell spelling, and these are configured where the templates are.
     ),
@@ -434,7 +440,7 @@ async def _find_template(
     return found
 
 
-_TEMPLATE_FIELDS = ("name", "subscription_type_id", "currency", "notes")
+_TEMPLATE_FIELDS = ("name", "subscription_type_id", "currency", "notes", "billed_in_advance")
 
 
 def _template_fields(values: dict[str, Any]) -> dict[str, Any]:
@@ -518,6 +524,8 @@ SUBSCRIPTION_TEMPLATE_IMPEX = ImpexDescriptor(
             getter=lambda t: (t.rollover or {}).get("expires_after_periods"),
         ),
         ImpexColumn("notice_period_days", data_type="number", aliases=("opzegtermijn",)),
+        # Tri-state on purpose: an empty cell is "follow the type", which is a real value here.
+        ImpexColumn("billed_in_advance", data_type="bool", aliases=("vooraf",)),
         ImpexColumn("notes", aliases=("notities", "opmerkingen")),
         ImpexColumn("position", data_type="number", clearable=False, aliases=("volgorde",)),
     ),

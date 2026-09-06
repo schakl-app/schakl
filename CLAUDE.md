@@ -1165,6 +1165,15 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   cron before it drafts, the anchor included; the other direction of the same claim tables
   (`GET /invoicing/billed-periods`) is what `invoicing` contributes to the domain and subscription
   pages, so a record page finally answers "which years did we bill, and on what".
+- **Which way a subscription's period runs is the type's decision** (`subscription_types
+  .billed_in_advance`, `docs/INVOICING.md`). The rule above stated the direction for two things and
+  wrote *arrears* into the subscriptions module for every agreement, so a hosting agreement renewing
+  on 16-05-2026 could only ever offer the year behind it. The direction lives on the kind now (with
+  a standard subscription able to override it, `NULL` = follow the type), resolved **live** by one
+  function every reader calls — backlog, picker, cron, the agreement's read — never copied onto the
+  agreement. A flip moves the claims of the agreements it reaches in the same transaction
+  (`subscription.direction_changed`, handled by `invoicing`), because a claim keyed on `period_end`
+  names a different boundary under the other reading, and the save reports how many it moved.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

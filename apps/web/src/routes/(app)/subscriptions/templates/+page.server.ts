@@ -47,6 +47,8 @@ function sortTemplates(
         return tpl.included_hours == null ? -1 : Number(tpl.included_hours);
       case "notice_period_days":
         return tpl.notice_period_days ?? -1;
+      case "billing":
+        return tpl.billed_in_advance == null ? -1 : tpl.billed_in_advance ? 1 : 0;
       default:
         return 0;
     }
