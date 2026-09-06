@@ -30,6 +30,7 @@ from app.modules.invoicing.schemas import (
     DocumentSend,
     ExternalRefRead,
     InvoiceCreate,
+    InvoiceCredit,
     InvoiceFromTime,
     InvoiceIssue,
     InvoicePaymentAccountRead,
@@ -628,9 +629,18 @@ async def update_invoice(
 )
 async def delete_invoice(
     invoice_id: uuid.UUID,
+    force: bool = Query(
+        False,
+        description=(
+            "Delete an issued invoice as well. Off, only a draft deletes and an issued one "
+            "answers 409 (cancel it, or credit it). On, the number leaves the sequence for "
+            "good; refused while payments, credit notes, a ledger booking or an open online "
+            "checkout hang off it."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> None:
-    await InvoiceService(ctx).delete(invoice_id)
+    await InvoiceService(ctx).delete(invoice_id, force=force)
 
 
 @router.post(
@@ -693,10 +703,13 @@ async def cancel_invoice(
 )
 async def credit_invoice(
     invoice_id: uuid.UUID,
+    payload: InvoiceCredit | None = None,
     ctx: RequestContext = Depends(require_context),
 ) -> InvoiceRead:
-    """Draft credit note mirroring this invoice with negated prices."""
-    return InvoiceRead.model_validate(await InvoiceService(ctx).credit(invoice_id))
+    """Credit note mirroring this invoice with negated prices — a draft to edit down, or with
+    ``issue=true`` a definitive one that writes the invoice off at once and hands its work
+    back (the way to cancel an invoice the client has already received)."""
+    return InvoiceRead.model_validate(await InvoiceService(ctx).credit(invoice_id, payload))
 
 
 @router.post(

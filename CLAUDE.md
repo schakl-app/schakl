@@ -1090,6 +1090,21 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
   the subscription cron having grown a hand-written copy that already omitted `client_number`, so
   "which name does an invoice say?" would have depended on who raised it.
+- **A cancel is a status here and a document nowhere else, so cancelling a sent invoice is a
+  credit note** (`docs/INVOICING.md`). *Factuur annuleren* on an issued invoice flipped a status
+  the client's books and the ledger would never learn about; the correction either of them can
+  follow is a credit note, so `POST /credit` takes `issue=true` and creates **and issues** it in
+  one transaction — the invoice ends `open` + fully credited, its work handed back, no draft
+  left half-done between two calls — and the dialog offers both ways with their consequences,
+  preselecting the credit note when `sent_at` is set. An issued document now also deletes behind
+  `?force=true`: a second sentence the caller has to say, because the number leaves the run for
+  good and a gap in an invoice sequence is something a bookkeeper has to explain. It refuses
+  what `cancel` refuses — one `_ensure_withdrawable`, since two copies of a guard is how one
+  stops being asked — plus a ledger booking and an open checkout, the two things a cancel leaves
+  in place and a delete cannot; the trail line carrying the number is written before the row
+  goes (§16). On the screen the tick is the control: `ConfirmDialog.acknowledge` disables the red
+  button until a sentence naming the number is checked, and `children` lets a choice post inside
+  the confirming form rather than through state the host mirrors into `fields` (`docs/UX.md`).
 - **A document somebody else issued states its totals, and the record carries its own
   fingerprint** (`docs/INVOICING.md`, "Bringing the back catalogue in"). An agency arriving from
   Moneybird or SnelStart brings years of invoices, and without them the client hub has no history

@@ -7096,7 +7096,9 @@ export interface paths {
         put?: never;
         /**
          * Credit Invoice
-         * @description Draft credit note mirroring this invoice with negated prices.
+         * @description Credit note mirroring this invoice with negated prices — a draft to edit down, or with
+         *     ``issue=true`` a definitive one that writes the invoice off at once and hands its work
+         *     back (the way to cancel an invoice the client has already received).
          */
         post: operations["credit_invoice_api_v1_invoicing_invoices__invoice_id__credit_post"];
         delete?: never;
@@ -22495,6 +22497,21 @@ export interface components {
             reference?: string | null;
             /** Template Id */
             template_id?: string | null;
+        };
+        /**
+         * InvoiceCredit
+         * @description POST /credit options. ``issue=true`` makes the credit note definitive in the same
+         *     request, which is what cancelling an invoice that has already been sent means: the
+         *     correction is a document from the first moment it exists, the invoice is written off at
+         *     once and the work it billed is handed back. Left ``false``, the draft is yours to edit
+         *     down first — the partial-credit path.
+         */
+        InvoiceCredit: {
+            /**
+             * Issue
+             * @default false
+             */
+            issue: boolean;
         };
         /**
          * InvoiceFromTime
@@ -48152,7 +48169,10 @@ export interface operations {
     };
     delete_invoice_api_v1_invoicing_invoices__invoice_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Delete an issued invoice as well. Off, only a draft deletes and an issued one answers 409 (cancel it, or credit it). On, the number leaves the sequence for good; refused while payments, credit notes, a ledger booking or an open online checkout hang off it. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 invoice_id: string;
@@ -48254,7 +48274,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvoiceCredit"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

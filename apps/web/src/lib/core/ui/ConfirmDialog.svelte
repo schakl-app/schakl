@@ -7,6 +7,8 @@
    * `variant="primary"`). A dialog that asks "issue this invoice?" over a red
    * "Delete" button reads as the opposite of what the button does.
    */
+  import type { Snippet } from "svelte";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -22,6 +24,8 @@
     fields = {},
     confirmLabel,
     variant = "danger",
+    acknowledge,
+    children,
     onfailure,
     onsuccess,
   }: {
@@ -46,6 +50,19 @@
     /** Confirm-button style: red by default, `primary` when the action destroys nothing. */
     variant?: "danger" | "primary";
     /**
+     * A sentence the user has to tick before the confirm button works — for the one kind of
+     * action that is *both* irreversible and something the record does not show the cost of
+     * (deleting a numbered invoice: the number is gone from the run, and only the trail
+     * remembers it). A consequences list is read; a box has to be pressed. Reset on every open.
+     */
+    acknowledge?: string;
+    /**
+     * Extra controls inside the posting form — a choice between two ways of doing the thing,
+     * say — so what the user picks travels with the confirmation instead of through a
+     * second round of state the host has to mirror into `fields`.
+     */
+    children?: Snippet;
+    /**
      * Called with the action's `error` key when it refuses, so the *host* can say so where the
      * user is looking. `page.form` is one slot shared by every action on a page, so a panel
      * cannot tell its own refusal from the edit form's — and a destructive control that reports
@@ -58,48 +75,64 @@
   } = $props();
 
   const busy = new InFlight();
+  let acknowledged = $state(false);
+  $effect(() => {
+    // Every opening starts unticked: an acknowledgement is about *this* press.
+    if (open) acknowledged = false;
+  });
 </script>
 
 <Modal bind:open {title}>
-  <p class="text-sm text-text-muted">{message}</p>
-  {#if consequences.length > 0}
-    <ul class="mt-3 space-y-1.5 rounded-lg bg-surface px-3 py-2.5">
-      {#each consequences as line (line)}
-        <li class="flex gap-2 text-sm text-text-muted">
-          <span aria-hidden="true" class="text-text-muted/60">•</span>
-          <span>{line}</span>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-  <div class="mt-5 flex justify-end gap-2">
-    <button
-      type="button"
-      class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-      onclick={() => (open = false)}>{t("common.cancel")}</button
-    >
-    <form
-      method="POST"
-      {action}
-      use:enhance={busy.wrap("", () => async ({ result, update }) => {
-        open = false;
-        if (result.type === "failure") {
-          const key = (result.data as { error?: string } | undefined)?.error;
-          if (key && onfailure) {
-            onfailure(key);
-            return;
-          }
+  <form
+    method="POST"
+    {action}
+    use:enhance={busy.wrap("", () => async ({ result, update }) => {
+      open = false;
+      if (result.type === "failure") {
+        const key = (result.data as { error?: string } | undefined)?.error;
+        if (key && onfailure) {
+          onfailure(key);
+          return;
         }
-        await update();
-        onsuccess?.();
-      })}
-    >
+      }
+      await update({ reset: false });
+      onsuccess?.();
+    })}
+  >
+    <p class="text-sm text-text-muted">{message}</p>
+    {@render children?.()}
+    {#if consequences.length > 0}
+      <ul class="mt-3 space-y-1.5 rounded-lg bg-surface px-3 py-2.5">
+        {#each consequences as line (line)}
+          <li class="flex gap-2 text-sm text-text-muted">
+            <span aria-hidden="true" class="text-text-muted/60">•</span>
+            <span>{line}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if acknowledge}
+      <label class="mt-4 flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          class="mt-0.5 h-4 w-4 rounded border-border accent-brand"
+          bind:checked={acknowledged}
+        />
+        <span>{acknowledge}</span>
+      </label>
+    {/if}
+    <div class="mt-5 flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (open = false)}>{t("common.cancel")}</button
+      >
       {#each Object.entries(fields) as [name, value] (name)}
         <input type="hidden" {name} {value} />
       {/each}
-      <Button {variant} loading={busy.active}>
+      <Button {variant} loading={busy.active} disabled={Boolean(acknowledge) && !acknowledged}>
         {confirmLabel ?? t("common.delete")}
       </Button>
-    </form>
-  </div>
+    </div>
+  </form>
 </Modal>

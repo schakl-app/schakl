@@ -950,6 +950,16 @@ class InvoiceIssue(BaseModel):
     due_date: date | None = None
 
 
+class InvoiceCredit(BaseModel):
+    """POST /credit options. ``issue=true`` makes the credit note definitive in the same
+    request, which is what cancelling an invoice that has already been sent means: the
+    correction is a document from the first moment it exists, the invoice is written off at
+    once and the work it billed is handed back. Left ``false``, the draft is yours to edit
+    down first — the partial-credit path."""
+
+    issue: bool = False
+
+
 class DocumentSend(BaseModel):
     """POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
     customer through the org's transport (#17). ``email=false`` records a send that

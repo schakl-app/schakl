@@ -749,6 +749,20 @@ contrast bug in dark mode rather than only an inconsistency.
   deletes reached from the ⋯ menu and from inside an edit surface (e.g. deleting a time
   registration). The ⋯ Delete item opens the dialog; the dialog owns the posting form.
   Approved/locked states explain themselves via tooltip + a clear error message key.
+- **A dialog that offers two ways out states both, and an irreversible one is ticked, not
+  clicked** (`ConfirmDialog`'s `children` and `acknowledge`; the invoice's *Factuur annuleren*
+  and *Verwijderen*). Cancelling an issued invoice asked one question and did one thing, while
+  the bookkeeping answer depends on a fact the dialog never mentioned — whether the client has
+  the document. So the dialog carries the choice inside its own posting form (a radio that posts
+  as `mode`: reverse with a credit note, or cancel without one), each option with a one-line
+  hint, the consequences list following the pick, the confirm button changing label and colour
+  with it (`primary` for the credit note, which destroys nothing; red for the plain cancel), and
+  the preselection following `sent_at`. Deleting an issued invoice is the one action on the
+  module that is both irreversible and invisible in its cost — the number is gone from the run
+  and nothing on the record shows it — so its consequences list is read *and* a sentence naming
+  the number has to be ticked before the red button enables; the gentler neighbour is named in
+  the list, one line above the cost. The bar for `acknowledge` is high on purpose: a checkbox on
+  every delete would be a checkbox on none of them.
 - **Rows that represent an editable record carry a ⋯ menu — including in reporting tables.**
   The Overzicht → Uren report gives each time entry a compact ⋯ (Bewerken opens the shared
   `EntryForm` in a `Modal`; Verwijderen confirms). A list of records is never read-only just

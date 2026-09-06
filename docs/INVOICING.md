@@ -15,9 +15,13 @@ custom-fieldable (§13) and auditable (§16), like every module.
 ```
 draft ──issue──▶ open ──nothing left outstanding──▶ paid
   │                │◀───payment removed────────────┘
+  │                ├─credit, issue=true──▶ open + fully credited (owes nothing, work released)
   │delete          │cancel (no payments, not credited)
   ▼                ▼
 gone           cancelled
+  ▲                │
+  └─delete?force───┘  (from open too: no payments, no credit notes, not in the ledger, no
+                       open checkout — the number leaves the run; only the trail keeps it)
 
 credit note: draft ──issue──▶ open ──┬─ absorbed by its source ──▶ paid (settled)
                                      └─ refund registered ───────▶ paid (refunded)
@@ -117,14 +121,40 @@ invoice that owes nothing.
   already guarantees a credit note never asks to be paid, so the dunning run must not
   contradict the document it would arrive next to. Crediting a credit note 409s
   (`errors.invoicing.already_credit_note`): a bookkeeper re-bills with an invoice.
-- **Issued invoices don't delete — they cancel.** Delete is draft-only; cancel requires no
-  registered payments and releases any billed time entries — and any claimed subscription
-  periods, so cancelling never retires an agreement's month for good. It also refuses an
-  invoice a credit note has written down (`errors.invoicing.has_credit_notes`), which would
-  strand that note's allocation. A **credit note** cancels from `paid` as well as `open` —
-  a fully applied one rests at `paid` without a cent having moved, and withdrawing it hands
-  its `applied_total` back to the invoice it corrected. What may never be cancelled away is
-  *registered money*, which is `paid_total`, not the status.
+- **Issued invoices don't delete — they cancel, and a cancel is a status here and a document
+  nowhere else.** Delete is draft-only by default; cancel requires no registered payments and
+  releases any billed time entries — and any claimed subscription periods, so cancelling never
+  retires an agreement's month for good. It also refuses an invoice a credit note has written
+  down (`errors.invoicing.has_credit_notes`), which would strand that note's allocation. A
+  **credit note** cancels from `paid` as well as `open` — a fully applied one rests at `paid`
+  without a cent having moved, and withdrawing it hands its `applied_total` back to the invoice
+  it corrected. What may never be cancelled away is *registered money*, which is `paid_total`,
+  not the status. The refusals are one method (`_ensure_withdrawable`), because a forced delete
+  makes exactly the same ones and two copies is how one of them stops being asked.
+- **Cancelling a sent invoice is a credit note issued in the same request.** The client's books
+  and the ledger never learn that a status here changed, so for a document the client has
+  received the *only* correction they can follow is a credit note — `POST /credit` with
+  `issue=true` creates it and issues it in one transaction (numbered, applied, work released),
+  and the invoice ends `open` + fully credited rather than `cancelled`, exactly as a hand-issued
+  credit note leaves it. One request on purpose: a draft credit note left behind by a failed
+  second call is an invoice still in arrears beside a correction nobody finished. The screen's
+  *Factuur annuleren* offers both ways and says what each does, preselecting the credit note
+  when `sent_at` is set and the plain cancel when nobody ever received it; either way the choice
+  is stated, never implied (docs/UX.md). Without the flag `/credit` is the draft it always was —
+  the partial-credit path, edited down before issue.
+- **An issued document deletes only behind `?force=true`, and the number goes with it.** The
+  ask was a delete with warnings, and the warning is the point: the number leaves the sequence
+  for good, and a gap in an invoice run is something a bookkeeper has to be able to explain, so
+  the API makes the caller say it twice (the flag, and `invoicing.invoice.delete`) and the screen
+  makes them tick it (`ConfirmDialog.acknowledge`). It refuses everything `cancel` refuses plus
+  the two a cancel leaves in place and a delete cannot: a booking in the ledger
+  (`errors.invoicing.in_ledger` — an `ExternalRef` for the invoice; the accounting package can
+  follow a credit note and cannot follow an absence) and an online checkout the client could
+  still complete (`errors.invoicing.open_checkout` — an intent at `open`/`pending`/`authorized`,
+  which would otherwise pay an invoice that no longer exists). A `cancelled` invoice deletes
+  too: it bills nothing, so nothing is stranded. The trail entry (`deleted`, carrying the
+  number, status and total) is written *before* the row goes, because the activity log outlives
+  the record (§16) and is the one place the number survives. The bulk delete stays draft-only.
 - **A line knows what it is** (`line_kind`: `hours` / `subscription` / `domain` / `product`).
   An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
   sales, and the reader has to tell them apart — "24 uur × € 95", "Hosting maart" and

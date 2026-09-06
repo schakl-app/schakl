@@ -82,6 +82,7 @@ from app.modules.invoicing.models import (
     InvoiceTimeEntry,
     InvoicingSettings,
     LineKind,
+    PaymentIntentStatus,
     Product,
     Quote,
     QuoteLine,
@@ -110,6 +111,7 @@ from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
     DocumentSend,
     InvoiceCreate,
+    InvoiceCredit,
     InvoiceFromTime,
     InvoiceImport,
     InvoiceIssue,
@@ -2046,17 +2048,122 @@ class InvoiceService(_DocumentService):
         await self._attach([invoice], payments=True)
         return invoice
 
-    async def delete(self, invoice_id: uuid.UUID) -> None:
-        """Drafts only: an issued invoice is a numbered legal document — cancel it instead,
-        so the number and the trail survive."""
+    async def delete(self, invoice_id: uuid.UUID, *, force: bool = False) -> None:
+        """Drafts by default: an issued invoice is a numbered legal document — cancel it
+        instead, so the number and the trail survive.
+
+        ``force`` deletes an issued one anyway, and it is deliberately a second sentence the
+        caller has to say rather than a wider default: the number leaves the sequence for
+        good, and a gap in an invoice run is something a bookkeeper has to be able to explain.
+        What it may **not** take with it is anything the record vouches for — registered
+        money, a credit note's allocation, a booking in the ledger, a checkout a client could
+        still complete — so those refuse exactly as ``cancel`` does, plus the two that a
+        cancel leaves in place and a delete cannot (`in_ledger`, `open_checkout`). The trail
+        entry is written *before* the row goes and carries the number, because the activity
+        log outlives the record it describes (§16) and is the only place the number survives.
+        """
         self.ctx.require("invoicing.invoice.delete")
         invoice = await self.repo.get_or_404(invoice_id)
         if invoice.status != InvoiceStatus.DRAFT.value:
-            raise AppError("conflict", "errors.invoicing.not_draft", status_code=409)
+            if not force:
+                raise AppError("conflict", "errors.invoicing.not_draft", status_code=409)
+            await self._ensure_withdrawable(invoice)
+            if await ExternalRefService(self.ctx).list_for("invoice", invoice.id):
+                # The ledger holds a booking under this number; deleting the local twin
+                # leaves it unexplained over there. A credit note is the correction the
+                # accounting package can follow.
+                raise AppError("conflict", "errors.invoicing.in_ledger", status_code=409)
+            if await self._has_open_checkout(invoice.id):
+                # A checkout the client can still complete would pay an invoice that no
+                # longer exists — money arriving with nothing to record it against.
+                raise AppError(
+                    "conflict", "errors.invoicing.open_checkout", status_code=409
+                )
+            if invoice.kind == InvoiceKind.CREDIT_NOTE.value:
+                await self._release_credit(invoice)
+            await ActivityService(self.ctx).record(
+                self.entity_type,
+                invoice.id,
+                "deleted",
+                {
+                    "number": invoice.number,
+                    "status": invoice.status,
+                    "total": float(invoice.total),
+                },
+            )
         await self._release_time_entries(invoice.id)
         await self._release_subscription_periods(invoice.id)
         await self._revert_quote(invoice)
         await self.repo.delete(invoice)
+
+    async def _has_open_checkout(self, invoice_id: uuid.UUID) -> bool:
+        """Is there an online payment attempt the provider could still settle?"""
+        intents = self.ctx.repo(InvoicePaymentIntent)
+        row = await self.ctx.session.scalar(
+            intents.scoped_select()
+            .where(
+                InvoicePaymentIntent.invoice_id == invoice_id,
+                InvoicePaymentIntent.status.in_(
+                    (
+                        PaymentIntentStatus.OPEN.value,
+                        PaymentIntentStatus.PENDING.value,
+                        PaymentIntentStatus.AUTHORIZED.value,
+                    )
+                ),
+            )
+            .limit(1)
+        )
+        return row is not None
+
+    async def _ensure_withdrawable(self, invoice: Invoice) -> None:
+        """The refusals `cancel` and a forced `delete` share: an issued document may be
+        withdrawn only while nothing the record vouches for would be stranded by it.
+
+        What must never be withdrawn away is *registered money*, and that is `paid_total`,
+        not the status: a fully applied credit note sits at ``paid`` without a cent having
+        moved, so an open-only rule would make the one document you can still withdraw
+        un-withdrawable. A *cancelled* invoice is withdrawable too — it bills nothing, so a
+        forced delete of one strands nothing — while `cancel` itself refuses it first.
+        """
+        is_credit = invoice.kind == InvoiceKind.CREDIT_NOTE.value
+        allowed = (
+            (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
+            if is_credit
+            else (InvoiceStatus.OPEN.value, InvoiceStatus.CANCELLED.value)
+        )
+        if invoice.status not in allowed:
+            raise AppError("conflict", "errors.invoicing.wrong_status", status_code=409)
+        if invoice.paid_total != 0:
+            raise AppError("conflict", "errors.invoicing.has_payments", status_code=409)
+        if invoice.credited_total != 0 or (
+            not is_credit and await self._credited_by_notes(invoice.id) != 0
+        ):
+            # Withdrawing an invoice a credit note has written down would leave that credit
+            # note pointing at a document that bills nothing, its allocation stranded. Asked
+            # of the *documents* as well as the counter, because a credit note against a paid
+            # invoice absorbs nothing and the counter alone would wave it through.
+            raise AppError(
+                "conflict", "errors.invoicing.has_credit_notes", status_code=409
+            )
+        if is_credit and invoice.credit_for_id is not None:
+            # Withdrawing a note that completed a full credit would put its invoice back to
+            # billing work this org has already been handed back — and may well have
+            # re-invoiced by now, which is what the hours picker offered it for. Re-claiming
+            # cannot be done safely from here, so refuse and let them bill it again instead.
+            # Only where there *was* work to hand back, though: a credit note against an
+            # invoice of plain product lines released nothing, so withdrawing it costs
+            # nothing either, and the refusal should not reach the case it does not earn.
+            source = await self.repo.get(invoice.credit_for_id)
+            if (
+                source is not None
+                and await self._credited_by_notes(source.id) >= source.total > 0
+                and await self._claims_provenance(source.id)
+            ):
+                raise AppError(
+                    "conflict",
+                    "errors.invoicing.credit_released_work",
+                    status_code=409,
+                )
 
     async def issue(self, invoice_id: uuid.UUID, data: InvoiceIssue) -> Invoice:
         self.ctx.require("invoicing.invoice.write")
@@ -2114,47 +2221,18 @@ class InvoiceService(_DocumentService):
         return invoice
 
     async def cancel(self, invoice_id: uuid.UUID) -> Invoice:
+        """Void an issued document without a correcting one. The number stays in the run
+        under *geannuleerd*, which is the honest state of an invoice nobody ever received;
+        one the client has seen is corrected with a credit note instead (``credit`` with
+        ``issue=true``), because a cancel is a status here and a document nowhere else —
+        not in the client's books, and not in the ledger an accounting package keeps.
+        """
         self.ctx.require("invoicing.invoice.write")
         invoice = await self.repo.get_or_404(invoice_id)
-        is_credit = invoice.kind == InvoiceKind.CREDIT_NOTE.value
-        # A fully applied credit note sits at ``paid`` without a cent having moved, so the
-        # open-only rule would make the one document you can still withdraw un-withdrawable.
-        # What must never be cancelled away is *registered money*, and that is `paid_total`.
-        allowed = (
-            (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
-            if is_credit
-            else (InvoiceStatus.OPEN.value,)
-        )
-        if invoice.status not in allowed:
+        if invoice.status == InvoiceStatus.CANCELLED.value:
             raise AppError("conflict", "errors.invoicing.wrong_status", status_code=409)
-        if invoice.paid_total != 0:
-            raise AppError("conflict", "errors.invoicing.has_payments", status_code=409)
-        if invoice.credited_total != 0:
-            # Cancelling an invoice a credit note has written down would leave that credit
-            # note pointing at a document that bills nothing, its allocation stranded.
-            raise AppError(
-                "conflict", "errors.invoicing.has_credit_notes", status_code=409
-            )
-        if is_credit:
-            # Withdrawing a note that completed a full credit would put its invoice back to
-            # billing work this org has already been handed back — and may well have
-            # re-invoiced by now, which is what the hours picker offered it for. Re-claiming
-            # cannot be done safely from here, so refuse and let them bill it again instead.
-            # Only where there *was* work to hand back, though: a credit note against an
-            # invoice of plain product lines released nothing, so withdrawing it costs
-            # nothing either, and the refusal should not reach the case it does not earn.
-            if invoice.credit_for_id is not None:
-                source = await self.repo.get(invoice.credit_for_id)
-                if (
-                    source is not None
-                    and await self._credited_by_notes(source.id) >= source.total > 0
-                    and await self._claims_provenance(source.id)
-                ):
-                    raise AppError(
-                        "conflict",
-                        "errors.invoicing.credit_released_work",
-                        status_code=409,
-                    )
+        await self._ensure_withdrawable(invoice)
+        if invoice.kind == InvoiceKind.CREDIT_NOTE.value:
             await self._release_credit(invoice)
         await self._release_time_entries(invoice.id)
         # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
@@ -2167,9 +2245,18 @@ class InvoiceService(_DocumentService):
         await self._attach([invoice], payments=True)
         return invoice
 
-    async def credit(self, invoice_id: uuid.UUID) -> Invoice:
+    async def credit(
+        self, invoice_id: uuid.UUID, data: InvoiceCredit | None = None
+    ) -> Invoice:
         """A draft credit note mirroring the invoice with negated prices — the bookkeeping
-        way to correct an issued document (#207: issued money is immutable)."""
+        way to correct an issued document (#207: issued money is immutable).
+
+        With ``issue=true`` the note is made definitive in the same transaction: numbered,
+        applied against its source and the billed work handed back, so "cancel this invoice
+        the client already has" is one request that either wholly happens or does not —
+        a draft left behind by a failed second call would be an invoice still in arrears
+        beside a correction nobody finished.
+        """
         self.ctx.require("invoicing.invoice.write")
         source = await self.repo.get_or_404(invoice_id)
         if source.status not in (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value):
@@ -2220,6 +2307,8 @@ class InvoiceService(_DocumentService):
         await ActivityService(self.ctx).record(
             self.entity_type, source.id, "credited", {"credit_id": str(credit.id)}
         )
+        if data is not None and data.issue:
+            return await self.issue(credit.id, InvoiceIssue())
         await self._attach([credit], payments=True)
         return credit
 
