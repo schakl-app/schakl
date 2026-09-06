@@ -66,6 +66,13 @@ token.
 
 Follows the module pattern (§6).
 
+> **Since the Microsoft 365 integration (`docs/MICROSOFT.md`)**, what is a rule about the
+> *agency* rather than about Google lives in core and is read by both feeds: the matching, the
+> gates and the *who counts as us* composition in `app/core/mailbox/` (with `gmail/matching.py`
+> and `gmail/gates.py` re-exporting the names this document uses), and what a mirrored calendar
+> event says in `app/core/calendarmirror.py`. Everything below about Gmail's ids, labels,
+> `historyId` and body encoding is still Gmail's alone.
+
 - **`google` (core integration)** — owns the OAuth flows, the **encrypted token vault**, DWD
   config, and the client factory. `google_connections(org_id, user_id, google_sub, email,
   scopes[], refresh_token_enc, access_token_enc, expiry, ...)`. **Encrypt refresh tokens at

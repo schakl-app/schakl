@@ -32,6 +32,7 @@ import "./portal";
 
 // --- Integrations: what schakl talks to ----------------------------------- //
 import "$lib/integrations/google";
+import "$lib/integrations/microsoft";
 import "$lib/integrations/google_ads";
 import "$lib/integrations/google_tag_manager";
 import "$lib/integrations/cloudflare";

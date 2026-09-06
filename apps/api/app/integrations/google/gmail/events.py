@@ -20,7 +20,14 @@ from app.integrations.google.gmail.service import suppress
 logger = logging.getLogger("schakl.google.gmail")
 
 
+#: The source this feed writes; another mailbox feed's rows carry another value and are
+#: theirs to act on. Absent means gmail — the payload predates the second feed.
+_SOURCE = "gmail"
+
+
 async def handle_interaction_approved(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    if payload.get("source", _SOURCE) != _SOURCE:
+        return
     if not payload.get("gmail_message_id") or not payload.get("interaction_id"):
         return
     from datetime import timedelta
@@ -42,6 +49,8 @@ async def handle_interaction_approved(ctx: EmitContext, payload: dict[str, Any])
 
 
 async def handle_interaction_rejected(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    if payload.get("source", _SOURCE) != _SOURCE:
+        return
     message_id = payload.get("gmail_message_id")
     owner_user_id = payload.get("owner_user_id")
     if not message_id or not owner_user_id:

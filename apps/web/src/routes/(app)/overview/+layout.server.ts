@@ -5,46 +5,26 @@ import { apiFor } from "$lib/core/session";
 
 import type { LayoutServerLoad } from "./$types";
 
-// The whole Overzicht section is a manager surface; lookups are shared by every subpage
-// and don't rerun when filters (query params) change.
+/**
+ * The Overzicht section — one manager surface with six tabs (Overzicht, Omzet, Projecten,
+ * Medewerkers, Uren, Marketing). A manager reaches it holding any one of the two keys that open a
+ * tab (the time report, or — epic #134 — the marketing overview); each subpage re-guards its own.
+ *
+ * Only what *every* tab reads lives here: the member lookup, which names a colleague on the
+ * landing page's team card, the employees tab's rows and the hours report's filter. The hours
+ * report's five other lookups (clients, projects, tasks, statuses, entry types) moved with it to
+ * `hours/+layout.server.ts` — a layout load does not rerun on filter navigation, which is why
+ * they sit in a layout at all, and the landing dashboard should not pay for them.
+ */
 export const load: LayoutServerLoad = async (event) => {
-  // The Overzicht section holds several reports; a manager reaches it holding any one of them
-  // (the time report, or — epic #134 — the marketing overview). Each subpage re-guards its own.
   if (
     !can(event.locals.user, "time.report.read") &&
     !can(event.locals.user, "marketing.overview.read")
   ) {
     throw redirect(303, "/");
   }
-  const api = apiFor(event);
-  const [companies, projects, tasks, taskStatuses, members, entryTypes] = await Promise.all([
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    // No `hours=true` here, unlike the /time layout: this lookup only names projects for the
-    // report's filters and its edit modal. The budget burn is an opt-in aggregate and the
-    // report never draws one (docs/PERFORMANCE.md).
-    api.GET("/api/v1/projects", {
-      params: { query: { limit: 200, offset: 0, count: false } },
-    }),
-    api.GET("/api/v1/tasks", {
-      params: { query: { limit: 200, offset: 0, meta: false, count: false, sort: "title" } },
-    }),
-    // The tenant's status vocabulary (#62): the lookup above names the task on every reported
-    // row, finished ones included, so this is what tells the edit modal's picker which of them
-    // are still worth offering.
-    api.GET("/api/v1/tasks/statuses"),
-    api.GET("/api/v1/members/lookup"),
-    // Entry-type labels for the report's type column/filter (#176) — inactive included so a
-    // historical row still names its retired type.
-    api.GET("/api/v1/time/entry-types", { params: { query: { include_inactive: true } } }),
-  ]);
+  const members = await apiFor(event).GET("/api/v1/members/lookup");
   return {
-    companies: companies.data?.items ?? [],
-    projects: projects.data?.items ?? [],
-    tasks: tasks.data?.items ?? [],
-    taskStatuses: taskStatuses.data ?? [],
     members: members.data ?? [],
-    entryTypes: entryTypes.data ?? [],
   };
 };

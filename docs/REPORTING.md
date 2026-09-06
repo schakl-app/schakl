@@ -114,9 +114,12 @@ stop using the button.
 what it is given and names no module.
 
 `marketing` contributes traffic channels, search engines, rankings, Search Console, referral,
-social, conversions, AI search, and — **internal only** — the site audit. Adding a chapter is a
-change where the data lives; disabling `marketing` removes its sections from every future report
-while already-generated ones keep theirs, because a report stores its own snapshot.
+social, conversions, visibility in AI Overviews and AI Mode (Search Console's Generative AI
+report, uploaded by hand because Google's API does not carry it — `docs/GOOGLE_SEARCH_CONSOLE.md`
+§6a; the section exists only for a client whose agency uploaded it), AI search, and —
+**internal only** — the site audit. Adding a chapter is a change where the data lives; disabling
+`marketing` removes its sections from every future report while already-generated ones keep
+theirs, because a report stores its own snapshot.
 
 A section returns `None` for "this client has none of this", which prints nothing rather than an
 empty table. A section that *fails* is a warning, not a failure: a report whose SE Ranking

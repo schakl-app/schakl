@@ -72,7 +72,14 @@ GA4_METRICS = [
     "engagementRate",
     "totalRevenue",
 ]
-GSC_METRICS = ["clicks", "impressions", "ctr", "position"]
+#: Search Console. The four the API answers, and one it does not: ``ai_impressions`` is the
+#: Generative AI performance report (June 2026 — how often the site was shown inside AI
+#: Overviews and AI Mode), which Google draws in the console, offers as an export button, and
+#: returns through no API (``google_search_console.client.GENERATIVE_AI_SEARCH_TYPES``). It
+#: arrives by **import** of that export (``marketing.aiv_import``), which is why it is also in
+#: :data:`IMPORTED_METRICS` below — and why it is last: a tile a client has to have been sent
+#: sits after the four that are always there.
+GSC_METRICS = ["clicks", "impressions", "ctr", "position", "ai_impressions"]
 GADS_METRICS = ["cost", "clicks", "impressions", "conversions", "conversionsValue"]
 #: SE Ranking (#300). ``avg_position`` leads because it is the number a client asks about, and
 #: it is both *averaged* and *lower-is-better* — registered in both sets below, or a month of
@@ -155,6 +162,18 @@ AVERAGED_METRICS = {
 
 #: Metrics where a *lower* number is better, so a positive delta reads red not green (position).
 LOWER_IS_BETTER = {"position", "avg_position", "brand_rank"}
+
+#: Metrics a person brings in **by hand** — a file exported from the vendor's console because
+#: the vendor's API does not carry the number — rather than a sync fetching them nightly.
+#: Two rules hang off this set, and both exist because "absent" and "zero" are different facts
+#: for a figure somebody has to remember to upload. **A sync never erases one**: the nightly
+#: re-pull of a trailing window replaces a day's metrics wholesale, and would otherwise wipe
+#: last week's import every night (``service._upsert_daily``). And **a period no row carries it
+#: in prints no tile**: :func:`app.modules.marketing.service.aggregate` leaves the key out
+#: rather than summing to ``0``, so a client whose agency never uploaded the report gets no
+#: "Vertoningen in AI 0" — a plausible number nothing on any screen could contradict, which is
+#: exactly what the AI-visibility card refuses to be (docs/GOOGLE_SEARCH_CONSOLE.md §6).
+IMPORTED_METRICS = {"ai_impressions"}
 
 
 def primary_metric(source: str) -> str:

@@ -32,22 +32,14 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.mailbox.policy import MailApprovalMode, MailThreadFollowup
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
 
-
-class GmailApprovalMode(StrEnum):
-    """Whether a matched email needs the mailbox owner's approval before it is logged."""
-
-    APPROVAL_REQUIRED = "approval_required"
-    AUTO_APPROVE = "auto_approve"
-
-
-class GmailThreadFollowup(StrEnum):
-    """What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log."""
-
-    INHERIT_PENDING = "inherit_pending"
-    INHERIT_APPROVE = "inherit_approve"
+#: The org-level mail policy is one vocabulary for every mailbox feed (``app/core/mailbox``);
+#: these are the names this module has always used for it.
+GmailApprovalMode = MailApprovalMode
+GmailThreadFollowup = MailThreadFollowup
 
 
 class ConnectionStatus(StrEnum):

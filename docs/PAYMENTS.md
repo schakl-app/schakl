@@ -113,9 +113,9 @@ what to ask for), and exactly one is used without a prompt.
 
 **With one tiebreak, and only one: a live credential beats a test one.** An agency integrating
 holds both at once — that is the whole reason the credential is a row rather than a settings
-singleton — and it is not a real ambiguity, because a test key collects nothing and settles
-nothing (§6). It was never a candidate for a client's money, so preferring the live one is not a
-judgement being made on anyone's behalf. Refusing there would also have refused a **client** in
+singleton — and it is not a real ambiguity, because a test key collects no money: whatever it
+settles here (§6) is a rehearsal. It was never a candidate for a client's money, so preferring
+the live one is not a judgement being made on anyone's behalf. Refusing there would also have refused a **client** in
 the portal, who cannot read the account list at all (§8 keeps it at `:any`) and would have been
 handed *"choose which one"* with nothing to choose from — #253's broken control, in front of the
 one screen this feature exists for.
@@ -283,20 +283,26 @@ no memory (CLAUDE.md §11's rolling deploy).
 The same pair is what makes the callback and the cron safe to run against each other: they call
 the same `reconcile` → `apply` path, and neither needs to know the other exists.
 
-## 6. Test mode is a deliberate dead end
+## 6. Test mode settles like live mode
 
 An intent whose `mode` is `test` follows the entire loop — create, redirect, callback,
-authenticated re-fetch, status update, screen — and then **stops**. `settled_at` stays `NULL`,
-no `InvoicePayment` row is written, and the invoice does not move.
+authenticated re-fetch, status update, ledger row, `invoice.paid`, thank-you page. It used to
+stop one step short: `settled_at` stayed `NULL` and no `InvoicePayment` row was written, on the
+argument that an agency leaving a test key connected would otherwise book real invoices against
+money that does not exist.
 
-That is the point. The whole mechanism is observable end to end, and the one step withheld is
-the one that would book a real invoice as paid against money that does not exist. An agency that
-leaves a test key connected — or that connects a test key first, which is what everyone does —
-gets an obviously-stuck screen (*"testbetaling: niet geboekt"*) instead of silently wrong
-revenue in their accounting export.
+The owner reversed that. A rehearsal that withholds the last step cannot prove the last step —
+which is the one an agency actually wants proven before going live: the payment appearing in
+the ledger, the invoice flipping to *betaald*, the confirmation mail, and the page the client
+lands on afterwards. With the dead end, the full client walkthrough could only be verified with
+a real euro. So a test attempt settles exactly as a live one does, and what marks it is
+**visible rather than withheld**: the intent keeps `mode = test`, the payments card labels the
+attempt, and the ledger row's `note` reads `mollie:tr_… (test)` so a rehearsal can be found and
+deleted like any hand-registered payment. A test credential still loses the tiebreak to a live
+one (§3), so a real client is never routed through it while both are connected.
 
 `mode` is stored on the intent, not read from the account at settle time, so a key rotated from
-test to live afterwards cannot retroactively make an old test payment real.
+test to live afterwards cannot relabel an old test payment as real.
 
 ## 7. The hourly reconcile is the safety net
 

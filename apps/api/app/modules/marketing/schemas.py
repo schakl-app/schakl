@@ -179,6 +179,47 @@ class SeriesData(BaseModel):
     metrics: dict[str, list[float]] = Field(default_factory=dict)
 
 
+class AiVisibilityImportState(BaseModel):
+    """The last Generative AI export landed on a link: when, and the days it covered.
+
+    Stored on the link's ``config`` under ``ai_import`` and read back onto the dashboard card,
+    because a figure a person has to remember to upload needs its provenance printed beside it
+    — "geïmporteerd op 5 sep, t/m 3 sep" is what tells a colleague whether the tile is current.
+    """
+
+    at: datetime
+    date_from: date
+    date_to: date
+    days: int = 0
+
+
+class AiVisibilityImportResult(BaseModel):
+    """What an import wrote: the span and the sum, so the response can be checked against the
+    console's own total before anyone trusts the tile."""
+
+    link_id: uuid.UUID
+    days: int
+    date_from: date
+    date_to: date
+    total: float
+    #: Lines in the file that were not a dated figure (a total row, a footer) — skipped, and
+    #: counted so a caller can tell a clean file from one that mostly was not read.
+    skipped: int = 0
+    imported: AiVisibilityImportState
+
+
+class AiVisibilityRow(BaseModel):
+    day: date
+    impressions: int = Field(ge=0)
+
+
+class AiVisibilityRows(BaseModel):
+    """The JSON twin of the multipart import (CLAUDE.md §10: a multipart route is not a tool an
+    agent can call). ``[{day, impressions}]`` — the Dates table of the export, as data."""
+
+    rows: list[AiVisibilityRow] = Field(min_length=1, max_length=2000)
+
+
 class SourceAiVisibility(BaseModel):
     """What a source can say about the site's visibility in Google's generative AI features.
 
@@ -187,10 +228,16 @@ class SourceAiVisibility(BaseModel):
     against Google's discovery document in ``google_search_console.client``), and ``report_url``
     is where the numbers are in the meantime. A state with a link rather than a tile with a
     number, because a plausible figure here is one nothing on any screen could contradict.
+
+    ``imported`` is the other half of the answer: the export of that report, uploaded by hand
+    (``POST /marketing/links/{id}/ai-visibility/import``), is what puts an ``ai_impressions``
+    tile beside the four synced ones — and this says when it was last done, so the tile is
+    never read as live.
     """
 
     available: bool = False
     report_url: str = ""
+    imported: AiVisibilityImportState | None = None
 
 
 class SourceMetrics(BaseModel):

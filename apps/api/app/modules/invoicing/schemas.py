@@ -950,6 +950,16 @@ class InvoiceIssue(BaseModel):
     due_date: date | None = None
 
 
+class InvoiceCredit(BaseModel):
+    """POST /credit options. ``issue=true`` makes the credit note definitive in the same
+    request, which is what cancelling an invoice that has already been sent means: the
+    correction is a document from the first moment it exists, the invoice is written off at
+    once and the work it billed is handed back. Left ``false``, the draft is yours to edit
+    down first — the partial-credit path."""
+
+    issue: bool = False
+
+
 class DocumentSend(BaseModel):
     """POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
     customer through the org's transport (#17). ``email=false`` records a send that
@@ -1313,6 +1323,70 @@ class InvoicingSummary(BaseModel):
     paid_this_year: float
     quotes_open_count: int
     quotes_open_total: float
+
+
+class RevenueClient(BaseModel):
+    """One client's share of a year's invoiced revenue, and the same client a year earlier."""
+
+    company_id: uuid.UUID
+    name: str
+    excl: float
+    incl: float
+    previous_excl: float
+
+
+class RevenueKind(BaseModel):
+    """Revenue by what was billed (``LineKind``): hours, subscriptions, domains, products."""
+
+    kind: str
+    excl: float
+    previous_excl: float
+
+
+class InvoicingRevenueStats(BaseModel):
+    """What the agency **invoiced** in a year, beside the year before it.
+
+    This is the ledger's answer, as opposed to ``time/stats/revenue`` — which prices the hours
+    people *logged* and therefore says what the year was worth, not what was billed. Both are
+    wanted and they are different numbers: an agency that bills retainers up front or writes
+    hours off sees them drift apart, and the gap is the interesting figure.
+
+    Every figure is in the org currency (foreign documents convert through their stored
+    exchange rate, 1 when unset — the ``summary`` rule). A month is the document's
+    ``issue_date``, the Dutch bookkeeping convention; drafts and cancelled documents are not
+    revenue and never count; a credit note carries negated totals, so it nets out of the month
+    it was issued in rather than the month it corrects — again, the bookkeeping convention.
+    """
+
+    year: int
+    #: Per month, index 0 = January. ``excl`` is the subtotal before tax, ``incl`` the total.
+    months_excl: list[float]
+    months_incl: list[float]
+    months_previous_excl: list[float]
+    months_previous_incl: list[float]
+    total_excl: float
+    total_tax: float
+    total_incl: float
+    previous_excl: float
+    previous_tax: float
+    previous_incl: float
+    #: Documents issued this year (invoices *and* credit notes, so a corrected month counts two).
+    invoice_count: int
+    #: Money that actually moved on this year's documents (``paid_total``, the ``summary`` rule).
+    paid_incl: float
+    #: What is still owed on this year's documents, and how many of them owe something.
+    outstanding_incl: float
+    outstanding_count: int
+    #: The credit notes issued this year, as a positive figure (their totals are negative).
+    credited_excl: float
+    #: Ordered by this year's revenue, top ten; ``other_*`` is everything past the cut (§17).
+    top_clients: list[RevenueClient]
+    other_excl: float
+    other_incl: float
+    other_previous_excl: float
+    #: The whole year by line kind, every kind present in either year. Excl. tax: a line's
+    #: ``amount`` is before tax, and a kind's tax rate is not one number.
+    by_kind: list[RevenueKind]
 
 
 class ExternalRefRead(BaseModel):

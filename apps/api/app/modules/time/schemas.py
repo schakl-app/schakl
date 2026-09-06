@@ -146,6 +146,10 @@ class ProductivityRow(BaseModel):
     approved_minutes: int
     entry_count: int
     active_days: int
+    #: What this person's billable hours are worth at their effective rate (#226 — personal
+    #: rate → org default; no rate anywhere prices at nothing). The same chain ``revenue``
+    #: prices the year with, so the employee page and the revenue page cannot disagree.
+    revenue: float = 0.0
 
 
 class ProductivityStats(BaseModel):
@@ -181,6 +185,28 @@ class RevenueStats(BaseModel):
     total_previous: float
     top_clients: list[ClientRevenue]  # ordered by revenue desc (selected year)
     other_revenue: float  # everything outside the top 10
+
+
+class ProjectTimeRow(BaseModel):
+    """A project's logged time, split the way a budget page reads it, plus what the billable
+    part is worth at the loggers' effective rates (``revenue``'s chain, #226)."""
+
+    project_id: uuid.UUID
+    minutes: int
+    billable_minutes: int
+    approved_minutes: int
+    invoiced_minutes: int
+    billable_amount: float
+    #: Billable minutes by people with no rate anywhere — reported, never priced at zero.
+    unrated_minutes: int
+
+
+class ProjectTimeStats(BaseModel):
+    """Every project with time in the window, one grouped query (``/stats/projects``)."""
+
+    date_from: date | None
+    date_to: date | None
+    rows: list[ProjectTimeRow]
 
 
 class ProjectCost(BaseModel):

@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.marketing.aiv_import import MAX_BYTES, parse_export, parse_rows
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.schemas import (
     AccountsResponse,
+    AiVisibilityImportResult,
+    AiVisibilityRows,
     CompanyMarketing,
     CompanySettingsRead,
     CompanySettingsUpdate,
@@ -97,6 +100,46 @@ async def unlink(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await MarketingService(ctx).deactivate_link(link_id)
+
+
+# --- the Generative AI report, by hand (docs/GOOGLE_SEARCH_CONSOLE.md §6a) ------------------ #
+@router.post(
+    "/links/{link_id}/ai-visibility/import",
+    response_model=AiVisibilityImportResult,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def import_ai_visibility(
+    link_id: uuid.UUID,
+    file: UploadFile,
+    ctx: RequestContext = Depends(require_context),
+) -> AiVisibilityImportResult:
+    """Upload the export of Search Console's Generative AI performance report — the CSV of its
+    Dates table or the zip the console's export button produces — for one Search Console
+    link. Google returns these figures through no API, so this is how the site's impressions
+    in AI Overviews and AI Mode reach the dashboard tile and the report section. Days in the
+    file overwrite the same days; days it does not name are left alone. Multipart; an agent
+    sends the same rows as JSON to `/ai-visibility/rows`."""
+    # The cap is enforced on what is read, before any parse — a chunked read that stops one
+    # byte past the ceiling, so a file that is not this report costs the ceiling and no more.
+    raw = await file.read(MAX_BYTES + 1)
+    return await MarketingService(ctx).import_ai_visibility(link_id, parse_export(raw))
+
+
+@router.post(
+    "/links/{link_id}/ai-visibility/rows",
+    response_model=AiVisibilityImportResult,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def import_ai_visibility_rows(
+    link_id: uuid.UUID,
+    payload: AiVisibilityRows,
+    ctx: RequestContext = Depends(require_context),
+) -> AiVisibilityImportResult:
+    """The JSON twin of the multipart import: the Dates table of Search Console's Generative
+    AI performance report as `[{day, impressions}]`, for one Search Console link. Same rules,
+    same result — a day named here overwrites that day, a day not named is left alone."""
+    parsed = parse_rows([(row.day.isoformat(), row.impressions) for row in payload.rows])
+    return await MarketingService(ctx).import_ai_visibility(link_id, parsed)
 
 
 @router.get(

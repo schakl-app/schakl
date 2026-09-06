@@ -21,9 +21,9 @@
    *   money that arrived while the ledger row did not get written — a webhook that never
    *   reached us, an access proxy in front of the callback path (docs/DEPLOY.md). Silence is
    *   the worst answer available there: the invoice reads open, the client has paid, and nobody
-   *   is looking. A **test** attempt rests in exactly that state by design, so it gets its own
-   *   line instead; telling an agency to "record it by hand" for money that does not exist
-   *   would be worse than saying nothing at all.
+   *   is looking. A **test** attempt settles exactly as a live one does (docs/PAYMENTS.md §6)
+   *   and is merely labelled, so an agency rehearsing the loop sees the same ledger row, the
+   *   same status flip and the same thank-you a client would.
    * * **The voice follows `agencyView` — the same scoped key the list screen names itself
    *   with** (#266, `invoicing.invoice.read:any`). The agency creates a *betaallink* to send on;
    *   the person who owes the money presses *Nu betalen*. That is an audience difference, not a
@@ -59,6 +59,7 @@
     canSync,
     agencyView,
     returning = false,
+    paid = false,
     invoiceId,
     publicUrl = "",
     form,
@@ -83,6 +84,9 @@
      *  then does the card poll — an ordinary view of an invoice with a stale open intent is
      *  nobody waiting on anything, and polling it would be a request nobody asked for. */
     returning?: boolean;
+    /** The invoice is settled. With `returning`, that is the payer's own money having just
+     *  landed, and the card says thank you rather than leaving them to read a status pill. */
+    paid?: boolean;
     /** For the poll's own endpoint. The card is mounted by two different routes, so it takes
      *  the id rather than reading a param it cannot be sure of. */
     invoiceId: string;
@@ -137,10 +141,9 @@
     return "text-text-muted ring-1 ring-inset ring-border";
   }
 
-  /** Money in, ledger row missing. See the header: a test attempt lives here by design and is
-   *  told apart rather than nagged about. */
+  /** Money in, ledger row missing — a test attempt included, since it settles like any other. */
   const unsettled = (intent: PaymentIntent) =>
-    intent.status === "paid" && intent.settled_at === null && intent.mode !== "test";
+    intent.status === "paid" && intent.settled_at === null;
 
   const canOffer = $derived(canStart && payable);
   const visible = $derived(intents.length > 0 || canOffer || Boolean(publicUrl));
@@ -184,7 +187,13 @@
       <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(paymentError)}</p>
     {/if}
 
-    {#if confirming}
+    {#if returning && paid}
+      <!-- The hop back from a checkout onto a settled invoice: the payer's own money, just
+           landed. A status pill says "betaald"; this says it to them. -->
+      <p class="mb-3 text-sm font-medium text-emerald-700 dark:text-emerald-400" role="status">
+        {t("invoicing.intents.thanks")}
+      </p>
+    {:else if confirming}
       <!-- Silence here reads as "my payment did not go through", which is the one thing this
            screen must never imply to somebody whose money has already left. -->
       <p class="mb-3 text-sm text-amber-700 dark:text-amber-400" role="status">

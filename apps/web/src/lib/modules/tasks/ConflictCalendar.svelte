@@ -20,6 +20,7 @@
   import { capitalizeFirst, fmtDayMonth, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
+  import { calendarSourceLabelKey } from "$lib/core/registry";
   import { stateChipClass } from "$lib/core/state";
   import { clipToDay, packLanes, type Lane } from "$lib/core/ui/timegrid-layout";
 
@@ -230,13 +231,15 @@
 
   const totalConflicts = $derived(columns.reduce((n, c) => n + c.conflicts.length, 0));
 
+  // Core's own providers are named here; an integration's provider shares its key with the
+  // Agenda source it registers, so its label comes from the registry rather than from a list
+  // this module would have to be taught for every new calendar (§6).
   const SOURCE_KEY: Record<string, string> = {
     "tasks.schedule": "tasks.schedule.busy.source_tasks",
     leave: "tasks.schedule.busy.source_leave",
-    "google.calendar": "tasks.schedule.busy.source_google",
   };
   function sourceLabel(source: string): string {
-    const key = SOURCE_KEY[source];
+    const key = SOURCE_KEY[source] ?? calendarSourceLabelKey(source);
     return key ? t(key) : source;
   }
   const consulted = $derived(

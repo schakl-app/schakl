@@ -23,6 +23,8 @@
    * asking, on a bounded schedule, and stops the moment the answer is final. That polling is
    * the *only* reason this component has an effect in it.
    */
+  import { CircleCheck } from "@lucide/svelte";
+
   import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { enhance } from "$app/forms";
@@ -65,6 +67,21 @@
    * latest attempt, so the page never has to decide what "in flight" means.
    */
   const pending = $derived(data.returning && invoice.payment_pending && invoice.status !== "paid");
+
+  /**
+   * The two ends a return can land on, and each gets a sentence of its own. Paid: the page
+   * the client just came back to is the receipt, and "betaald" in a pill is not a thank-you.
+   * Not paid and nothing in flight: the provider's last word was a refusal, an expiry or the
+   * client's own cancel — said plainly, with the pay button back, because a page that merely
+   * shows "open" again to somebody who just tried reads as "it did not work and nobody knows".
+   */
+  const thanked = $derived(data.returning && invoice.status === "paid");
+  const failed = $derived(
+    data.returning &&
+      invoice.status !== "paid" &&
+      !invoice.payment_pending &&
+      ["failed", "expired", "canceled"].includes(invoice.payment_status ?? ""),
+  );
 
   /**
    * Poll while an attempt is in flight, and stop.
@@ -116,8 +133,30 @@
     </span>
   </header>
 
+  {#if thanked}
+    <section
+      class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950"
+      role="status"
+    >
+      <div class="flex items-start gap-3">
+        <CircleCheck class="mt-0.5 size-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div>
+          <h1 class="text-base font-semibold text-emerald-800 dark:text-emerald-200">
+            {t("invoicing.public.thanks_title")}
+          </h1>
+          <p class="mt-1 text-sm text-emerald-700 dark:text-emerald-300">
+            {t("invoicing.public.thanks_body", {
+              number: invoice.number,
+              amount: money(invoice.paid_total),
+            })}
+          </p>
+        </div>
+      </div>
+    </section>
+  {/if}
+
   <section class="mb-6 rounded-2xl border border-border bg-surface-raised p-5">
-    <h1 class="text-base font-semibold text-text">
+    <h1 class="text-base font-semibold text-text" class:sr-only={thanked}>
       {t("invoicing.public.heading", { number: invoice.number })}
     </h1>
     {#if invoice.customer_name}
@@ -142,8 +181,14 @@
     </dl>
 
     {#if invoice.status === "paid"}
-      <p class="mt-4 text-sm text-emerald-700 dark:text-emerald-400">
-        {t("invoicing.public.paid")}
+      {#if !thanked}
+        <p class="mt-4 text-sm text-emerald-700 dark:text-emerald-400">
+          {t("invoicing.public.paid")}
+        </p>
+      {/if}
+    {:else if failed}
+      <p class="mt-4 text-sm text-red-700 dark:text-red-400" role="status">
+        {t("invoicing.public.failed")}
       </p>
     {:else if pending}
       <!-- The payer is back from the checkout and the provider has not confirmed yet. Saying so

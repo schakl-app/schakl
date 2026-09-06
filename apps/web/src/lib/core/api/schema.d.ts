@@ -7096,7 +7096,9 @@ export interface paths {
         put?: never;
         /**
          * Credit Invoice
-         * @description Draft credit note mirroring this invoice with negated prices.
+         * @description Credit note mirroring this invoice with negated prices — a draft to edit down, or with
+         *     ``issue=true`` a definitive one that writes the invoice off at once and hands its work
+         *     back (the way to cancel an invoice the client has already received).
          */
         post: operations["credit_invoice_api_v1_invoicing_invoices__invoice_id__credit_post"];
         delete?: never;
@@ -7861,6 +7863,27 @@ export interface paths {
         get: operations["get_settings_api_v1_invoicing_settings_get"];
         /** Save Settings */
         put: operations["save_settings_api_v1_invoicing_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/stats/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoicing Revenue Stats
+         * @description What was invoiced in ``year`` beside the year before: per month, per client, per kind,
+         *     excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth.
+         */
+        get: operations["invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -8978,6 +9001,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/links/{link_id}/ai-visibility/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Visibility
+         * @description Upload the export of Search Console's Generative AI performance report — the CSV of its
+         *     Dates table or the zip the console's export button produces — for one Search Console
+         *     link. Google returns these figures through no API, so this is how the site's impressions
+         *     in AI Overviews and AI Mode reach the dashboard tile and the report section. Days in the
+         *     file overwrite the same days; days it does not name are left alone. Multipart; an agent
+         *     sends the same rows as JSON to `/ai-visibility/rows`.
+         */
+        post: operations["import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/links/{link_id}/ai-visibility/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Visibility Rows
+         * @description The JSON twin of the multipart import: the Dates table of Search Console's Generative
+         *     AI performance report as `[{day, impressions}]`, for one Search Console link. Same rules,
+         *     same result — a day named here overwrites that day, a day not named is left alone.
+         */
+        post: operations["import_ai_visibility_rows_api_v1_marketing_links__link_id__ai_visibility_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/overview": {
         parameters: {
             query?: never;
@@ -9440,6 +9510,528 @@ export interface paths {
          *     collapsed error #292 replaces.
          */
         post: operations["check_domain_api_v1_meta_tenant_domain_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/calendar/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Microsoft Calendar List
+         * @description The viewer's own calendars — the selection UI's read. Briefly cached; the existing
+         *     ``Calendars.ReadWrite`` scope covers it, so no re-consent is needed.
+         */
+        get: operations["microsoft_calendar_list_api_v1_microsoft_calendar_calendars_get"];
+        /**
+         * Microsoft Set Calendar Selection
+         * @description Choose which extra calendars sync for the viewer. Deselecting removes the calendar's
+         *     cached events on the spot; selecting queues a sync so the agenda fills without waiting.
+         */
+        put: operations["microsoft_set_calendar_selection_api_v1_microsoft_calendar_calendars_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/calendar/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Microsoft Calendar Channels
+         * @description The viewer's selection off the database alone — what the Agenda's feeds menu reads on
+         *     every open, so it never costs a Graph call.
+         */
+        get: operations["microsoft_calendar_channels_api_v1_microsoft_calendar_channels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Microsoft Calendar Events
+         * @description The viewer's own cached Outlook events. Reads the local cache, never Graph live.
+         */
+        get: operations["microsoft_calendar_events_api_v1_microsoft_calendar_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/calendar/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Microsoft Calendar Webhook */
+        post: operations["microsoft_calendar_webhook_api_v1_microsoft_calendar_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_v1_microsoft_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/connections/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Connection */
+        get: operations["my_connection_api_v1_microsoft_connections_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update My Connection */
+        patch: operations["update_my_connection_api_v1_microsoft_connections_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/microsoft/connections/me/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect My Connection */
+        post: operations["disconnect_my_connection_api_v1_microsoft_connections_me_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Microsoft Oauth Callback
+         * @description Store the grant and land the browser back where the connect started.
+         *
+         *     Identity comes from Graph's ``/me`` with the access token just issued (no id token — see
+         *     :mod:`app.integrations.microsoft.oauth`). A denied consent, a state mismatch or a ``/me`` that
+         *     will not answer is a redirect with an error marker, never a JSON envelope — a human is
+         *     holding this request.
+         */
+        get: operations["microsoft_oauth_callback_api_v1_microsoft_oauth_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/oauth/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Connect
+         * @description 302 to Microsoft's consent screen, asking exactly the enabled surfaces' scopes.
+         *
+         *     ``offline_access`` rides every consent (it *is* the refresh token); ``prompt=select_account``
+         *     lets someone signed into a personal account at Microsoft pick the work one this is about.
+         *     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`).
+         */
+        get: operations["oauth_connect_api_v1_microsoft_oauth_connect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse
+         * @description Live folder contents **as the viewing user** — Graph's permissions are authoritative.
+         *
+         *     ``q`` searches at Graph (the folder's subtree), never in the browser over one capped page.
+         *     Redis-cached ~45 s per user+drive+folder+term; ``refresh=1`` busts it.
+         */
+        get: operations["browse_api_v1_microsoft_onedrive_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/files/{drive_id}/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Trash Item
+         * @description Move an item to the drive's recycle bin — the other half of unlink. Runs as the viewing
+         *     user; drops every link naming the item, org-wide; refuses a non-empty folder.
+         */
+        delete: operations["trash_item_api_v1_microsoft_onedrive_files__drive_id___item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Folder
+         * @description Point a record at an existing folder — the picker's target. The service adds
+         *     ``microsoft.onedrive.manage`` when the record **already has** a folder (§15's two layers).
+         */
+        put: operations["set_folder_api_v1_microsoft_onedrive_folder_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Folder
+         * @description Create a subfolder inside the folder being browsed, as the viewing user.
+         */
+        post: operations["create_folder_api_v1_microsoft_onedrive_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_microsoft_onedrive_links_get"];
+        put?: never;
+        /** Create Link */
+        post: operations["create_link_api_v1_microsoft_onedrive_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Link
+         * @description Unlink only. The item is never touched (the dialog says so too).
+         */
+        delete: operations["delete_link_api_v1_microsoft_onedrive_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/provision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Entity
+         * @description Queue one entity's folder — the panel's "create folder" button.
+         */
+        post: operations["provision_entity_api_v1_microsoft_onedrive_provision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/provision-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision All
+         * @description Backfill: a folder for every client that has none (Instellingen → Microsoft 365).
+         */
+        post: operations["provision_all_api_v1_microsoft_onedrive_provision_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Onedrive State */
+        get: operations["onedrive_state_api_v1_microsoft_onedrive_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/onedrive/upload-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload Session */
+        post: operations["create_upload_session_api_v1_microsoft_onedrive_upload_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Outlook Message
+         * @description Log one message the poller skipped, filed where the caller says. The declared key is the
+         *     one for the row this **writes**; reaching into the mailbox is asked for in the service.
+         */
+        post: operations["import_outlook_message_api_v1_microsoft_outlook_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Outlook Message
+         * @description Resolve a pasted reference to the conversation it names, in the caller's own mailbox.
+         */
+        get: operations["lookup_outlook_message_api_v1_microsoft_outlook_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Outlook
+         * @description Poll this mailbox once, now — rate-limited to one manual poll per minute.
+         */
+        post: operations["refresh_outlook_api_v1_microsoft_outlook_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Outlook
+         * @description Find a message in the caller's **own** mailbox, by who it was with and when — named
+         *     fields, never raw KQL, so a colon in an address cannot become an operator.
+         */
+        get: operations["search_outlook_api_v1_microsoft_outlook_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Outlook Status
+         * @description When this mailbox was last polled, and whether asking for another one is worth it.
+         */
+        get: operations["read_outlook_status_api_v1_microsoft_outlook_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/outlook/threads/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Outlook Thread
+         * @description Every message of one conversation, marked with what is already on the timeline.
+         */
+        get: operations["read_outlook_thread_api_v1_microsoft_outlook_threads__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/microsoft/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_microsoft_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_microsoft_settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -12762,6 +13354,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/stats/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Time Stats
+         * @description Per-project minutes (all / billable / approved / invoiced) and the billable worth —
+         *     what the projects report joins onto each budget. Unbounded dates mean all time.
+         */
+        get: operations["project_time_stats_api_v1_time_stats_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/stats/revenue": {
         parameters: {
             query?: never;
@@ -14264,6 +14877,87 @@ export interface components {
             /** Principals */
             principals: components["schemas"]["InstancePrincipal"][];
         };
+        /**
+         * AiVisibilityImportResult
+         * @description What an import wrote: the span and the sum, so the response can be checked against the
+         *     console's own total before anyone trusts the tile.
+         */
+        AiVisibilityImportResult: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Days */
+            days: number;
+            imported: components["schemas"]["AiVisibilityImportState"];
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * AiVisibilityImportState
+         * @description The last Generative AI export landed on a link: when, and the days it covered.
+         *
+         *     Stored on the link's ``config`` under ``ai_import`` and read back onto the dashboard card,
+         *     because a figure a person has to remember to upload needs its provenance printed beside it
+         *     — "geïmporteerd op 5 sep, t/m 3 sep" is what tells a colleague whether the tile is current.
+         */
+        AiVisibilityImportState: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Days
+             * @default 0
+             */
+            days: number;
+        };
+        /** AiVisibilityRow */
+        AiVisibilityRow: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Impressions */
+            impressions: number;
+        };
+        /**
+         * AiVisibilityRows
+         * @description The JSON twin of the multipart import (CLAUDE.md §10: a multipart route is not a tool an
+         *     agent can call). ``[{day, impressions}]`` — the Dates table of the export, as data.
+         */
+        AiVisibilityRows: {
+            /** Rows */
+            rows: components["schemas"]["AiVisibilityRow"][];
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /** Expires At */
@@ -15661,6 +16355,11 @@ export interface components {
              * @description A pasted table instead of a file
              */
             text?: string | null;
+        };
+        /** Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post */
+        Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post: {
+            /** File */
+            file: string;
         };
         /** Body_import_org_archive_api_v1_instance_orgs_import_archive_post */
         Body_import_org_archive_api_v1_instance_orgs_import_archive_post: {
@@ -18745,12 +19444,6 @@ export interface components {
             created: number;
         };
         /**
-         * GmailApprovalMode
-         * @description Whether a matched email needs the mailbox owner's approval before it is logged.
-         * @enum {string}
-         */
-        GmailApprovalMode: "approval_required" | "auto_approve";
-        /**
          * GmailCandidate
          * @description One message the caller could log, and everything the row needs to describe itself.
          */
@@ -18947,12 +19640,6 @@ export interface components {
              */
             sync_enabled: boolean;
         };
-        /**
-         * GmailThreadFollowup
-         * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
-         * @enum {string}
-         */
-        GmailThreadFollowup: "inherit_pending" | "inherit_approve";
         /**
          * GoogleAdsAccountBrief
          * @description Which account answered — on every read, so a response is never ambiguous about that.
@@ -20728,7 +21415,7 @@ export interface components {
              */
             env_client_configured: boolean;
             /** @default approval_required */
-            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            gmail_approval_mode: components["schemas"]["MailApprovalMode"];
             /**
              * Gmail Enabled
              * @default false
@@ -20740,7 +21427,7 @@ export interface components {
              */
             gmail_log_internal: boolean;
             /** @default inherit_pending */
-            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+            gmail_thread_followup: components["schemas"]["MailThreadFollowup"];
             /**
              * Weak Encryption Key
              * @default false
@@ -20777,7 +21464,7 @@ export interface components {
             /** Drive Template Folder Id */
             drive_template_folder_id?: string | null;
             /** @default approval_required */
-            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            gmail_approval_mode: components["schemas"]["MailApprovalMode"];
             /**
              * Gmail Enabled
              * @default false
@@ -20789,7 +21476,7 @@ export interface components {
              */
             gmail_log_internal: boolean;
             /** @default inherit_pending */
-            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+            gmail_thread_followup: components["schemas"]["MailThreadFollowup"];
         };
         /** GroupCompanies */
         GroupCompanies: {
@@ -22363,7 +23050,7 @@ export interface components {
          * InteractionSource
          * @enum {string}
          */
-        InteractionSource: "manual" | "gmail" | "upload";
+        InteractionSource: "manual" | "gmail" | "outlook" | "upload";
         /**
          * InteractionStatus
          * @enum {string}
@@ -22453,6 +23140,21 @@ export interface components {
             reference?: string | null;
             /** Template Id */
             template_id?: string | null;
+        };
+        /**
+         * InvoiceCredit
+         * @description POST /credit options. ``issue=true`` makes the credit note definitive in the same
+         *     request, which is what cancelling an invoice that has already been sent means: the
+         *     correction is a document from the first moment it exists, the invoice is written off at
+         *     once and the work it billed is handed back. Left ``false``, the draft is yours to edit
+         *     down first — the partial-credit path.
+         */
+        InvoiceCredit: {
+            /**
+             * Issue
+             * @default false
+             */
+            issue: boolean;
         };
         /**
          * InvoiceFromTime
@@ -22828,6 +23530,65 @@ export interface components {
             reminders_paused?: boolean | null;
             /** Template Id */
             template_id?: string | null;
+        };
+        /**
+         * InvoicingRevenueStats
+         * @description What the agency **invoiced** in a year, beside the year before it.
+         *
+         *     This is the ledger's answer, as opposed to ``time/stats/revenue`` — which prices the hours
+         *     people *logged* and therefore says what the year was worth, not what was billed. Both are
+         *     wanted and they are different numbers: an agency that bills retainers up front or writes
+         *     hours off sees them drift apart, and the gap is the interesting figure.
+         *
+         *     Every figure is in the org currency (foreign documents convert through their stored
+         *     exchange rate, 1 when unset — the ``summary`` rule). A month is the document's
+         *     ``issue_date``, the Dutch bookkeeping convention; drafts and cancelled documents are not
+         *     revenue and never count; a credit note carries negated totals, so it nets out of the month
+         *     it was issued in rather than the month it corrects — again, the bookkeeping convention.
+         */
+        InvoicingRevenueStats: {
+            /** By Kind */
+            by_kind: components["schemas"]["RevenueKind"][];
+            /** Credited Excl */
+            credited_excl: number;
+            /** Invoice Count */
+            invoice_count: number;
+            /** Months Excl */
+            months_excl: number[];
+            /** Months Incl */
+            months_incl: number[];
+            /** Months Previous Excl */
+            months_previous_excl: number[];
+            /** Months Previous Incl */
+            months_previous_incl: number[];
+            /** Other Excl */
+            other_excl: number;
+            /** Other Incl */
+            other_incl: number;
+            /** Other Previous Excl */
+            other_previous_excl: number;
+            /** Outstanding Count */
+            outstanding_count: number;
+            /** Outstanding Incl */
+            outstanding_incl: number;
+            /** Paid Incl */
+            paid_incl: number;
+            /** Previous Excl */
+            previous_excl: number;
+            /** Previous Incl */
+            previous_incl: number;
+            /** Previous Tax */
+            previous_tax: number;
+            /** Top Clients */
+            top_clients: components["schemas"]["RevenueClient"][];
+            /** Total Excl */
+            total_excl: number;
+            /** Total Incl */
+            total_incl: number;
+            /** Total Tax */
+            total_tax: number;
+            /** Year */
+            year: number;
         };
         /** InvoicingSettingsRead */
         InvoicingSettingsRead: {
@@ -24071,6 +24832,18 @@ export interface components {
              */
             two_factor_required: boolean;
         };
+        /**
+         * MailApprovalMode
+         * @description Whether a matched email needs the mailbox owner's approval before it is logged.
+         * @enum {string}
+         */
+        MailApprovalMode: "approval_required" | "auto_approve";
+        /**
+         * MailThreadFollowup
+         * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
+         * @enum {string}
+         */
+        MailThreadFollowup: "inherit_pending" | "inherit_approve";
         /** MarkAllResult */
         MarkAllResult: {
             /** Updated */
@@ -24510,6 +25283,214 @@ export interface components {
             /** Role Ids */
             role_ids: string[];
         };
+        /** MicrosoftCalendarFeedItem */
+        MicrosoftCalendarFeedItem: {
+            /** All Day */
+            all_day: boolean;
+            /**
+             * Calendar Id
+             * @default primary
+             */
+            calendar_id: string;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
+            /** End */
+            end: string;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Html Link */
+            html_link?: string | null;
+            /** Id */
+            id: string;
+            /** Start */
+            start: string;
+            /** Starts At */
+            starts_at?: string | null;
+            /**
+             * Tentative
+             * @default false
+             */
+            tentative: boolean;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MicrosoftCalendarListEntry
+         * @description One row of the viewer's ``/me/calendars``, with whether it syncs here.
+         */
+        MicrosoftCalendarListEntry: {
+            /** Access Role */
+            access_role: string;
+            /** Id */
+            id: string;
+            /** Primary */
+            primary: boolean;
+            /** Selected */
+            selected: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * MicrosoftCalendarSelection
+         * @description Which extra calendars sync, whole-list. The default calendar always syncs and is not in
+         *     the vocabulary; an id not on the viewer's own list is refused.
+         */
+        MicrosoftCalendarSelection: {
+            /** Calendar Ids */
+            calendar_ids?: string[];
+        };
+        /**
+         * MicrosoftConnectionRead
+         * @description The caller's own connection — or the admin list's per-user rows.
+         */
+        MicrosoftConnectionRead: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Email */
+            email: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Outlook Excluded Category */
+            outlook_excluded_category?: string | null;
+            /**
+             * Outlook Sync Enabled
+             * @default false
+             */
+            outlook_sync_enabled: boolean;
+            /** Scopes */
+            scopes?: string[];
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** MicrosoftSelectedCalendar */
+        MicrosoftSelectedCalendar: {
+            /** Calendar Id */
+            calendar_id: string;
+            /** Primary */
+            primary: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /** MicrosoftSettingsRead */
+        MicrosoftSettingsRead: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Callback Url */
+            callback_url: string;
+            /** Client Id */
+            client_id?: string | null;
+            /**
+             * Client Secret Configured
+             * @default false
+             */
+            client_secret_configured: boolean;
+            /**
+             * Env Client Configured
+             * @default false
+             */
+            env_client_configured: boolean;
+            /**
+             * Onedrive Auto Provision
+             * @default false
+             */
+            onedrive_auto_provision: boolean;
+            /** Onedrive Drive Id */
+            onedrive_drive_id?: string | null;
+            /**
+             * Onedrive Enabled
+             * @default false
+             */
+            onedrive_enabled: boolean;
+            /** Onedrive Parent Folder Id */
+            onedrive_parent_folder_id?: string | null;
+            /** Onedrive Template Folder Id */
+            onedrive_template_folder_id?: string | null;
+            /** @default approval_required */
+            outlook_approval_mode: components["schemas"]["MailApprovalMode"];
+            /**
+             * Outlook Enabled
+             * @default false
+             */
+            outlook_enabled: boolean;
+            /**
+             * Outlook Log Internal
+             * @default false
+             */
+            outlook_log_internal: boolean;
+            /** @default inherit_pending */
+            outlook_thread_followup: components["schemas"]["MailThreadFollowup"];
+            /** Tenant Id */
+            tenant_id?: string | null;
+            /**
+             * Weak Encryption Key
+             * @default false
+             */
+            weak_encryption_key: boolean;
+            /** Webhook Url */
+            webhook_url: string;
+        };
+        /** MicrosoftSettingsWrite */
+        MicrosoftSettingsWrite: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /**
+             * Onedrive Auto Provision
+             * @default false
+             */
+            onedrive_auto_provision: boolean;
+            /** Onedrive Drive Id */
+            onedrive_drive_id?: string | null;
+            /**
+             * Onedrive Enabled
+             * @default false
+             */
+            onedrive_enabled: boolean;
+            /** Onedrive Parent Folder Id */
+            onedrive_parent_folder_id?: string | null;
+            /** Onedrive Template Folder Id */
+            onedrive_template_folder_id?: string | null;
+            /** @default approval_required */
+            outlook_approval_mode: components["schemas"]["MailApprovalMode"];
+            /**
+             * Outlook Enabled
+             * @default false
+             */
+            outlook_enabled: boolean;
+            /**
+             * Outlook Log Internal
+             * @default false
+             */
+            outlook_log_internal: boolean;
+            /** @default inherit_pending */
+            outlook_thread_followup: components["schemas"]["MailThreadFollowup"];
+            /** Tenant Id */
+            tenant_id?: string | null;
+        };
         /** MigrationInfo */
         MigrationInfo: {
             /** Current */
@@ -24714,6 +25695,42 @@ export interface components {
             /** Gmail Sync Enabled */
             gmail_sync_enabled?: boolean | null;
         };
+        /** MyMicrosoftConnectionRead */
+        MyMicrosoftConnectionRead: {
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            connection?: components["schemas"]["MicrosoftConnectionRead"] | null;
+            /**
+             * Onedrive Enabled
+             * @default false
+             */
+            onedrive_enabled: boolean;
+            /**
+             * Outlook Enabled
+             * @default false
+             */
+            outlook_enabled: boolean;
+        };
+        /** MyMicrosoftConnectionUpdate */
+        MyMicrosoftConnectionUpdate: {
+            /** Outlook Excluded Category */
+            outlook_excluded_category?: string | null;
+            /** Outlook Sync Enabled */
+            outlook_sync_enabled?: boolean | null;
+        };
         /**
          * NameserverPush
          * @description Ask the registrar to delegate a domain to exactly these nameservers.
@@ -24870,6 +25887,184 @@ export interface components {
             manual: boolean;
             /** Redirect Uris */
             redirect_uris: string[];
+        };
+        /** OneDriveBrowseFolder */
+        OneDriveBrowseFolder: {
+            /** Drive Id */
+            drive_id?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** OneDriveBrowseItem */
+        OneDriveBrowseItem: {
+            /** Drive Id */
+            drive_id: string;
+            /** Id */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Modified At */
+            modified_at?: string | null;
+            /** Name */
+            name: string;
+            /** Size */
+            size?: number | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** OneDriveBrowseResult */
+        OneDriveBrowseResult: {
+            folder: components["schemas"]["OneDriveBrowseFolder"];
+            /** Items */
+            items: components["schemas"]["OneDriveBrowseItem"][];
+            /** Query */
+            query?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /** OneDriveBulkProvisionResult */
+        OneDriveBulkProvisionResult: {
+            /** Queued */
+            queued: number;
+        };
+        /** OneDriveFolder */
+        OneDriveFolder: {
+            /** Drive Id */
+            drive_id: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** OneDriveFolderCreate */
+        OneDriveFolderCreate: {
+            /** Drive Id */
+            drive_id: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: string;
+        };
+        /** OneDriveFolderSet */
+        OneDriveFolderSet: {
+            /** Drive Id */
+            drive_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Item Id */
+            item_id: string;
+        };
+        /** OneDriveLinkCreate */
+        OneDriveLinkCreate: {
+            /** Drive Id */
+            drive_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Item Id */
+            item_id: string;
+        };
+        /** OneDriveLinkRead */
+        OneDriveLinkRead: {
+            /** Created By Name */
+            created_by_name?: string | null;
+            /** Drive Id */
+            drive_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /**
+             * Is Root
+             * @default false
+             */
+            is_root: boolean;
+            /** Item Id */
+            item_id: string;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
+            /** Web Url */
+            web_url: string;
+        };
+        /** OneDriveProvisionRequest */
+        OneDriveProvisionRequest: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
+        /**
+         * OneDriveStateRead
+         * @description Provisioning readiness for the panels (#444's rule).
+         */
+        OneDriveStateRead: {
+            /** Can Provision */
+            can_provision: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Job Error */
+            job_error?: string | null;
+            /** Job Status */
+            job_status?: string | null;
+            /** Viewer Connected */
+            viewer_connected: boolean;
+        };
+        /** OneDriveUploadSession */
+        OneDriveUploadSession: {
+            /** Session Uri */
+            session_uri: string;
+        };
+        /** OneDriveUploadSessionCreate */
+        OneDriveUploadSessionCreate: {
+            /** Drive Id */
+            drive_id: string;
+            /** Folder Id */
+            folder_id: string;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
         };
         /** OrgCreate */
         OrgCreate: {
@@ -25147,6 +26342,201 @@ export interface components {
             filename: string;
             /** Number */
             number: string;
+        };
+        /**
+         * OutlookCandidate
+         * @description One message the caller could log — the Gmail candidate's exact shape, so the web draws
+         *     both feeds' pickers with one component.
+         */
+        OutlookCandidate: {
+            /**
+             * Before Connection
+             * @default false
+             */
+            before_connection: boolean;
+            /**
+             * Direction
+             * @default none
+             */
+            direction: string;
+            /** From Email */
+            from_email?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Interaction Id */
+            interaction_id?: string | null;
+            /**
+             * Logged
+             * @default false
+             */
+            logged: boolean;
+            /** Message Id */
+            message_id: string;
+            /**
+             * Never Offered
+             * @default false
+             */
+            never_offered: boolean;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Recipients */
+            recipients?: string | null;
+            /** Skip Detail */
+            skip_detail?: {
+                [key: string]: string;
+            };
+            /** Skip Reason */
+            skip_reason?: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /**
+             * Suppressed
+             * @default false
+             */
+            suppressed: boolean;
+            /** Thread Id */
+            thread_id?: string | null;
+        };
+        /**
+         * OutlookImportRequest
+         * @description One named message, and where it is filed — the ``.eml`` upload's body, minus the file.
+         */
+        OutlookImportRequest: {
+            /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Ids */
+            contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @default false
+             */
+            enrich_task: boolean;
+            /** Message Id */
+            message_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Task Ids */
+            task_ids?: string[] | null;
+        };
+        /** OutlookImportResult */
+        OutlookImportResult: {
+            /**
+             * Body Fetched
+             * @default false
+             */
+            body_fetched: boolean;
+            /**
+             * Interaction Id
+             * Format: uuid
+             */
+            interaction_id: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** OutlookLookupResult */
+        OutlookLookupResult: {
+            /** Messages */
+            messages?: components["schemas"]["OutlookCandidate"][];
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
+        };
+        /** OutlookRefreshResult */
+        OutlookRefreshResult: {
+            /**
+             * Logged
+             * @default 0
+             */
+            logged: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "polled" | "cooldown" | "error";
+            sync: components["schemas"]["OutlookSyncStatus"];
+        };
+        /** OutlookSearchResult */
+        OutlookSearchResult: {
+            /** Messages */
+            messages?: components["schemas"]["OutlookCandidate"][];
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /** Thread Id */
+            thread_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Widened To Thread
+             * @default false
+             */
+            widened_to_thread: boolean;
+        };
+        /**
+         * OutlookSyncStatus
+         * @description Everything the button needs to decide whether to draw itself, and what to say.
+         */
+        OutlookSyncStatus: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /**
+             * Connection Error
+             * @default false
+             */
+            connection_error: boolean;
+            /** Last Polled At */
+            last_polled_at?: string | null;
+            /**
+             * Outlook Enabled
+             * @default false
+             */
+            outlook_enabled: boolean;
+            /**
+             * Retry After Seconds
+             * @default 0
+             */
+            retry_after_seconds: number;
+            /**
+             * Scope Granted
+             * @default false
+             */
+            scope_granted: boolean;
+            /**
+             * Sync Enabled
+             * @default false
+             */
+            sync_enabled: boolean;
         };
         /**
          * OutstandingRead
@@ -26328,6 +27718,11 @@ export interface components {
             /** Minutes */
             minutes: number;
             /**
+             * Revenue
+             * @default 0
+             */
+            revenue: number;
+            /**
              * User Id
              * Format: uuid
              */
@@ -26543,6 +27938,42 @@ export interface components {
          * @enum {string}
          */
         ProjectStatus: "active" | "on_hold" | "completed" | "archived";
+        /**
+         * ProjectTimeRow
+         * @description A project's logged time, split the way a budget page reads it, plus what the billable
+         *     part is worth at the loggers' effective rates (``revenue``'s chain, #226).
+         */
+        ProjectTimeRow: {
+            /** Approved Minutes */
+            approved_minutes: number;
+            /** Billable Amount */
+            billable_amount: number;
+            /** Billable Minutes */
+            billable_minutes: number;
+            /** Invoiced Minutes */
+            invoiced_minutes: number;
+            /** Minutes */
+            minutes: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Unrated Minutes */
+            unrated_minutes: number;
+        };
+        /**
+         * ProjectTimeStats
+         * @description Every project with time in the window, one grouped query (``/stats/projects``).
+         */
+        ProjectTimeStats: {
+            /** Date From */
+            date_from: string | null;
+            /** Date To */
+            date_to: string | null;
+            /** Rows */
+            rows: components["schemas"]["ProjectTimeRow"][];
+        };
         /** ProjectUpdate */
         ProjectUpdate: {
             /** Assignees */
@@ -28416,6 +29847,37 @@ export interface components {
             schedule?: components["schemas"]["ReportSchedule"];
         };
         /**
+         * RevenueClient
+         * @description One client's share of a year's invoiced revenue, and the same client a year earlier.
+         */
+        RevenueClient: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Excl */
+            excl: number;
+            /** Incl */
+            incl: number;
+            /** Name */
+            name: string;
+            /** Previous Excl */
+            previous_excl: number;
+        };
+        /**
+         * RevenueKind
+         * @description Revenue by what was billed (``LineKind``): hours, subscriptions, domains, products.
+         */
+        RevenueKind: {
+            /** Excl */
+            excl: number;
+            /** Kind */
+            kind: string;
+            /** Previous Excl */
+            previous_excl: number;
+        };
+        /**
          * RevenueStats
          * @description Omzet = billable minutes × the logging employee's effective rate (#226: personal
          *     rate → org default; entries whose logger has no rate contribute nothing).
@@ -29418,6 +30880,11 @@ export interface components {
          *     against Google's discovery document in ``google_search_console.client``), and ``report_url``
          *     is where the numbers are in the meantime. A state with a link rather than a tile with a
          *     number, because a plausible figure here is one nothing on any screen could contradict.
+         *
+         *     ``imported`` is the other half of the answer: the export of that report, uploaded by hand
+         *     (``POST /marketing/links/{id}/ai-visibility/import``), is what puts an ``ai_impressions``
+         *     tile beside the four synced ones — and this says when it was last done, so the tile is
+         *     never read as live.
          */
         SourceAiVisibility: {
             /**
@@ -29425,6 +30892,7 @@ export interface components {
              * @default false
              */
             available: boolean;
+            imported?: components["schemas"]["AiVisibilityImportState"] | null;
             /**
              * Report Url
              * @default
@@ -47979,7 +49447,10 @@ export interface operations {
     };
     delete_invoice_api_v1_invoicing_invoices__invoice_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Delete an issued invoice as well. Off, only a draft deletes and an issued one answers 409 (cancel it, or credit it). On, the number leaves the sequence for good; refused while payments, credit notes, a ledger booking or an open online checkout hang off it. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 invoice_id: string;
@@ -48081,7 +49552,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InvoiceCredit"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -49453,6 +50928,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoicingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get: {
+        parameters: {
+            query: {
+                year: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingRevenueStats"];
                 };
             };
             /** @description Validation Error */
@@ -51788,6 +53294,76 @@ export interface operations {
             };
         };
     };
+    import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiVisibilityImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ai_visibility_rows_api_v1_marketing_links__link_id__ai_visibility_rows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiVisibilityRows"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiVisibilityImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     overview_api_v1_marketing_overview_get: {
         parameters: {
             query?: {
@@ -52488,6 +54064,852 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainCheckReport"];
+                };
+            };
+        };
+    };
+    microsoft_calendar_list_api_v1_microsoft_calendar_calendars_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftCalendarListEntry"][];
+                };
+            };
+        };
+    };
+    microsoft_set_calendar_selection_api_v1_microsoft_calendar_calendars_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MicrosoftCalendarSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftCalendarListEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    microsoft_calendar_channels_api_v1_microsoft_calendar_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftSelectedCalendar"][];
+                };
+            };
+        };
+    };
+    microsoft_calendar_events_api_v1_microsoft_calendar_events_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftCalendarFeedItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    microsoft_calendar_webhook_api_v1_microsoft_calendar_webhook_post: {
+        parameters: {
+            query?: {
+                validationToken?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_microsoft_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftConnectionRead"][];
+                };
+            };
+        };
+    };
+    my_connection_api_v1_microsoft_connections_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyMicrosoftConnectionRead"];
+                };
+            };
+        };
+    };
+    update_my_connection_api_v1_microsoft_connections_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyMicrosoftConnectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyMicrosoftConnectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_my_connection_api_v1_microsoft_connections_me_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    microsoft_oauth_callback_api_v1_microsoft_oauth_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    oauth_connect_api_v1_microsoft_oauth_connect_get: {
+        parameters: {
+            query?: {
+                include_outlook?: boolean;
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_api_v1_microsoft_onedrive_browse_get: {
+        parameters: {
+            query?: {
+                drive_id?: string | null;
+                folder_id?: string | null;
+                q?: string | null;
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveBrowseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_item_api_v1_microsoft_onedrive_files__drive_id___item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                drive_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_folder_api_v1_microsoft_onedrive_folder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OneDriveFolderSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_folder_api_v1_microsoft_onedrive_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OneDriveFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_microsoft_onedrive_links_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                rollup?: boolean;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_link_api_v1_microsoft_onedrive_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OneDriveLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_api_v1_microsoft_onedrive_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_entity_api_v1_microsoft_onedrive_provision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OneDriveProvisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_all_api_v1_microsoft_onedrive_provision_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveBulkProvisionResult"];
+                };
+            };
+        };
+    };
+    onedrive_state_api_v1_microsoft_onedrive_state_get: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_session_api_v1_microsoft_onedrive_upload_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OneDriveUploadSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OneDriveUploadSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_outlook_message_api_v1_microsoft_outlook_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutlookImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_outlook_message_api_v1_microsoft_outlook_lookup_get: {
+        parameters: {
+            query: {
+                /** @description An Outlook on the web link, a Graph message id, or an RFC-822 Message-ID */
+                reference: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_outlook_api_v1_microsoft_outlook_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookRefreshResult"];
+                };
+            };
+        };
+    };
+    search_outlook_api_v1_microsoft_outlook_search_get: {
+        parameters: {
+            query?: {
+                participant?: string | null;
+                subject?: string | null;
+                after?: string | null;
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookSearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_outlook_status_api_v1_microsoft_outlook_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookSyncStatus"];
+                };
+            };
+        };
+    };
+    read_outlook_thread_api_v1_microsoft_outlook_threads__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookLookupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_microsoft_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_microsoft_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MicrosoftSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MicrosoftSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -59654,6 +62076,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductivityStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_time_stats_api_v1_time_stats_projects_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTimeStats"];
                 };
             };
             /** @description Validation Error */

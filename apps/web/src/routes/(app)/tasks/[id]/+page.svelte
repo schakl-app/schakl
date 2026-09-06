@@ -1578,7 +1578,7 @@
                     remainingText={burn.remainingText}
                     spentText={burn.spentText}
                     href={can(page.data.user, "time.report.read")
-                      ? `/overview?task_id=${task.id}`
+                      ? `/overview/hours?task_id=${task.id}`
                       : undefined}
                   />
                 {:else}

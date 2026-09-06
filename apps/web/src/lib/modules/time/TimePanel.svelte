@@ -155,7 +155,7 @@
   rows={recent}
   collapsed={COLLAPSED}
   total={totalEntries}
-  href={canViewReport ? `/overview?company_id=${companyId}` : undefined}
+  href={canViewReport ? `/overview/hours?company_id=${companyId}` : undefined}
   linkLabel={t("time.panel.view_all_count", { count: totalEntries })}
   alwaysLink={canViewReport}
 >
@@ -208,7 +208,7 @@
                   {#if entry.project_name}
                     {#if canViewReport && entry.project_id}
                       <a
-                        href={`/overview?company_id=${companyId}&project_id=${entry.project_id}`}
+                        href={`/overview/hours?company_id=${companyId}&project_id=${entry.project_id}`}
                         class="truncate hover:text-brand hover:underline">{entry.project_name}</a
                       >
                     {:else}
@@ -221,7 +221,7 @@
                   {#if entry.task_title}
                     {#if canViewReport && entry.task_id}
                       <a
-                        href={`/overview?company_id=${companyId}&task_id=${entry.task_id}`}
+                        href={`/overview/hours?company_id=${companyId}&task_id=${entry.task_id}`}
                         class="truncate hover:text-brand hover:underline">{entry.task_title}</a
                       >
                     {:else if entry.task_id}

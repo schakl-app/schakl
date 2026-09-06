@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { FileArchive, Pencil, Trash2, Upload } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import CountryInput from "$lib/core/ui/CountryInput.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
@@ -10,6 +11,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
+  import OriginalsDialog from "$lib/modules/invoicing/OriginalsDialog.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
@@ -52,6 +54,14 @@
     editingProduct = product;
     productOpen = true;
   }
+
+  // --- bringing the back catalogue in (docs/INVOICING.md) ---------------------- #
+  // The same wizard and zip dialog the Facturen list offers, hosted here beside the
+  // sentence that says what they are for. A migration is an admin's one-time act, and
+  // Instellingen is where an admin looks for one; on the list the two controls sat beside
+  // Kolommen with generic labels and read as absent to the person who owned the product.
+  let migrateImportOpen = $state(false);
+  let migrateOriginalsOpen = $state(false);
 
   // --- template dialog --------------------------------------------------------- #
   // The whole design is one object now, edited by `TemplateEditor` and posted as JSON. It
@@ -581,6 +591,69 @@
     </form>
   </section>
 
+  <!-- Bringing the back catalogue in (docs/INVOICING.md): the explanation, and the two doors —
+       the only two, by the owner's decision: the Facturen list keeps Export and nothing else,
+       because a migration is a one-time act and not a way of working the list. After Nummering
+       on purpose — the last step of a migration is moving the sequence past the highest number
+       that came in, and that control is the one directly above. -->
+  <section id="migrate" class={sectionClass} data-testid="invoice-migrate">
+    <h2 class="mb-1 text-base font-semibold text-text">
+      {t("settings.invoicing.migrate_heading")}
+    </h2>
+    <p class="mb-4 text-sm text-text-muted">{t("settings.invoicing.migrate_hint")}</p>
+    <ol class="space-y-4 text-sm">
+      <li class="flex flex-wrap items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-medium text-text">{t("settings.invoicing.migrate_step_sheet")}</p>
+          <p class="text-text-muted">{t("settings.invoicing.migrate_step_sheet_hint")}</p>
+        </div>
+        {#if data.canImportInvoices}
+          <button
+            type="button"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+            onclick={() => (migrateImportOpen = true)}
+          >
+            <Upload class="h-4 w-4" />
+            {t("settings.invoicing.migrate_import")}
+          </button>
+        {/if}
+      </li>
+      <li class="flex flex-wrap items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-medium text-text">{t("settings.invoicing.migrate_step_pdfs")}</p>
+          <p class="text-text-muted">{t("settings.invoicing.migrate_step_pdfs_hint")}</p>
+        </div>
+        {#if data.canWriteInvoices}
+          <button
+            type="button"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+            onclick={() => (migrateOriginalsOpen = true)}
+          >
+            <FileArchive class="h-4 w-4" />
+            {t("settings.invoicing.migrate_originals")}
+          </button>
+        {/if}
+      </li>
+      <li>
+        <p class="font-medium text-text">{t("settings.invoicing.migrate_step_numbering")}</p>
+        <p class="text-text-muted">{t("settings.invoicing.migrate_step_numbering_hint")}</p>
+      </li>
+    </ol>
+    {#if !data.canImportInvoices}
+      <!-- A hidden control with no sentence is the fault this section exists to fix: name the
+           key an admin has to grant rather than leaving the step without its button. -->
+      <p class="mt-3 text-xs text-amber-700 dark:text-amber-400">
+        {t("settings.invoicing.migrate_no_bulk")}
+      </p>
+    {/if}
+    <p class="mt-3 text-xs text-text-muted">
+      {t("settings.invoicing.migrate_list_hint")}
+      <a href="/invoices" class="text-brand underline hover:opacity-90"
+        >{t("settings.invoicing.migrate_list_link")}</a
+      >
+    </p>
+  </section>
+
   <!-- Automatic invoicing: how far the recurring-billing cron goes on its own. Its own
        section and its own action, so saving it never touches the reminder schedule. -->
   <section class={sectionClass}>
@@ -987,4 +1060,20 @@
   message={t("settings.invoicing.delete_template_confirm")}
   action="?/deleteTemplate"
   fields={{ id: deleteTemplateId }}
+/>
+
+<ImportWizard
+  bind:open={migrateImportOpen}
+  entity="invoice"
+  locale={data.locale}
+  report={form?.impex ?? null}
+  inspect={form?.impexInspect ?? null}
+  columns={form?.impexColumns ?? null}
+  error={form?.impexError ?? null}
+/>
+
+<OriginalsDialog
+  bind:open={migrateOriginalsOpen}
+  report={form?.originals ?? null}
+  error={form?.originalsError ?? null}
 />

@@ -30,9 +30,9 @@ const ROUTES = join(here, "../../src/routes/(app)");
  * detected, because "has no filters" and "forgot the bar" look identical from the outside.
  */
 const NOT_A_FILTERED_LIST = new Set([
-  "overview/+page.svelte",
+  "overview/hours/+page.svelte",
   "overview/marketing/+page.svelte",
-  "overview/productivity/+page.svelte",
+  "overview/employees/+page.svelte",
   "overview/revenue/+page.svelte",
   "leave/+page.svelte",
   "leave/team/+page.svelte",

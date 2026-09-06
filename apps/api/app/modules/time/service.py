@@ -782,28 +782,45 @@ class TimeService:
         self.ctx.require("time.report.read")
         start = datetime.combine(date_from, time.min, tzinfo=UTC)
         end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
-        stmt = (
-            select(
-                TimeEntry.user_id,
-                func.coalesce(func.sum(TimeEntry.minutes), 0),
-                func.coalesce(
-                    func.sum(TimeEntry.minutes).filter(TimeEntry.billable.is_(True)), 0
+        # One grouped statement, the rate chain joined by table name (no import of the leave
+        # module) exactly as ``revenue`` and ``team_summary`` join it — so the value beside a
+        # colleague's hours is the same euro their hours contribute to the year's omzet.
+        rows = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT te.user_id,
+                           COALESCE(SUM(te.minutes), 0) AS minutes,
+                           COALESCE(SUM(te.minutes) FILTER (WHERE te.billable), 0)
+                               AS billable_minutes,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE te.approved_at IS NOT NULL
+                           ), 0) AS approved_minutes,
+                           COUNT(*) AS entry_count,
+                           COUNT(DISTINCT CAST(te.started_at AS date)) AS active_days,
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ) FILTER (
+                               WHERE te.billable
+                                 AND COALESCE(
+                                     lp.hourly_rate, ls.default_hourly_rate
+                                 ) IS NOT NULL
+                           ), 0) AS revenue
+                    FROM time_entries te
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.ended_at IS NOT NULL
+                      AND te.started_at >= :start
+                      AND te.started_at < :end
+                    GROUP BY te.user_id
+                    """
                 ),
-                func.coalesce(
-                    func.sum(TimeEntry.minutes).filter(TimeEntry.approved_at.is_not(None)), 0
-                ),
-                func.count(),
-                func.count(func.distinct(func.date(TimeEntry.started_at))),
+                {"org_id": str(self.ctx.org.id), "start": start, "end": end},
             )
-            .where(
-                TimeEntry.org_id == self.ctx.org.id,
-                TimeEntry.ended_at.is_not(None),
-                TimeEntry.started_at >= start,
-                TimeEntry.started_at < end,
-            )
-            .group_by(TimeEntry.user_id)
-        )
-        rows = (await self.ctx.session.execute(stmt)).all()
+        ).all()
         result = [
             {
                 "user_id": r[0],
@@ -812,11 +829,86 @@ class TimeService:
                 "approved_minutes": int(r[3]),
                 "entry_count": int(r[4]),
                 "active_days": int(r[5]),
+                "revenue": round(float(r[6]), 2),
             }
             for r in rows
         ]
         result.sort(key=lambda r: r["minutes"], reverse=True)  # type: ignore[arg-type, return-value]
         return result
+
+    async def project_stats(
+        self, *, date_from: date | None = None, date_to: date | None = None
+    ) -> list[dict[str, object]]:
+        """Per-project logged/billable/approved/invoiced minutes and the billable part's worth.
+
+        One grouped statement whatever the number of projects — the projects report joins
+        this onto the project list's own budget figures rather than asking ``/cost`` per row
+        (docs/PERFORMANCE.md). Entries logged straight to a client, with no project, have no
+        budget to read against and are left out. Prices the billable minutes at the logger's
+        rate, the chain ``revenue`` uses; ``/cost`` (all minutes, salary-derived) keeps its
+        stricter gate, and this deliberately exposes only what ``revenue`` already does.
+        """
+        self.ctx.require("time.report.read")
+        conditions = ""
+        params: dict[str, object] = {"org_id": str(self.ctx.org.id)}
+        if date_from is not None:
+            conditions += " AND te.started_at >= :start"
+            params["start"] = datetime.combine(date_from, time.min, tzinfo=UTC)
+        if date_to is not None:
+            conditions += " AND te.started_at < :end"
+            params["end"] = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+        rows = (
+            await self.ctx.session.execute(
+                sql_text(
+                    f"""
+                    SELECT te.project_id,
+                           COALESCE(SUM(te.minutes), 0) AS minutes,
+                           COALESCE(SUM(te.minutes) FILTER (WHERE te.billable), 0)
+                               AS billable_minutes,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE te.approved_at IS NOT NULL
+                           ), 0) AS approved_minutes,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE te.invoiced_at IS NOT NULL
+                           ), 0) AS invoiced_minutes,
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ) FILTER (
+                               WHERE te.billable
+                                 AND COALESCE(
+                                     lp.hourly_rate, ls.default_hourly_rate
+                                 ) IS NOT NULL
+                           ), 0) AS billable_amount,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE te.billable
+                                 AND COALESCE(lp.hourly_rate, ls.default_hourly_rate) IS NULL
+                           ), 0) AS unrated_minutes
+                    FROM time_entries te
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.ended_at IS NOT NULL
+                      AND te.project_id IS NOT NULL{conditions}
+                    GROUP BY te.project_id
+                    """  # noqa: S608 - splices fixed clauses over bound parameters only
+                ),
+                params,
+            )
+        ).all()
+        return [
+            {
+                "project_id": r[0],
+                "minutes": int(r[1]),
+                "billable_minutes": int(r[2]),
+                "approved_minutes": int(r[3]),
+                "invoiced_minutes": int(r[4]),
+                "billable_amount": round(float(r[5]), 2),
+                "unrated_minutes": int(r[6]),
+            }
+            for r in rows
+        ]
 
     async def team_summary(self, *, date_from: date, date_to: date) -> dict[str, object]:
         """The manager dashboard's bounded hours/revenue aggregate in one database query.

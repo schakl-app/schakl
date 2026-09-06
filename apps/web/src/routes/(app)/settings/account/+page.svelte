@@ -9,6 +9,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import { filedrop } from "$lib/core/ui/filedrop";
   import GoogleAccountCard from "$lib/integrations/google/GoogleAccountCard.svelte";
+  import MicrosoftAccountCard from "$lib/integrations/microsoft/MicrosoftAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
   import { navItemsFor, resolveLabel, type NavLabelMap } from "$lib/core/registry";
@@ -637,6 +638,15 @@
       data={data.google}
       status={data.googleStatus}
       calendars={data.googleCalendars}
+    />
+  {/if}
+
+  <!-- Microsoft koppelen (docs/MICROSOFT.md): the same per-user grant, one vendor over. -->
+  {#if data.microsoft}
+    <MicrosoftAccountCard
+      data={data.microsoft}
+      status={data.microsoftStatus}
+      calendars={data.microsoftCalendars}
     />
   {/if}
 

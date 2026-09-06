@@ -44,7 +44,7 @@ function taskIds(form: FormData): string[] | null {
 }
 
 /** The link fields plus both rosters, as every write path sends them. */
-function linkBody(form: FormData): Record<string, string | string[] | null> {
+export function linkBody(form: FormData): Record<string, string | string[] | null> {
   const roster = contactIds(form);
   const tasks = taskIds(form);
   return {
@@ -477,16 +477,15 @@ export const interactionActions = {
     if (!id) return fail(400, { error: "errors.required" });
     const body = linkBody(form);
     const api = apiFor(event);
-    const { error } =
-      String(form.get("source") ?? "") === "gmail"
-        ? await api.POST("/api/v1/interactions/{interaction_id}/remap", {
-            params: { path: { interaction_id: id } },
-            body,
-          })
-        : await api.PATCH("/api/v1/interactions/{interaction_id}", {
-            params: { path: { interaction_id: id } },
-            body,
-          });
+    const { error } = ["gmail", "outlook"].includes(String(form.get("source") ?? ""))
+      ? await api.POST("/api/v1/interactions/{interaction_id}/remap", {
+          params: { path: { interaction_id: id } },
+          body,
+        })
+      : await api.PATCH("/api/v1/interactions/{interaction_id}", {
+          params: { path: { interaction_id: id } },
+          body,
+        });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };
   },

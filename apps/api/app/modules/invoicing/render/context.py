@@ -17,6 +17,7 @@ of who opened it. Same rule the document e-mails follow.
 from __future__ import annotations
 
 import base64
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -222,9 +223,14 @@ def _address_lines(party: dict[str, Any], *, skip_country: str | None = None) ->
 def _sections(lines: list[Any], t: Any) -> list[dict]:
     """Lines grouped into the four kinds, each keeping its own ``position`` order.
 
-    A document whose lines are all one kind gets **no** headers: a lone "UREN" band above a
-    table of hours, subtotalling to the subtotal directly beneath it, is noise. Headers earn
-    their place exactly when the reader has to tell two kinds apart.
+    Every section is **headed**, a document of one kind included (owner decision, reversing
+    the earlier "headers earn their place only when two kinds must be told apart"): an
+    invoice that carries nothing but a hosting agreement should still say *Abonnementen* over
+    it, because the band is what tells a client what kind of thing they are paying for, and
+    a reader comparing two months' invoices wants the same shape on both whether or not one
+    of them also billed hours. What a lone section does **not** get is a subtotal of its own
+    (``subtotalled``): "Subtotaal abonnementen" directly above an identical "Subtotaal" is
+    the same number twice, and that half of the old rule still holds.
     """
     buckets: dict[str, list[Any]] = {}
     for line in lines:
@@ -234,10 +240,13 @@ def _sections(lines: list[Any], t: Any) -> list[dict]:
             kind = LineKind.PRODUCT.value
         buckets.setdefault(kind, []).append(line)
     ordered = [kind for kind in SECTION_ORDER if kind in buckets]
-    if len(ordered) <= 1:
-        return [{"kind": "", "label": "", "lines": lines}]
     return [
-        {"kind": kind, "label": t(f"invoicing.line.kind.{kind}"), "lines": buckets[kind]}
+        {
+            "kind": kind,
+            "label": t(f"invoicing.line.kind.{kind}"),
+            "lines": buckets[kind],
+            "subtotalled": len(ordered) > 1,
+        }
         for kind in ordered
     ]
 
@@ -320,8 +329,15 @@ def build_context(
     tax_groups: list[Any] | None = None,
     pay_url: str | None = None,
     payable_online: bool = False,
+    custom_fields: Sequence[tuple[str, str]] = (),
 ) -> dict[str, Any]:
     """Everything a design needs, resolved. See the module docstring for the contract.
+
+    ``custom_fields`` are the tenant's own fields on this document, already resolved to
+    ``(label, value)`` text by the service (``core.customfields.format``): which of them print
+    is a property of the definition, not of the template, so they join the meta block after
+    the catalog's own rows rather than being toggled in the layout. Text only, because the
+    renderer is sandboxed and a definition row is not something a tenant's design may reach.
 
     ``pay_url`` is where this document lives in the client portal (#268), resolved by the
     *service* — this module may not know a host (Golden Rule 4). Absent, the QR block simply
@@ -548,6 +564,8 @@ def build_context(
         {
             "kind": section["kind"],
             "label": section["label"],
+            #: Whether this section prints its own subtotal row — only beside other sections.
+            "subtotalled": section["subtotalled"],
             "subtotal": money(
                 sum((Decimal(str(x.amount or 0)) for x in section["lines"]), Decimal(0))
             ),
@@ -700,7 +718,13 @@ def build_context(
         "seller": _entries(layout, "seller", seller_values, locale),
         "seller_raw": {k: (v or "") for k, v in seller.items() if isinstance(v, str)},
         "customer": _entries(layout, "bill_to", customer_values, locale),
-        "meta": _entries(layout, "meta", meta_values, locale),
+        "meta": _entries(layout, "meta", meta_values, locale)
+        + [
+            {"key": f"custom:{index}", "label": label, "relabelled": False,
+             "value": value, "note": ""}
+            for index, (label, value) in enumerate(custom_fields)
+            if label and value
+        ],
         "payment_box": _entries(layout, "payment_box", payment_box_values, locale)
         if show_payment_box
         else [],
@@ -732,7 +756,10 @@ def build_context(
         ),
         "columns": columns,
         "sections": sections,
-        "grouped": len(sections) > 1,
+        # Headed whenever there is anything to head. Kept as its own key because a tenant's
+        # own design (``engine.render_custom``) reads it, and a stored template written against
+        # the old "only when more than one" meaning still resolves.
+        "grouped": len(sections) > 0,
         "totals": totals_rows,
         "tax_summary": tax_rows,
         "tax_summary_labels": {

@@ -37,7 +37,7 @@
   import ContactChips from "./ContactChips.svelte";
   import TaskChips from "./TaskChips.svelte";
   import { splitLinkOptions } from "./lookups";
-  import type { InteractionItem } from "./format";
+  import { isMailboxRow, type InteractionItem } from "./format";
   import { ContactRoster, initialContacts } from "./roster.svelte";
   import { initialTasks, missingTaskOptions } from "./taskroster";
 
@@ -61,9 +61,9 @@
     threadPendingCount?: number;
   } = $props();
 
-  // Assigning-while-approving only applies to a pending gmail row the owner is reviewing.
+  // Assigning-while-approving only applies to a pending mailbox row the owner is reviewing.
   const canApprove = $derived(
-    Boolean(approveAction) && interaction.status === "pending" && interaction.source === "gmail",
+    Boolean(approveAction) && interaction.status === "pending" && isMailboxRow(interaction),
   );
 
   interface Option {

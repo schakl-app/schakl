@@ -54,6 +54,14 @@ function parseOptions(raw: FormDataEntryValue | null) {
     });
 }
 
+function parseConfig(raw: FormDataEntryValue | null): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
@@ -74,7 +82,8 @@ export const actions: Actions = {
         label_i18n: { nl: label_nl || label_en, en: label_en || label_nl },
         required: form.get("required") !== null,
         options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : [],
-        config_json: {},
+        // Presence is the question (docs/UX.md): an unticked box posts nothing at all.
+        config_json: { print_on_document: form.get("print_on_document") !== null },
         position: Number(form.get("position") ?? 0) || 0,
         active: true,
       },
@@ -93,6 +102,9 @@ export const actions: Actions = {
     const key = String(form.get("key") ?? "").trim();
     const label_nl = String(form.get("label_nl") ?? "").trim();
     const label_en = String(form.get("label_en") ?? "").trim();
+    // The definition's other rules ride along untouched: `config_json` is one JSONB column
+    // and a PATCH of it replaces the whole object.
+    const config = parseConfig(form.get("config_json"));
 
     const { error } = await apiFor(event).PATCH(
       "/api/v1/custom-fields/definitions/{definition_id}",
@@ -102,6 +114,7 @@ export const actions: Actions = {
           label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
           required: form.get("required") !== null,
           options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : undefined,
+          config_json: { ...config, print_on_document: form.get("print_on_document") !== null },
           position: Number(form.get("position") ?? 0) || 0,
         },
       },

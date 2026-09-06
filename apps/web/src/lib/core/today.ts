@@ -73,3 +73,15 @@ export function orgToday(now: Date = new Date()): string {
 export function orgYear(now: Date = new Date()): number {
   return Number(orgToday(now).slice(0, 4));
 }
+
+/**
+ * `?year=` from a report's URL when it names a plausible year, else the tenant's own.
+ *
+ * A year arrives from a query string anyone can edit and an old bookmark can carry, so an
+ * unparseable one falls back rather than raising (§9's rule for `?period=`): a stale link opens
+ * the current year instead of 422-ing a report.
+ */
+export function readYear(url: URL, now: Date = new Date()): number {
+  const raw = Number(url.searchParams.get("year"));
+  return Number.isInteger(raw) && raw >= 2000 && raw <= 2100 ? raw : orgYear(now);
+}

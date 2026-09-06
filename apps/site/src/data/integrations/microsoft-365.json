@@ -1,0 +1,183 @@
+{
+  "slug": "microsoft-365",
+  "name": "Microsoft 365",
+  "order": 45,
+  "category": "microsoft",
+  "status": "live",
+  "lucide": "cloud",
+  "mark": {
+    "monogram": "M",
+    "color": "#0078D4"
+  },
+  "tagline": {
+    "nl": "Outlook-agenda, OneDrive en Outlook-mail bij de klant",
+    "en": "Outlook calendar, OneDrive and Outlook mail on the client"
+  },
+  "summary": {
+    "nl": "Je registreert je eigen app in Microsoft Entra en elke medewerker koppelt zichzelf. Goedgekeurd verlof en ingeplande taken gaan naar de eigen Outlook-agenda, het OneDrive-paneel opent de klantmap in je SharePoint-bibliotheek of OneDrive, en e-mail met een bekende contactpersoon komt op de klanttijdlijn zodra de eigenaar van de mailbox hem goedkeurt. Dezelfde drie oppervlakken als Google Workspace, met dezelfde regels, voor een bureau dat in Microsoft 365 werkt.",
+    "en": "You register your own app in Microsoft Entra and each employee connects their own account. Approved leave and planned tasks push into their own Outlook calendar, the OneDrive panel opens the client's folder in your SharePoint library or OneDrive, and mail with a known contact lands on the client timeline once the mailbox owner approves it. The same three surfaces as Google Workspace, under the same rules, for an agency that lives in Microsoft 365."
+  },
+  "highlights": {
+    "nl": [
+      "Agenda: verlof en taken één kant op naar Outlook, Outlook-afspraken gelezen uit een cache",
+      "OneDrive: bladeren en uploaden als jijzelf, een klantmap als kopie van je eigen sjabloonmap",
+      "Outlook-mail: alleen mail bij een bekende contactpersoon, metadata eerst, de tekst pas na goedkeuring"
+    ],
+    "en": [
+      "Calendar: leave and tasks push one way to Outlook, Outlook events read from a cache",
+      "OneDrive: browse and upload as yourself, a client folder copied from your own template folder",
+      "Outlook mail: only mail with a known contact, metadata first, the body only after approval"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Microsoft 365 voor de organisatie, Instellingen → Mijn account (kaart Microsoft-account) voor je eigen koppeling, plus het paneel OneDrive op een klant, project of taak en de wachtrij Interacties → E-mails te beoordelen.",
+    "en": "Instellingen → Microsoft 365 (Settings → Microsoft 365) for the organisation, Instellingen → Mijn account (Settings → My account, card Microsoft-account) for your own connection, plus the OneDrive panel on a client, project or task and the queue Interacties → E-mails te beoordelen (Interactions → Emails to review)."
+  },
+  "docs": "/docs/integrations/microsoft-365/",
+  "page": {
+    "lead": {
+      "nl": "Microsoft 365 koppel je met je eigen app-registratie in Microsoft Entra: per organisatie ingesteld, per medewerker gekoppeld. Inloggen met Microsoft en Microsoft koppelen zijn twee losse toestemmingen, dus wie via Microsoft inlogt heeft daarmee nog geen agenda, OneDrive of mailbox gekoppeld.",
+      "en": "You connect Microsoft 365 with your own app registration in Microsoft Entra: configured per organisation, connected per employee. Signing in with Microsoft and connecting Microsoft are two separate grants — a login through Microsoft does not hand the app your calendar, OneDrive or mailbox."
+    },
+    "requirements": {
+      "nl": [
+        "Een Microsoft 365-tenant en het recht om er een app-registratie in aan te maken",
+        "Een licentiesleutel die de module Microsoft 365 dekt (Instellingen → Licentie)",
+        "Het recht microsoft.settings.manage voor de instelpagina; standaard alleen beheerders",
+        "Voor de Outlook-tijdlijn ook de module Contactmomenten, een aparte licentie",
+        "Zit er een toegangsproxy voor je host (bijvoorbeeld Cloudflare Access), dan een bypass voor <code>/api/v1/microsoft/calendar/webhook</code>. Die meldingen komen van de servers van Microsoft en niet uit een browser, dus zonder bypass worden ze stilzwijgend weggestuurd."
+      ],
+      "en": [
+        "A Microsoft 365 tenant and the right to create an app registration in it",
+        "A licence key covering the Microsoft 365 module (Instellingen → Licentie)",
+        "The microsoft.settings.manage permission for the settings page; admin only by default",
+        "For the Outlook timeline, the Contactmomenten (interactions) module as well, a separate licence",
+        "If an access proxy sits in front of your host (Cloudflare Access, for instance), a bypass for <code>/api/v1/microsoft/calendar/webhook</code>. Those notifications come from Microsoft's servers rather than a browser, so without one they are silently turned away."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <strong>Microsoft 365</strong> aan onder <strong>Instellingen → Integraties</strong>. Zonder dekkende licentie gaat de module na de respijtperiode op alleen-lezen en houden de eigen achtergrondtaken op.",
+        "Maak in het Microsoft Entra-beheercentrum een <strong>app-registratie</strong> voor je bureau. Kies bij ondersteunde accounttypen bij voorkeur alleen je eigen organisatie, en voeg onder <strong>API permissions</strong> de gedelegeerde rechten <code>User.Read</code>, <code>offline_access</code>, <code>Calendars.ReadWrite</code>, <code>Files.ReadWrite.All</code> en <code>Mail.Read</code> toe.",
+        "Open <strong>Instellingen → Microsoft 365</strong>. Het bovenste veld is de <strong>Redirect-URI</strong>; die wordt uit de hostname van je omgeving afgeleid en typ je nooit zelf. Kopieer hem met de knop <strong>Kopiëren</strong> en plak hem bij <strong>Authentication → Web → Redirect URIs</strong> op je app-registratie.",
+        "Vul op dezelfde pagina <strong>Toepassings-id</strong>, <strong>Clientgeheim</strong> (versleuteld opgeslagen; noteer de einddatum, een Entra-geheim verloopt) en eventueel de <strong>Directory (tenant)</strong> in, en vink onder <strong>Onderdelen</strong> aan wat je medewerkers gevraagd wordt te geven: <strong>Agenda</strong>, <strong>OneDrive</strong>, <strong>Outlook-mail</strong>.",
+        "Vul onder <strong>OneDrive-indeling</strong> de <strong>Drive-ID</strong> (een SharePoint-documentbibliotheek of een OneDrive), de <strong>Bovenliggende map voor klantmappen (ID)</strong> en eventueel de <strong>Sjabloonmap (ID)</strong>, kies een <strong>Automatiseringsaccount</strong> en vink <strong>Maak automatisch een map voor elke nieuwe klant</strong> aan. Kies onder <strong>Outlook-beleid</strong> of nieuwe gekoppelde e-mails eerst worden goedgekeurd of direct worden vastgelegd.",
+        "Laat daarna elke medewerker zichzelf koppelen: <strong>Instellingen → Mijn account</strong>, kaart <strong>Microsoft-account</strong>, knop <strong>Microsoft koppelen</strong>. Staat Outlook-mail aan, dan zit daar het vinkje <strong>Koppel ook mijn mailbox (Outlook)</strong> bij."
+      ],
+      "en": [
+        "Switch <strong>Microsoft 365</strong> on under <strong>Instellingen → Integraties</strong> (Settings → Integrations). Without a covering licence the module goes read-only after the grace period and its own background jobs stand down.",
+        "In the Microsoft Entra admin center, create an <strong>app registration</strong> for your agency. Under supported account types prefer your own organisation only, and under <strong>API permissions</strong> add the delegated permissions <code>User.Read</code>, <code>offline_access</code>, <code>Calendars.ReadWrite</code>, <code>Files.ReadWrite.All</code> and <code>Mail.Read</code>.",
+        "Open <strong>Instellingen → Microsoft 365</strong> (Settings → Microsoft 365). The first field is the <strong>Redirect-URI</strong>, derived from your environment's own hostname and never typed by hand. Copy it with the <strong>Kopiëren</strong> button and paste it under <strong>Authentication → Web → Redirect URIs</strong> on your app registration.",
+        "On the same page, fill in the <strong>Application (client) ID</strong>, the <strong>Client secret</strong> (stored encrypted; note its end date, an Entra secret expires) and optionally the <strong>Directory (tenant)</strong>, and under <strong>Onderdelen</strong> tick the surfaces employees will be asked to grant: <strong>Agenda</strong>, <strong>OneDrive</strong>, <strong>Outlook-mail</strong>.",
+        "Under <strong>OneDrive-indeling</strong> fill in the <strong>Drive-ID</strong> (a SharePoint document library or a OneDrive), the <strong>Bovenliggende map voor klantmappen (ID)</strong> and optionally the <strong>Sjabloonmap (ID)</strong>, pick an <strong>Automatiseringsaccount</strong> and tick <strong>Maak automatisch een map voor elke nieuwe klant</strong>. Under <strong>Outlook-beleid</strong>, decide whether newly matched emails wait for approval or are captured straight away.",
+        "Then have every employee connect themselves: <strong>Instellingen → Mijn account</strong>, card <strong>Microsoft-account</strong>, button <strong>Microsoft koppelen</strong>. With Outlook mail enabled, the checkbox <strong>Koppel ook mijn mailbox (Outlook)</strong> sits alongside it."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Inloggen met Microsoft is niet hetzelfde als Microsoft koppelen",
+          "en": "Signing in with Microsoft is not connecting Microsoft"
+        },
+        "body": {
+          "nl": "Single sign-on met Microsoft (Instellingen → Single sign-on) en de koppeling met agenda, OneDrive en mailbox zijn twee losse toestemmingen met een eigen levensduur. Ook een bureau dat iedereen via Microsoft laat inloggen, moet elke medewerker apart op <strong>Microsoft koppelen</strong> laten drukken. Andersom geldt hetzelfde: je inlog krijgt nooit stilletjes het recht om je mail te lezen. De koppeling vraagt bewust geen inlogrechten: wie je bent leest schakl. na de toestemming bij Microsoft Graph zelf op, met het token dat het toch al bewaart.",
+          "en": "Single sign-on with Microsoft (Instellingen → Single sign-on) and the connection to the calendar, OneDrive and the mailbox are two separate grants with separate lifetimes. Even an agency that has everyone sign in through Microsoft still needs each employee to press <strong>Microsoft koppelen</strong> for themselves. It works the other way round too: your login never quietly gains the right to read your mail. The connection deliberately asks for no sign-in claims: who you are, schakl. reads from Microsoft Graph after consent, with the token it stores anyway."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Agenda en OneDrive in dagelijks gebruik",
+          "en": "Calendar and OneDrive, day to day"
+        },
+        "body": {
+          "nl": "De Agenda krijgt er een bron <strong>Outlook-agenda</strong> bij met je eigen afspraken, gelezen uit de cache van schakl. en nooit live bij Microsoft; extra agenda's vink je aan op je eigen accountkaart en krijgen elk hun eigen kleur. Andersom worden goedgekeurd verlof en taken die op iemands agenda zijn ingepland naar diens eigen Outlook-agenda geschreven. Het paneel <strong>OneDrive</strong> verschijnt op klant, project en taak; het bladert live als de kijkende gebruiker in de documentbibliotheek of OneDrive die je hebt ingesteld, dus de rechten in Microsoft 365 zelf blijven bepalend.",
+          "en": "The Agenda gains a source <strong>Outlook-agenda</strong> carrying your own events, read from schakl.'s cache and never live from Microsoft; extra calendars are ticked on your own account card and each get their own colour. In the other direction, approved leave and tasks planned onto someone's calendar are written into that person's own Outlook calendar. The <strong>OneDrive</strong> panel appears on clients, projects and tasks; it browses live as the viewing user inside the document library or OneDrive you configured, so Microsoft 365's own permissions stay authoritative."
+        },
+        "bullets": {
+          "nl": [
+            "Nieuwe map aanmaken, bestanden rechtstreeks naar OneDrive uploaden, en een bestaand bestand aan een record koppelen",
+            "Ontkoppelen haalt alleen de koppeling weg; Verwijderen uit OneDrive zet het bestand in de prullenbak van OneDrive of SharePoint",
+            "Een klantmap uit een sjabloon is één kopie van de sjabloonmap, inclusief submappen"
+          ],
+          "en": [
+            "Create a subfolder, upload files straight to OneDrive, and link an existing file to a record",
+            "Unlinking removes only the link; Verwijderen uit OneDrive moves the file to the OneDrive or SharePoint recycle bin",
+            "A client folder made from a template is one copy of the template folder, subfolders included"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Outlook-mail: eerst metadata, dan pas de tekst",
+          "en": "Outlook mail: metadata first, the body later"
+        },
+        "body": {
+          "nl": "Elke vijf minuten leest de worker de aangemelde mailboxen verder vanaf het moment waar hij gebleven was, haalt alleen metadata op, en legt berichten vast waarvan een deelnemer een bekende contactpersoon buiten het bureau is. Ze komen als contactmoment in de wachtrij <strong>Interacties → E-mails te beoordelen</strong>, waar de eigenaar van de mailbox ze goedkeurt, afwijst of naar de juiste klant of het juiste project verplaatst. Pas na goedkeuring wordt de inhoud bij Microsoft opgehaald. Ook een bericht dat een regel meteen naar een submap verplaatste wordt gezien: de worker leest de hele mailbox, niet alleen het Postvak IN.",
+          "en": "Every five minutes the worker reads each opted-in mailbox forward from where it left off, fetches metadata only, and logs messages whose participants match a known contact outside the agency. They arrive as pending touchpoints in the queue <strong>Interacties → E-mails te beoordelen</strong>, where the mailbox owner approves, rejects or remaps them to the right client or project. Only after approval is the body fetched from Microsoft. A message an inbox rule moved to a subfolder on arrival is seen too: the worker reads the whole mailbox, not just the Inbox."
+        },
+        "bullets": {
+          "nl": [
+            "Per persoon aan te zetten met Mijn e-mail vastleggen in het CRM, plus een Outlook-categorie die nooit wordt vastgelegd",
+            "Een bericht dat de worker oversloeg haal je alsnog op met een Outlook-link, een bericht-ID of de Message-ID, of zoek je op in je eigen mailbox",
+            "Een remote afbeelding in een bericht wordt weggelaten: een trackingpixel laden zou de afzender vertellen dat je de mail opende"
+          ],
+          "en": [
+            "Switched on per person with Mijn e-mail vastleggen in het CRM, plus an Outlook category that is never logged",
+            "A message the worker skipped can be fetched afterwards by an Outlook link, a message ID or the Message-ID, or found by searching your own mailbox",
+            "A remote image in a message is dropped: loading a tracking pixel would tell the sender the mail was opened"
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "microsoft.settings.manage",
+        "nl": "De pagina Instellingen → Microsoft 365 beheren en mappen voor bestaande klanten aanmaken. Standaard alleen beheerders.",
+        "en": "Manage the Instellingen → Microsoft 365 page and run the folder backfill for existing clients. Admin only by default."
+      },
+      {
+        "key": "microsoft.connection.manage",
+        "nl": "Het eigen Microsoft-account koppelen en ontkoppelen. Standaard beheerder en medewerker.",
+        "en": "Connect and disconnect your own Microsoft account. Admin and member by default."
+      },
+      {
+        "key": "microsoft.calendar.read",
+        "nl": "De bron Outlook-agenda in de Agenda zien.",
+        "en": "See the Outlook-agenda source inside the Agenda."
+      },
+      {
+        "key": "microsoft.onedrive.read",
+        "nl": "Door de OneDrive-map van een klant bladeren en gekoppelde bestanden zien.",
+        "en": "Browse a client's OneDrive folder and see the linked files."
+      },
+      {
+        "key": "microsoft.onedrive.write",
+        "nl": "Bestanden koppelen en ontkoppelen, uploaden, en mappen aanmaken.",
+        "en": "Link and unlink files, upload, and create folders."
+      },
+      {
+        "key": "microsoft.onedrive.manage",
+        "nl": "De OneDrive-map van een record wijzigen of ontkoppelen. Standaard alleen beheerders.",
+        "en": "Change or detach a record's OneDrive folder. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Alleen koppeling per gebruiker: elke medewerker koppelt zichzelf. Een toepassingsrecht dat alle mailboxen van de tenant leest zit er bewust niet in.",
+        "Outlook-mail wordt alleen gelezen. schakl. verstuurt nooit mail via Outlook; uitgaande post gaat via de transportinstelling onder Instellingen → E-mail.",
+        "De agendasynchronisatie schrijft één kant op. Outlook-afspraken worden alleen gelezen, en de synchronisatie kijkt tot een jaar vooruit; wat daarna staat komt mee bij de volgende herstart van de cache.",
+        "De eerste uitlezing van een mailbox importeert niets en legt alleen een startpunt vast. Bestaande mail wordt niet met terugwerkende kracht opgehaald.",
+        "Microsoft biedt geen manier om de toegang vanuit schakl. in te trekken: ontkoppelen verwijdert de bewaarde tokens, en de toegang van de app verwijder je zelf op myapps.microsoft.com.",
+        "OneDrive-koppelingen zijn verwijzingen, geen kopieën, en de mappen stel je in met een geplakte drive- en map-ID omdat er nog geen mapkiezer is."
+      ],
+      "en": [
+        "Per-user connections only: every employee connects themselves. An application permission that reads every mailbox in the tenant is deliberately not offered.",
+        "Outlook mail is read-only. schakl. never sends mail through Outlook; outgoing post uses the transport under Instellingen → E-mail.",
+        "Calendar sync writes one way. Outlook events are only read, and the sync looks a year ahead; anything beyond that arrives at the cache's next restart.",
+        "The first poll of a mailbox imports nothing and only records a starting point. Existing mail is never fetched retroactively.",
+        "Microsoft offers no way to revoke the access from inside schakl.: disconnecting deletes the stored tokens, and you remove the app's access yourself at myapps.microsoft.com.",
+        "OneDrive links are references, not copies, and folders are configured by pasting a drive and folder ID because there is no folder picker yet."
+      ]
+    }
+  }
+}

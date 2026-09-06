@@ -20,6 +20,7 @@ from app.core.activity import ActivityService
 from app.core.events import EmitContext
 from app.modules.interactions.models import (
     HOST_ENTITY,
+    MAILBOX_SOURCES,
     Interaction,
     InteractionContact,
     InteractionKind,
@@ -50,8 +51,12 @@ async def record_email(
     pending: bool,
     mappings: dict[str, Any],
     reviewer_user_ids: Iterable[uuid.UUID] = (),
+    source: str = InteractionSource.GMAIL.value,
 ) -> Interaction:
     """Insert one matched email. The caller decided status, dedup and mappings already.
+
+    ``source`` names the feed that wrote it (``gmail`` by default, ``outlook`` for the Microsoft
+    integration); ``gmail_message_id`` / ``gmail_thread_id`` carry that provider's own ids.
 
     ``mappings`` may carry ``task_ids`` beside the four columns (a thread follow-up inherits
     the whole task roster, ``thread_mappings``); ``task_id`` alone is a one-task roster.
@@ -73,7 +78,7 @@ async def record_email(
         owner_user_id=owner_user_id,
         owner_name=owner_name,
         participants=participants,
-        source=InteractionSource.GMAIL.value,
+        source=source,
         gmail_message_id=gmail_message_id,
         gmail_thread_id=gmail_thread_id,
         rfc822_message_id=rfc822_message_id,
@@ -283,16 +288,31 @@ async def resolve_upload_conversation_id(
 
 async def email_ref(ctx: EmitContext, interaction_id: uuid.UUID) -> tuple[uuid.UUID, str] | None:
     """``(owner_user_id, gmail_message_id)`` for a gmail row — what a body fetch needs."""
+    ref = await mailbox_email_ref(ctx, interaction_id)
+    if ref is None or ref[2] != InteractionSource.GMAIL.value:
+        return None
+    return ref[0], ref[1]
+
+
+async def mailbox_email_ref(
+    ctx: EmitContext, interaction_id: uuid.UUID
+) -> tuple[uuid.UUID, str, str] | None:
+    """``(owner_user_id, provider message id, source)`` for a connected-mailbox row.
+
+    The source rides along because two feeds share the columns and each may only fetch the
+    bodies of its own rows: an Outlook row handed to the Gmail fetcher would ask Google about a
+    Graph id, get a 404, and report the message gone.
+    """
     row = (
         await ctx.session.execute(
-            select(Interaction.owner_user_id, Interaction.gmail_message_id).where(
-                Interaction.org_id == ctx.org.id, Interaction.id == interaction_id
-            )
+            select(
+                Interaction.owner_user_id, Interaction.gmail_message_id, Interaction.source
+            ).where(Interaction.org_id == ctx.org.id, Interaction.id == interaction_id)
         )
     ).first()
-    if row is None or row[0] is None or not row[1]:
+    if row is None or row[0] is None or not row[1] or row[2] not in MAILBOX_SOURCES:
         return None
-    return row[0], row[1]
+    return row[0], row[1], row[2]
 
 
 async def set_body(
@@ -339,14 +359,20 @@ async def set_body_markdown(
         await ctx.session.flush()
 
 
-async def bodyless_logged_email_ids(ctx: EmitContext, limit: int = 50) -> list[uuid.UUID]:
-    """Approved emails whose body fetch hasn't landed — the row is its own outbox."""
+async def bodyless_logged_email_ids(
+    ctx: EmitContext, limit: int = 50, source: str = InteractionSource.GMAIL.value
+) -> list[uuid.UUID]:
+    """Approved emails whose body fetch hasn't landed — the row is its own outbox.
+
+    Per ``source``: each mailbox feed sweeps its own rows, because only its own grant can fetch
+    them.
+    """
     rows = (
         await ctx.session.execute(
             select(Interaction.id)
             .where(
                 Interaction.org_id == ctx.org.id,
-                Interaction.source == InteractionSource.GMAIL.value,
+                Interaction.source == source,
                 Interaction.status == InteractionStatus.LOGGED.value,
                 Interaction.body_text.is_(None),
                 Interaction.gmail_message_id.is_not(None),
@@ -401,6 +427,12 @@ async def logged_state_for_messages(
 
 
 async def record_manual_gmail_email(ctx, **fields) -> Interaction:  # noqa: ANN001, ANN003
+    """Log one message a person pulled out of their own Gmail mailbox by id (#342) — see
+    :func:`record_manual_mailbox_email`, which this is the gmail-shaped name for."""
+    return await record_manual_mailbox_email(ctx, source=InteractionSource.GMAIL.value, **fields)
+
+
+async def record_manual_mailbox_email(ctx, *, source: str, **fields) -> Interaction:  # noqa: ANN001, ANN003
     """Log one message a person pulled out of their own mailbox by id (#342).
 
     The boundary the licensed ``google`` module writes through, exactly like
@@ -413,7 +445,7 @@ async def record_manual_gmail_email(ctx, **fields) -> Interaction:  # noqa: ANN0
     """
     from app.modules.interactions.service import InteractionService
 
-    return await InteractionService(ctx).create_from_gmail_message(**fields)
+    return await InteractionService(ctx).create_from_mailbox_message(source=source, **fields)
 
 
 async def offer_task_enrichment(ctx, row: Interaction) -> None:  # noqa: ANN001

@@ -141,6 +141,10 @@ _UNAUTHENTICATED: dict[tuple[str, str], str] = {
     # compared in constant time, and every way of being wrong is one indistinguishable refusal.
     # docs/PAYMENTS.md holds the five gates in order; the shape is reused verbatim by the rest.
     ("post", "/api/v1/google/calendar/webhook"): "our own per-channel token names the connection",
+    ("post", "/api/v1/microsoft/calendar/webhook"): (
+        "our own per-subscription clientState names the connection; the validationToken "
+        "handshake echoes a value Graph chose and discloses nothing"
+    ),
     ("post", "/api/v1/invoicing/payments/webhook/{provider}/{token}"): (
         "our own per-account token names the tenant, and the payment's status comes from an "
         "authenticated re-fetch rather than from the body"

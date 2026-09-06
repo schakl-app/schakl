@@ -2,6 +2,164 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.43.0 — 2026-09-06
+
+Microsoft 365 as a second connected-workspace integration beside Google Workspace, with the
+rules that were about the agency rather than about a vendor lifted into core so both run one set.
+Urenoverzicht becomes Overzicht with a year dashboard and revenue, project and employee reports.
+Invoicing learns to reverse a sent invoice with a credit note, prints custom fields on the paper,
+and moves the back-catalogue import to where an admin looks for it. Search Console's Generative
+AI report comes in by its export and reaches the tile, the trend and the client report.
+
+Two migrations, head revision `b7d3f9a2c4e6`: `a3c9e17f5b2d` widens `interactions.gmail_message_id` / `gmail_thread_id` to
+512 characters (a catalog-only change; older code reads them unchanged), and `b7d3f9a2c4e6`
+creates nine additive tables. Six new permission keys, all on the new integration
+(`microsoft.settings.manage`, `microsoft.connection.manage`, `microsoft.calendar.read`,
+`microsoft.onedrive.read`, `microsoft.onedrive.write`, `microsoft.onedrive.manage`), granted to
+the system roles on first boot by the startup reconciler; `microsoft` is a licensed sku. Three
+new environment variables, all optional (`SCHAKL_MICROSOFT_CLIENT_ID`, `_CLIENT_SECRET`,
+`_TENANT_ID`), plus two host settings (`SCHAKL_MICROSOFT_LOGIN_BASE_URL`, `_GRAPH_BASE_URL`)
+nobody sets outside a test stack or a sovereign cloud. New endpoints: `GET /time/stats/revenue`
+and `GET /time/stats/projects` for Overzicht, `POST /marketing/links/{id}/ai-visibility/import`
+and its JSON twin `.../ai-visibility/rows`, `POST /invoicing/invoices/{id}/credit` taking
+`issue=true`, and `DELETE /invoicing/invoices/{id}` taking `?force=true`. One behaviour change
+to note: the `interaction.approved` / `interaction.rejected` bus payloads carry `source`, and a
+test-mode Mollie payment now settles the invoice. The public API reference is regenerated.
+
+### Microsoft 365 (integration)
+
+- **Outlook calendar, OneDrive and Outlook mail, bring-your-own app registration.** Instellingen
+  → Microsoft 365 holds the Entra app registration (client id, write-only secret, tenant), the
+  three surface toggles, the OneDrive layout (a drive, a parent folder, a template folder, an
+  automation account) and the Outlook policy; each employee connects their own account from
+  Instellingen → Account, with the mailbox opt-in a separate tick. Login and Graph access stay two
+  grants, and the connect consent asks for no `openid`: identity is read from `/me` with the token
+  we store anyway.
+- **Calendar.** The Agenda gains the source *Outlook-agenda* served from a local cache filled by
+  `calendarView/delta` (windowed, re-baselined before the window runs out), kept fresh by Graph
+  change-notification subscriptions with the validation handshake and a poll fallback. Approved
+  leave, planned task blocks and freelance availability mirror one way into the person's Outlook
+  calendar through the same outbox shape Google has; extra calendars are selected per person;
+  the scheduling dialog's conflict check reads the cache as a fourth busy provider.
+- **OneDrive.** Client, project and task pages gain a OneDrive panel: browse as yourself inside
+  the configured SharePoint library or OneDrive, upload straight to Graph through an upload
+  session, link and unlink, delete to the recycle bin, choose or provision a client folder (a
+  template folder is copied whole, asynchronously). The Drive rules hold verbatim: a record's
+  folder is a stored decision, re-pointing it is `manage`, unlink never deletes.
+- **Outlook mail.** Opted-in mailboxes are read forward from an instant (the whole mailbox, so
+  a message an inbox rule moved on arrival is seen), metadata first, matched against contacts
+  outside the agency through the same core gates Gmail uses, landing pending for the owner and
+  the colleagues on the message; the body arrives after approval, in the format it was written.
+  A skipped message can be fetched by an Outlook link, a Graph id or its Message-ID, or found by
+  a named-field search over your own mailbox; the interactions screen draws one refresh button
+  and one message picker per mailbox the viewer holds.
+- **Shared core.** `app/core/mailbox/` (matching, gates, the cross-provider *who polls what*
+  composition, the policy enums) and `app/core/calendarmirror.py` are read by both feeds; the
+  Google package re-exports its old names, so nothing changed for it except that a copy held by
+  a Gmail mailbox now defers to a colleague's Outlook mailbox too.
+- Documented in `docs/MICROSOFT.md` and on the docs site; the checklist for the first run
+  against a live tenant is in §9 of the former.
+
+### Overzicht
+
+- **Urenoverzicht is Overzicht, and it has a landing page.** The sidebar item, the crumb and the
+  section are *Overzicht* now; `/overview` opens on the year at a glance — invoiced excl. and
+  incl. VAT against the year before, what is outstanding, hours logged and what they were worth,
+  budgets over — with the month-by-month chart and the three rankings (biggest clients, hottest
+  budgets, the team) each opening the tab that explains it. Six tabs: Overzicht, Omzet, Projecten,
+  Medewerkers, Uren, Marketing.
+- **Omzet is the ledger's.** `GET /api/v1/invoicing/stats/revenue?year=` answers what was
+  invoiced per month, per client and per kind (hours, subscriptions, domains, products), excl. and
+  incl. VAT, beside the year before — drafts and cancelled documents excluded, credit notes netted
+  in the month they were issued, foreign currency through the stored rate. The tab prints it with
+  an excl./incl. toggle in the URL and keeps the value of the logged hours as its own section,
+  with the gap between the two as a tile. Needs `invoicing.invoice.read:any`; where the invoicing
+  module is off the tab shows the hours' worth and says so.
+- **Projecten** is a report over every running budget: the budget burn from the projects module
+  beside all-time hours, billable hours, invoiced hours and the billable value from
+  `GET /api/v1/time/stats/projects` (one grouped query, never a `/cost` call per row), on the
+  shared table with the whole set's burn bands as its strip.
+- **Medewerkers** is Productiviteit renamed for what it lists, with rolling period presets (this
+  month, last month, the quarter, the year) and each colleague's billable value beside their
+  hours; the productivity rows carry `revenue` now. `/overview/productivity` redirects.
+- **Uren** is the hours report as it was, one tab over. Every link into it — the client hub's
+  hours panel, a task's hours figure, the dashboard tiles — points at `/overview/hours`, and an
+  old `/overview?…` link carrying a report filter is redirected there.
+
+The Overzicht work itself brings no migrations and no new permission keys, two new `GET` endpoints.
+
+### Invoicing
+
+- **Cancelling a sent invoice offers a credit note.** A cancel is a status here and a document
+  nowhere else, so for an invoice the client has received the dialog now offers to reverse it
+  with a credit note: `POST /invoices/{id}/credit` with `issue=true` creates and issues the note
+  in one transaction (numbered, applied, the billed work handed back), and the invoice ends open
+  and fully credited. The plain cancel stays, with its consequences stated, and the credit note
+  is preselected whenever the invoice was sent.
+- **An issued invoice deletes only behind an acknowledged force.** `DELETE ...?force=true`
+  refuses everything a cancel refuses plus a ledger booking (`errors.invoicing.in_ledger`) and an
+  open online checkout (`errors.invoicing.open_checkout`); the trail line carrying the number is
+  written before the row goes. A cancelled invoice deletes too. The dialog lists the cost and
+  keeps the red button disabled until a sentence naming the number is ticked. A settled credit
+  note shows Versturen and the tab title names a credit note as one.
+- **Custom fields on the paper.** A custom-field definition on an invoice, a quote or a
+  subscription can be marked "Op het document tonen" (no migration). A document's own flagged
+  fields print in its meta block; a subscription's ride every invoice line the agreement raises
+  ("Hosting Pro · Website: klant.nl"), through one helper the editor's picker and the cycle cron
+  share, so a hand-picked month and a cron-drafted one read the same. The invoice and quote
+  editors render the tenant's fields for the document itself.
+- **Every kind of line is headed**, a one-kind invoice included; only a lone kind's subtotal row
+  is skipped. A cron-drafted period reads "01-01-2025 - 01-01-2026" rather than one run of
+  dashes, matching the document's period field and the editor's picker.
+- **A test-mode Mollie payment settles exactly as a live one does** (owner decision, reversing
+  the earlier dead end): the ledger row is written with "(test)" in its note, the invoice flips
+  to paid and the payer lands on the thank-you page. The mode stays on the intent and the
+  payments card still labels it.
+- **A payer returning from a checkout is thanked** on the public invoice page and on the portal
+  and staff page, and told plainly when the attempt failed, expired or was cancelled.
+- **The back catalogue lives in Instellingen → Facturatie.** Importing existing invoices with
+  their original PDFs shipped in v0.40.0 as two generic buttons on the Facturen list and could
+  not be found. "Bestaande facturen overnemen" now sits under Nummering with three numbered
+  steps (the spreadsheet, the zip of PDFs, moving the sequence on) and hosts both the import
+  wizard and the originals dialog; a viewer holding `invoicing.settings.manage` without
+  `impex.import` is told which key is missing. The list keeps Exporteren only, its empty state
+  points at the section, and imported invoices sit among the others marked with their source.
+  Recorded in `docs/INVOICING.md` and `docs/UX.md` as the deliberate exception to "a list that
+  can travel by spreadsheet says so on the list".
+
+### Marketing and reporting
+
+- **Search Console's Generative AI report comes in by its export.** Google draws impressions in
+  AI Overviews and AI Mode in Search Console and returns the figure through no API (discovery
+  revision 20260905 still has six search types). A Search Console link now takes that export,
+  the Dates CSV or the console's zip, through `POST /marketing/links/{id}/ai-visibility/import`
+  and its JSON twin `.../ai-visibility/rows` for an agent, and writes `ai_impressions` beside the
+  four synced metrics on the same daily rows. The tile, the trend, the compare, the overview grid
+  and the client report read it the way they read clicks.
+- **Absent is never zero.** `IMPORTED_METRICS` names the hand-imported keys, an aggregate leaves
+  one out of a period no row carries it in, and a sync keeps every such key on a row it
+  rewrites. The parser refuses rather than guesses: a zip is searched for the dates table, a
+  weekly export is refused with a sentence, `~` and `-` are read as Google's zeros, and headers
+  match in English and Dutch.
+- The dashboard card carries the last upload's span beside the report link and the upload
+  control. The client report gets its own `marketing.ai_overviews` section with the month against
+  the comparison and a by-week chart, while the Search Console section prints the synced four
+  only. The multipart route is excluded from the MCP surface by method.
+
+### Upgrade notes
+
+- `alembic upgrade head` runs unattended at start-up as usual; both migrations are additive
+  (`a3c9e17f5b2d` widens two columns, `b7d3f9a2c4e6` creates nine tables) and nothing is
+  backfilled.
+- Microsoft 365 is off until Instellingen → Integraties enables it and Instellingen →
+  Microsoft 365 holds an Entra app registration; `microsoft` is a licensed sku like `google`. Each
+  employee connects their own account afterwards.
+- A test-mode Mollie checkout now marks the invoice paid. Instances rehearsing on a test
+  profile should expect ledger rows with "(test)" in the note.
+- Anyone who relied on the Facturen list's Importeren or zip button finds both under
+  Instellingen → Facturatie → Bestaande facturen overnemen.
+- The API reference and the generated typed client are regenerated for the new routes.
+
 ## v0.42.0 — 2026-09-04
 
 Search Console as its own read surface with an honest answer about AI visibility, a task that

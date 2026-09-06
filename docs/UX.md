@@ -749,6 +749,20 @@ contrast bug in dark mode rather than only an inconsistency.
   deletes reached from the ⋯ menu and from inside an edit surface (e.g. deleting a time
   registration). The ⋯ Delete item opens the dialog; the dialog owns the posting form.
   Approved/locked states explain themselves via tooltip + a clear error message key.
+- **A dialog that offers two ways out states both, and an irreversible one is ticked, not
+  clicked** (`ConfirmDialog`'s `children` and `acknowledge`; the invoice's *Factuur annuleren*
+  and *Verwijderen*). Cancelling an issued invoice asked one question and did one thing, while
+  the bookkeeping answer depends on a fact the dialog never mentioned — whether the client has
+  the document. So the dialog carries the choice inside its own posting form (a radio that posts
+  as `mode`: reverse with a credit note, or cancel without one), each option with a one-line
+  hint, the consequences list following the pick, the confirm button changing label and colour
+  with it (`primary` for the credit note, which destroys nothing; red for the plain cancel), and
+  the preselection following `sent_at`. Deleting an issued invoice is the one action on the
+  module that is both irreversible and invisible in its cost — the number is gone from the run
+  and nothing on the record shows it — so its consequences list is read *and* a sentence naming
+  the number has to be ticked before the red button enables; the gentler neighbour is named in
+  the list, one line above the cost. The bar for `acknowledge` is high on purpose: a checkbox on
+  every delete would be a checkbox on none of them.
 - **Rows that represent an editable record carry a ⋯ menu — including in reporting tables.**
   The Overzicht → Uren report gives each time entry a compact ⋯ (Bewerken opens the shared
   `EntryForm` in a `Modal`; Verwijderen confirms). A list of records is never read-only just
@@ -1698,7 +1712,8 @@ contrast bug in dark mode rather than only an inconsistency.
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
   "?"; on mobile the grid becomes a per-day agenda list.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
-  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet; Abonnementen:
+  Verlof: Mijn verlof | Team; Overzicht: Overzicht | Omzet | Projecten | Medewerkers | Uren |
+  Marketing; Abonnementen:
   Abonnementen | Standaardabonnementen | Abonnementstypes) — not nested sidebars. The
   convention (owner call, #229): the tab row sits at the **very top of the section, above
   the page heading**, rendered by the section's `+layout.svelte` as pill-styled `<a>` links
@@ -1725,6 +1740,36 @@ contrast bug in dark mode rather than only an inconsistency.
   its crumb "Urenoverzicht" would read `Urenoverzicht › Omzet` two clicks later — a lie about where
   revenue lives. The sidebar item is named for the page it opens; the breadcrumb literal is named
   for the section that holds all four tabs.
+- **A section named for one of its tabs is a section with a missing landing page.** Until the
+  Overzicht rework the sidebar item read *Urenoverzicht*, `/overview` *was* the hours report, and
+  the revenue and productivity tabs hung off a page about something else — so the one question a
+  manager opens the section for ("how is the year going?") had no screen, and turnover meant the
+  value of logged hours because that was the only figure the section could compute. The section is
+  **Overzicht** now, and its landing page is the year at a glance: six vital signs on the
+  `SummaryStrip` (invoiced excl. and incl. VAT with the change against the year before, what is
+  outstanding, hours logged, what they were worth, budgets over), the month-by-month chart, and
+  three rankings — clients, budgets, team — each a `Card` whose "show all" is the tab that explains
+  it. Four rules generalise. **A tile links to the rows it counts and a card links to its tab**, so
+  nothing on the landing page is a dead end and nothing is drawn twice at the same depth. **Two
+  answers to "omzet" stay two sections**: *Gefactureerd* is the ledger's (`invoicing/stats/revenue`,
+  drawn only where the module is on and the viewer holds `invoicing.invoice.read:any` — #266's
+  scope, mirrored on the tab exactly as on a control), *Waarde van geboekte uren* is what the
+  billable hours were worth (`time/stats/revenue`), and the Omzet tab prints both with the gap as a
+  tile rather than picking one and calling it turnover; the landing page draws the ledger's where it
+  can and says in one line when it is drawing the hours' worth instead. **A report over a year
+  takes `?year=` and nothing else invents a period** (`YearStepper`, `readYear`): the year is the
+  view, the stepper is two links, and a VAT toggle rides beside it in the same URL. And **a report
+  that lists rows is the shared `DataTable`** — Projecten joins the projects API's budget burn onto
+  the time module's one grouped all-time aggregate (`time/stats/projects`) in the load, keeps the
+  server sort on the columns the API can order by and honestly none on the rest, and pages through
+  the shared pager; its strip is the whole set's burn bands (`dashboard-budgets`, #407) so a tile
+  saying "4 over budget" opens a list of four. Medewerkers is Productiviteit renamed for what it
+  lists, with rolling presets in the tab row (`modules/time/periods.ts`, #316's rule) and the value
+  of each colleague's billable hours beside their bar. The hours report is the **Uren** tab, its
+  five lookups in `hours/+layout.server.ts` so the landing page never pays for them, and every link
+  that used to point at `/overview?…` — the client hub's hours panel, a task's hours figure, the
+  dashboard tiles — points at `/overview/hours?…`; a bookmark that still carries a report filter is
+  301'd there by the landing load rather than shown a dashboard it did not ask for.
 - **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
   screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
   to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
@@ -2410,6 +2455,23 @@ contrast bug in dark mode rather than only an inconsistency.
   while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
   (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
   cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **A feature whose only surface is a generic button in a toolbar reads as absent.** Bringing a
+  back catalogue of invoices in — the spreadsheet and the zip of original PDFs — shipped in
+  v0.40.0 as "Importeren" and "Originelen (zip)" beside Kolommen on Facturen, and the product's
+  own owner, on the latest release, could not find it: "Importeren" is the label every list
+  carries and says nothing about *what* an invoice row is, and "Originelen (zip)" is a word for
+  the thing without the act. Three rules. **A one-time administrative act gets its home in
+  Instellingen, and only there** (the owner's decision): the explanation *and* the controls, as
+  the shared `ImportWizard` and `OriginalsDialog`, while the Facturen list keeps Export and
+  nothing else — the one deliberate exception to "a list that can travel by spreadsheet says so
+  on the list", because an invoice import is a migration of somebody else's documents and not a
+  way of working the list, and two generic buttons in a toolbar were exactly what hid it. **An
+  empty register is where a migration starts**, so the list's empty state points at the section
+  — only when nothing is filtered, or "nog geen facturen" would be answering a search. And **a
+  section that must hide a control names the missing key**: a viewer holding
+  `invoicing.settings.manage` without `impex.import` reads which permission is missing rather than
+  a step with no button, because a hidden control with no sentence is the fault itself, one
+  permission over.
 - **One screen for two audiences, gated on `!isPortal` instead of on the key.** Facturen (#266)
   is the case the rule above does not cover: it is *not* a write surface, so it should not be
   gated whole — a client belongs on it, reading their own invoices. What differs is the **chrome**

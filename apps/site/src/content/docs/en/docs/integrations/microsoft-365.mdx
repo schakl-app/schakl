@@ -1,0 +1,164 @@
+---
+title: Microsoft 365
+description: "Connect the Outlook calendar, OneDrive and Outlook mail with your own Entra app registration, and switch it on per employee."
+sidebar:
+  order: 13
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Your agency lives in Microsoft 365: the meetings are in Outlook, the deliverables in a SharePoint
+document library or OneDrive, and the client history in your colleagues' mailboxes. The Microsoft
+365 module pulls those three into the client record instead of asking anyone to work differently.
+It is the Microsoft counterpart of [Google Workspace](/en/docs/integrations/google-workspace/):
+the same three surfaces, the same rules, and both can be connected at once.
+
+## Where to find it
+
+- *Instellingen → Microsoft 365* (Settings → Microsoft 365, in the group **Integraties**): the
+  agency-wide configuration, with the app registration, the surfaces, the OneDrive layout and the
+  Outlook policy.
+- *Instellingen → Mijn account* (Settings → My account), card **Microsoft-account**: where each
+  employee connects themselves.
+- After that you see it in **Agenda** (as the source **Outlook-agenda**), in the **OneDrive** panel
+  on the client, project and task pages, and in **Interacties** (Interactions).
+
+Microsoft 365 is a licensed module; under *Instellingen → Integraties* it is called **Microsoft
+365**. See [Licenses](/en/docs/admin/licenses/).
+
+## Your own app registration
+
+Every agency registers its own app in Microsoft Entra. That keeps the consent inside your own
+tenant and lets you decide which account types may connect.
+
+<Steps>
+1. In the Microsoft Entra admin center, create an **app registration** for your agency. Under
+   supported account types, prefer **accounts in this organizational directory only**.
+
+2. Under **API permissions**, add the delegated Microsoft Graph permissions `User.Read`,
+   `offline_access`, `Calendars.ReadWrite`, `Files.ReadWrite.All` and `Mail.Read`. Grant admin
+   consent if your tenant requires it.
+
+3. Under **Certificates & secrets**, create a client secret and note its end date: an Entra secret
+   expires, and on that day every connection stops refreshing until a new one is saved here.
+
+4. Open *Instellingen → Microsoft 365*. At the top sit two read-only fields, each with a
+   **Kopiëren** (Copy) button. Paste the **Redirect-URI** into your app registration under
+   **Authentication → Web → Redirect URIs**. The **Meldings-URL** (notification URL) is where
+   Microsoft posts calendar changes; if an access proxy sits in front of your host, let Microsoft's
+   servers through to it.
+
+5. Fill in the **Toepassings-id** (application/client ID), the **Clientgeheim** (client secret)
+   and optionally the **Directory (tenant)** — `common`, `organizations`, or your own directory ID
+   — and save. The secret is stored encrypted; leave the field empty on a later save to keep the
+   stored one.
+
+6. Under **Onderdelen** (Surfaces) tick what you use: **Agenda**, **OneDrive**, **Outlook-mail**.
+   Only what is ticked here will be asked of your employees.
+</Steps>
+
+### OneDrive layout
+
+Fill in the **Drive-ID** — the drive your client folders live in: a SharePoint document library's
+drive ID, or a OneDrive's — the **Bovenliggende map voor klantmappen (ID)** (parent folder for
+client folders) and optionally the **Sjabloonmap (ID)** (template folder). These are raw IDs;
+there is no folder picker yet. Under **Automatiseringsaccount** (automation account) pick a
+colleague who has already connected: the background work runs as that person. With **Maak
+automatisch een map voor elke nieuwe klant** every new client gets its own folder, a copy of the
+template. For clients that already existed there is **Mappen voor bestaande klanten** with the
+button **Mappen aanmaken** (create folders), which also adopts an existing folder of the same name.
+
+### Outlook policy
+
+Under **Nieuwe gekoppelde e-mails** (newly matched e-mails) you choose between "Eigenaar keurt goed
+voordat de inhoud wordt vastgelegd" (the owner approves before the content is stored, the default)
+and "Direct vastleggen, inclusief inhoud" (store immediately, content included).
+**Vervolgberichten in een gekoppeld gesprek** decides the same thing for a follow-up in a
+conversation already filed against a client. **Ook e-mail tussen collega's oppakken** (also pick up
+colleague-to-colleague mail) is off; internal mail always waits for review regardless. Reviewing
+itself is described under [Interactions](/en/docs/modules/interactions/).
+
+## Every employee connects themselves
+
+Go to *Instellingen → Mijn account*, card **Microsoft-account**, and press **Microsoft koppelen**
+(Connect Microsoft). Above the button, "Koppelen geeft toegang tot:" lists exactly what is being
+asked for. If Outlook mail is on, there is a checkbox **Koppel ook mijn mailbox (Outlook)**.
+
+Once connected, the card shows the connected address, the badge **Gekoppeld** (connected) or
+**Aandacht nodig** (needs attention), a list of your other calendars to tick onto the Agenda, the
+toggle **Mijn e-mail vastleggen in het CRM** (log my e-mail in the CRM), the field **Uitgesloten
+Outlook-categorie** (messages carrying that Outlook category are never logged) and
+**Microsoft-account ontkoppelen** (disconnect). Disconnecting deletes the stored tokens; Microsoft
+offers no way to revoke them from here, so remove the app's access at myapps.microsoft.com as well.
+Anything already logged stays.
+
+<Aside type="caution" title="Signing in with Microsoft is not the same as connecting">
+Signing in through Microsoft (single sign-on) and **Microsoft koppelen** are two separate grants.
+Even in an agency that requires Microsoft sign-in, every employee still has to press this button
+separately.
+</Aside>
+
+## What the three surfaces do
+
+**Calendar.** The **Agenda** screen gains the source **Outlook-agenda** with your own events, read
+from schakl.'s own copy and never fetched live from Microsoft. Extra calendars you ticked on the
+account card each get their own colour. In the other direction, approved leave is written into
+your own Outlook calendar as "Verlof: (leave type)" with the per-day hours in the notes, a planned
+task as "(client): (title)", and a freelance availability day as free or busy time. Withdraw the
+request, reject it or remove the block and the event disappears again.
+
+**OneDrive.** The client, project and task pages carry a **OneDrive** panel. You browse the
+client's folder with your own Microsoft 365 permissions, create subfolders with **Nieuwe map**,
+upload files straight from the browser, and attach existing files with **Koppelen aan dit record**
+(link to this record). **Ontkoppelen** removes only the link; **Verwijderen uit OneDrive** moves
+the file to the recycle bin, where it can still be restored.
+
+**Outlook mail.** Every five minutes the opted-in mailboxes are read forward from where the last
+poll left off — the whole mailbox, so a message an inbox rule moved to a subfolder is seen too.
+Messages where a participant is a known contact outside the agency land as "to review" under
+**Interacties**; only after the mailbox owner approves is the content fetched and shared with the
+team. A message the poller skipped can be fetched by hand with an Outlook on the web link, a
+message ID or the Message-ID from "View message source", or found by searching your own mailbox
+on address, subject and date. schakl. never sends mail through Outlook; outgoing mail uses the
+transport under *Instellingen → E-mail*.
+
+## Permissions
+
+| Permission | What it opens | Default roles |
+| --- | --- | --- |
+| `microsoft.settings.manage` | Manage the Microsoft 365 integration, including **Mappen aanmaken** | Administrator |
+| `microsoft.connection.manage` | Connect your own Microsoft account | Administrator, Member |
+| `microsoft.calendar.read` | View Outlook calendar events | Administrator, Member |
+| `microsoft.onedrive.read` | Browse OneDrive files | Administrator, Member |
+| `microsoft.onedrive.write` | Link and upload OneDrive files | Administrator, Member |
+| `microsoft.onedrive.manage` | Change or detach a record's OneDrive folder | Administrator |
+
+Set these per role under *Instellingen → Rollen* (Settings → Roles).
+
+## Good to know
+
+- **The redirect URI follows your own hostname.** Move the workspace to a different domain and the
+  new URI has to be registered on the app registration again, or Microsoft refuses the connect.
+- **The client secret expires.** Entra caps a secret at 24 months. When it lapses, every
+  connection flips to **Aandacht nodig**; save a new secret and reconnect.
+- **The first Outlook poll fetches nothing.** It only records the starting point: existing mail
+  is not imported retroactively.
+- **The calendar only writes one way,** and reads a year ahead. Leave and planned tasks go out to
+  Outlook; Outlook events come back read-only, and an event more than a year out appears when the
+  cache next restarts.
+- **OneDrive links are references.** schakl. never holds the bytes. Delete a file in OneDrive and
+  the link points at nothing.
+- **Automatic client folders quietly do nothing** unless all of it lines up: OneDrive on, the
+  checkbox ticked, an automation account chosen, and a drive ID filled in.
+- **Connected both Google and Microsoft?** A colleague with both accounts gets planned blocks in
+  both calendars, the Agenda draws two sources, and the client hub draws a Drive panel beside a
+  OneDrive panel. Mail is still one entry per e-mail, whichever mailbox read it.
+- **Do not rotate the server key casually.** If the administrator rotates
+  `SCHAKL_ENCRYPTION_KEY`, every stored connection lapses and everybody has to connect again.
+
+## Read next
+
+- [Google Workspace](/en/docs/integrations/google-workspace/): the same three surfaces on the
+  other platform.
+- [Interactions](/en/docs/modules/interactions/): the timeline the matched e-mail lands on.
+- [Leave](/en/docs/modules/leave/): the leave that gets written into the Outlook calendar.

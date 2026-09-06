@@ -49,6 +49,7 @@ from app.modules.interactions.models import (
     DEFAULT_KINDS,
     ENTITY_TYPE,
     HOST_ENTITY,
+    MAILBOX_SOURCES,
     PROTECTED_KIND,
     Interaction,
     InteractionContact,
@@ -846,10 +847,17 @@ class InteractionService:
             await self.offer_task_enrichment(row)
         return await self._present_one(row), stored, skipped
 
-    # --- a message pulled out of Gmail by hand (#342) ----------------------------- #
-    async def create_from_gmail_message(
+    # --- a message pulled out of a mailbox by hand (#342) ------------------------- #
+    async def create_from_gmail_message(self, **fields: Any) -> Interaction:
+        """The gmail-shaped name for :meth:`create_from_mailbox_message`."""
+        return await self.create_from_mailbox_message(
+            source=InteractionSource.GMAIL.value, **fields
+        )
+
+    async def create_from_mailbox_message(
         self,
         *,
+        source: str,
         owner_user_id: uuid.UUID,
         owner_name: str | None,
         occurred_at: datetime,
@@ -877,9 +885,10 @@ class InteractionService:
 
         ``logged``, never ``pending``, for the upload's reason: review exists to catch mail the
         poller ingested *for* you, which cannot apply to a message somebody went and fetched.
-        And ``source`` stays ``gmail`` rather than gaining a fourth value — there really is a
-        mailbox behind it, with a thread, a deep link and a body the sweep can re-fetch; only
-        the *reason it was logged* differs, and that is what the activity trail is for.
+        And ``source`` stays the *feed's* (``gmail`` / ``outlook``) rather than gaining a value
+        of its own — there really is a mailbox behind it, with a thread, a deep link and a body
+        the sweep can re-fetch; only the *reason it was logged* differs, and that is what the
+        activity trail is for.
 
         The body is **not** read here. It is the caller's next call (the same
         ``_fetch_body_with`` the auto path uses after approval), because it is an HTTP round
@@ -890,6 +899,8 @@ class InteractionService:
         the caller makes it through :func:`~app.modules.interactions.system.offer_task_enrichment`.
         """
         self.ctx.require("interactions.interaction.write")
+        if source not in MAILBOX_SOURCES:
+            raise AppError("validation", "errors.validation", status_code=422)
         # Same mailbox, same message: this is not a duplicate to confirm, it is the row the
         # caller is looking at. ``allow_duplicate`` deliberately does not open it — two rows
         # for one message in one mailbox is never what anybody meant.
@@ -933,7 +944,7 @@ class InteractionService:
             owner_user_id=owner_user_id,
             owner_name=owner_name,
             participants=participants,
-            source=InteractionSource.GMAIL.value,
+            source=source,
             gmail_message_id=gmail_message_id,
             gmail_thread_id=gmail_thread_id,
             rfc822_message_id=rfc822_message_id,
@@ -946,7 +957,7 @@ class InteractionService:
         await self._set_contacts(row, roster)
         await self._set_tasks(row, tasks)
         await ActivityService(self.ctx).record_created(
-            ENTITY_TYPE, row.id, {"source": "gmail_manual"}
+            ENTITY_TYPE, row.id, {"source": f"{source}_manual"}
         )
         await self._record_on_hosts(row, "interaction.logged", contact_ids=roster, task_ids=tasks)
         return row
@@ -1283,7 +1294,9 @@ class InteractionService:
             row, "interaction.logged", contact_ids=final_roster, task_ids=final_tasks
         )
         await self._clear_reviewers(row.id)
-        # The google module fetches the body asynchronously — never inside this transaction.
+        # The owning mailbox integration fetches the body asynchronously — never inside this
+        # transaction. ``source`` says which one: both feeds subscribe, and each acts only on
+        # its own rows.
         await emit(
             "interaction.approved",
             self.ctx,
@@ -1291,6 +1304,7 @@ class InteractionService:
                 "interaction_id": row.id,
                 "owner_user_id": row.owner_user_id,
                 "gmail_message_id": row.gmail_message_id,
+                "source": row.source,
             },
         )
         return row
@@ -1326,6 +1340,7 @@ class InteractionService:
                 "gmail_message_id": row.gmail_message_id,
                 "gmail_thread_id": row.gmail_thread_id,
                 "suppress_thread": suppress_thread,
+                "source": row.source,
             },
         )
         await self.repo.delete(row)
@@ -1493,7 +1508,7 @@ class InteractionService:
         target = await self.repo.get_or_404(target_interaction_id)  # tenant-scoped
         if (
             target.id == row.id
-            or target.source != InteractionSource.GMAIL.value
+            or target.source not in MAILBOX_SOURCES
             or target.status != InteractionStatus.LOGGED.value
             or target.owner_user_id != self.ctx.user.id
         ):
@@ -2091,7 +2106,7 @@ class InteractionService:
         poller asks Gmail for changes *since* ``GoogleConnection.gmail_history_id``, so a deleted
         row is never fetched again and the message in the mailbox is untouched either way.
         """
-        if row.source == InteractionSource.GMAIL.value:
+        if row.source in MAILBOX_SOURCES:
             raise AppError("invalid_state", "errors.interactions_gmail_readonly", status_code=409)
 
     async def _writable_or_404(self, interaction_id: uuid.UUID, permission: str) -> Interaction:
@@ -2123,7 +2138,7 @@ class InteractionService:
         end up quietly reviewing a colleague's mailbox. ``reviewing`` is the caller's reviewer
         set over the rows in hand (``_reviewing_ids``) — resolved once per call, never per row.
         """
-        if row.source != InteractionSource.GMAIL.value:
+        if row.source not in MAILBOX_SOURCES:
             return ("invalid_state", "errors.interactions_manual_no_review", 409)
         if row.owner_user_id != self.ctx.user.id and row.id not in reviewing:
             return ("forbidden", "errors.interactions_owner_only", 403)
@@ -2369,7 +2384,7 @@ class InteractionService:
         # (``reviewing`` is the page's batched answer to the second half).
         reviewable = (
             row.status == InteractionStatus.PENDING.value
-            and row.source == InteractionSource.GMAIL.value
+            and row.source in MAILBOX_SOURCES
             and (row.owner_user_id == self.ctx.user.id or row.id in (reviewing or set()))
         )
         return {

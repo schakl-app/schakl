@@ -93,6 +93,16 @@ export const categories: IntegrationCategory[] = [
     },
   },
   {
+    key: 'microsoft',
+    nl: 'Microsoft 365',
+    en: 'Microsoft 365',
+    lucide: 'mail',
+    intro: {
+      nl: 'Outlook-agenda, OneDrive en Outlook-mail, per organisatie gekoppeld met je eigen Entra-app-registratie.',
+      en: 'Outlook calendar, OneDrive and Outlook mail, connected per organisation with your own Entra app registration.',
+    },
+  },
+  {
     key: 'marketing',
     nl: 'Marketing & analytics',
     en: 'Marketing & analytics',

@@ -52,7 +52,7 @@
 
   import ContactChips from "./ContactChips.svelte";
   import TaskChips from "./TaskChips.svelte";
-  import GmailMessagePicker from "./GmailMessagePicker.svelte";
+  import MailboxMessagePicker, { type MailboxCandidate } from "./MailboxMessagePicker.svelte";
   import {
     loadLinkLookups,
     splitLinkOptions,
@@ -65,7 +65,9 @@
   let {
     prefill = {},
     threadId = null,
+    threadSource = "gmail",
     gmailAvailable = null,
+    outlookAvailable = null,
     onsaved,
   }: {
     /** The host entity's link, stamped on the uploaded row (e.g. `{ company_id }`). */
@@ -77,6 +79,9 @@
      * survive the trip.
      */
     threadId?: string | null;
+    /** Which mailbox `threadId` belongs to — a Gmail thread id and an Outlook conversation id
+     *  are different id spaces, and only the owning integration can read either. */
+    threadSource?: "gmail" | "outlook";
     /**
      * Whether this mailbox can actually be read (`/google/gmail/status`). `null` = the host did
      * not load it, and the permission stands in: a tab that always refuses is worse than no tab
@@ -84,6 +89,8 @@
      * every open for a source most of them never use.
      */
     gmailAvailable?: boolean | null;
+    /** The same question for the Outlook mailbox (`/microsoft/outlook/status`). */
+    outlookAvailable?: boolean | null;
     onsaved?: () => void;
   } = $props();
 
@@ -95,11 +102,18 @@
   let skipped = $state(0);
 
   // --- where the message comes from (#342) --------------------------------------------- //
-  type LookupResult = components["schemas"]["GmailLookupResult"];
-  type Candidate = components["schemas"]["GmailCandidate"];
+  /** Both mailboxes answer in one shape (the picker's contract); the Gmail schema names it. */
+  type LookupResult = Omit<components["schemas"]["GmailLookupResult"], "messages"> & {
+    messages?: MailboxCandidate[];
+  };
+  type Candidate = MailboxCandidate;
   const gmailOffered = $derived(gmailAvailable ?? can(page.data.user, "google.connection.manage"));
-  // A thread to fill in is a Gmail question by construction; anything else opens on the file.
-  let source = $state<"file" | "gmail">(threadId ? "gmail" : "file");
+  const outlookOffered = $derived(
+    outlookAvailable ?? can(page.data.user, "microsoft.connection.manage"),
+  );
+  // A thread to fill in is a mailbox question by construction — the mailbox it came from;
+  // anything else opens on the file.
+  let source = $state<"file" | "gmail" | "outlook">(threadId ? threadSource : "file");
   let reference = $state("");
   // The search fields (#372), bound so a refinement keeps what was typed — `reset: false` on
   // its own would only preserve them across a *failure*, and narrowing a result set means
@@ -112,6 +126,10 @@
   let picked = $state<Candidate | null>(null);
   let gmailError = $state("");
   const gmail = $derived(source === "gmail" && gmailOffered);
+  const outlook = $derived(source === "outlook" && outlookOffered);
+  /** A message comes out of a connected mailbox rather than a file: the two share every step
+   *  below the lookup, and only the action names differ. */
+  const mailbox = $derived(gmail || outlook);
 
   // A dimension the host page already fixed rides along as a hidden input; the rest get a
   // picker, the same split the manual form makes.
@@ -270,7 +288,7 @@
     const label = t(
       effTask === taskCreatedHere ? "tasks.review.origin" : "tasks.review.origin_enriched",
     );
-    if (gmail && picked) {
+    if (mailbox && picked) {
       const who = picked.from_name || picked.from_email || "";
       const when = picked.occurred_at ? fmtDateTime(picked.occurred_at) : "";
       return {
@@ -397,10 +415,11 @@
     </p>
   {/if}
 {:else}
-  {#if gmailOffered}
+  {#if gmailOffered || outlookOffered}
     <!-- Which source, before anything else: the whole rest of the dialog is the same either way,
-       so this is the only decision the two paths do not share. Not tabs-as-navigation — the
-       form below is one form, and this switches where its message comes from. -->
+       so this is the only decision the paths do not share. Not tabs-as-navigation — the form
+       below is one form, and this switches where its message comes from. A viewer holding one
+       mailbox sees two choices; one holding both sees three. -->
     <div class="mb-4 flex flex-wrap items-center gap-1">
       <button
         type="button"
@@ -411,26 +430,39 @@
       >
         {t("interactions.eml.source_file")}
       </button>
-      <button
-        type="button"
-        onclick={() => (source = "gmail")}
-        class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'gmail'
-          ? 'bg-surface text-text ring-1 ring-inset ring-border'
-          : 'text-text-muted hover:text-text'}"
-      >
-        {t("interactions.eml.source_gmail")}
-      </button>
+      {#if gmailOffered}
+        <button
+          type="button"
+          onclick={() => (source = "gmail")}
+          class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'gmail'
+            ? 'bg-surface text-text ring-1 ring-inset ring-border'
+            : 'text-text-muted hover:text-text'}"
+        >
+          {t("interactions.eml.source_gmail")}
+        </button>
+      {/if}
+      {#if outlookOffered}
+        <button
+          type="button"
+          onclick={() => (source = "outlook")}
+          class="rounded-lg px-3 py-1.5 text-sm font-medium {source === 'outlook'
+            ? 'bg-surface text-text ring-1 ring-inset ring-border'
+            : 'text-text-muted hover:text-text'}"
+        >
+          {t("interactions.eml.source_outlook")}
+        </button>
+      {/if}
     </div>
   {/if}
 
-  {#if gmail}
+  {#if mailbox}
     <!-- Its own form, and a sibling of the one below rather than a child: HTML has no nested
        forms, and the two really are separate submissions — looking a message up reads, logging
        it writes. A form action rather than a browser fetch, so the flow needs no edge route to
        proxy `/api/v1` and behaves the same in every deployment. -->
     <form
       method="POST"
-      action="?/lookupGmailMessage"
+      action={outlook ? "?/lookupOutlookMessage" : "?/lookupGmailMessage"}
       class="mb-4 space-y-2"
       use:enhance={busy.wrap("gmail-lookup", () => async ({ result, update }) => {
         if (result.type === "failure") {
@@ -442,7 +474,9 @@
         gmailError = "";
         lookup =
           result.type === "success"
-            ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+            ? ((result.data?.gmailLookup ??
+                result.data?.outlookLookup ??
+                null) as LookupResult | null)
             : null;
         picked = null;
         // `reset: false`: the reference is what the user must correct when nothing came back,
@@ -456,16 +490,26 @@
         <p class="text-xs text-text-muted">{t("interactions.gmail.thread_hint")}</p>
       {:else}
         <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">{t("interactions.gmail.reference")}</span>
+          <span class="mb-1 block font-medium text-text"
+            >{outlook
+              ? t("interactions.outlook.reference")
+              : t("interactions.gmail.reference")}</span
+          >
           <input
             type="text"
             name="reference"
             bind:value={reference}
-            placeholder={t("interactions.gmail.reference_placeholder")}
+            placeholder={outlook
+              ? t("interactions.outlook.reference_placeholder")
+              : t("interactions.gmail.reference_placeholder")}
             class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
           />
         </label>
-        <p class="text-xs text-text-muted">{t("interactions.gmail.reference_hint")}</p>
+        <p class="text-xs text-text-muted">
+          {outlook
+            ? t("interactions.outlook.reference_hint")
+            : t("interactions.gmail.reference_hint")}
+        </p>
       {/if}
       <Button type="submit" variant="secondary" loading={busy.is("gmail-lookup")}>
         <Search size={15} aria-hidden="true" />
@@ -484,7 +528,7 @@
         </summary>
         <form
           method="POST"
-          action="?/searchGmailMessages"
+          action={outlook ? "?/searchOutlookMessages" : "?/searchGmailMessages"}
           class="space-y-2 border-t border-border p-3"
           use:enhance={busy.wrap("gmail-search", () => async ({ result, update }) => {
             if (result.type === "failure") {
@@ -496,7 +540,9 @@
             gmailError = "";
             lookup =
               result.type === "success"
-                ? ((result.data?.gmailLookup ?? null) as LookupResult | null)
+                ? ((result.data?.gmailLookup ??
+                    result.data?.outlookLookup ??
+                    null) as LookupResult | null)
                 : null;
             picked = null;
             // `reset: false`: the fields describe a search somebody is refining, and blanking
@@ -569,7 +615,7 @@
           <!-- "I pasted one link and got eight messages" is surprising unless it is said. -->
           <p class="mb-2 text-xs text-text-muted">{t("interactions.gmail.widened")}</p>
         {/if}
-        <GmailMessagePicker
+        <MailboxMessagePicker
           messages={lookup.messages ?? []}
           truncated={lookup.truncated ?? false}
           selected={picked?.message_id ?? ""}
@@ -585,12 +631,18 @@
 
   <form
     method="POST"
-    action={gmail ? "?/importGmailMessage" : "?/uploadInteractionEml"}
-    enctype={gmail ? "application/x-www-form-urlencoded" : "multipart/form-data"}
+    action={outlook
+      ? "?/importOutlookMessage"
+      : gmail
+        ? "?/importGmailMessage"
+        : "?/uploadInteractionEml"}
+    enctype={mailbox ? "application/x-www-form-urlencoded" : "multipart/form-data"}
     class="space-y-4"
     use:enhance={busy.wrap("", () => async ({ result, update }) => {
       if (result.type === "failure") {
-        duplicate = Boolean(result.data?.emlDuplicate ?? result.data?.gmailDuplicate);
+        duplicate = Boolean(
+          result.data?.emlDuplicate ?? result.data?.gmailDuplicate ?? result.data?.outlookDuplicate,
+        );
         error = String(result.data?.error ?? "errors.validation");
         return;
       }
@@ -616,7 +668,7 @@
       if (!skipped) onsaved?.();
     })}
   >
-    {#if gmail}
+    {#if mailbox}
       <input type="hidden" name="message_id" value={picked?.message_id ?? ""} />
     {/if}
     {#each Object.entries(hidden) as [field, value] (field)}
@@ -625,7 +677,7 @@
     <!-- Set only after the duplicate warning: the second press is the deliberate one. -->
     <input type="hidden" name="allow_duplicate" value={duplicate ? "1" : "0"} />
 
-    {#if !gmail}
+    {#if !mailbox}
       <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
        screen exists for, so the whole block is the drop target. -->
       <div use:filedrop={{ onerror: (key) => (error = key) }}>
@@ -765,11 +817,11 @@
           {t("common.close")}
         </Button>
       {/if}
-      <Button type="submit" loading={busy.is("")} disabled={busy.active || (gmail && !picked)}>
+      <Button type="submit" loading={busy.is("")} disabled={busy.active || (mailbox && !picked)}>
         <Mail size={15} aria-hidden="true" />
         {duplicate
           ? t("interactions.eml.upload_anyway")
-          : gmail
+          : mailbox
             ? t("interactions.gmail.submit")
             : t("interactions.eml.submit")}
       </Button>

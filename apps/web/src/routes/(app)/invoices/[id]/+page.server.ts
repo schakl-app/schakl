@@ -62,6 +62,7 @@ export const load: PageServerLoad = async (event) => {
     templates,
     settings,
     contactDefinitions,
+    definitions,
     ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/invoicing/invoices/{invoice_id}", {
@@ -83,6 +84,11 @@ export const load: PageServerLoad = async (event) => {
           params: { query: { entity_type: "contact" } },
         })
       : undefined,
+    canWrite
+      ? api.GET("/api/v1/custom-fields/definitions", {
+          params: { query: { entity_type: "invoice" } },
+        })
+      : undefined,
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (!invoice.data) throw httpError(404);
@@ -95,6 +101,7 @@ export const load: PageServerLoad = async (event) => {
     templates: templates?.data ?? [],
     settings: settings?.data ?? null,
     contactDefinitions: contactDefinitions?.data ?? [],
+    definitions: definitions?.data ?? [],
     context,
     panels: panels.map((panel, i) => ({
       key: panel.key,
@@ -198,6 +205,18 @@ export const actions: Actions = {
     return { reminded: true };
   },
   cancel: async (event) => {
+    const form = await event.request.formData();
+    if (String(form.get("mode") ?? "") === "credit") {
+      // Reversing with a credit note: created and issued in one API request, so the invoice
+      // is written off and its work handed back atomically. The credit note is the document
+      // the user still has to send, so that is where they land.
+      const { data, error } = await apiFor(event).POST(
+        "/api/v1/invoicing/invoices/{invoice_id}/credit",
+        { ...pathFor(event), body: { issue: true } },
+      );
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+      throw redirect(303, `/invoices/${data.id}`);
+    }
     const { error } = await apiFor(event).POST(
       "/api/v1/invoicing/invoices/{invoice_id}/cancel",
       pathFor(event),
@@ -308,8 +327,12 @@ export const actions: Actions = {
     return { paymentDeleted: true };
   },
   delete: async (event) => {
+    const form = await event.request.formData();
+    // `force` is the acknowledged delete of an issued document; a draft never needs it, and
+    // the API refuses an issued one without it (409), so a stray post cannot widen the act.
+    const force = String(form.get("force") ?? "") === "1";
     const { error } = await apiFor(event).DELETE("/api/v1/invoicing/invoices/{invoice_id}", {
-      params: { path: { invoice_id: event.params.id } },
+      params: { path: { invoice_id: event.params.id }, query: force ? { force: true } : {} },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     // Back where the detour started (#408); the register only when nothing said otherwise. This

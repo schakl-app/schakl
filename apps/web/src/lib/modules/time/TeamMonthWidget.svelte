@@ -38,13 +38,13 @@
          running month, which is exactly the period this tile sums; "open" carries its own status
          filter, and omzet has its own page. -->
     <div class="grid grid-cols-2 gap-3">
-      <a href="/overview" class="group">
+      <a href="/overview/hours" class="group">
         <span class="block text-xs text-text-muted">{t("time.overview.total.minutes")}</span>
         <span class="block text-lg font-semibold tabular-nums text-text group-hover:text-brand">
           {formatMinutes(stats.minutes)}
         </span>
       </a>
-      <a href="/overview" class="group">
+      <a href="/overview/hours" class="group">
         <span class="block text-xs text-text-muted">{t("time.overview.total.billable")}</span>
         <span class="block text-lg font-semibold tabular-nums text-text group-hover:text-brand"
           >{billablePct}%</span
@@ -56,7 +56,7 @@
           {fmtMoney(stats.revenue_month)}
         </span>
       </a>
-      <a href="/overview?status=open" class="group">
+      <a href="/overview/hours?status=open" class="group">
         <span class="block text-xs text-text-muted">{t("time.overview.total.open")}</span>
         <span
           class="flex items-center gap-1.5 text-lg font-semibold tabular-nums group-hover:text-brand {stats.open_minutes

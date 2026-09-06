@@ -67,7 +67,7 @@ _TILE_ORDER = (
     "sessions", "totalUsers", "newUsers", "keyEvents", "conversions",
     "engagementRate", "avg_engagement_time", "userEngagementDuration", "screenPageViews",
     "totalRevenue", "cost", "conversionsValue",
-    "clicks", "impressions", "ctr", "position",
+    "clicks", "impressions", "ctr", "position", "ai_impressions",
     "avg_position", "top3", "top10", "top30", "keywords_ranking", "keywords_tracked",
     "score", "errors", "warnings", "pages",
 )
@@ -210,6 +210,8 @@ _METRIC_ICONS: dict[str, str] = {
         "M8 14.4s5.2-4.3 5.2-7.7A5.2 5.2 0 1 0 2.8 6.7c0 3.4 5.2 7.7 5.2 7.7"
         "M8 8.6a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8"
     ),
+    # A four-point spark — the mark Google itself puts on an AI Overview.
+    "ai_impressions": "M8 1.8l1.6 4.6L14.2 8l-4.6 1.6L8 14.2l-1.6-4.6L1.8 8l4.6-1.6z",
     "avg_position": (
         "M8 14.4s5.2-4.3 5.2-7.7A5.2 5.2 0 1 0 2.8 6.7c0 3.4 5.2 7.7 5.2 7.7"
         "M8 8.6a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8"

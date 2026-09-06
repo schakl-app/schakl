@@ -136,6 +136,10 @@ def test_paid_module_set_is_pinned() -> None:
         "invoicing": "invoicing",
         "leave": "leave",
         "marketing": "marketing",
+        # Microsoft 365 is Google Workspace's twin: a credential for somebody else's service
+        # (Outlook calendar, OneDrive, Outlook mail) that enriches the same modules `google`
+        # does, licensed on the same terms and for the same reason.
+        "microsoft": "microsoft",
         # The payment provider (epic #269) is a paid integration like every other outside
         # connection; the free CRM core never collects money.
         "mollie": "mollie",

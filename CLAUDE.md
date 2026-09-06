@@ -51,6 +51,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + 2FA on local login (TOTP + backup codes, optional SMS via instance gateway; org-admin reset — docs/TWOFACTOR.md) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | File storage  | Pluggable backend (named volume · S3-compatible) behind `app/core/storage/`. A file row is **not** its bytes: `file_blobs` holds one object per distinct sha256 **per org**, so the signature logo on 500 e-mails is one object — and therefore no single row may ever delete one. Call `service.drop_file`, never `storage_for(...).delete(key)`; a nightly cron folds pre-dedup rows and reclaims what nothing references — `docs/STORAGE.md` |
 | Received mail | HTML → markdown at ingest (`app/core/htmlmd.py`), stored beside the plain text as `interactions.body_markdown` and **only** when the message had an HTML part: text a *sender* wrote is not our markdown, so a plain-text mail keeps rendering as plain text. Its `cid:` images become files marked `content_id` (body content, not attachments) and the body's marker becomes `file:<uuid>`, resolved by the renderer; a remote `<img>` is dropped — a tracking pixel is an image — `docs/GOOGLE.md` |
+| Mailbox feeds | Two connected-mailbox integrations (`google` Gmail, `microsoft` Outlook) over one core: `app/core/mailbox/` holds the matching, the gates and the *who counts as us* composition, `app/core/calendarmirror.py` what a mirrored calendar event says — a rule about the agency lives in core, a rule about a wire lives in the package. Every Microsoft call goes through `microsoft.client.acting_as`; the Graph and login hosts are settings, never spelled at a call site — `docs/MICROSOFT.md` |
 | Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust. **A redeploy is not an outage**: the API rolls `start-first` on two replicas because "one migration at a time" is now stated as a Postgres advisory lock (`app/core/migrations.py`) rather than as `replicas: 1` — `docs/DEPLOY.md` |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first · every AI feature goes through one core (`app/core/ai/`, `docs/AI.md`): per-tenant provider + encrypted key, and **every in-request model call wrapped in `ctx.release_db()`** — §11's pool-drain is worst here, because a tool loop holds the connection for tens of seconds. Speech-to-text is its own credential (`docs/VOICE.md`): Anthropic has no transcription endpoint and is the default provider, so "reuse the chat provider" configures nothing |
 
@@ -76,6 +77,7 @@ apps/
       google_ads/
       google_analytics/  # GA4, live and read-only
       google_search_console/  # Search Console, live and read-only — and the AI-visibility seam
+      microsoft/   # Microsoft 365: Outlook calendar, OneDrive, Outlook mail (docs/MICROSOFT.md)
       cloudflare/
       oxxa/        # registrar
       uptime/      # Uptime Kuma
@@ -239,9 +241,9 @@ and it is worth having with every third-party account in the world cancelled: `c
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
-over there: `google` (Workspace), `google_ads`, `google_analytics`, `google_search_console`, `cloudflare`, `oxxa`,
-`uptime` (Uptime Kuma), `wordpress`, `mollie`, `timeon` (an outgoing time registration a
-cutover is still running on).
+over there: `google` (Workspace), `microsoft` (Microsoft 365), `google_ads`, `google_analytics`,
+`google_search_console`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma), `wordpress`, `mollie`,
+`timeon` (an outgoing time registration a cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -268,8 +270,8 @@ It is stated in five places and each one is load-bearing:
   `google`, `timeon` → `time`.
   Deliberately *not* "modules this
   is nicer with":
-  over-declaring makes a tenant switch on a module they did not want, so `google` requires nothing
-  (it enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
+  over-declaring makes a tenant switch on a module they did not want, so `google` and `microsoft`
+  require nothing (each enriches `interactions`, `tasks` and `leave` and needs none of them) and `uptime` requires
   nothing (its panels attach to `websites` **or** `domains`, which an AND-list cannot say).
   `ensure_requirements_met` checks the **whole resulting set**, not the delta, because the
   interesting failure is not enabling Cloudflare without domains — it is switching `domains` off
@@ -1090,6 +1092,21 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   blank. Its other sibling is the ordinary one: `_customer_snapshot` was **not** the only builder,
   the subscription cron having grown a hand-written copy that already omitted `client_number`, so
   "which name does an invoice say?" would have depended on who raised it.
+- **A cancel is a status here and a document nowhere else, so cancelling a sent invoice is a
+  credit note** (`docs/INVOICING.md`). *Factuur annuleren* on an issued invoice flipped a status
+  the client's books and the ledger would never learn about; the correction either of them can
+  follow is a credit note, so `POST /credit` takes `issue=true` and creates **and issues** it in
+  one transaction — the invoice ends `open` + fully credited, its work handed back, no draft
+  left half-done between two calls — and the dialog offers both ways with their consequences,
+  preselecting the credit note when `sent_at` is set. An issued document now also deletes behind
+  `?force=true`: a second sentence the caller has to say, because the number leaves the run for
+  good and a gap in an invoice sequence is something a bookkeeper has to explain. It refuses
+  what `cancel` refuses — one `_ensure_withdrawable`, since two copies of a guard is how one
+  stops being asked — plus a ledger booking and an open checkout, the two things a cancel leaves
+  in place and a delete cannot; the trail line carrying the number is written before the row
+  goes (§16). On the screen the tick is the control: `ConfirmDialog.acknowledge` disables the red
+  button until a sentence naming the number is checked, and `children` lets a choice post inside
+  the confirming form rather than through state the host mirrors into `fields` (`docs/UX.md`).
 - **A document somebody else issued states its totals, and the record carries its own
   fingerprint** (`docs/INVOICING.md`, "Bringing the back catalogue in"). An agency arriving from
   Moneybird or SnelStart brings years of invoices, and without them the client hub has no history
@@ -1575,6 +1592,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   is in the web build: thirteen more operations pushed the generated client past TypeScript's
   instantiation depth in the one place that handed `api.GET` to `Reflect.apply`, so the deduper
   widens through `unknown` — the same assertion, the proof skipped.
+- **A number the vendor draws and will not return comes in by the door the vendor does offer,
+  and absent is never zero** (`docs/GOOGLE_SEARCH_CONSOLE.md` §6a). The card above said the
+  honest thing and left the dashboard without the figure and the report without the chapter; the
+  report has an **export button**, so a Search Console link now takes that file
+  (`POST /marketing/links/{id}/ai-visibility/import`, its JSON twin `…/rows` for an agent) and
+  writes `ai_impressions` beside the synced four on the same daily rows — one table, so the
+  tile, the trend, the compare and the report's own `marketing.ai_overviews` section read it the
+  way they read clicks. Three rules generalise. **`IMPORTED_METRICS` is a class, not a key**: a
+  hand-imported metric is left *out* of a period no row carries it in (`aggregate`) rather than
+  summed to `0`, because "Vertoningen in AI 0" is a claim about a client's AI visibility that
+  nothing on any screen could contradict — the same argument that made the card a state; and a
+  sync keeps every such key on a row it rewrites (`_upsert_daily`), or an upload lasts one night.
+  **A parser written from a document refuses rather than guesses** (the OXXA rule): a zip is
+  searched for the member with a date column, a weekly export is refused with a sentence rather
+  than stored as one day a seventh of the size, and §10's checklist names what to verify the day
+  a real file arrives. And **provenance prints beside a number a person has to remember to
+  upload** — the last upload's span rides the card, since a tile alone reads as live.
 - **A tool the caller may never use must not be in the model's view, and the service must refuse it
   anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
   "how did this client do last month" was a question the platform could answer everywhere except
@@ -1661,6 +1695,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   *default* stays a portal substitution; and the mention picker offers active colleagues only —
   `/members/lookup` returns a departed account flagged so a record keeps its author's name, and an
   `@` on a new comment was the one member picker that never split them out.
+- **A second provider is what tells you which rules were the vendor's** (`microsoft`,
+  `docs/MICROSOFT.md`). Microsoft 365 answers the Google integration's three data problems a
+  second time — Outlook calendar, OneDrive, Outlook mail — on the same seams (the calendar
+  sources and the busy provider, the hub's panels, the interactions module's published `system`
+  surface), and building it found that most of `google/gmail` was never about Gmail. Everything
+  that is a rule about the **agency** now lives in core and is read by both feeds:
+  `app/core/mailbox/` (participants, the intended owner, colleague-only chatter, the contact
+  match and its ranking, the `SkipReason` vocabulary, the *who counts as us* composition) and
+  `app/core/calendarmirror.py` (what a mirrored leave day, task block or availability row
+  *says*); what stays in each package is the wire — ids, delta links, labels versus categories,
+  body encodings. Three rules generalise. **Who polls what is composed across providers**:
+  `internals.py` holds a registry each mailbox feed registers into, so a copy held by a Gmail
+  mailbox defers to the Outlook mailbox of the colleague it was addressed to, and the reverse —
+  a person with both accounts is one colleague. **A connected-mailbox row is a source class, not a
+  vendor**: `InteractionSource.OUTLOOK` sits beside `GMAIL` and every rule that was really "from
+  somebody's mailbox" (the owner-only review flow, the no-edit rule, the body sweep) reads
+  `MAILBOX_SOURCES`; the two id columns keep their names and grew to 512, and the review-flow
+  emits carry `source` so each feed acts on its own rows. And **the vendor decides the cursor,
+  the platform decides the promise**: Graph's per-folder delta cannot see a message an inbox rule
+  moved on arrival, so Outlook reads the whole mailbox forward from an instant; Graph's calendar
+  delta is windowed and re-baselines; Graph has no token-revocation endpoint, so disconnect says
+  where to revoke; and an Outlook consent asks for no `openid`, because identity is one `/me`
+  read away and an id-token validator taught to ignore the issuer is worse than none. Two
+  decisions about running both at once are stated rather than left: a colleague who connected
+  both calendars gets a planned block in both, and the client hub draws a Drive panel beside a
+  OneDrive panel.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

@@ -11,7 +11,7 @@ from app.core.email.senders import Sender
 from app.core.events import SystemContext
 from app.core.models import Org
 from app.db import async_session_maker, set_current_org
-from app.modules.invoicing.events import on_subscription_due
+from app.modules.invoicing.events import _period_label, on_subscription_due
 from app.modules.invoicing.jobs import invoicing_daily
 from tests.conftest import Tenant, auth_cookie, make_tenant, org_today
 
@@ -441,3 +441,55 @@ async def test_the_dunning_run_chases_neither_a_credit_note_nor_a_written_off_in
             )
         ).json()
         assert chased["reminder_count"] == 1
+
+
+def test_a_period_label_keeps_its_dates_apart() -> None:
+    """``01-01-2025 - 01-01-2026``, never ``01-01-2025-01-01-2026``: the dates are dashed
+    themselves, so an unspaced join read as one run of digits on paper. A plain hyphen rather
+    than an en dash, because this text is copied into bank statements and ledgers."""
+    from datetime import date
+
+    assert _period_label(date(2025, 1, 1), date(2026, 1, 1)) == "01-01-2025 - 01-01-2026"
+    assert _period_label(None, date(2026, 1, 1)) == "01-01-2026"
+
+
+async def test_a_subscription_note_reaches_the_fallback_line(client_for) -> None:
+    """A ``subscription.due`` without lines builds its one line from the name — and the
+    agreement's *detail* (its flagged custom fields, ``Website: klant.nl``) sits between the
+    name and the period, so the cron's line reads as the picker's does."""
+    tenant: Tenant = await make_tenant("inv-subnote")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+        company_id = await _company(client, headers)
+
+    period_end = _today()
+    payload = {
+        "subscription_id": str(uuid.uuid4()),
+        "company_id": company_id,
+        "name": "Hosting Pro",
+        "detail": "Website: klant.nl",
+        "amount": "25.00",
+        "currency": "EUR",
+        "period_start": (period_end - timedelta(days=31)).isoformat(),
+        "period_end": period_end.isoformat(),
+        "lines": [],
+    }
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(Org, tenant.org.id)
+        ctx = SystemContext(org=org, session=session)
+        await on_subscription_due(ctx, dict(payload))
+        await session.commit()
+
+    async with client_for(tenant.host) as client:
+        listing = (await client.get("/api/v1/invoicing/invoices", headers=headers)).json()
+        assert len(listing["items"]) == 1
+        detail = (
+            await client.get(
+                f"/api/v1/invoicing/invoices/{listing['items'][0]['id']}", headers=headers
+            )
+        ).json()
+    [line] = detail["lines"]
+    assert line["description"].startswith("Hosting Pro \u00b7 Website: klant.nl (")
+    assert line["description"].endswith(f" - {period_end.strftime('%d-%m-%Y')})")

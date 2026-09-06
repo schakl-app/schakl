@@ -139,8 +139,8 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-            "interactions", "google", "marketing", "google_ads", "google_analytics",
-            "google_search_console", "google_tag_manager", "hr",
+            "interactions", "google", "microsoft", "marketing", "google_ads",
+            "google_analytics", "google_search_console", "google_tag_manager", "hr",
             "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
             "snelstart", "timeon",
         ]
@@ -206,6 +206,10 @@ class Settings(BaseSettings):
     # feature into a bulk mailbox import. 0 disables, as above.
     gmail_manual_lookup_rate_limit_per_minute: int = 20
     gmail_manual_import_rate_limit_per_minute: int = 10
+    # The same two ceilings for the Outlook mailbox (docs/MICROSOFT.md §6) — its own names,
+    # because a budget spelled "gmail" that bounds Outlook is a setting nobody finds.
+    outlook_manual_lookup_rate_limit_per_minute: int = 20
+    outlook_manual_import_rate_limit_per_minute: int = 10
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
@@ -220,6 +224,22 @@ class Settings(BaseSettings):
     # a setting, not only a constant: an install that outlives a release can bump it from the
     # compose file the day Google mails the sunset reminder, without waiting for us.
     google_ads_api_version: str = "v25"
+
+    # --- Microsoft 365 OAuth (docs/MICROSOFT.md) ---
+    # The instance-wide fallback for an Entra app registration, exactly as the Google pair above:
+    # the normal place is Instellingen → Microsoft 365, per org, encrypted in the DB. ``tenant_id``
+    # is the directory the registration signs people in against — ``common`` (any work, school or
+    # personal account), ``organizations``, or a single directory's id — and it doubles as the
+    # fallback for an org that stored a client but left the tenant blank.
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+    microsoft_tenant_id: str = "common"
+    # The two hosts every Microsoft call goes to. Settings rather than constants so a test
+    # stack — or a sovereign cloud (``login.microsoftonline.us`` / ``graph.microsoft.us``) — can
+    # point them elsewhere without a code change; nothing else in the product is allowed to
+    # spell either host.
+    microsoft_login_base_url: str = "https://login.microsoftonline.com"
+    microsoft_graph_base_url: str = "https://graph.microsoft.com/v1.0"
 
     # --- i18n ---
     # Shared message catalogs (single source of truth with the web app).

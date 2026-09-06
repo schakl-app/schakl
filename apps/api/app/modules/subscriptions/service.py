@@ -40,7 +40,10 @@ from app.core.activity.service import snapshot
 # is re-exported under the name this module has always published (`jobs.py` imports it here).
 from app.core.billing import add_months, first_boundary_ahead, period_boundaries
 from app.core.customfields import CustomFieldsService
+from app.core.customfields.format import document_note
+from app.core.customfields.format import printable as printable_fields
 from app.core.events import emit
+from app.core.models import OrgSettings
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
@@ -172,6 +175,45 @@ SORTABLE = {
 
 def period_months(interval: str, interval_count: int) -> int:
     return _INTERVAL_MONTHS[interval] * max(1, interval_count)
+
+
+#: Between a line's description and the agreement's document note: "Hosting · Website: klant.nl".
+NOTE_SEPARATOR = " \u00b7 "
+
+
+async def document_notes(ctx: Any, subs: Sequence[Subscription]) -> dict[uuid.UUID, str]:
+    """Per agreement, the clause its invoice lines carry — ``Website: klant.nl`` — or ``""``.
+
+    An agency's hosting agreement is "Hosting Pro" on the agreement and "Hosting Pro" on the
+    invoice, and the client has three websites; the one fact that tells the invoices apart
+    is a field the tenant defined themselves. So a subscription custom field flagged *print
+    on the document* (``config_json.print_on_document``, Instellingen → Aangepaste velden)
+    rides every invoice line the agreement raises, whichever path raised it: the cycle cron
+    and the editor's picker both call this, which is what keeps a hand-picked month and a
+    cron-drafted one reading the same (the seam's whole reason to exist, §6).
+
+    One definitions read for the whole set, never one per agreement (docs/PERFORMANCE.md),
+    and the wording follows the **org's** default locale — the same locale the cron's draft
+    is written in. ``ctx`` is a request context or the cron's ``SystemContext``; both carry
+    ``repo``/``session``/``org``.
+    """
+    if not subs:
+        return {}
+    definitions = printable_fields(await CustomFieldsService(ctx).definitions(ENTITY_TYPE))
+    if not definitions:
+        return {}
+    org_settings = await ctx.session.scalar(
+        select(OrgSettings).where(OrgSettings.org_id == ctx.org.id)
+    )
+    locale = (org_settings.default_locale if org_settings else None) or "nl"
+    return {
+        sub.id: document_note(definitions, sub.custom or {}, locale) for sub in subs
+    }
+
+
+def with_note(description: str, note: str) -> str:
+    """``description`` with the agreement's note appended — one line, the editor's shape."""
+    return f"{description}{NOTE_SEPARATOR}{note}" if note else description
 
 
 @dataclass(frozen=True)
@@ -493,9 +535,11 @@ class SubscriptionService:
             prices_by_sub.setdefault(price.subscription_id, []).append(price)
 
         today = await self._org_today()
+        notes = await document_notes(self.ctx, subs)
         out: list[OpenAgreement] = []
         for sub in subs:
             history = prices_by_sub.get(sub.id) or []
+            note = notes.get(sub.id, "")
 
             def price_at(day: date, rows: list[SubscriptionPrice] = history) -> Decimal:
                 """The newest price valid on ``day`` — history answers, current state never
@@ -529,8 +573,9 @@ class SubscriptionService:
                 # no price of its own follows the period's price, so a raise reaches a
                 # hand-picked arrears month exactly as it reaches the cron's.
                 offers = tuple(
-                    (row.description, row.quantity, row.unit_amount) for row in rows
-                ) or ((sub.name, Decimal(1), amount),)
+                    (with_note(row.description, note), row.quantity, row.unit_amount)
+                    for row in rows
+                ) or ((with_note(sub.name, note), Decimal(1), amount),)
                 periods.append(
                     OpenPeriod(
                         period_start=add_months(boundary, -months),

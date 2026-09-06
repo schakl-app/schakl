@@ -31,6 +31,7 @@
     action="?/create"
     companies={data.companies}
     companyDefinitions={data.companyDefinitions}
+    definitions={data.definitions}
     contacts={data.contacts}
     taxRates={data.taxRates}
     products={data.products}

@@ -134,6 +134,52 @@ assistants answer when asked about the brand, read through the client's WordPres
 the two are never presented as one number (#312) and why the tool description names the
 difference.
 
+## 6a. The numbers come in by hand, and that is stated on every surface they reach
+
+The report has an **export button**, and that is the one honest way its figures get onto a
+client's dashboard and into their monthly report while the API stays silent (re-checked against
+discovery revision `20260905`: still six search types). So a Search Console link takes the
+file — `POST /marketing/links/{id}/ai-visibility/import` (multipart: the CSV of the Dates
+table, or the whole zip the button produces) and its JSON twin `…/ai-visibility/rows`
+(`[{day, impressions}]`, the shape an agent can send) — and writes the figure as
+`ai_impressions` **beside** the four synced metrics on the same `marketing_metrics_daily`
+rows (`marketing/aiv_import.py`, `MarketingService.import_ai_visibility`). One table, so the
+tile, the trend, the compare, the overview grid and the report section read it the way they
+read clicks. Five rules hold it up.
+
+- **Absent is not zero.** `IMPORTED_METRICS` names the hand-imported keys, and
+  `aggregate` leaves one *out* of a period no row carries it in rather than summing it to `0`.
+  That is what keeps the tile off the dashboard and the section off the report for a client
+  whose agency never uploaded the export: a "Vertoningen in AI 0" is a claim about their AI
+  visibility, and §6's whole argument is that a plausible figure nothing can contradict is the
+  worst kind of wrong.
+- **A sync never erases an upload.** The nightly re-pull of Search Console's trailing window
+  replaces a day's metrics wholesale; `_upsert_daily` keeps every `IMPORTED_METRICS` key the
+  row already had, or last week's upload would last one night.
+- **The file is read defensively, in the direction of refusing.** Written from what the report
+  documents rather than from a file (the OXXA rule: no property with the report was to hand),
+  so a zip is searched for the member with a date column, a lone CSV must carry one, a
+  weekly or monthly export is refused with a sentence saying to export by day (one row stored
+  as one day would print the month a seventh of its size), Google's `~` and `-` are zeros,
+  headers match in English and Dutch, and every cap is checked before the work it bounds.
+  §10's checklist has the run to do the day a real export arrives.
+- **Provenance prints beside the number.** The last upload's timestamp and span sit on the
+  link (`config.ai_import`) and ride `SourceMetrics.ai_visibility.imported` onto the card,
+  because a figure a person has to remember to upload must say how far it runs — the tile
+  alone reads as live. Staff only, like the card: a portal login gets the tile and the
+  metric's own help sentence, which says where the number comes from.
+- **The report gets its own section, not a fifth tile on Search Console's.**
+  `marketing.ai_overviews` (position 75, beside SE Ranking's AI-search section, which is a
+  different measurement) carries the month's total against the comparison month and a
+  by-week chart of both — labelled `1-7`, `8-14` … rather than by ISO week, so last year's
+  weeks line up bar for bar. The Search Console section prints the synced four and nothing
+  else; a tile printed twice under two headings is one fact read as two.
+
+Uploading rides `marketing.link.manage` (putting numbers under a client's name is
+configuration, not a read), records `marketing.ai_imported` on the client's trail, and is
+refused on any source but Search Console. The multipart route is excluded from the MCP tool
+surface by method, as every multipart route is (CLAUDE.md §10); the JSON twin is the tool.
+
 ## 7. What Search Console gets wrong if you write the parser from memory
 
 - **A row's group-by values are a positional list.** `keys` follows the order of the request's
@@ -174,8 +220,8 @@ nobody asked. Row counts are clamped (1 000 at most, 25 by default).
 ## 9. There is no web package
 
 It contributes no screen, no panel and no nav item — the surface is the API and the MCP section,
-and the one client-facing thing it produces (the AI-visibility card) is drawn by `marketing`
-from the adapter, as it should be. It still appears under Instellingen → Integraties, because
+and the one client-facing thing it produces (the AI-visibility card, with its upload control
+since §6a) is drawn by `marketing` from the adapter, as it should be. It still appears under Instellingen → Integraties, because
 that screen reads `module_kinds` from `/meta/modules`. Give it a settings screen the day it needs
 one, and register the web half then.
 
@@ -190,3 +236,11 @@ checks worth doing once, because a document can be wrong about a live answer: `h
 `hour` keys with an offset (`…T09:00:00-07:00`), `inspect` on a page outside the property is a
 422 naming Google's reason, and `breakdown?dimension=searchAppearance` lists Google's own
 appearance names.
+
+And for §6a, the day a real export of the Generative AI report is to hand: open it and check
+that the zip's dates table is named as `aiv_import` expects (a `.csv` member whose header starts
+with `Date`/`Datum`), that a daily export's dates are ISO (`2026-08-01`) and not the account's
+locale, and what a weekly export's header says (`Week` is the guess). Upload it on a test
+client, compare the response's `total` with the console's own total for the same span, and
+adjust the header sets in `aiv_import.py` if anything differs — the parser refuses rather than
+guesses, so a mismatch shows as a 422 naming the columns, never as zeros.

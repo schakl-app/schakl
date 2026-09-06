@@ -48,6 +48,30 @@
       !invoice.credited &&
       (invoice.status === "open" || (isCredit && invoice.status === "paid")),
   );
+  // Deleting an issued document is the same withdrawal with the number taken out of the run
+  // for good, so it is offered exactly where a withdrawal is — plus a cancelled invoice, which
+  // bills nothing and strands nothing. The ledger and open-checkout refusals are the API's:
+  // neither is a fact this read carries, and the dialog names them among its consequences.
+  const canDeleteIssued = $derived(
+    data.canDelete &&
+      !isDraft &&
+      Number(invoice.paid_total) === 0 &&
+      !invoice.credited &&
+      (isCredit
+        ? invoice.status === "open" || invoice.status === "paid"
+        : invoice.status === "open" || invoice.status === "cancelled"),
+  );
+  // What the cancel dialog offers an *invoice* (a credit note is withdrawn, never credited).
+  // Reversing with a credit note is preselected for a document the client has received, a
+  // plain cancel for one nobody ever saw — the choice is stated either way, not implied.
+  let cancelMode = $state<"credit" | "plain">("credit");
+  function openCancel(): void {
+    cancelMode = invoice.sent_at ? "credit" : "plain";
+    confirmCancel = true;
+  }
+  const documentLabel = $derived(
+    `${isCredit ? t("invoicing.kind.credit_note") : t("invoicing.kind.invoice")} ${invoice.number ?? ""}`.trim(),
+  );
   // The edit affordance opens on a row's ⋯ → Bewerken arrival (#78), then the user owns it.
   let editing = $state(editIntent());
   $effect(() => {
@@ -68,6 +92,7 @@
   let confirmIssue = $state(false);
   let confirmCancel = $state(false);
   let confirmDelete = $state(false);
+  let confirmDeleteIssued = $state(false);
   let confirmCredit = $state(false);
   let sendOpen = $state(false);
   let payOpen = $state(false);
@@ -96,7 +121,11 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(`${t("invoicing.kind.invoice")} ${title}`)}</title>
+  <title
+    >{pageTitle(
+      `${isCredit ? t("invoicing.kind.credit_note") : t("invoicing.kind.invoice")} ${title}`,
+    )}</title
+  >
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -167,13 +196,13 @@
         onclick={() => (confirmIssue = true)}>{t("invoicing.action.issue")}</button
       >
     {/if}
+    {#if data.canSend && (invoice.status === "open" || (isCredit && invoice.status === "paid"))}
+      <button
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => (sendOpen = true)}>{t("invoicing.action.send")}</button
+      >
+    {/if}
     {#if invoice.status === "open"}
-      {#if data.canSend}
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          onclick={() => (sendOpen = true)}>{t("invoicing.action.send")}</button
-        >
-      {/if}
       {#if data.canPay}
         <button
           class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
@@ -239,10 +268,10 @@
         ...(canCancel
           ? [
               {
-                label: t("invoicing.action.cancel"),
+                label: t(isCredit ? "invoicing.action.withdraw" : "invoicing.action.cancel"),
                 icon: Ban,
                 danger: true,
-                onclick: () => (confirmCancel = true),
+                onclick: openCancel,
               },
             ]
           : []),
@@ -253,6 +282,16 @@
                 icon: Trash2,
                 danger: true,
                 onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []),
+        ...(canDeleteIssued
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDeleteIssued = true),
               },
             ]
           : []),
@@ -296,6 +335,7 @@
           kind="invoice"
           doc={invoice}
           action="?/save"
+          definitions={data.definitions}
           contacts={data.contacts}
           taxRates={data.taxRates}
           products={data.products}
@@ -425,6 +465,7 @@
       canSync={data.canSyncPayment}
       agencyView={data.canReadRegister}
       returning={data.returning}
+      paid={invoice.status === "paid"}
       invoiceId={invoice.id}
       publicUrl={invoice.public_url ?? ""}
       {form}
@@ -495,19 +536,109 @@
   confirmLabel={t("invoicing.action.issue")}
   variant="primary"
 />
-<ConfirmDialog
-  bind:open={confirmCancel}
-  title={t("invoicing.action.cancel")}
-  message={t("invoicing.cancel_confirm")}
-  action="?/cancel"
-  confirmLabel={t("invoicing.action.cancel")}
-/>
+{#if isCredit}
+  <ConfirmDialog
+    bind:open={confirmCancel}
+    title={t("invoicing.action.withdraw")}
+    message={t("invoicing.withdraw_confirm")}
+    action="?/cancel"
+    confirmLabel={t("invoicing.action.withdraw")}
+  />
+{:else}
+  <!-- Two ways out of an issued invoice, and the dialog is where the difference is stated:
+       a credit note is a document the client's books and the ledger can follow, a plain
+       cancel is a status here and nothing anywhere else. The radio posts as `mode`. -->
+  <ConfirmDialog
+    bind:open={confirmCancel}
+    title={t("invoicing.action.cancel")}
+    message={t("invoicing.cancel.intro", { document: documentLabel })}
+    action="?/cancel"
+    confirmLabel={cancelMode === "credit"
+      ? t("invoicing.cancel.confirm_credit")
+      : t("invoicing.action.cancel")}
+    variant={cancelMode === "credit" ? "primary" : "danger"}
+    consequences={cancelMode === "credit"
+      ? [
+          t("invoicing.cancel.credit_1"),
+          t("invoicing.cancel.credit_2"),
+          t("invoicing.cancel.credit_3"),
+          t("invoicing.cancel.credit_4"),
+        ]
+      : [
+          t("invoicing.cancel.plain_1"),
+          t("invoicing.cancel.plain_2"),
+          t("invoicing.cancel.plain_3"),
+          t("invoicing.cancel.plain_4"),
+        ]}
+  >
+    <fieldset class="mt-4 space-y-2" data-testid="cancel-mode">
+      <label
+        class="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-brand"
+      >
+        <input
+          type="radio"
+          name="mode"
+          value="credit"
+          bind:group={cancelMode}
+          class="mt-1 accent-brand"
+        />
+        <span class="text-sm">
+          <span class="font-medium text-text">{t("invoicing.cancel.credit")}</span>
+          <span class="mt-0.5 block text-text-muted">{t("invoicing.cancel.credit_hint")}</span>
+        </span>
+      </label>
+      <label
+        class="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-brand"
+      >
+        <input
+          type="radio"
+          name="mode"
+          value="plain"
+          bind:group={cancelMode}
+          class="mt-1 accent-brand"
+        />
+        <span class="text-sm">
+          <span class="font-medium text-text">{t("invoicing.cancel.plain")}</span>
+          <span class="mt-0.5 block text-text-muted">{t("invoicing.cancel.plain_hint")}</span>
+        </span>
+      </label>
+    </fieldset>
+    {#if invoice.sent_at}
+      <p class="mt-3 text-xs text-text-muted">
+        {t("invoicing.cancel.sent_on", { date: fmtNumericDate(invoice.sent_at) })}
+      </p>
+    {/if}
+  </ConfirmDialog>
+{/if}
 <ConfirmDialog
   bind:open={confirmDelete}
   title={t("common.delete")}
   message={t("invoicing.delete_confirm")}
   action={withOrigin("?/delete", page.url)}
 />
+<!-- An issued document leaves with its number: irreversible, and the record shows none of
+     the cost, so the dialog states it and asks for a tick rather than a click (docs/UX.md). -->
+<ConfirmDialog
+  bind:open={confirmDeleteIssued}
+  title={t("invoicing.delete_issued.title", { document: documentLabel })}
+  message={t("invoicing.delete_issued.message", { document: documentLabel })}
+  consequences={[
+    t("invoicing.delete_issued.1"),
+    ...(isCredit ? [] : [t("invoicing.delete_issued.2")]),
+    t("invoicing.delete_issued.3"),
+    t("invoicing.delete_issued.4"),
+    t("invoicing.delete_issued.5"),
+  ]}
+  acknowledge={t("invoicing.delete_issued.acknowledge", { number: invoice.number ?? "" })}
+  action={withOrigin("?/delete", page.url)}
+  fields={{ force: "1" }}
+>
+  {#if invoice.sent_at}
+    <p class="mt-3 text-xs text-text-muted">
+      {t("invoicing.cancel.sent_on", { date: fmtNumericDate(invoice.sent_at) })}
+    </p>
+  {/if}
+</ConfirmDialog>
 <ConfirmDialog
   bind:open={confirmCredit}
   title={t("invoicing.action.credit")}

@@ -66,7 +66,7 @@
   } = $props();
 
   const panel = $derived(
-    (data ?? { entries: [], total: 0, viewAllHref: "/overview" }) as PanelData,
+    (data ?? { entries: [], total: 0, viewAllHref: "/overview/hours" }) as PanelData,
   );
   // Overzicht is gated on `time.report.read`: its layout redirects anyone else to the dashboard.
   // Offering a member a link that bounces them is worse than offering none — which is the whole

@@ -9,9 +9,9 @@
 
 {#
   The lines as one table with a band per kind: `classic`'s shape, and the shape of any design
-  that wants a single ruled grid. A document whose lines are all one kind gets no bands at all
-  (`grouped` is false), because a lone "UREN" over a table that subtotals to the subtotal
-  beneath it is noise.
+  that wants a single ruled grid. Every kind gets its band, a document of one kind included
+  (`grouped` is true whenever there are lines); what a lone kind skips is its own subtotal row
+  (`section.subtotalled`), which would restate the subtotal directly beneath it.
 #}
 {% macro table(columns, sections, grouped, palette) %}
   <table class="lines">
@@ -40,7 +40,7 @@
             {% endfor %}
           </tr>
         {% endfor %}
-        {% if grouped %}
+        {% if grouped and section.subtotalled %}
           <tr class="section-total">
             <td class="right muted" colspan="{{ (columns | length) - 1 }}">
               {{ section.subtotal_label }}
@@ -59,8 +59,9 @@
   A band across a shared grid says "these rows are hours"; a table of its own says "this is
   what we worked, priced". On an invoice that carries three kinds at once the second is what
   the reader actually wants, because *Aantal* means hours in one block and licences in the
-  next, and a heading eighteen rows up is not there when they need it. One kind gets no
-  heading and no subtotal — `grouped` is false, and it falls through to a plain table.
+  next, and a heading eighteen rows up is not there when they need it. One kind still gets
+  its heading — the band is what names the thing being paid for — and skips only the
+  subtotal that would repeat the document's own (`section.subtotalled`).
 #}
 {% macro sectioned(columns, sections, grouped) %}
   {% if not grouped %}
@@ -98,12 +99,14 @@
                 {% endfor %}
               </tr>
             {% endfor %}
-            <tr class="section-total">
-              <td class="right muted" colspan="{{ (columns | length) - 1 }}">
-                {{ section.subtotal_label }}
-              </td>
-              <td class="right num strong">{{ section.subtotal }}</td>
-            </tr>
+            {% if section.subtotalled %}
+              <tr class="section-total">
+                <td class="right muted" colspan="{{ (columns | length) - 1 }}">
+                  {{ section.subtotal_label }}
+                </td>
+                <td class="right num strong">{{ section.subtotal }}</td>
+              </tr>
+            {% endif %}
           </tbody>
         </table>
       </section>
