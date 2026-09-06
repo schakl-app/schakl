@@ -10,13 +10,18 @@
    * itself; the chart's default metric is a select. Every change calls `onchange` so the host
    * persists immediately.
    */
-  import { Eye, EyeOff, ExternalLink, GripVertical, Plus, X } from "@lucide/svelte";
+  import { Eye, EyeOff, ExternalLink, GripVertical, Plus, Upload, X } from "@lucide/svelte";
   import { dndzone } from "svelte-dnd-action";
 
-  import { fmtNumber } from "$lib/core/format";
+  import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import { fmtDateTime, fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { localeLabel, t } from "$lib/core/i18n";
   import { editLocale } from "$lib/core/i18n-edit.svelte";
+  import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
   import {
@@ -35,10 +40,20 @@
   import {
     ALL_METRICS,
     DRILLDOWNS,
+    type AiVisibilityImportState,
     type CompareWindow,
     type SourceEditState,
     type SourceMetrics,
   } from "./types";
+
+  /** What `?/marketingImportAiVisibility` answers: the span and the sum, to say back. */
+  interface AiImportDone {
+    days: number;
+    date_from: string;
+    date_to: string;
+    total: number;
+    imported: AiVisibilityImportState;
+  }
 
   let {
     companyId,
@@ -92,6 +107,17 @@
   const sourceHint = $derived(sourceHelp(src.source));
   const values = $derived(src.series?.metrics?.[selected] ?? []);
   const dates = $derived(src.series?.dates ?? []);
+
+  // ---- The Generative AI export (Search Console only) ---------------------------------------
+  // Uploading puts numbers under a client's name, so it is the link-management key the API
+  // asks for — mirrored here so a member who cannot manage links sees the report link alone.
+  const canImportAi = $derived(can(page.data.user, "marketing.link.manage"));
+  const aiBusy = new InFlight();
+  let aiInput = $state<HTMLInputElement | null>(null);
+  // The provenance line after an upload, before the page's own reload catches up.
+  let aiImported = $state<AiVisibilityImportState | null>(null);
+  let aiDone = $state<AiImportDone | null>(null);
+  let aiError = $state<string | null>(null);
 
   const channelEntries = $derived(
     src.channels ? Object.entries(src.channels).sort((a, b) => b[1] - a[1]) : [],
@@ -438,26 +464,109 @@
     {/if}
 
     {#if src.ai_visibility && !src.ai_visibility.available && src.ai_visibility.report_url}
-      <!-- A state with a link, not a tile with a number. Search Console reports impressions in
-           AI Overviews and AI Mode since June 2026 and the API does not return them, so the one
-           honest thing this card can do is say so and open the report — a plausible figure here
-           is one nothing on any screen could contradict. It disappears the day the API answers,
-           because then the metric is a tile like any other. Staff only: the API sends no card to
-           a portal login, whose link would land in the agency's Google account. -->
-      <div class="mb-5 rounded-lg border border-dashed border-border bg-surface p-3">
+      <!-- A state with a link and a way in, not a tile with a number. Search Console reports
+           impressions in AI Overviews and AI Mode since June 2026 and the API does not return
+           them; what the console offers is an export button. So the card says so, opens the
+           report, and takes the file that button produces — which is what puts the
+           "Vertoningen in AI" tile above this card, and the section in the monthly report. The
+           provenance line is the point of the card once a file is in: a figure a person has
+           to remember to upload must say how far it runs. It disappears the day the API
+           answers, because then the metric is a tile like any other. Staff only: the API sends
+           no card to a portal login, whose link would land in the agency's Google account. -->
+      {@const imported = aiImported ?? src.ai_visibility.imported ?? null}
+      <div
+        class="mb-5 rounded-lg border border-dashed border-border bg-surface p-3"
+        use:filedrop={{ input: () => aiInput, disabled: !canImportAi || aiBusy.active }}
+      >
         <p class="text-sm font-medium text-text">{t("marketing.ai_visibility.title")}</p>
         <p class="mt-1 max-w-3xl text-xs leading-relaxed text-text-muted">
           {t("marketing.ai_visibility.not_in_api")}
+          {t("marketing.ai_visibility.import_intro")}
         </p>
-        <a
-          href={src.ai_visibility.report_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-        >
-          {t("marketing.ai_visibility.open_report")}
-          <ExternalLink size={12} />
-        </a>
+        {#if imported}
+          <p class="mt-2 text-xs text-text">
+            {t("marketing.ai_visibility.imported", {
+              at: fmtDateTime(imported.at),
+              from: fmtDayMonthYear(imported.date_from),
+              to: fmtDayMonthYear(imported.date_to),
+              days: imported.days,
+            })}
+          </p>
+        {/if}
+        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <a
+            href={src.ai_visibility.report_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+          >
+            {t("marketing.ai_visibility.open_report")}
+            <ExternalLink size={12} />
+          </a>
+          {#if canImportAi}
+            <form
+              method="POST"
+              action="?/marketingImportAiVisibility"
+              enctype="multipart/form-data"
+              use:enhance={aiBusy.wrap("ai", () => async ({ result, update }) => {
+                if (result.type === "success") {
+                  const done = result.data?.aiImported as AiImportDone | undefined;
+                  if (done) {
+                    aiImported = done.imported;
+                    aiDone = done;
+                    aiError = null;
+                  }
+                } else if (result.type === "failure") {
+                  aiError = String(result.data?.error ?? "errors.validation");
+                }
+                await update();
+              })}
+              class="flex flex-wrap items-center gap-2"
+            >
+              <input type="hidden" name="link_id" value={src.link_id} />
+              <!-- `sr-only`, never `hidden`: a `display:none` control cannot take focus, and
+                   the upload would be unreachable by keyboard (docs/UX.md). -->
+              <input
+                bind:this={aiInput}
+                type="file"
+                name="file"
+                accept=".csv,.zip,text/csv,application/zip"
+                class="sr-only"
+                id="ai-export-{src.link_id}"
+                onchange={(e) => {
+                  aiError = null;
+                  if (e.currentTarget.files?.length) e.currentTarget.form?.requestSubmit();
+                }}
+              />
+              <label
+                for="ai-export-{src.link_id}"
+                class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand {aiBusy.active
+                  ? 'pointer-events-none opacity-60'
+                  : ''}"
+              >
+                <Upload size={13} aria-hidden="true" />
+                {aiBusy.active
+                  ? t("marketing.ai_visibility.importing")
+                  : t("marketing.ai_visibility.import")}
+              </label>
+              <span class="text-xs text-text-muted">{t("marketing.ai_visibility.import_hint")}</span
+              >
+            </form>
+          {/if}
+        </div>
+        {#if aiDone}
+          <p class="mt-2 text-xs text-green-700 dark:text-green-400">
+            {t("marketing.ai_visibility.import_done", {
+              days: aiDone.days,
+              from: fmtDayMonthYear(aiDone.date_from),
+              to: fmtDayMonthYear(aiDone.date_to),
+              total: fmtNumber(aiDone.total, 0),
+            })}
+          </p>
+        {/if}
+        {#if aiError}
+          <p class="mt-2 text-xs text-red-600 dark:text-red-400">{t(aiError)}</p>
+        {/if}
       </div>
     {/if}
 

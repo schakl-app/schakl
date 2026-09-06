@@ -33,7 +33,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -67,6 +67,7 @@ from app.modules.marketing.service import (
     resolve_seranking_key,
 )
 from app.modules.marketing.sources import source_for
+from app.modules.marketing.sources.base import IMPORTED_METRICS
 from app.registry import AUDIENCE_BOTH, AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
 
 logger = logging.getLogger("schakl.marketing")
@@ -295,13 +296,15 @@ async def _stored(
 
     async def totals(
         start: date | None, end: date | None
-    ) -> tuple[dict, dict, int, str | None]:
+    ) -> tuple[dict, dict, int, str | None, dict[str, dict[date, float]]]:
         if start is None or end is None:
-            return {}, {}, 0, None
+            return {}, {}, 0, None, {}
         result = list(
             await ctx.session.execute(
                 select(
-                    MarketingMetricDaily.metrics, MarketingMetricDaily.currency
+                    MarketingMetricDaily.metrics,
+                    MarketingMetricDaily.currency,
+                    MarketingMetricDaily.date,
                 ).where(
                     MarketingMetricDaily.org_id == ctx.org.id,
                     MarketingMetricDaily.link_id.in_(link_ids),
@@ -310,20 +313,29 @@ async def _stored(
                 )
             )
         )
-        rows = [metrics for metrics, _ in result]
+        rows = [metrics for metrics, _, _ in result]
         # The account's own currency, carried so a document prints what the property reports
         # rather than what the agency happens to invoice in (#124: label it, never convert it).
-        currency = next((code for _, code in result if code), None)
+        currency = next((code for _, code, _ in result if code), None)
         channels: dict[str, float] = {}
         for row in rows:
             for name, sessions in (row.get("channels") or {}).items():
                 channels[name] = channels.get(name, 0.0) + float(sessions or 0)
+        # The day-by-day series of every hand-imported metric (`IMPORTED_METRICS`), kept
+        # because its section draws a chart of the month and an aggregate cannot be charted.
+        # Summed across the part's links per day, the same fold the totals get.
+        imported: dict[str, dict[date, float]] = {}
+        for metrics, _, day in result:
+            for metric in IMPORTED_METRICS:
+                if metric in metrics:
+                    series = imported.setdefault(metric, {})
+                    series[day] = series.get(day, 0.0) + float(metrics.get(metric) or 0)
         # `days` counts *rows*, and a combined part has one per link per day — divided back out,
         # so "31 days of July" stays 31 for a client with two properties rather than 62.
-        return aggregate(source, rows), channels, len(rows) // len(link_ids), currency
+        return aggregate(source, rows), channels, len(rows) // len(link_ids), currency, imported
 
-    current, channels, days, currency = await totals(window.start, window.end)
-    compare, compare_channels, compare_days, _ = await totals(
+    current, channels, days, currency, imported = await totals(window.start, window.end)
+    compare, compare_channels, compare_days, _, compare_imported = await totals(
         window.compare_start, window.compare_end
     )
     return {
@@ -335,6 +347,8 @@ async def _stored(
         "days": days,
         "compare_days": compare_days,
         "display_name": part.label or part.links[0].display_name,
+        "imported": imported,
+        "compare_imported": compare_imported,
     }
 
 
@@ -1019,15 +1033,111 @@ async def _search_console(ctx: RequestContext, window: ReportWindow) -> dict[str
         stored = data.stored.get(part.key)
         if not stored or not stored["totals"]:
             return None
+        # The synced four and nothing else: the imported AI figure has a section of its own
+        # below, and a tile printed twice under two headings is one fact read as two.
         return {
-            "columns": ["clicks", "impressions", "ctr", "position"],
+            "columns": list(_GSC_SYNCED),
             "rows": [],
-            "totals": stored["totals"],
-            "compare": stored["compare"],
+            "totals": _only(stored["totals"], _GSC_SYNCED),
+            "compare": _only(stored["compare"], _GSC_SYNCED) if stored["compare"] else None,
             "chart": None,
         }
 
     return _compose(data, MarketingSource.GSC.value, "search_console", build)
+
+
+#: The Search Console metrics the nightly sync writes — the section above prints these and
+#: leaves every hand-imported one (`IMPORTED_METRICS`) to its own section.
+_GSC_SYNCED = ("clicks", "impressions", "ctr", "position")
+#: A week of the report's month per bar. Seven, because the console's own chart is daily and
+#: a month of thirty-one daily bars on a printed sheet is a texture, not a chart.
+_AI_BUCKET_DAYS = 7
+
+
+def _only(totals: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: value for key, value in (totals or {}).items() if key in keys}
+
+
+def _weekly(
+    series: dict[date, float], start: date | None, end: date | None
+) -> tuple[list[str], list[float]]:
+    """A daily series folded into the period's weeks, labelled by day-of-month span.
+
+    Labelled ``1-7``, ``8-14`` … rather than by ISO week, so the comparison period — last
+    year's same month, whose ISO weeks are different numbers — lines up bar for bar with this
+    one, and so the label reads the same in every locale the document prints in.
+    """
+    if start is None or end is None:
+        return [], []
+    labels: list[str] = []
+    values: list[float] = []
+    cursor = start
+    while cursor <= end:
+        stop = min(cursor + timedelta(days=_AI_BUCKET_DAYS - 1), end)
+        labels.append(f"{cursor.day}-{stop.day}" if stop != cursor else str(cursor.day))
+        values.append(
+            round(
+                sum(
+                    value
+                    for day, value in series.items()
+                    if cursor <= day <= stop
+                ),
+                0,
+            )
+        )
+        cursor = stop + timedelta(days=1)
+    return labels, values
+
+
+async def _ai_overviews(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
+    """How often the site was shown inside AI Overviews and AI Mode — Search Console's
+    Generative AI performance report, which Google returns through no API and the agency
+    therefore uploads (``aiv_import``, docs/GOOGLE_SEARCH_CONSOLE.md §6a).
+
+    Built only from rows that carry the figure: a client whose agency never imported the report
+    gets **no section** rather than a section reading zero, which is the whole reason
+    ``aggregate`` leaves an imported metric out of a period that has none of it. The tile is the
+    month's total against the comparison month's, and the chart is the same month by week — the
+    comparison's weeks laid beside it bar for bar where it was imported too.
+    """
+    data = await gather(ctx, window)
+
+    def build(part: Part) -> dict[str, Any] | None:
+        stored = data.stored.get(part.key)
+        if not stored or "ai_impressions" not in stored["totals"]:
+            return None
+        compare = stored["compare"] or {}
+        labels, values = _weekly(
+            stored["imported"].get("ai_impressions", {}), window.start, window.end
+        )
+        _, compare_values = _weekly(
+            stored["compare_imported"].get("ai_impressions", {}),
+            window.compare_start,
+            window.compare_end,
+        )
+        # The comparison month may be a day longer or shorter; the chart is per bar and a
+        # missing fifth bar is a zero, never a shifted series.
+        compare_values = (compare_values + [0.0] * len(values))[: len(values)]
+        return {
+            "columns": ["ai_impressions"],
+            "rows": [],
+            "totals": {"ai_impressions": stored["totals"]["ai_impressions"]},
+            "compare": (
+                {"ai_impressions": compare["ai_impressions"]}
+                if "ai_impressions" in compare
+                else None
+            ),
+            "chart": {
+                "type": "grouped",
+                "labels": labels,
+                "series": [
+                    {"key": "current", "values": values},
+                    {"key": "compare", "values": compare_values},
+                ],
+            },
+        }
+
+    return _compose(data, MarketingSource.GSC.value, "ai_overviews", build)
 
 
 async def _ai_search(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
@@ -1144,6 +1254,16 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=70,
+    ),
+    ReportSectionSpec(
+        key="marketing.ai_overviews",
+        title_key="reporting.section.ai_overviews",
+        brief_key="reporting.brief.ai_overviews",
+        source_key="reporting.source.gsc",
+        provider=_ai_overviews,
+        audience=AUDIENCE_BOTH,
+        requires_permission="marketing.metrics.read",
+        position=75,
     ),
     ReportSectionSpec(
         key="marketing.ai_search",

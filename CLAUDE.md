@@ -1590,6 +1590,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   is in the web build: thirteen more operations pushed the generated client past TypeScript's
   instantiation depth in the one place that handed `api.GET` to `Reflect.apply`, so the deduper
   widens through `unknown` — the same assertion, the proof skipped.
+- **A number the vendor draws and will not return comes in by the door the vendor does offer,
+  and absent is never zero** (`docs/GOOGLE_SEARCH_CONSOLE.md` §6a). The card above said the
+  honest thing and left the dashboard without the figure and the report without the chapter; the
+  report has an **export button**, so a Search Console link now takes that file
+  (`POST /marketing/links/{id}/ai-visibility/import`, its JSON twin `…/rows` for an agent) and
+  writes `ai_impressions` beside the synced four on the same daily rows — one table, so the
+  tile, the trend, the compare and the report's own `marketing.ai_overviews` section read it the
+  way they read clicks. Three rules generalise. **`IMPORTED_METRICS` is a class, not a key**: a
+  hand-imported metric is left *out* of a period no row carries it in (`aggregate`) rather than
+  summed to `0`, because "Vertoningen in AI 0" is a claim about a client's AI visibility that
+  nothing on any screen could contradict — the same argument that made the card a state; and a
+  sync keeps every such key on a row it rewrites (`_upsert_daily`), or an upload lasts one night.
+  **A parser written from a document refuses rather than guesses** (the OXXA rule): a zip is
+  searched for the member with a date column, a weekly export is refused with a sentence rather
+  than stored as one day a seventh of the size, and §10's checklist names what to verify the day
+  a real file arrives. And **provenance prints beside a number a person has to remember to
+  upload** — the last upload's span rides the card, since a tile alone reads as live.
 - **A tool the caller may never use must not be in the model's view, and the service must refuse it
   anyway** (`marketing/mcp.py`, §15). The in-app assistant had no marketing tools at all, so
   "how did this client do last month" was a question the platform could answer everywhere except

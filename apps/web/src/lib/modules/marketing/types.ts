@@ -191,6 +191,16 @@ export interface SourceMetrics {
 export interface SourceAiVisibility {
   available: boolean;
   report_url: string;
+  /** The last upload of the report's export (the figure has no API): when, and the days it
+   *  covered. `null` until the agency has uploaded one — there is then no tile either. */
+  imported?: AiVisibilityImportState | null;
+}
+
+export interface AiVisibilityImportState {
+  at: string;
+  date_from: string;
+  date_to: string;
+  days: number;
 }
 
 /** One source's stored layout (#192); `null`/absent fields mean "not curated". */
@@ -360,7 +370,9 @@ export const ALL_METRICS: Record<MarketingSource, string[]> = {
     "engagementRate",
     "totalRevenue",
   ],
-  gsc: ["clicks", "impressions", "ctr", "position"],
+  // `ai_impressions` is the imported Generative AI report (no API for it) — curatable like any
+  // tile, drawn only where the agency has uploaded the export.
+  gsc: ["clicks", "impressions", "ctr", "position", "ai_impressions"],
   gads: ["cost", "clicks", "impressions", "conversions", "conversionsValue"],
   seranking: ["avg_position", "top3", "top10", "top30", "keywords_ranking", "keywords_tracked"],
   rankmath: ["ai_visibility_score", "mentions", "citations", "avg_sentiment", "brand_rank"],

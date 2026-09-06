@@ -62,6 +62,7 @@ from app.i18n import resolve_locale, translate
 from app.integrations.google import client as google_client
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.companies.models import Company
+from app.modules.marketing.aiv_import import ParsedAiExport
 from app.modules.marketing.layout import (
     GA4_KEY_EVENT_DRILLDOWN,
     GA4_KEY_EVENT_TILES,
@@ -96,6 +97,8 @@ from app.modules.marketing.reportsplit import (
 )
 from app.modules.marketing.schemas import (
     AccountsResponse,
+    AiVisibilityImportResult,
+    AiVisibilityImportState,
     AvailableAccount,
     CompanyMarketing,
     CompanySettingsRead,
@@ -129,6 +132,7 @@ from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,
     AUTH_SITE_KEY,
     AVERAGED_METRICS,
+    IMPORTED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
 )
@@ -273,9 +277,18 @@ def _failure_key(
 
 
 def aggregate(source: str, rows: list[dict[str, Any]]) -> dict[str, float]:
-    """Collapse a list of daily ``metrics`` dicts into one period total for ``source``."""
+    """Collapse a list of daily ``metrics`` dicts into one period total for ``source``.
+
+    A hand-imported metric (:data:`IMPORTED_METRICS`) is **left out** of the answer when no row
+    of the period carries it — not summed to ``0``. Absent and zero are different facts for a
+    figure somebody has to remember to upload, and every consumer downstream (the tile row, the
+    report's strip, the overview grid) reads a missing key as "nothing to draw" and a zero as a
+    measurement.
+    """
     out: dict[str, float] = {}
     for metric in METRICS_BY_SOURCE.get(source, []):
+        if metric in IMPORTED_METRICS and not any(metric in row for row in rows):
+            continue
         if metric in AVERAGED_METRICS:
             weight_key = _WEIGHT_BY_METRIC.get(metric)
             num = 0.0
@@ -1006,6 +1019,85 @@ class MarketingService:
             is_me=True,
         )
 
+    async def import_ai_visibility(
+        self, link_id: uuid.UUID, parsed: ParsedAiExport
+    ) -> AiVisibilityImportResult:
+        """Land a Generative AI performance export on a Search Console link's daily rows.
+
+        The figure has no API (docs/GOOGLE_SEARCH_CONSOLE.md §6), so it arrives as the file the
+        console's export button produces — read by ``aiv_import`` — and is written **beside**
+        the four synced metrics as ``ai_impressions`` on the same ``marketing_metrics_daily``
+        rows. One table, so the tile, the trend, the compare and the report section all read it
+        the way they read clicks, and the nightly sync keeps it (``_upsert_daily``).
+
+        A day already imported is overwritten by the newer file: the console re-reports the last
+        few days as they finalise, and "the file I just uploaded" is the fact. Days the file does
+        not name are left alone, so a month uploaded in two halves is one month. Gated on
+        ``marketing.link.manage`` — putting numbers under a client's name is configuration, not
+        a read — and refused on any source but Search Console, which is the only one whose
+        console produces this report.
+        """
+        self.ctx.require("marketing.link.manage")
+        link = await self.ctx.repo(MarketingLink).get_or_404(link_id)
+        if link.source != MarketingSource.GSC.value or not link.active:
+            raise AppError(
+                "validation", "errors.marketing_ai_export_source", status_code=422
+            )
+        days = sorted(parsed.rows)
+        existing = {
+            row.date: row
+            for row in (
+                await self.ctx.session.execute(
+                    select(MarketingMetricDaily).where(
+                        MarketingMetricDaily.org_id == self.ctx.org.id,
+                        MarketingMetricDaily.link_id == link.id,
+                        MarketingMetricDaily.date.in_(days),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        for day in days:
+            value = float(parsed.rows[day])
+            row = existing.get(day)
+            if row is None:
+                self.ctx.session.add(
+                    MarketingMetricDaily(
+                        org_id=self.ctx.org.id,
+                        link_id=link.id,
+                        date=day,
+                        metrics={"ai_impressions": value},
+                    )
+                )
+            else:
+                # A new dict, never a mutation: SQLAlchemy tracks JSONB by reassignment.
+                row.metrics = {**(row.metrics or {}), "ai_impressions": value}
+        now = datetime.now(UTC)
+        state = {
+            "at": now.isoformat(),
+            "date_from": days[0].isoformat(),
+            "date_to": days[-1].isoformat(),
+            "days": len(days),
+        }
+        link.config = {**(link.config or {}), "ai_import": state}
+        await self.ctx.session.flush()
+        await ActivityService(self.ctx).record(
+            "company",
+            link.company_id,
+            "marketing.ai_imported",
+            {"name": link.display_name, "days": len(days), **state},
+        )
+        return AiVisibilityImportResult(
+            link_id=link.id,
+            days=len(days),
+            date_from=days[0],
+            date_to=days[-1],
+            total=float(sum(parsed.rows.values())),
+            skipped=parsed.skipped,
+            imported=AiVisibilityImportState(**state),
+        )
+
     async def deactivate_link(self, link_id: uuid.UUID) -> None:
         self.ctx.require("marketing.link.manage")
         link = await self.ctx.repo(MarketingLink).get_or_404(link_id)
@@ -1561,6 +1653,14 @@ class MarketingService:
         # entirely (never a client-side hide), so no consumer ever sees them.
         src_layout = source_layout(layout, link.source)
         metrics = resolved_tiles(link.source, src_layout, show_key_events)
+        # A hand-imported metric is a tile only where either window carries it (`aggregate`
+        # leaves the key out otherwise). The layout may list it — it is curatable like any
+        # tile — but a client whose agency never uploaded the report gets no "0" for it.
+        metrics = [
+            metric
+            for metric in metrics
+            if metric not in IMPORTED_METRICS or metric in cur_agg or metric in prev_agg
+        ]
         kpis = {
             metric: KpiValue(
                 current=cur_agg.get(metric, 0.0),
@@ -2477,7 +2577,11 @@ async def _upsert_daily(session: Any, link: MarketingLink, daily: list) -> None:
                 )
             )
         else:
-            row.metrics = point.metrics
+            # A sync replaces what it fetched and **keeps what a person brought in**: the
+            # nightly re-pull of Search Console's trailing window would otherwise wipe the
+            # imported AI-report figures off every day it touched (`IMPORTED_METRICS`).
+            kept = {k: v for k, v in (row.metrics or {}).items() if k in IMPORTED_METRICS}
+            row.metrics = {**kept, **point.metrics}
             row.currency = point.currency
             row.synced_at = now
     await session.flush()

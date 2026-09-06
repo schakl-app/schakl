@@ -577,7 +577,15 @@ async def test_the_dashboard_card_reads_the_same_seam_as_the_integration() -> No
 
     adapter = source_for("gsc")
     card = adapter.ai_visibility(SITE, {})
-    assert card == {"available": False, "report_url": generative_ai_report_url(SITE)}
+    # `imported` is the other half — the export uploaded by hand — and a link with none says so.
+    assert card == {
+        "available": False,
+        "report_url": generative_ai_report_url(SITE),
+        "imported": None,
+    }
+    state = {"at": "2026-09-05T10:00:00+00:00", "date_from": "2026-08-01",
+             "date_to": "2026-08-31", "days": 31}
+    assert adapter.ai_visibility(SITE, {"ai_import": state})["imported"] == state
     assert adapter.deep_link(SITE, {}) == (
         "https://search.google.com/search-console?resource_id=sc-domain%3Aklant.nl"
     )

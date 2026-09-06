@@ -9001,6 +9001,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/links/{link_id}/ai-visibility/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Visibility
+         * @description Upload the export of Search Console's Generative AI performance report — the CSV of its
+         *     Dates table or the zip the console's export button produces — for one Search Console
+         *     link. Google returns these figures through no API, so this is how the site's impressions
+         *     in AI Overviews and AI Mode reach the dashboard tile and the report section. Days in the
+         *     file overwrite the same days; days it does not name are left alone. Multipart; an agent
+         *     sends the same rows as JSON to `/ai-visibility/rows`.
+         */
+        post: operations["import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/links/{link_id}/ai-visibility/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Visibility Rows
+         * @description The JSON twin of the multipart import: the Dates table of Search Console's Generative
+         *     AI performance report as `[{day, impressions}]`, for one Search Console link. Same rules,
+         *     same result — a day named here overwrites that day, a day not named is left alone.
+         */
+        post: operations["import_ai_visibility_rows_api_v1_marketing_links__link_id__ai_visibility_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/overview": {
         parameters: {
             query?: never;
@@ -14308,6 +14355,87 @@ export interface components {
             /** Principals */
             principals: components["schemas"]["InstancePrincipal"][];
         };
+        /**
+         * AiVisibilityImportResult
+         * @description What an import wrote: the span and the sum, so the response can be checked against the
+         *     console's own total before anyone trusts the tile.
+         */
+        AiVisibilityImportResult: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Days */
+            days: number;
+            imported: components["schemas"]["AiVisibilityImportState"];
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * AiVisibilityImportState
+         * @description The last Generative AI export landed on a link: when, and the days it covered.
+         *
+         *     Stored on the link's ``config`` under ``ai_import`` and read back onto the dashboard card,
+         *     because a figure a person has to remember to upload needs its provenance printed beside it
+         *     — "geïmporteerd op 5 sep, t/m 3 sep" is what tells a colleague whether the tile is current.
+         */
+        AiVisibilityImportState: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Days
+             * @default 0
+             */
+            days: number;
+        };
+        /** AiVisibilityRow */
+        AiVisibilityRow: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Impressions */
+            impressions: number;
+        };
+        /**
+         * AiVisibilityRows
+         * @description The JSON twin of the multipart import (CLAUDE.md §10: a multipart route is not a tool an
+         *     agent can call). ``[{day, impressions}]`` — the Dates table of the export, as data.
+         */
+        AiVisibilityRows: {
+            /** Rows */
+            rows: components["schemas"]["AiVisibilityRow"][];
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /** Expires At */
@@ -15705,6 +15833,11 @@ export interface components {
              * @description A pasted table instead of a file
              */
             text?: string | null;
+        };
+        /** Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post */
+        Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post: {
+            /** File */
+            file: string;
         };
         /** Body_import_org_archive_api_v1_instance_orgs_import_archive_post */
         Body_import_org_archive_api_v1_instance_orgs_import_archive_post: {
@@ -29608,6 +29741,11 @@ export interface components {
          *     against Google's discovery document in ``google_search_console.client``), and ``report_url``
          *     is where the numbers are in the meantime. A state with a link rather than a tile with a
          *     number, because a plausible figure here is one nothing on any screen could contradict.
+         *
+         *     ``imported`` is the other half of the answer: the export of that report, uploaded by hand
+         *     (``POST /marketing/links/{id}/ai-visibility/import``), is what puts an ``ai_impressions``
+         *     tile beside the four synced ones — and this says when it was last done, so the tile is
+         *     never read as live.
          */
         SourceAiVisibility: {
             /**
@@ -29615,6 +29753,7 @@ export interface components {
              * @default false
              */
             available: boolean;
+            imported?: components["schemas"]["AiVisibilityImportState"] | null;
             /**
              * Report Url
              * @default
@@ -52004,6 +52143,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiVisibilityImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ai_visibility_rows_api_v1_marketing_links__link_id__ai_visibility_rows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiVisibilityRows"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiVisibilityImportResult"];
+                };
             };
             /** @description Validation Error */
             422: {

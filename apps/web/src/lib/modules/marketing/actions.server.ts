@@ -8,6 +8,7 @@
 import { fail } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import type { MarketingSource } from "$lib/modules/marketing/types";
@@ -67,10 +68,54 @@ async function link(event: RequestEvent, companyId: string) {
  */
 export const marketingConnectActions = {
   marketingLink: (event: RequestEvent) => link(event, ""),
+  // The org-wide dashboard draws the same Search Console section, so the upload posts here too.
+  marketingImportAiVisibility: importAiVisibility,
 };
+
+/**
+ * Search Console's Generative AI export, uploaded onto one link (docs/GOOGLE_SEARCH_CONSOLE.md
+ * §6a). Multipart goes through a plain fetch — the typed client has no serializer for it — and
+ * the API's own refusal (a grouped export, a file with no dates) is relayed as its key, so the
+ * card says *why* rather than "something went wrong".
+ */
+async function importAiVisibility(event: RequestEvent) {
+  const form = await event.request.formData();
+  const link_id = String(form.get("link_id") ?? "").trim();
+  const file = form.get("file");
+  if (!link_id || !(file instanceof File) || file.size === 0) {
+    return fail(400, { error: "errors.required" });
+  }
+  const body = new FormData();
+  body.append("file", file, file.name);
+  const res = await event.fetch(
+    `${apiBaseUrl()}/api/v1/marketing/links/${encodeURIComponent(link_id)}/ai-visibility/import`,
+    {
+      method: "POST",
+      headers: {
+        cookie: event.request.headers.get("cookie") ?? "",
+        "x-forwarded-host": event.request.headers.get("host") ?? "",
+      },
+      body,
+    },
+  );
+  if (!res.ok) {
+    if (res.status === 413) return fail(413, { error: "errors.upload_too_large" });
+    const payload: unknown = await res.json().catch(() => null);
+    return fail(res.status >= 500 ? 500 : 400, { error: apiErrorKey(payload).key });
+  }
+  const result = (await res.json()) as {
+    days: number;
+    date_from: string;
+    date_to: string;
+    total: number;
+    imported: { at: string; date_from: string; date_to: string; days: number };
+  };
+  return { aiImported: result };
+}
 
 export const marketingActions = {
   marketingLink: (event: RequestEvent) => link(event, event.params.id as string),
+  marketingImportAiVisibility: importAiVisibility,
 
   marketingUnlink: async (event: RequestEvent) => {
     const form = await event.request.formData();

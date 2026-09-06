@@ -324,6 +324,9 @@ class GSCAdapter:
         return {
             "available": bool(GENERATIVE_AI_SEARCH_TYPES),
             "report_url": generative_ai_report_url(external_id),
+            # The export of that report, landed by hand (`service.import_ai_visibility`): what
+            # makes an `ai_impressions` tile exist, and when it was last brought up to date.
+            "imported": (config or {}).get("ai_import"),
         }
 
 

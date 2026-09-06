@@ -334,7 +334,10 @@ _ROUTE_MAPS = [
             r"^/api/v1/(files|hr/documents|interactions/upload-eml|companies/[^/]+/logo"
             # An imported invoice's original PDF, one or a zip of them: the JSON twin is
             # ``POST /files/inline`` against the invoice plus ``PATCH {original_file_id}``.
-            r"|invoicing/invoices/[^/]+/original|invoicing/invoices/originals)$"
+            r"|invoicing/invoices/[^/]+/original|invoicing/invoices/originals"
+            # Search Console's Generative AI export (a CSV or the console's zip): the JSON
+            # twin is ``…/ai-visibility/rows``, the same Dates table as ``[{day, impressions}]``.
+            r"|marketing/links/[^/]+/ai-visibility/import)$"
         ),
         mcp_type=MCPType.EXCLUDE,
     ),
