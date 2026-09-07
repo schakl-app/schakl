@@ -79,4 +79,16 @@ WORDPRESS_PERMISSIONS: list[PermissionSpec] = [
     # Running any ability at all, writes included. What ACF 6.8's "Allow AI access" toggle
     # opens on the site side, this key opens on ours; both have to say yes.
     PermissionSpec("wordpress.ability.run", position=90),
+    # --- the passthrough --------------------------------------------------------------- #
+    # Any GET the site's REST index lists, under the credential. The escape hatch for the
+    # plugin namespace no curated route knows (WPML, LiteSpeed, FileBird, Link Genius).
+    PermissionSpec(
+        "wordpress.rest.read",
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+        position=100,
+    ),
+    # Any other verb — minus the site-takeover routes `surface.REST_WRITE_DENIED` refuses
+    # outright. Admin only, and the key an agency should mint deliberately for a person, never
+    # by default for an assistant: one call under it can deface a client's site.
+    PermissionSpec("wordpress.rest.write", position=110),
 ]

@@ -58,6 +58,8 @@ from app.integrations.wordpress.schemas import (
     WordPressFormWrite,
     WordPressMediaList,
     WordPressMediaRow,
+    WordPressRestCall,
+    WordPressRestResult,
     WordPressSiteSummary,
 )
 from app.integrations.wordpress.service import ENTITY_TYPE, WordPressService
@@ -71,6 +73,25 @@ _CORE_BASES = {"page": "pages", "post": "posts"}
 #: A list read is bounded whatever the caller asks (§17: capped, never truncated silently — the
 #: response carries the site's own ``total`` beside what was shown).
 _MAX_PER_PAGE = 100
+
+#: Routes a passthrough **write** never reaches, whatever key the caller holds. Each is a way
+#: to take the site over rather than to change what it says: a new administrator, code
+#: installed or switched on, the site URL or admin e-mail, a second application password.
+#: Reads of all of them stay open — "which plugins does this site run" is a fair question.
+#: Prefix-matched on the path relative to ``/wp-json/``, so ``wp/v2/users/me/application-
+#: passwords`` is covered by ``wp/v2/users``. Those changes are made in the site's own admin,
+#: by a person, which is the sentence ``errors.wordpress_rest_denied`` says.
+REST_WRITE_DENIED: tuple[str, ...] = (
+    "wp/v2/users",
+    "wp/v2/plugins",
+    "wp/v2/themes",
+    "wp/v2/settings",
+)
+
+#: The ceiling on what a passthrough hands back, in serialised bytes. A list is cut to the
+#: rows that fit and says how many were shown; an object loses its largest values and names
+#: them. One call must not be able to fill a context window (docs/MCP.md).
+REST_RESPONSE_CAP = 256 * 1024
 
 #: Namespaces that say what the site carries. ``wpml/v1`` is what puts a language on a record.
 _NS_FORMS = "contact-form-7/v1"
@@ -232,6 +253,63 @@ def _ability(raw: dict[str, Any]) -> WordPressAbility | None:
         input_schema=input_schema if isinstance(input_schema, dict) else None,
         output_schema=output_schema if isinstance(output_schema, dict) else None,
     )
+
+
+def normalise_rest_path(raw: str) -> str:
+    """A passthrough path relative to ``/wp-json/``, or ``""`` for one that must be refused.
+
+    Tolerates the two ways people paste a route (a leading slash, a leading ``/wp-json/``) and
+    refuses the two ways a path escapes (``..`` in any segment, a scheme or host in front),
+    because the credential is sent with it.
+    """
+    value = (raw or "").strip()
+    if "://" in value or value.startswith("//"):
+        return ""
+    value = value.split("?", 1)[0].split("#", 1)[0]
+    value = value.lstrip("/")
+    if value.startswith("wp-json/"):
+        value = value[len("wp-json/") :]
+    value = value.strip("/")
+    if not value:
+        return ""
+    if any(seg in ("..", ".", "") for seg in value.split("/")):
+        return ""
+    return value
+
+
+def _write_denied(path: str) -> bool:
+    return any(path == d or path.startswith(d + "/") for d in REST_WRITE_DENIED)
+
+
+def _fit(data: Any) -> tuple[Any, bool, int | None, list[str]]:
+    """``(data, truncated, shown, dropped)`` — the answer cut to :data:`REST_RESPONSE_CAP`."""
+    import json as _json
+
+    def size(value: Any) -> int:
+        return len(_json.dumps(value, ensure_ascii=False, default=str))
+
+    if size(data) <= REST_RESPONSE_CAP:
+        return data, False, None, []
+    if isinstance(data, list):
+        kept: list[Any] = []
+        used = 2
+        for row in data:
+            cost = size(row) + 1
+            if used + cost > REST_RESPONSE_CAP:
+                break
+            kept.append(row)
+            used += cost
+        return kept, True, len(kept), []
+    if isinstance(data, dict):
+        out = dict(data)
+        dropped: list[str] = []
+        for key in sorted(out, key=lambda k: size(out[k]), reverse=True):
+            if size(out) <= REST_RESPONSE_CAP:
+                break
+            dropped.append(str(key))
+            del out[key]
+        return out, True, None, dropped
+    return None, True, None, []
 
 
 def _pick(raw: Any, *keys: str) -> str | None:
@@ -557,6 +635,61 @@ class WordPressSurfaceService(WordPressService):
             {"wp_id": wp_id, "title": record.title, "fields": sorted(body)},
         )
         return record
+
+    # --- the passthrough ------------------------------------------------------------------ #
+    async def rest_call(self, site_id: uuid.UUID, data: WordPressRestCall) -> WordPressRestResult:
+        """Any call the site's REST API takes, under the stored credential.
+
+        The route declares ``rest.read``; anything but a ``GET`` asks ``rest.write`` here and is
+        then judged against :data:`REST_WRITE_DENIED` **before the site is asked** — a refusal
+        the caller gets from us names the rule, a refusal from the site would name a capability
+        the caller cannot fix. The verb is the audience split (§7): the licence gate reads it
+        the same way, so a write passthrough goes 402 past expiry by construction.
+        """
+        path = normalise_rest_path(data.path)
+        if not path:
+            raise AppError(
+                "validation",
+                "errors.wordpress_rest_path",
+                status_code=422,
+                fields={"path": "errors.wordpress_rest_path"},
+            )
+        if data.method != "GET":
+            self.ctx.require("wordpress.rest.write")
+            if _write_denied(path):
+                raise AppError(
+                    "forbidden",
+                    "errors.wordpress_rest_denied",
+                    status_code=403,
+                    fields={"path": "errors.wordpress_rest_denied"},
+                    details={"denied": list(REST_WRITE_DENIED)},
+                )
+        site, client = await self._open(site_id)
+        body, total = await self._call(
+            lambda: client.request_full(
+                data.method,
+                f"/wp-json/{path}",
+                params=data.params or None,
+                json=data.body if data.method != "GET" else None,
+            )
+        )
+        if data.method != "GET":
+            await self.activity.record(
+                ENTITY_TYPE,
+                site.id,
+                "rest_written",
+                {"method": data.method, "path": path},
+            )
+        fitted, truncated, shown, dropped = _fit(body)
+        return WordPressRestResult(
+            method=data.method,
+            path=path,
+            data=fitted,
+            total=total,
+            truncated=truncated,
+            shown=shown,
+            dropped=dropped,
+        )
 
     # --- abilities ------------------------------------------------------------------------ #
     async def abilities(self, site_id: uuid.UUID) -> list[WordPressAbility]:

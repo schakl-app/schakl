@@ -460,3 +460,112 @@ async def test_the_mcp_section_does_not_grow_with_the_sites(client_for, wp) -> N
     surface = {name for name, path in tool_paths.items() if "/wordpress/sites/{site_id}/" in path}
     assert surface <= wordpress.tools
     assert {"list_site_content", "run_site_ability", "get_site_form"} <= wordpress.tools
+
+
+# ---------------------------------------------------------------- the passthrough
+
+
+def test_a_passthrough_path_is_relative_to_wp_json_and_cannot_climb() -> None:
+    from app.integrations.wordpress.surface import normalise_rest_path as n
+
+    assert n("wp/v2/settings") == "wp/v2/settings"
+    assert n("/wp-json/wpml/v1/languages?x=1") == "wpml/v1/languages"
+    assert n("/wp/v2/pages/") == "wp/v2/pages"
+    assert n("wp/v2/../../wp-admin") == ""
+    assert n("https://evil.example/wp-json/wp/v2") == ""
+    assert n("//evil.example/x") == ""
+    assert n("") == ""
+
+
+async def test_the_passthrough_reads_on_read_and_writes_on_write_minus_takeover(
+    client_for, wp
+) -> None:
+    t = await make_tenant("wp-rest")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        url = f"/api/v1/wordpress/sites/{site['id']}/rest"
+        member_h = await _member(t, "wp-rest", role="member")
+
+        # A plugin route no curated route knows, read by a member.
+        res = await c.post(url, json={"path": "wpml/v1/languages"}, headers=member_h)
+        assert res.status_code == 200, res.text
+        assert res.json()["data"] == [{"code": "nl"}, {"code": "en"}]
+        assert res.json()["path"] == "wpml/v1/languages"
+        assert res.json()["truncated"] is False
+
+        # Reads of the takeover routes stay open.
+        res = await c.post(url, json={"path": "/wp-json/wp/v2/settings"}, headers=member_h)
+        assert res.status_code == 200
+        assert res.json()["data"]["email"] == "info@klant.nl"
+
+        # A write is not a member's.
+        res = await c.post(
+            url, json={"method": "POST", "path": "litespeed/v1/purge"}, headers=member_h
+        )
+        assert res.status_code == 403
+        assert wp.writes == []
+
+        # The owner writes a plugin route, and it leaves a trail line.
+        res = await c.post(
+            url,
+            json={"method": "post", "path": "litespeed/v1/purge", "body": {"all": True}},
+            headers=owner_h,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["data"] == {"purged": True}
+        assert wp.writes[-1] == ("/wp-json/litespeed/v1/purge", {"all": True})
+        trail = (
+            await c.get(
+                f"/api/v1/activity?entity_type=wordpress_site&entity_id={site['id']}",
+                headers=owner_h,
+            )
+        ).json()
+        assert [r["payload"] for r in trail if r["action"] == "rest_written"] == [
+            {"method": "POST", "path": "litespeed/v1/purge"}
+        ]
+
+        # The takeover routes are refused for everybody, before the site is asked.
+        for path in ("wp/v2/users", "wp/v2/settings", "wp/v2/plugins/akismet", "wp/v2/themes"):
+            res = await c.post(url, json={"method": "POST", "path": path}, headers=owner_h)
+            assert res.status_code == 403, path
+            assert res.json()["error"]["message"] == "errors.wordpress_rest_denied"
+            assert "wp/v2/users" in res.json()["error"]["details"]["denied"]
+        assert len(wp.writes) == 1
+
+        # Bad shapes are ours to refuse.
+        res = await c.post(url, json={"path": "wp/v2/../../x"}, headers=owner_h)
+        assert res.status_code == 422
+        res = await c.post(url, json={"method": "HEAD", "path": "wp/v2"}, headers=owner_h)
+        assert res.status_code == 422
+
+
+async def test_the_passthrough_caps_what_it_hands_back_and_says_so(client_for, wp) -> None:
+    t = await make_tenant("wp-rest-cap")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        res = await c.post(
+            f"/api/v1/wordpress/sites/{site['id']}/rest",
+            json={"path": "big/v1/rows"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["truncated"] is True
+        assert 0 < body["shown"] < 400
+        assert len(body["data"]) == body["shown"]
+
+
+async def test_a_client_login_has_no_passthrough(client_for, wp) -> None:
+    t = await make_tenant("wp-rest-portal")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        headers = await _member(t, "wp-rest-portal", role="client")
+        res = await c.post(
+            f"/api/v1/wordpress/sites/{site['id']}/rest",
+            json={"path": "wp/v2/pages"},
+            headers=headers,
+        )
+        assert res.status_code == 403

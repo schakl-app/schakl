@@ -413,3 +413,44 @@ class WordPressAbilityResult(BaseModel):
     name: str
     readonly: bool
     output: Any = None
+
+
+#: The verbs a passthrough may send. ``HEAD``/``OPTIONS`` answer nothing an agent can use.
+REST_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+
+
+class WordPressRestCall(BaseModel):
+    """One call to the site's REST API, verbatim, under the stored credential.
+
+    ``path`` is relative to ``/wp-json/`` (``wp/v2/settings``, ``wpml/v1/…``); a leading slash
+    or a leading ``/wp-json/`` is tolerated because that is how people paste them.
+    """
+
+    method: str = "GET"
+    path: str = Field(min_length=1, max_length=500)
+    #: Query parameters. For a GET, the whole request.
+    params: dict[str, Any] | None = None
+    #: JSON body, for anything but a GET.
+    body: Any = None
+
+    @field_validator("method")
+    @classmethod
+    def _known_method(cls, value: str) -> str:
+        method = value.strip().upper()
+        if method not in REST_METHODS:
+            raise ValueError("errors.wordpress_rest_method")
+        return method
+
+
+class WordPressRestResult(BaseModel):
+    method: str
+    #: The path as sent, normalised, so the caller sees what the deny-list judged.
+    path: str
+    data: Any = None
+    #: ``X-WP-Total`` where the site sent one.
+    total: int | None = None
+    #: The answer was cut to fit the response ceiling. ``shown`` is how many rows survived
+    #: of a list; ``dropped`` names the keys removed from an object. Never silent (§17).
+    truncated: bool = False
+    shown: int | None = None
+    dropped: list[str] = Field(default_factory=list)

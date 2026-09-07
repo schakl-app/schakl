@@ -14603,6 +14603,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/rest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Site Rest
+         * @description Any call to the site's REST API, under the stored credential — the escape hatch for a
+         *     plugin namespace no curated route above knows (read them off ``summary.namespaces``).
+         *
+         *     A ``GET`` runs on ``wordpress.rest.read``. Any other verb needs ``wordpress.rest.write``
+         *     and is refused outright on the site-takeover routes (users, plugins, themes, settings),
+         *     which are changed in the site's own admin. Every write is a trail line; every answer is
+         *     capped and says so when it was cut.
+         */
+        post: operations["call_site_rest_api_v1_wordpress_sites__site_id__rest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/summary": {
         parameters: {
             query?: never;
@@ -35972,6 +35998,48 @@ export interface components {
             title: string;
             /** Width */
             width?: number | null;
+        };
+        /**
+         * WordPressRestCall
+         * @description One call to the site's REST API, verbatim, under the stored credential.
+         *
+         *     ``path`` is relative to ``/wp-json/`` (``wp/v2/settings``, ``wpml/v1/…``); a leading slash
+         *     or a leading ``/wp-json/`` is tolerated because that is how people paste them.
+         */
+        WordPressRestCall: {
+            /** Body */
+            body?: unknown;
+            /**
+             * Method
+             * @default GET
+             */
+            method: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Path */
+            path: string;
+        };
+        /** WordPressRestResult */
+        WordPressRestResult: {
+            /** Data */
+            data?: unknown;
+            /** Dropped */
+            dropped?: string[];
+            /** Method */
+            method: string;
+            /** Path */
+            path: string;
+            /** Shown */
+            shown?: number | null;
+            /** Total */
+            total?: number | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** WordPressSiteCreate */
         WordPressSiteCreate: {
@@ -65680,6 +65748,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressMediaRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_site_rest_api_v1_wordpress_sites__site_id__rest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressRestCall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRestResult"];
                 };
             };
             /** @description Validation Error */

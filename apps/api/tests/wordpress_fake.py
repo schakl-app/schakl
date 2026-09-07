@@ -168,6 +168,17 @@ class FakeWordPress:
             },
         ]
         self.ability_runs: list[tuple[str, str, object]] = []
+        #: Plugin routes the curated surface knows nothing about, for the passthrough:
+        #: ``(method, path) -> body``. `wp/v2/settings` stands in for the takeover routes.
+        self.extra_routes: dict[tuple[str, str], object] = {
+            ("GET", "/wp-json/wpml/v1/languages"): [{"code": "nl"}, {"code": "en"}],
+            ("POST", "/wp-json/litespeed/v1/purge"): {"purged": True},
+            ("GET", "/wp-json/wp/v2/settings"): {"title": "Klant BV", "email": "info@klant.nl"},
+            ("POST", "/wp-json/wp/v2/settings"): {"title": "Overgenomen"},
+            ("POST", "/wp-json/wp/v2/users"): {"id": 99, "roles": ["administrator"]},
+            ("GET", "/wp-json/wp/v2/users"): [{"id": 1, "name": "Agency"}],
+            ("GET", "/wp-json/big/v1/rows"): [{"n": i, "pad": "x" * 2000} for i in range(400)],
+        }
 
         #: Rank Math brands, in the `/overview` row shape the plugin's `map_overview_brand()`
         #: produces.
@@ -229,6 +240,12 @@ class FakeWordPress:
                 "rest_not_logged_in", "You are not currently logged in.", 401
             )
 
+        if (request.method, path) in self.extra_routes:
+            if request.method != "GET":
+                import json as _json_mod
+
+                self.writes.append((path, _json_mod.loads(request.content or b"null")))
+            return _json(self.extra_routes[(request.method, path)])
         if path in ("/wp-json", "/wp-json/"):
             return _json(self._index())
         if path == "/wp-json/wp/v2/users/me":

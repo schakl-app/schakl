@@ -1405,7 +1405,15 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   second is JSON inside block comments in `post_content` with no REST projection, so the raw
   content is carried whole and the caller is told to read before writing. Deliberately *not*
   built: a CF7 submission webhook into `interactions` (not wanted), and media upload (multipart,
-  needs the base64 twin).
+  needs the base64 twin). Its sibling is the **passthrough** (`POST /sites/{id}/rest`), the
+  `google_ads.query.run` shape one integration over: any call the site's REST API takes, because
+  the live sites carry WPML, LiteSpeed and FileBird and a curated route per plugin is a list that
+  rots. It is the route that hands an agent a WordPress administrator, so its bounds are the
+  design — `rest.read` for `GET` and `rest.write` (admin only, never on a default key) for the
+  rest; a write deny-list on the site-takeover routes (users, plugins, themes, settings) refused
+  for everybody before the site is asked; path hygiene relative to `/wp-json/`; a trail line per
+  write; and a 256 KB cap that says what it cut. The defence against a prompt injection in a page
+  the agent reads is not in the route: it is minting read-only keys by default.
 - **A guardrail nobody can see working gets switched off, and a decision nobody wrote down gets
   re-proposed forever** (#318 phases 4–5, `docs/GOOGLE_ADS.md` §10a/§10b). The write surface is
   bounded by a per-account policy, and four rules came out of building it. **A refusal has to model

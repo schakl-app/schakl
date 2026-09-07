@@ -317,6 +317,26 @@ class WordPressClient:
             total = None
         return body, total
 
+    async def request_full(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> tuple[Any, int | None]:
+        """Any verb, returning ``(body, total)`` — the passthrough's one call."""
+        async with self._http() as http:
+            body, headers = await self._send(
+                http, method, path, params=params, json=json, with_headers=True
+            )
+        raw = headers.get("x-wp-total")
+        try:
+            total = int(raw) if raw is not None else None
+        except ValueError:
+            total = None
+        return body, total
+
     async def _send(
         self,
         http: httpx.AsyncClient,

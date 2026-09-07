@@ -35,6 +35,8 @@ from app.integrations.wordpress.schemas import (
     WordPressFormWrite,
     WordPressMediaList,
     WordPressMediaRow,
+    WordPressRestCall,
+    WordPressRestResult,
     WordPressSiteCreate,
     WordPressSiteRead,
     WordPressSiteSummary,
@@ -387,3 +389,24 @@ async def run_site_ability(
     """Run one ability by name. A read-only ability runs on ``wordpress.ability.read``; any
     other needs ``wordpress.ability.run`` — decided by the ability's own annotation."""
     return await WordPressSurfaceService(ctx).run_ability(site_id, payload)
+
+
+@router.post(
+    "/sites/{site_id}/rest",
+    response_model=WordPressRestResult,
+    dependencies=[require_permission("wordpress.rest.read")],
+)
+async def call_site_rest(
+    site_id: uuid.UUID,
+    payload: WordPressRestCall,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRestResult:
+    """Any call to the site's REST API, under the stored credential — the escape hatch for a
+    plugin namespace no curated route above knows (read them off ``summary.namespaces``).
+
+    A ``GET`` runs on ``wordpress.rest.read``. Any other verb needs ``wordpress.rest.write``
+    and is refused outright on the site-takeover routes (users, plugins, themes, settings),
+    which are changed in the site's own admin. Every write is a trail line; every answer is
+    capped and says so when it was cut.
+    """
+    return await WordPressSurfaceService(ctx).rest_call(site_id, payload)

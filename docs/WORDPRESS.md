@@ -479,6 +479,38 @@ Every write is a trail line on the site row (§16): `content_created`, `content_
 the fields touched, `form_updated`, `ability_run` for a non-read-only run. The client's own
 WordPress records none of that about us.
 
+### The passthrough, and its deny-list
+
+`POST /sites/{id}/rest` with `{method, path, params, body}` sends any call the site's REST API
+takes, under the stored credential — the `google_ads.query.run` shape: the curated routes are
+the questions somebody designed, this is any question at all. It exists because the three live
+sites carry WPML, LiteSpeed, FileBird, Link Genius and the CF7 Redirection export, and a curated
+route per plugin is a list that rots; `summary.namespaces` says what a site has, and the
+passthrough reaches it the day it appears.
+
+It is also the route that hands an agent a WordPress administrator, so it is bounded four ways,
+and the bounds are the design:
+
+- **Two permissions, split by verb.** `rest.read` for `GET` (member by default), `rest.write`
+  for anything else (admin only, never on a default key). The licence gate reads the verb the
+  same way, so a write passthrough is 402 past expiry by construction.
+- **A write deny-list on the site-takeover routes** (`surface.REST_WRITE_DENIED`): users, plugins,
+  themes, settings, and through `users` the application passwords. Refused for *everybody*, before
+  the site is asked, with the list in `details` — those changes are made in the site's own admin by
+  a person. Reads of the same routes stay open: which plugins a site runs is a fair question.
+- **Path hygiene.** Relative to `/wp-json/`, tolerant of a pasted leading `/wp-json/`, refusing
+  `..`, a scheme or a host (`normalise_rest_path`); the SSRF guard on the stored base URL still
+  applies. The caller's own MCP key never travels outward.
+- **Every write is a trail line** (`rest_written`, method and path) and **every answer is capped**
+  at 256 KB: a list is cut to the rows that fit and says `shown`, an object loses its largest
+  values and names them in `dropped`. Never silently (§17).
+
+The honest cost is written into the permission's own docstring: a key holding `rest.write` can
+deface a client's site in one call, and a prompt injection in a page the agent is reading is how
+that happens. The defence is not in the route — it is minting read-only keys by default and giving
+`rest.write` to a key a person uses deliberately. The curated routes are the front door; this is
+the escape hatch.
+
 ### The wire shapes, read from source
 
 - **CF7's read is nested, its write is flat.** `GET …/contact-forms/{id}` answers
@@ -497,7 +529,8 @@ WordPress records none of that about us.
 
 ## 8. Not built yet
 
-- **Media upload.** A `multipart` route is excluded from the tool surface by method
+- **Media upload.** Reachable through the passthrough only as JSON, which `wp/v2/media` does
+  not take. A `multipart` route is excluded from the tool surface by method
   (`docs/MCP.md`) and would need the base64 JSON twin `POST /files/inline` has. Reads only for
   now: an ACF image id resolves through `GET /media/{id}`.
 - **An MCP client to the adapter.** Not needed for anything above, and §8 says why. It would
