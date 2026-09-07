@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.customfields.scoping import register_scopes
 from app.modules.subscriptions.bulk import SUBSCRIPTION_BULK
 from app.modules.subscriptions.impex import (
     SUBSCRIPTION_IMPEX,
@@ -18,6 +19,8 @@ from app.modules.subscriptions.jobs import advance_subscriptions
 from app.modules.subscriptions.panels import subscriptions_company_panel
 from app.modules.subscriptions.permissions import SUBSCRIPTION_PERMISSIONS
 from app.modules.subscriptions.router import router
+from app.modules.subscriptions.scopes import SUBSCRIPTION_SCOPES
+from app.modules.subscriptions.service import ENTITY_TYPE
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -36,3 +39,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# A subscription custom field may be attached to a type or a standard subscription (§13):
+# the module states the dimensions, core composes the rule.
+register_scopes(ENTITY_TYPE, SUBSCRIPTION_SCOPES)

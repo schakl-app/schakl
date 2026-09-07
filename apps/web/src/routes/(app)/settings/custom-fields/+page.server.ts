@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { SCOPE_KEY } from "$lib/core/customfields/scope";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -18,27 +19,36 @@ export const load: PageServerLoad = async (event) => {
   // not depend on the entity-type list, so the two go out together instead of one after the
   // other (#290). Only the first, parameterless visit still has to wait to learn the default.
   const requested = event.url.searchParams.get("entity_type") || "";
-  const [entityTypesRes, requestedDefs] = await Promise.all([
+  const [entityTypesRes, requestedDefs, requestedScopes] = await Promise.all([
     api.GET("/api/v1/custom-fields/entity-types"),
     requested
       ? api.GET("/api/v1/custom-fields/definitions", {
           params: { query: { entity_type: requested, include_inactive: true } },
         })
       : null,
+    // What a definition of this type may be attached to (a subscription type, a standard
+    // subscription); empty for an entity type no module narrows, and then no control is drawn.
+    requested
+      ? api.GET("/api/v1/custom-fields/scopes", { params: { query: { entity_type: requested } } })
+      : null,
   ]);
   const entityTypes = entityTypesRes.data ?? [];
   const entity_type = requested || entityTypes[0] || "company";
 
-  const definitions =
+  const [definitions, scopes] = await Promise.all([
     requestedDefs ??
-    (await api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type, include_inactive: true } },
-    }));
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type, include_inactive: true } },
+      }),
+    requestedScopes ??
+      api.GET("/api/v1/custom-fields/scopes", { params: { query: { entity_type } } }),
+  ]);
 
   return {
     entityTypes,
     entityType: entity_type,
     definitions: definitions.data ?? [],
+    scopes: scopes.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -62,6 +72,24 @@ function parseConfig(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
+const SCOPE_FIELD = "scope_";
+
+/**
+ * The scope the form posted, as `{ dimension: [ids] }` — one checkbox list per dimension, named
+ * `scope_<dimension>`, so an unticked list posts nothing and an untouched dimension is simply
+ * absent. `undefined` when nothing at all was ticked, which is "applies to all" and is stored
+ * as no scope rather than as an empty one.
+ */
+function parseScope(form: FormData): Record<string, string[]> | undefined {
+  const scope: Record<string, string[]> = {};
+  for (const name of new Set(form.keys())) {
+    if (!name.startsWith(SCOPE_FIELD)) continue;
+    const values = form.getAll(name).map(String).filter(Boolean);
+    if (values.length) scope[name.slice(SCOPE_FIELD.length)] = values;
+  }
+  return Object.keys(scope).length ? scope : undefined;
+}
+
 export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
@@ -73,6 +101,7 @@ export const actions: Actions = {
     // The API demands `^[a-z][a-z0-9_]*$`, so the slug must open with a letter.
     const key = slugify(label_nl || label_en).replace(/^[^a-z]+/, "");
     if (!key) return fail(400, { error: "errors.label_no_key_letter" });
+    const scope = parseScope(form);
 
     const { error, response } = await apiFor(event).POST("/api/v1/custom-fields/definitions", {
       body: {
@@ -83,7 +112,10 @@ export const actions: Actions = {
         required: form.get("required") !== null,
         options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : [],
         // Presence is the question (docs/UX.md): an unticked box posts nothing at all.
-        config_json: { print_on_document: form.get("print_on_document") !== null },
+        config_json: {
+          print_on_document: form.get("print_on_document") !== null,
+          ...(scope ? { [SCOPE_KEY]: scope } : {}),
+        },
         position: Number(form.get("position") ?? 0) || 0,
         active: true,
       },
@@ -103,8 +135,12 @@ export const actions: Actions = {
     const label_nl = String(form.get("label_nl") ?? "").trim();
     const label_en = String(form.get("label_en") ?? "").trim();
     // The definition's other rules ride along untouched: `config_json` is one JSONB column
-    // and a PATCH of it replaces the whole object.
+    // and a PATCH of it replaces the whole object. The scope is the one key the form owns
+    // whole — every tick posts, so an emptied selection *removes* it rather than keeping the
+    // stored one.
     const config = parseConfig(form.get("config_json"));
+    delete config[SCOPE_KEY];
+    const scope = parseScope(form);
 
     const { error } = await apiFor(event).PATCH(
       "/api/v1/custom-fields/definitions/{definition_id}",
@@ -114,7 +150,11 @@ export const actions: Actions = {
           label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
           required: form.get("required") !== null,
           options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : undefined,
-          config_json: { ...config, print_on_document: form.get("print_on_document") !== null },
+          config_json: {
+            ...config,
+            print_on_document: form.get("print_on_document") !== null,
+            ...(scope ? { [SCOPE_KEY]: scope } : {}),
+          },
           position: Number(form.get("position") ?? 0) || 0,
         },
       },

@@ -5,6 +5,8 @@
    * the one control staff get here is the way there.
    */
   import { page } from "$app/state";
+  import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
+  import { applicableDefinitions } from "$lib/core/customfields/scope";
   import { dateLocale, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { entityPanelComponent } from "$lib/core/registry";
@@ -37,6 +39,24 @@
   );
   const lines = $derived(sub.lines ?? []);
   const usage = $derived(sub.usage ?? null);
+
+  // The tenant's own fields that apply to *this* agreement — a field attached to another type
+  // is not drawn here even where the row still holds a value for it (§13) — and hold a value.
+  const customValues = $derived((sub.custom ?? {}) as Record<string, unknown>);
+  const customDefinitions = $derived(
+    applicableDefinitions(data.definitions, {
+      subscription_type_id: sub.subscription_type_id ?? null,
+      subscription_template_id: sub.subscription_template_id ?? null,
+    }).filter((def) => {
+      const value = customValues[def.key];
+      return (
+        value !== undefined &&
+        value !== null &&
+        value !== "" &&
+        !(Array.isArray(value) && value.length === 0)
+      );
+    }),
+  );
 
   // Typed entity panels (the invoiced periods, contributed by `invoicing`) — composed, never
   // imported, the way the domain page does it.
@@ -164,6 +184,16 @@
       </ul>
     {/if}
   </Card>
+
+  {#if customDefinitions.length > 0}
+    <Card title={t("subscriptions.detail.custom_fields")}>
+      <CustomFieldsView
+        definitions={customDefinitions}
+        values={customValues}
+        locale={data.locale}
+      />
+    </Card>
+  {/if}
 
   {#if sub.notes && !page.data.user?.isPortal}
     <Card title={t("subscriptions.field.notes")}>

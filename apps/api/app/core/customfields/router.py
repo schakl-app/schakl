@@ -17,7 +17,10 @@ from app.core.customfields.schemas import (
     CustomFieldDefinitionCreate,
     CustomFieldDefinitionRead,
     CustomFieldDefinitionUpdate,
+    CustomFieldScopeOptionRead,
+    CustomFieldScopeRead,
 )
+from app.core.customfields.scoping import scopes_for
 from app.core.customfields.service import CustomFieldsService
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
@@ -34,6 +37,36 @@ async def list_entity_types(
     _: RequestContext = Depends(require_context),
 ) -> list[str]:
     return customizable_entity_types()
+
+
+@router.get(
+    "/scopes",
+    response_model=list[CustomFieldScopeRead],
+    dependencies=[require_permission("settings.customfields.read")],
+)
+async def list_scopes(
+    entity_type: str = Query(..., min_length=1),
+    ctx: RequestContext = Depends(require_context),
+) -> list[CustomFieldScopeRead]:
+    """The dimensions a definition of ``entity_type`` may be narrowed to, with this tenant's
+    options for each (``scoping.py``). Empty for an entity type no module has registered a
+    dimension for — which is what tells the settings screen not to draw the control (#253)."""
+    out: list[CustomFieldScopeRead] = []
+    for spec in scopes_for(entity_type):
+        options = await spec.options(ctx)
+        out.append(
+            CustomFieldScopeRead(
+                key=spec.key,
+                label_key=spec.label_key,
+                options=[
+                    CustomFieldScopeOptionRead(
+                        value=o.value, label_i18n=o.label_i18n, active=o.active
+                    )
+                    for o in options
+                ],
+            )
+        )
+    return out
 
 
 @router.get(

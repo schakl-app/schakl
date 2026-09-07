@@ -2000,6 +2000,17 @@ cross-cutting capability**, not per-module code.
   definitions for that `entity_type`, builds a validator (types + required + options),
   coerces and validates `custom`, and rejects via the standard error envelope (i18n message
   keys) on failure. `required` is enforced here on every write.
+- **A definition may apply to *some* rows of its entity type** (`core/customfields/scoping.py`).
+  `config_json.scope = {<dimension>: [ids]}` — no migration, the `print_on_document` shape —
+  narrows a field to the rows whose value on that dimension is listed (OR across dimensions:
+  "attached to" semantics). Core names no module: the owning module registers a
+  `CustomFieldScopeSpec` per dimension (`register_scopes`), keyed on the **entity attribute**
+  the row is judged on, so one pure `applies()` serves the write, the document and the import.
+  A scope decides what a form draws, whether `required` binds and whether a flagged value prints;
+  a value on a row the field no longer applies to is **kept**. `row_scope=None` means everything
+  applies, which is every caller whose entity type registered nothing. First (and so far only)
+  user: `subscriptions` (`scopes.py`) — a field attached to a subscription type or a standard
+  subscription — `docs/INVOICING.md`.
 - **API:** entity responses include `custom`; a definitions endpoint returns the schema per
   `entity_type` so any client can render fields, labels, order, and validation.
 - **UI:** one generic `CustomFieldsForm` renders from definitions (every module inherits it);

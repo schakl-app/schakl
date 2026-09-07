@@ -507,11 +507,18 @@
       {/if}
     </div>
     {#if lookups.definitions.length > 0}
+      <!-- A field attached to a type or a preset appears the moment one is picked (§13). -->
       <CustomFieldsForm
         definitions={lookups.definitions}
         values={editing?.custom ?? {}}
         {locale}
         scope={{ companyId: pv.companyId || null }}
+        rowScope={{
+          subscription_type_id: pv.typeId || null,
+          subscription_template_id: editing
+            ? (editing.subscription_template_id ?? null)
+            : (prefill?.id ?? null),
+        }}
       />
     {:else}
       <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />

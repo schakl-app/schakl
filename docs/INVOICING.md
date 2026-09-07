@@ -1066,6 +1066,26 @@ The value is formatted the way the web formats it (`format_value`: an option's o
 `dd-mm-yyyy` date, *Ja*/*Nee*), and an empty value prints nothing — an empty label on paper is
 worse than the field being absent.
 
+**A subscription field may be attached to a type or a standard subscription**
+(`core/customfields/scoping.py`, `subscriptions/scopes.py`). A "Website" field belongs on a
+hosting agreement and on nothing else, and a definition on the `subscription` entity type used
+to reach every agreement — so the field meant for hosting was asked for on every SEO retainer
+too. `config_json.scope = {"subscription_type_id": [...], "subscription_template_id": [...]}`
+(no migration, the `print_on_document` shape) narrows it: the field is drawn, and required if
+so marked, only on an agreement of one of those types *or* made from one of those presets, and
+a flagged value rides the invoice line only of the agreements it applies to. Three rules hold it
+up. **Core names no module** — the subscriptions module registers its two dimensions through
+`register_scopes`, each keyed on the *attribute* an agreement carries it under, which is what
+lets one pure `applies()` serve the write (the request's type), the document (the ORM row) and
+the import (the resolved cells) without any of them knowing what a subscription type is.
+**A value on a row the field no longer applies to is kept**, hidden on the form and printed
+nowhere, so moving an agreement to another type and back loses nothing. And **a scoped column is
+never file-required on an import** — a subscription sheet that omits the hosting-only column is
+a valid sheet — so it is judged per row, where the type is known (#289's rule). The settings
+screen draws the control only for an entity type some module has registered a dimension for
+(#253), reads this tenant's options off `GET /custom-fields/scopes`, and the API refuses any id
+those options do not list, which is also what keeps another org's ids out.
+
 ### What a template may rearrange (`render/blocks.py`)
 
 A template carries a **layout**: an ordered list of blocks, each toggleable, each with its own

@@ -2008,6 +2008,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/custom-fields/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scopes
+         * @description The dimensions a definition of ``entity_type`` may be narrowed to, with this tenant's
+         *     options for each (``scoping.py``). Empty for an entity type no module has registered a
+         *     dimension for — which is what tells the settings screen not to draw the control (#253).
+         */
+        get: operations["list_scopes_api_v1_custom_fields_scopes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard/prefs": {
         parameters: {
             query?: never;
@@ -18030,6 +18052,36 @@ export interface components {
             };
             /** Value */
             value: string;
+        };
+        /** CustomFieldScopeOptionRead */
+        CustomFieldScopeOptionRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /** Value */
+            value: string;
+        };
+        /**
+         * CustomFieldScopeRead
+         * @description One dimension a definition of this entity type may be narrowed to (``scoping.py``).
+         *
+         *     ``key`` is what ``config_json.scope`` is keyed on; ``label_key`` names the dimension through
+         *     i18n; ``options`` are the tenant's current choices, a deactivated one flagged rather than
+         *     dropped so an existing scope keeps its label on the settings screen.
+         */
+        CustomFieldScopeRead: {
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Options */
+            options?: components["schemas"]["CustomFieldScopeOptionRead"][];
         };
         /**
          * CustomFieldType
@@ -40142,6 +40194,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+        };
+    };
+    list_scopes_api_v1_custom_fields_scopes_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldScopeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -38,6 +38,7 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.config import settings
 from app.core.customfields.models import CustomFieldDefinition
+from app.core.customfields.scoping import is_scoped, row_scope_from
 from app.core.customfields.service import CustomFieldsService
 from app.core.impex.parsing import ParsedTable, parse_source
 from app.core.impex.schemas import (
@@ -332,7 +333,7 @@ class ImpexService:
         creates = updates = 0
         for row, entity in resolved:
             self._normalize_phones(row, entity, default_region)
-            self._validate_custom(row, defs, custom_keys, entity)
+            self._validate_custom(d, row, defs, custom_keys, entity)
             if d.validate_row is not None and not row.errors:
                 # The module's own cross-column rule, in the plan phase, so the preview can
                 # name the row and the column (#289) instead of the commit 422-ing whole.
@@ -497,7 +498,10 @@ class ImpexService:
 
     def _required(self, target: _Target) -> bool:
         if target.definition is not None:
-            return bool(target.definition.required)
+            # A definition scoped to some rows (``customfields/scoping``) cannot be required
+            # of the *file* — a subscription sheet that omits the hosting-only column is a
+            # valid sheet — so it is judged per row, where the type is known.
+            return bool(target.definition.required) and not is_scoped(target.definition)
         # A contributed column is never required — asserted at mount time, so this is the
         # single place the rule has to be read back.
         return bool(target.column and target.column.required and target.source == "builtin")
@@ -985,6 +989,7 @@ class ImpexService:
 
     def _validate_custom(
         self,
+        d: ImpexDescriptor,
         row: _Row,
         defs: list[CustomFieldDefinition],
         custom_keys: set[str],
@@ -995,7 +1000,9 @@ class ImpexService:
         On an update the file's cells are merged over the entity's current values first (an
         empty cell clears its key), so ``required`` judges the row as it *would be stored* —
         an update that doesn't mention a required field keeps its existing value and passes.
-        Definitions were loaded **once** for the whole file (docs/PERFORMANCE.md).
+        Definitions were loaded **once** for the whole file (docs/PERFORMANCE.md). A scoped
+        definition is judged against the row's own resolved dimension cells (the type the
+        sheet names, else the one the row already has), the same rule the form applies.
         """
         if row.nk_duplicate or row.ambiguous:
             return  # no meaningful target to merge against; the row already carries its error
@@ -1017,7 +1024,9 @@ class ImpexService:
             else:
                 merged[key] = cell
         try:
-            cleaned = self.custom_fields.validate_values(defs, merged)
+            cleaned = self.custom_fields.validate_values(
+                defs, merged, row_scope=row_scope_from(d.entity_type, row.values, entity)
+            )
         except AppError as exc:
             row.errors.extend((f, key) for f, key in (exc.fields or {}).items())
             return

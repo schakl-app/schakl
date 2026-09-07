@@ -5,7 +5,8 @@
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
-  import { fieldLabel } from "$lib/core/customfields/types";
+  import { definitionScope } from "$lib/core/customfields/scope";
+  import { fieldLabel, optionLabel } from "$lib/core/customfields/types";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
@@ -75,6 +76,29 @@
   const printsOnDocument = (def: Def) =>
     Boolean((def.config_json as Record<string, unknown> | null)?.print_on_document);
 
+  /**
+   * What a definition of this entity type may be attached to — a subscription type, a standard
+   * subscription — as the API lists it (`/custom-fields/scopes`). Empty for every entity type
+   * no module narrows, and then nothing about scope is drawn (#253). A definition's own scope
+   * is read off its `config_json` and printed as the option labels; an id the options no
+   * longer carry (a deleted type) prints nothing and drops on the next save.
+   */
+  const scoped = $derived(data.scopes.length > 0);
+  function scopeText(def: Def): string {
+    const scope = definitionScope(def);
+    const names: string[] = [];
+    for (const dimension of data.scopes) {
+      for (const value of scope[dimension.key] ?? []) {
+        const option = (dimension.options ?? []).find((o) => o.value === value);
+        if (option) names.push(optionLabel(option, data.locale));
+      }
+    }
+    return names.length ? names.join(", ") : t("settings.custom_fields.scope_all");
+  }
+  function scopeHas(def: Def | null, dimension: string, value: string): boolean {
+    return def ? (definitionScope(def)[dimension] ?? []).includes(value) : false;
+  }
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
@@ -120,6 +144,9 @@
           {#if printable}
             <th class="px-4 py-2 font-medium">{t("settings.custom_fields.print_on_document")}</th>
           {/if}
+          {#if scoped}
+            <th class="px-4 py-2 font-medium">{t("settings.custom_fields.scope")}</th>
+          {/if}
           <th class="px-4 py-2 text-right font-medium">{t("common.actions")}</th>
         </tr>
       </thead>
@@ -132,6 +159,9 @@
             <td class="px-4 py-2 text-text-muted">{def.required ? t("common.required") : "—"}</td>
             {#if printable}
               <td class="px-4 py-2 text-text-muted">{printsOnDocument(def) ? "✓" : "—"}</td>
+            {/if}
+            {#if scoped}
+              <td class="px-4 py-2 text-text-muted">{scopeText(def)}</td>
             {/if}
             <td class="px-4 py-2">
               <div class="flex items-center justify-end">
@@ -238,11 +268,51 @@
   {#if printable}
     <p class="mt-2 text-xs text-text-muted">{t("settings.custom_fields.print_on_document_hint")}</p>
   {/if}
+  {#if scoped}
+    {@render scopePicker(null, "new")}
+  {/if}
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   <div class="mt-4">
     <Button loading={busy.is("create")} disabled={busy.active}>{t("common.create")}</Button>
   </div>
 </form>
+
+<!-- One checkbox list per dimension: `scope_<dimension>` with the option id as its value, so
+     the action reads the selection by presence (docs/UX.md) and an untouched list posts nothing.
+     Rendered inside whichever form it is part of, hence a snippet rather than a component. -->
+{#snippet scopePicker(def: Def | null, idPrefix: string)}
+  <div class="mt-4 space-y-3 rounded-lg border border-border bg-surface p-3">
+    {#each data.scopes as dimension (dimension.key)}
+      <fieldset>
+        <legend class="mb-1 text-sm font-medium text-text">
+          {t("settings.custom_fields.scope_only_for", { dimension: t(dimension.label_key) })}
+        </legend>
+        {#if (dimension.options ?? []).length === 0}
+          <p class="text-xs text-text-muted">{t("settings.custom_fields.scope_none")}</p>
+        {:else}
+          <div class="flex flex-wrap gap-x-4 gap-y-1">
+            {#each dimension.options ?? [] as option (option.value)}
+              <label
+                class="flex items-center gap-2 text-sm text-text"
+                class:opacity-60={!option.active}
+              >
+                <FormCheckbox
+                  name={`scope_${dimension.key}`}
+                  value={option.value}
+                  id={`${idPrefix}-scope-${dimension.key}-${option.value}`}
+                  checked={scopeHas(def, dimension.key, option.value)}
+                  class="h-4 w-4 rounded border-border"
+                />
+                {optionLabel(option, data.locale)}
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </fieldset>
+    {/each}
+    <p class="text-xs text-text-muted">{t("settings.custom_fields.scope_hint")}</p>
+  </div>
+{/snippet}
 
 <!-- Shared hidden form: the ⋯ Deactiveren/Activeren item submits this. -->
 <form method="POST" action="?/toggleActive" use:enhance bind:this={toggleForm} class="hidden">
@@ -347,6 +417,9 @@
             />
           </div>
         </div>
+        {#if scoped}
+          {@render scopePicker(editDef, "edit")}
+        {/if}
         {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
         <div class="flex justify-end gap-2 pt-1">
           <button

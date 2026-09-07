@@ -10,6 +10,7 @@
   import { t } from "$lib/core/i18n";
   import type { CandidateScope } from "$lib/core/richtext/candidates";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
+  import { applicableDefinitions, type RowScope } from "./scope";
   import type { CustomFieldDefinition } from "./types";
   import { fieldLabel, optionLabel } from "./types";
 
@@ -19,6 +20,7 @@
     locale,
     name = "custom",
     scope,
+    rowScope,
     onchange,
   }: {
     definitions: CustomFieldDefinition[];
@@ -28,8 +30,17 @@
     name?: string | null;
     /** Host context for the long-text editors' @/# candidates (#237). */
     scope?: CandidateScope;
+    /**
+     * The row's value per scope dimension (`scope.ts`): a definition attached to a type or a
+     * preset is drawn only while the row is of that type or from that preset — live, as the
+     * type picker moves. Every definition's value still travels in the hidden JSON, so a
+     * field hidden by a change of type keeps what it held (the API keeps it too).
+     */
+    rowScope?: RowScope | null;
     onchange?: (values: Record<string, unknown>) => void;
   } = $props();
+
+  const visible = $derived(applicableDefinitions(definitions, rowScope));
 
   // Reactive working copy; serialised to the hidden input below. Built once from the props
   // (the form is remounted when its definitions/values change), so a closure is correct here.
@@ -51,10 +62,10 @@
   }
 
   function toggleMulti(key: string, value: string, checked: boolean) {
-    const current = new Set((fieldValues[key] as string[]) ?? []);
-    if (checked) current.add(value);
-    else current.delete(value);
-    setValue(key, [...current]);
+    // A plain array, not a Set: `svelte/prefer-svelte-reactivity` rejects a mutated Set even
+    // in a local scope, and the list is short.
+    const rest = ((fieldValues[key] as string[]) ?? []).filter((v) => v !== value);
+    setValue(key, checked ? [...rest, value] : rest);
   }
 
   const inputClass =
@@ -65,9 +76,9 @@
   <input type="hidden" {name} value={json} />
 {/if}
 
-{#if definitions.length > 0}
+{#if visible.length > 0}
   <div class="grid gap-3 sm:grid-cols-2">
-    {#each definitions as def (def.key)}
+    {#each visible as def (def.key)}
       <div class:sm:col-span-2={def.data_type === "long_text" || def.data_type === "multi_select"}>
         <label for={`cf-${def.key}`} class="mb-1 block text-sm font-medium text-neutral-700">
           {fieldLabel(def, locale)}

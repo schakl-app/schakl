@@ -21,6 +21,7 @@ from app.core.customfields.schemas import (
     CustomFieldDefinitionCreate,
     CustomFieldDefinitionUpdate,
 )
+from app.core.customfields.scoping import RowScope, applies, validate_scope
 from app.core.customfields.types import CustomFieldType
 from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
@@ -83,16 +84,23 @@ class CustomFieldsService:
             raise AppError(
                 "conflict", "errors.conflict", status_code=409, fields={"key": "errors.conflict"}
             )
-        return await self.repo.create(**data.model_dump(mode="json"))
+        payload = data.model_dump(mode="json")
+        payload["config_json"] = await validate_scope(
+            self.ctx, data.entity_type, payload.get("config_json")
+        )
+        return await self.repo.create(**payload)
 
     async def update_definition(
         self, definition_id: uuid.UUID, data: CustomFieldDefinitionUpdate
     ) -> CustomFieldDefinition:
         self.ctx.require("settings.customfields.write")
         definition = await self.repo.get_or_404(definition_id)
-        return await self.repo.update(
-            definition, **data.model_dump(mode="json", exclude_unset=True)
-        )
+        payload = data.model_dump(mode="json", exclude_unset=True)
+        if "config_json" in payload:
+            payload["config_json"] = await validate_scope(
+                self.ctx, definition.entity_type, payload["config_json"]
+            )
+        return await self.repo.update(definition, **payload)
 
     async def delete_definition(self, definition_id: uuid.UUID) -> None:
         self.ctx.require("settings.customfields.write")
@@ -100,24 +108,37 @@ class CustomFieldsService:
         await self.repo.delete(definition)
 
     # --- dynamic validation -------------------------------------------------- #
-    async def validate(self, entity_type: str, custom: dict[str, Any]) -> dict[str, Any]:
+    async def validate(
+        self, entity_type: str, custom: dict[str, Any], *, row_scope: RowScope | None = None
+    ) -> dict[str, Any]:
         """Validate/coerce ``custom`` for ``entity_type`` against the tenant's definitions.
 
         Treats ``custom`` as the complete value set (the UI submits all active fields), so
         ``required`` is enforced here on every write. Returns the cleaned dict; raises
         ``AppError`` (422) with per-field i18n keys on any failure.
+
+        ``row_scope`` is the row's value per scope dimension (``scoping.py``) — a scoped
+        definition's ``required`` only binds where it applies. Left ``None``, everything
+        applies, which is every caller whose entity type has no dimensions.
         """
         defs = await self.definitions(entity_type, include_inactive=False)
-        return self.validate_values(defs, custom)
+        return self.validate_values(defs, custom, row_scope=row_scope)
 
     def validate_values(
-        self, defs: Sequence[CustomFieldDefinition], custom: dict[str, Any]
+        self,
+        defs: Sequence[CustomFieldDefinition],
+        custom: dict[str, Any],
+        row_scope: RowScope | None = None,
     ) -> dict[str, Any]:
         """`validate` against **preloaded** definitions — no query.
 
         A caller validating many value sets in one request (the CSV import, issue #77) loads
         the definitions once and calls this per row, instead of paying one definitions query
         per row (docs/PERFORMANCE.md).
+
+        A value submitted for a definition that does not apply to this row is still coerced
+        and kept: the form hides it, but a subscription moved to another type and back must
+        find its value where it left it.
         """
         by_key = {d.key: d for d in defs}
 
@@ -132,7 +153,7 @@ class CustomFieldsService:
         for definition in defs:
             raw = custom.get(definition.key)
             if _is_empty(raw):
-                if definition.required:
+                if definition.required and applies(definition, row_scope):
                     errors[definition.key] = "errors.required"
                 continue
             try:

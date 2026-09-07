@@ -42,6 +42,7 @@ from app.core.billing import add_months, first_boundary_ahead, period_boundaries
 from app.core.customfields import CustomFieldsService
 from app.core.customfields.format import document_note
 from app.core.customfields.format import printable as printable_fields
+from app.core.customfields.scoping import applicable
 from app.core.events import emit
 from app.core.models import OrgSettings
 from app.core.richtext import sanitize_markdown
@@ -299,7 +300,9 @@ async def document_notes(ctx: Any, subs: Sequence[Subscription]) -> dict[uuid.UU
     One definitions read for the whole set, never one per agreement (docs/PERFORMANCE.md),
     and the wording follows the **org's** default locale — the same locale the cron's draft
     is written in. ``ctx`` is a request context or the cron's ``SystemContext``; both carry
-    ``repo``/``session``/``org``.
+    ``repo``/``session``/``org``. A field scoped to a type or preset (``scopes.py``) rides
+    only the lines of the agreements it applies to — a stale value on an agreement since
+    moved to another type is kept on the row and printed nowhere.
     """
     if not subs:
         return {}
@@ -311,7 +314,18 @@ async def document_notes(ctx: Any, subs: Sequence[Subscription]) -> dict[uuid.UU
     )
     locale = (org_settings.default_locale if org_settings else None) or "nl"
     return {
-        sub.id: document_note(definitions, sub.custom or {}, locale) for sub in subs
+        sub.id: document_note(
+            applicable(definitions, _row_scope(sub)), sub.custom or {}, locale
+        )
+        for sub in subs
+    }
+
+
+def _row_scope(sub: Subscription) -> dict[str, Any]:
+    """The agreement's values on the two scope dimensions ``scopes.py`` registers."""
+    return {
+        "subscription_type_id": sub.subscription_type_id,
+        "subscription_template_id": sub.subscription_template_id,
     }
 
 
@@ -803,7 +817,14 @@ class SubscriptionService:
             await self._ensure_type(data.subscription_type_id)
         if data.subscription_template_id is not None:
             await self._ensure_template(data.subscription_template_id)
-        custom = await self.custom_fields.validate(ENTITY_TYPE, data.custom or {})
+        custom = await self.custom_fields.validate(
+            ENTITY_TYPE,
+            data.custom or {},
+            row_scope={
+                "subscription_type_id": data.subscription_type_id,
+                "subscription_template_id": data.subscription_template_id,
+            },
+        )
         sub = await self.repo.create(
             company_id=data.company_id,
             subscription_type_id=data.subscription_type_id,
@@ -888,8 +909,19 @@ class SubscriptionService:
         if "rollover" in sent and data.rollover is not None:
             values["rollover"] = data.rollover.model_dump()
         if "custom" in sent:
+            # Judged against the type/preset the row is *about to* have — a PATCH may move
+            # the agreement onto a type whose scoped field is required in the same request.
             values["custom"] = await self.custom_fields.validate(
-                ENTITY_TYPE, data.custom or {}
+                ENTITY_TYPE,
+                data.custom or {},
+                row_scope={
+                    "subscription_type_id": values.get(
+                        "subscription_type_id", sub.subscription_type_id
+                    ),
+                    "subscription_template_id": values.get(
+                        "subscription_template_id", sub.subscription_template_id
+                    ),
+                },
             )
 
         # Pointing the agreement at another type or preset — or stating its own direction —
