@@ -368,6 +368,7 @@ async def _create_type(ctx: RequestContext, values: dict[str, Any]) -> Any:
             position=_optional_int(values, "position") or 0,
             active=values.get("active") is not False,
             billed_in_advance=values.get("billed_in_advance") is True,
+            covers_websites=values.get("covers_websites") is True,
         )
     )
 
@@ -383,6 +384,8 @@ async def _update_type(ctx: RequestContext, sub_type: Any, values: dict[str, Any
         fields["active"] = values["active"]
     if "billed_in_advance" in values and values["billed_in_advance"] is not None:
         fields["billed_in_advance"] = values["billed_in_advance"]
+    if "covers_websites" in values and values["covers_websites"] is not None:
+        fields["covers_websites"] = values["covers_websites"]
     if fields:
         # ``key`` is immutable by omission — which is also why it is the natural key.
         await SubscriptionTypeService(ctx).update(sub_type.id, SubscriptionTypeUpdate(**fields))
@@ -406,6 +409,9 @@ SUBSCRIPTION_TYPE_IMPEX = ImpexDescriptor(
         ImpexColumn("active", data_type="bool", clearable=False, aliases=("actief",)),
         ImpexColumn(
             "billed_in_advance", data_type="bool", clearable=False, aliases=("vooraf",)
+        ),
+        ImpexColumn(
+            "covers_websites", data_type="bool", clearable=False, aliases=("websites",)
         ),
         # ``task_template_ids`` is a list of ids into the tasks module — a list has no honest
         # single-cell spelling, and these are configured where the templates are.

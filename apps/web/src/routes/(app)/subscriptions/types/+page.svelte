@@ -96,6 +96,7 @@
       key: keyCell,
       tasks: tasksCell,
       billing: billingCell,
+      websites: websitesCell,
       active: activeCell,
     }),
   });
@@ -161,6 +162,10 @@
       ? t("subscriptions.billing_direction.advance_short")
       : t("subscriptions.billing_direction.arrears_short")}</span
   >
+{/snippet}
+
+{#snippet websitesCell(st: SubscriptionType)}
+  <span class="text-text-muted">{st.covers_websites ? t("common.yes") : "—"}</span>
 {/snippet}
 
 {#snippet activeCell(st: SubscriptionType)}
@@ -305,6 +310,24 @@
           {/if}
         </p>
       </div>
+      <!-- Whether an agreement of this kind keeps a website online and may be attached to
+           one — hosting, maintenance. Presence is the question (`checked()` on the server),
+           never a particular value. -->
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="covers_websites"
+          value="true"
+          class="mt-0.5"
+          checked={editing?.covers_websites ?? false}
+        />
+        <span>
+          {t("settings.subscriptions.covers_websites")}
+          <span class="block text-xs text-text-muted"
+            >{t("settings.subscriptions.covers_websites_help")}</span
+          >
+        </span>
+      </label>
       <input
         type="hidden"
         name="position"

@@ -9,10 +9,12 @@ from fastapi import APIRouter, Depends, Query
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.subscriptions.schemas import (
+    LinkEntityType,
     PriceIncreaseRequest,
     PriceIncreaseResult,
     PriceRead,
     SubscriptionCreate,
+    SubscriptionLinkWrite,
     SubscriptionRead,
     SubscriptionSummary,
     SubscriptionTemplateCreate,
@@ -186,6 +188,12 @@ async def list_subscriptions(
     entity_type: str | None = Query(None, description="with entity_id: linked-entity filter"),
     entity_id: uuid.UUID | None = Query(None),
     usage: bool = Query(False, description="include current-period usage per row"),
+    linkable: bool = Query(
+        False,
+        description="with entity_type/entity_id: the agreements that could be attached to the"
+        " record instead of the ones already on it — its client's, alive, of a kind that"
+        " attaches to it, not yet linked",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[SubscriptionRead]:
     items, total = await SubscriptionService(ctx).list(
@@ -199,6 +207,7 @@ async def list_subscriptions(
         entity_type=entity_type,
         entity_id=entity_id,
         usage=usage,
+        linkable=linkable,
     )
     return Page(
         items=[_read(ctx, s) for s in items],
@@ -315,3 +324,39 @@ async def delete_subscription(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await SubscriptionService(ctx).delete(subscription_id)
+
+
+# --- links: what an agreement covers ------------------------------------------ #
+# The form saves the whole link set at once (``links`` on create/update); these two are the
+# per-record twins a *host* page uses — a website's panel attaches the agreement that keeps it
+# online without re-posting the agreement's other links, which it does not hold.
+@router.post(
+    "/{subscription_id}/links",
+    response_model=SubscriptionRead,
+    status_code=201,
+    dependencies=[require_permission("subscriptions.subscription.write")],
+)
+async def link_subscription(
+    subscription_id: uuid.UUID,
+    payload: SubscriptionLinkWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> SubscriptionRead:
+    """Attach one project, task or website to the agreement. A website needs a kind that
+    ``covers_websites``; a link already there is left as it is."""
+    sub = await SubscriptionService(ctx).link(subscription_id, payload)
+    return SubscriptionRead.model_validate(sub)
+
+
+@router.delete(
+    "/{subscription_id}/links/{entity_type}/{entity_id}",
+    status_code=204,
+    dependencies=[require_permission("subscriptions.subscription.write")],
+)
+async def unlink_subscription(
+    subscription_id: uuid.UUID,
+    entity_type: LinkEntityType,
+    entity_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Detach one record from the agreement."""
+    await SubscriptionService(ctx).unlink(subscription_id, entity_type, entity_id)

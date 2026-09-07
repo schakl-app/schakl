@@ -86,6 +86,15 @@ class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     billed_in_advance: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    #: Whether an agreement of this kind keeps a **website** online — hosting, maintenance — and
+    #: may therefore be attached to one (``SubscriptionLink`` with ``entity_type = "website"``).
+    #: A property of what is sold, like the direction above, so it lives on the kind rather than
+    #: on a key the code would have to recognise: the seeded ``hosting`` type ships with it on,
+    #: and a tenant's own "Webhosting" ticks it in Instellingen. Read when a website link is
+    #: *written*; a link already made survives a later flip, as every stored decision does.
+    covers_websites: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -302,5 +311,5 @@ class SubscriptionLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
         nullable=False,
         index=True,
     )
-    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # project | task
+    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # project|task|website
     entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)

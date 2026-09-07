@@ -549,6 +549,32 @@ for accounting packages.
   automation level ("Volg het standaardabonnement of type" is the default), the detail page
   marks a resolved direction the agreement decided for itself, and the import, the export and
   the bulk edit carry it as `billed_in_advance` (empty cell = follow again).
+- **A hosting agreement keeps a website online, and the website can say which one**
+  (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`). Every
+  hosting agreement on the demo instance was "Hosting & onderhoud webshop" on a client with two
+  sites, and nothing on either site said which agreement billed it: a website recorded where it
+  runs (`hosting_id`, the infrastructure) and never who pays, while an agreement linked to the
+  *work* it covers (projects, tasks — where its included hours burn) and never to the *asset* it
+  keeps online. So `website` is a third link kind, and four rules hold it up. **Which kinds of
+  agreement attach to a website is the type's decision** — `covers_websites` beside
+  `billed_in_advance`, seeded on for `hosting` and ticked per type in Instellingen →
+  Abonnementstypen, never a key the code recognises; the backfill for the seeded key had to lift
+  `FORCE ROW LEVEL SECURITY` for one statement (`87e32dccc095`'s dance), because an unqualified
+  UPDATE under it matches zero rows silently and the demo org's Hosting type stayed unticked after
+  an upgrade that said it had run. **The flag is a gate on writing, not a constraint on history**:
+  `_ensure_websites_coverable` runs over the links being *made* — the form re-posts every link on
+  every save, and refusing a link written while the type said yes would make the agreement
+  unsaveable until somebody found the chip to drop; the form draws existing website chips whatever
+  the type says, so they can be dropped, and offers the picker only while the type covers websites.
+  **The shortlist is the API's** (`GET /subscriptions?entity_type=website&entity_id=…&linkable=
+  true`): the site's client (its domain's), a covering kind, alive, not yet linked — resolved by the
+  service so the website panel, the MCP surface and a future domain panel ask one question. And
+  **a link says what it points at** (`SubscriptionLinkRead.label`, one grouped bare-table read per
+  kind in `_attach`), so the agreement's page prints "Dekt: novafietsen-shop.example · Website"
+  and the trail's `linked` / `unlinked` lines name the site rather than a UUID. The panel writes
+  through `POST /subscriptions/{id}/links` and `DELETE …/links/website/{website_id}` — idempotent
+  attach, a 404 for a link that is not there — because a host page holds one link and the
+  agreement's whole set is the form's to replace.
 - **"Already invoiced up to" is the operator's statement, and both halves read it**
   (`domains.billed_until`, `subscriptions.billed_until`). An agency arriving from another
   system brings agreements and domains that were invoiced *there* up to a date, and the

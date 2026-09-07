@@ -12456,6 +12456,47 @@ export interface paths {
         patch: operations["update_subscription_api_v1_subscriptions__subscription_id__patch"];
         trace?: never;
     };
+    "/api/v1/subscriptions/{subscription_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Subscription
+         * @description Attach one project, task or website to the agreement. A website needs a kind that
+         *     ``covers_websites``; a link already there is left as it is.
+         */
+        post: operations["link_subscription_api_v1_subscriptions__subscription_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/links/{entity_type}/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Subscription
+         * @description Detach one record from the agreement.
+         */
+        delete: operations["unlink_subscription_api_v1_subscriptions__subscription_id__links__entity_type___entity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions/{subscription_id}/prices": {
         parameters: {
             query?: never;
@@ -31420,12 +31461,14 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "project" | "task";
+            entity_type: "project" | "task" | "website";
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Label */
+            label?: string | null;
         };
         /** SubscriptionLinkWrite */
         SubscriptionLinkWrite: {
@@ -31438,7 +31481,7 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "project" | "task";
+            entity_type: "project" | "task" | "website";
         };
         /** SubscriptionRead */
         SubscriptionRead: {
@@ -31753,6 +31796,11 @@ export interface components {
              * @default false
              */
             billed_in_advance: boolean;
+            /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
             /** Key */
             key: string;
             /** Label I18N */
@@ -31779,6 +31827,11 @@ export interface components {
              * @default false
              */
             billed_in_advance: boolean;
+            /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
             /**
              * Created At
              * Format: date-time
@@ -31833,6 +31886,11 @@ export interface components {
              */
             billed_in_advance: boolean;
             /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
+            /**
              * Created At
              * Format: date-time
              */
@@ -31877,6 +31935,8 @@ export interface components {
             active?: boolean | null;
             /** Billed In Advance */
             billed_in_advance?: boolean | null;
+            /** Covers Websites */
+            covers_websites?: boolean | null;
             /** Label I18N */
             label_i18n?: {
                 [key: string]: string;
@@ -59515,6 +59575,8 @@ export interface operations {
                 entity_id?: string | null;
                 /** @description include current-period usage per row */
                 usage?: boolean;
+                /** @description with entity_type/entity_id: the agreements that could be attached to the record instead of the ones already on it — its client's, alive, of a kind that attaches to it, not yet linked */
+                linkable?: boolean;
             };
             header?: never;
             path?: never;
@@ -59992,6 +60054,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SubscriptionRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_subscription_api_v1_subscriptions__subscription_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionLinkWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_subscription_api_v1_subscriptions__subscription_id__links__entity_type___entity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                entity_type: "project" | "task" | "website";
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

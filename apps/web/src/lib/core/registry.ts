@@ -191,6 +191,15 @@ export interface EntityPanelLookups {
 export interface EntityPanelContext {
   entityId: string;
   /**
+   * The host record's client, where the host has exactly one (a website's is its domain's).
+   * A panel that opens a create dialog from the record pre-fills it with this, so the nested
+   * form inherits the context the page already knows (docs/UX.md, #247). `null`/absent where
+   * the host is not a client's record.
+   */
+  companyId?: string | null;
+  /** What the host record is called, for a panel that names it somewhere else (a chip). */
+  label?: string;
+  /**
    * The day the host's aggregate starts counting from — a project's budget-period start (from the
    * API, never recomputed in the browser). `null` means "no lower bound" (a `total` budget).
    * A panel that answers "which records made that number" must count exactly what the number did.

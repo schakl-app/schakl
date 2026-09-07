@@ -39,6 +39,12 @@
   );
   const lines = $derived(sub.lines ?? []);
   const usage = $derived(sub.usage ?? null);
+  // What the agreement covers — the sites it keeps online first, then the work it pays for.
+  const LINK_ORDER = { website: 0, project: 1, task: 2 } as const;
+  const LINK_HREF = { website: "/websites", project: "/projects", task: "/tasks" } as const;
+  const links = $derived(
+    (sub.links ?? []).toSorted((a, b) => LINK_ORDER[a.entity_type] - LINK_ORDER[b.entity_type]),
+  );
 
   // The tenant's own fields that apply to *this* agreement — a field attached to another type
   // is not drawn here even where the row still holds a value for it (§13) — and hold a value.
@@ -192,6 +198,24 @@
         values={customValues}
         locale={data.locale}
       />
+    </Card>
+  {/if}
+
+  {#if links.length > 0}
+    <Card title={t("subscriptions.detail.covers")}>
+      <ul class="divide-y divide-border text-sm">
+        {#each links as link (link.id)}
+          <li class="flex items-center justify-between gap-3 py-2">
+            <a
+              href={`${LINK_HREF[link.entity_type]}/${link.entity_id}`}
+              class="min-w-0 flex-1 truncate text-brand hover:underline">{link.label ?? "—"}</a
+            >
+            <span class="shrink-0 rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+              >{t(`subscriptions.link_kind.${link.entity_type}`)}</span
+            >
+          </li>
+        {/each}
+      </ul>
     </Card>
   {/if}
 

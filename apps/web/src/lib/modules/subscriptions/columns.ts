@@ -187,6 +187,14 @@ export const SUBSCRIPTION_TYPE_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 120,
   },
+  // May an agreement of this kind be attached to a website (hosting, maintenance)?
+  {
+    key: "websites",
+    labelKey: "subscriptions.field.websites",
+    sortKey: "websites",
+    defaultVisible: true,
+    width: 110,
+  },
   {
     key: "active",
     labelKey: "subscriptions.field.status",

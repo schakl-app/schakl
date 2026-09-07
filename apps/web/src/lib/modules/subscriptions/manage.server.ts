@@ -5,6 +5,7 @@
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
 import { locales } from "$lib/paraglide/runtime";
@@ -36,12 +37,14 @@ export const manageActions = {
     const task_template_ids = parseIds(form.get("task_template_ids"));
     // Which period an invoice covers; the select always posts an answer, so this is a boolean.
     const billed_in_advance = form.get("billed_in_advance") === "true";
+    // A checkbox: presence is the question (docs/UX.md, the reporting checkbox lesson).
+    const covers_websites = checked(form, "covers_websites");
     if (Object.keys(label_i18n).length === 0) return fail(400, { error: "errors.required" });
 
     if (type_id) {
       const { data, error } = await apiFor(event).PATCH("/api/v1/subscriptions/types/{type_id}", {
         params: { path: { type_id } },
-        body: { label_i18n, position, task_template_ids, billed_in_advance },
+        body: { label_i18n, position, task_template_ids, billed_in_advance, covers_websites },
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
       // A flipped direction re-reads the periods of every agreement of this kind, the ones
@@ -52,7 +55,15 @@ export const manageActions = {
       const key = slugify(label_i18n.nl || label_i18n.en || "");
       if (!key) return fail(400, { error: "errors.label_no_key" });
       const { error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
-        body: { key, label_i18n, position, active: true, task_template_ids, billed_in_advance },
+        body: {
+          key,
+          label_i18n,
+          position,
+          active: true,
+          task_template_ids,
+          billed_in_advance,
+          covers_websites,
+        },
       });
       if (error) return fail(400, { error: createErrorKey(error, response) });
     }

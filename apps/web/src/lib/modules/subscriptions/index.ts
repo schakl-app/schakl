@@ -7,6 +7,7 @@ import ProjectSubscriptionsPanel from "./ProjectSubscriptionsPanel.svelte";
 import SubscriptionsMrrWidget from "./SubscriptionsMrrWidget.svelte";
 import SubscriptionsPanel from "./SubscriptionsPanel.svelte";
 import SubscriptionsPortalWidget from "./SubscriptionsPortalWidget.svelte";
+import WebsiteSubscriptionsPanel from "./WebsiteSubscriptionsPanel.svelte";
 
 registerWebModule({
   name: "subscriptions",
@@ -99,6 +100,36 @@ registerWebModule({
         };
       },
       component: ProjectSubscriptionsPanel,
+    },
+    {
+      // The agreements that keep this website online (hosting, maintenance — whichever kinds
+      // the tenant marked `covers_websites`), and where one is attached. Registered, so a
+      // tenant without `subscriptions` never draws it and pays for no call.
+      key: "subscriptions.website",
+      module: "subscriptions",
+      entityType: "website",
+      titleKey: "subscriptions.panel.title",
+      position: 30,
+      requiresPermission: "subscriptions.subscription.read",
+      load: async (api, { entityId }) => {
+        const query = { entity_type: "website", entity_id: entityId } as const;
+        // What could be attached streams behind the page: most visits never open the picker,
+        // and the API answers the shortlist (this client's covering agreements, not yet on the
+        // site) so the panel filters nothing itself. A shortlist that fails to load leaves the
+        // half that matters — what is attached — on screen.
+        const attachable = api
+          .GET("/api/v1/subscriptions", {
+            params: { query: { ...query, linkable: true, limit: 100 } },
+          })
+          .then((r) => r.data?.items ?? [])
+          .catch(() => []);
+        const { data } = await api.GET("/api/v1/subscriptions", {
+          params: { query: { ...query, limit: 5 } },
+        });
+        const items = data?.items ?? [];
+        return { subscriptions: items, total: data?.total ?? items.length, attachable };
+      },
+      component: WebsiteSubscriptionsPanel,
     },
   ],
 });

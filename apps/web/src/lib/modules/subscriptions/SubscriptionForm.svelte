@@ -40,6 +40,7 @@
     subscriptionTypeLabel,
     type Subscription,
     type SubscriptionFormLookups,
+    type SubscriptionLinkDraft,
     type SubscriptionTemplate,
   } from "./types";
   import {
@@ -55,6 +56,7 @@
     lookups,
     locale,
     defaultCompanyId = "",
+    defaultLinks = [],
     action,
     projectAction = "?/createProject",
     typeAction = "?/createType",
@@ -68,6 +70,8 @@
     locale: string;
     /** Preselected in the client picker — a default that is visible and changeable. */
     defaultCompanyId?: string;
+    /** Links a create opens with — the website whose panel raised the dialog, as a chip. */
+    defaultLinks?: SubscriptionLinkDraft[];
     /** Where the form posts: the host's create or update action. */
     action: string;
     /** The host's quick-create actions, for the pickers' "＋ … toevoegen". */
@@ -110,7 +114,13 @@
   let pv = $state({
     name: editing?.name ?? "",
     companyId: editing?.company_id ?? defaultCompanyId,
-    typeId: editing?.subscription_type_id ?? "",
+    // A create opened from a website's panel starts on the first kind that covers websites —
+    // a visible, changeable default, and the one the API would otherwise refuse the chip on.
+    typeId:
+      editing?.subscription_type_id ??
+      (defaultLinks.some((l) => l.entity_type === "website")
+        ? (lookups.types.find((st) => st.active && st.covers_websites)?.id ?? "")
+        : ""),
     amount: String(editing?.amount ?? ""),
     interval: editing?.interval ?? "monthly",
     includedHours: String(editing?.included_hours ?? ""),
@@ -189,8 +199,55 @@
     ),
   );
   const projectItems = $derived(projectPicker.live);
+  // Websites the agreement keeps online — offered only while the picked type covers websites
+  // (`covers_websites`), but *drawn* whenever any are linked: the save re-posts the whole set,
+  // so a chip the form could not show would be a link the user could never remove.
+  // svelte-ignore state_referenced_locally
+  let linkedWebsites = $state<{ id: string; name: string }[]>([
+    ...(editing?.links ?? [])
+      .filter((l) => l.entity_type === "website")
+      .map((l) => ({ id: l.entity_id, name: l.label ?? "—" })),
+    ...defaultLinks
+      .filter((l) => l.entity_type === "website")
+      .map((l) => ({ id: l.entity_id, name: l.label })),
+  ]);
+  const coversWebsites = $derived(
+    lookups.types.find((st) => st.id === pv.typeId)?.covers_websites ?? false,
+  );
+  // The client's websites, read the first time they are wanted rather than on every mount:
+  // most agreements are retainers, and the list page mounts this form for every row. Keyed on
+  // the client, so switching clients re-reads and never offers another client's sites.
+  let websites = $state<{ id: string; name: string; company: string }[]>([]);
+  $effect(() => {
+    const company = pv.companyId;
+    if (!coversWebsites || !company || websites[0]?.company === company) return;
+    void fetch(`/api/v1/websites?company_id=${company}&limit=200&offset=0&count=false&sort=name`, {
+      headers: { accept: "application/json" },
+    })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((page: { items: { id: string; domain_name: string; root: boolean }[] }) => {
+        websites = page.items.map((w) => ({
+          id: w.id,
+          name: w.root ? w.domain_name : `www.${w.domain_name}`,
+          company,
+        }));
+      })
+      .catch(() => {});
+  });
+  const websiteItems = $derived(
+    websites
+      .filter((w) => !linkedWebsites.some((l) => l.id === w.id))
+      .map((w) => ({ value: w.id, label: w.name })),
+  );
+  function websiteName(id: string): string {
+    return websites.find((w) => w.id === id)?.name ?? "—";
+  }
+
   const linksJson = $derived(
-    JSON.stringify(linkedProjects.map((p) => ({ entity_type: "project", entity_id: p.id }))),
+    JSON.stringify([
+      ...linkedProjects.map((p) => ({ entity_type: "project", entity_id: p.id })),
+      ...linkedWebsites.map((w) => ({ entity_type: "website", entity_id: w.id })),
+    ]),
   );
 
   function projectName(id: string): string {
@@ -483,6 +540,57 @@
           : t("subscriptions.field.projects_help")}
       </p>
     </div>
+    {#if coversWebsites || linkedWebsites.length > 0}
+      <div>
+        <span class="mb-1 block text-sm font-medium text-text"
+          >{t("subscriptions.field.websites")}</span
+        >
+        {#if linkedWebsites.length > 0}
+          <div class="mb-2 flex flex-wrap gap-1.5">
+            {#each linkedWebsites as site (site.id)}
+              <span
+                class="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-text"
+              >
+                {site.name}
+                <button
+                  type="button"
+                  class="text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                  aria-label={t("common.delete")}
+                  onclick={() => (linkedWebsites = linkedWebsites.filter((w) => w.id !== site.id))}
+                  >✕</button
+                >
+              </span>
+            {/each}
+          </div>
+        {/if}
+        {#if coversWebsites}
+          <!-- No ＋ here: a website is made on its domain (`/websites`), and a site with no
+               domain to hang off is not a record this form could create. -->
+          <Combobox
+            items={websiteItems}
+            name="link_website_picker"
+            id="sub-websites"
+            placeholder={pv.companyId
+              ? t("subscriptions.field.websites")
+              : t("subscriptions.field.websites_pick_client")}
+            onselect={(value) => {
+              if (value && !linkedWebsites.some((w) => w.id === value)) {
+                linkedWebsites = [...linkedWebsites, { id: value, name: websiteName(value) }];
+              }
+            }}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("subscriptions.field.websites_help")}</p>
+        {:else}
+          <!-- Two different sentences: no type yet is a choice still to make, a type that does
+               not cover websites is a link the save will refuse for the chip that is drawn. -->
+          <p class="mt-1 text-xs text-text-muted">
+            {pv.typeId
+              ? t("subscriptions.field.websites_type_no_longer")
+              : t("subscriptions.field.websites_pick_type")}
+          </p>
+        {/if}
+      </div>
+    {/if}
     <div>
       <label for="sub-notes" class="mb-1 block text-sm font-medium text-text"
         >{t("subscriptions.field.notes")}</label

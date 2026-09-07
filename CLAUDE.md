@@ -1181,6 +1181,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   agreement's own flip shifting its own claims and a type flip counting only the agreements that
   still follow it. The column is `_override` because the resolved answer already rides the read
   as `billed_in_advance`, and a resolution written onto a same-named mapped column is stored.
+- **A hosting agreement keeps a website online, and the website can say which one**
+  (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`,
+  `docs/INVOICING.md`). A website said where it *runs* (its hosting account) and never who *pays*
+  for that; an agreement attached to the work it covers (projects, tasks) and never to the asset
+  it keeps online. Four rules. **Which kinds attach to a website is the type's flag, never a key
+  the code recognises**: the seeded `hosting` ships with it on (backfilled by migration — under
+  `FORCE ROW LEVEL SECURITY` with no GUC bound, which is the `87e32dccc095` dance and was found
+  here the same way), and a tenant ticks it on "Onderhoud" in Instellingen. **The flag is asked
+  when a website link is written, and only then**: the form re-posts every link on every save, so
+  a link made while the type said yes survives a later flip (#335), and only a *new* website link
+  on a non-covering kind is refused, naming the field. **The record's page is where the link is
+  made**: the subscriptions module registers an entity panel on `website` whose picker is the
+  API's own shortlist (`linkable=true` — this client's covering agreements not yet on the site, so
+  an agent asks the same question a person does), whose writes post to host-page actions
+  (`subscriptionLinkActions`, the uptime panel's contract), and whose ＋ opens the module's dialog
+  with the client and the site already on the form (`EntityPanelContext.companyId` / `label`).
+  And **a link carries its label** (`SubscriptionLinkRead.label`, one bare-table statement per
+  kind over the page), so the agreement's page can print what it covers without a lookup of its
+  own. The per-record routes (`POST /{id}/links`, `DELETE /{id}/links/{type}/{id}`) exist because a
+  host page holds one link, not the agreement's whole set.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

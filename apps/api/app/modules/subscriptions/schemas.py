@@ -26,8 +26,14 @@ class SubscriptionLineRead(SubscriptionLineWrite):
     position: int
 
 
+#: What an agreement may be attached to. A project or a task is the *work* it pays for (its
+#: included hours burn there); a website is the *asset* it keeps online, and only an agreement
+#: whose type ``covers_websites`` may name one.
+LinkEntityType = Literal["project", "task", "website"]
+
+
 class SubscriptionLinkWrite(BaseModel):
-    entity_type: Literal["project", "task"]
+    entity_type: LinkEntityType
     entity_id: uuid.UUID
 
 
@@ -35,6 +41,10 @@ class SubscriptionLinkRead(SubscriptionLinkWrite):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    #: What the linked record is called — a project's name, the host a website answers on —
+    #: resolved by the service so a reader can print the link without a lookup of its own.
+    #: ``None`` when the record is gone (a link carries no FK into another module's table, §6).
+    label: str | None = None
 
 
 class RolloverRule(BaseModel):
@@ -58,6 +68,8 @@ class SubscriptionTypeBase(BaseModel):
     #: licences — paid for before delivery) or the one *before* it (a retainer, billed once
     #: served). The default is the cron's original reading, so an untouched type bills as it did.
     billed_in_advance: bool = False
+    #: Whether agreements of this kind may be attached to a website (hosting, maintenance).
+    covers_websites: bool = False
 
 
 class SubscriptionTypeCreate(SubscriptionTypeBase):
@@ -71,6 +83,7 @@ class SubscriptionTypeUpdate(BaseModel):
     active: bool | None = None
     task_template_ids: list[uuid.UUID] | None = None
     billed_in_advance: bool | None = None
+    covers_websites: bool | None = None
 
 
 class SubscriptionTypeRead(SubscriptionTypeBase):

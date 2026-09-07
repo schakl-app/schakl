@@ -28,7 +28,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import bindparam, case, func, select, text
+from sqlalchemy import bindparam, case, false, func, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -78,6 +78,21 @@ from app.modules.subscriptions.schemas import (
 
 ENTITY_TYPE = "subscription"
 
+#: Where a link's target lives — bare table names, never another module's model (§6).
+_LINK_TABLES: dict[str, str] = {"project": "projects", "task": "tasks", "website": "websites"}
+
+#: ``(id, label)`` per kind, for the page's links in one statement each. A website is named by
+#: the host it answers on, exactly as its own page titles it.
+_LINK_LABEL_SQL: dict[str, str] = {
+    "project": "SELECT id, name FROM projects WHERE org_id = :oid AND id IN :ids",
+    "task": "SELECT id, title FROM tasks WHERE org_id = :oid AND id IN :ids",
+    "website": (
+        "SELECT w.id, CASE WHEN w.root THEN d.name ELSE 'www.' || d.name END"
+        " FROM websites w JOIN domains d ON d.id = w.domain_id"
+        " WHERE w.org_id = :oid AND w.id IN :ids"
+    ),
+}
+
 #: Definition fields the activity trail diffs (§16) — never notes or custom JSONB.
 _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
@@ -88,7 +103,13 @@ _AUDITED_FIELDS = (
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
 #: what a Dutch agency sells, never law: rename, deactivate or delete freely (#142).
 DEFAULT_SUBSCRIPTION_TYPES: list[dict] = [
-    {"key": "hosting", "label_i18n": {"nl": "Hosting", "en": "Hosting"}, "position": 10},
+    {
+        "key": "hosting",
+        "label_i18n": {"nl": "Hosting", "en": "Hosting"},
+        "position": 10,
+        # The one starter type everybody expects to attach to a website.
+        "covers_websites": True,
+    },
     {"key": "onderhoud", "label_i18n": {"nl": "Onderhoud", "en": "Maintenance"}, "position": 20},
     {"key": "marketing", "label_i18n": {"nl": "Marketing", "en": "Marketing"}, "position": 30},
     {"key": "support", "label_i18n": {"nl": "Support", "en": "Support"}, "position": 40},
@@ -460,6 +481,7 @@ class SubscriptionService:
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
         usage: bool = False,
+        linkable: bool = False,
     ) -> tuple[Sequence[Subscription], int]:
         conditions = []
         if company_id is not None:
@@ -473,16 +495,22 @@ class SubscriptionService:
             # already its own filter, and the type is a closed vocabulary with its own control.
             conditions.append(Subscription.name.ilike(f"%{q.strip()}%"))
         if entity_type and entity_id:
-            # "Which agreements cover this project/task?" — the project panel's question.
-            conditions.append(
-                Subscription.id.in_(
-                    select(SubscriptionLink.subscription_id).where(
-                        SubscriptionLink.org_id == self._org_id,
-                        SubscriptionLink.entity_type == entity_type,
-                        SubscriptionLink.entity_id == entity_id,
-                    )
-                )
+            linked = select(SubscriptionLink.subscription_id).where(
+                SubscriptionLink.org_id == self._org_id,
+                SubscriptionLink.entity_type == entity_type,
+                SubscriptionLink.entity_id == entity_id,
             )
+            if linkable:
+                # The other question — "which agreements *could* cover this record?" — asked
+                # by the attach picker on a website's page: the record's own client, a kind that
+                # attaches to it, not already on it, and not over. Answered here rather than
+                # by the picker filtering a client's whole book, so an MCP caller gets the same
+                # shortlist a person does.
+                conditions.extend(await self._linkable_conditions(entity_type, entity_id))
+                conditions.append(Subscription.id.not_in(linked))
+            else:
+                # "Which agreements cover this project/task/website?" — the panel's question.
+                conditions.append(Subscription.id.in_(linked))
         stmt = self.repo.scoped_select().where(*conditions)
         sortable: dict[str, Any] = dict(SORTABLE)
         if sort and sort.removeprefix("-") == "amount":
@@ -854,7 +882,9 @@ class SubscriptionService:
             subscription_id=sub.id, amount=data.amount, valid_from=data.start_date
         )
         await self._replace_lines(sub.id, data.lines)
-        await self._replace_links(sub.id, data.links)
+        await self._replace_links(
+            sub.id, data.links, subscription_type_id=sub.subscription_type_id
+        )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, sub.id)
         await self._mark_activated(sub)
         await self._attach([sub])
@@ -966,7 +996,9 @@ class SubscriptionService:
         if data.lines is not None:
             await self._replace_lines(sub.id, data.lines)
         if data.links is not None:
-            await self._replace_links(sub.id, data.links)
+            await self._replace_links(
+                sub.id, data.links, subscription_type_id=sub.subscription_type_id
+            )
 
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, sub.id, before, snapshot(sub, _AUDITED_FIELDS)
@@ -1241,7 +1273,11 @@ class SubscriptionService:
             )
 
     async def _replace_links(
-        self, subscription_id: uuid.UUID, links: list[SubscriptionLinkWrite]
+        self,
+        subscription_id: uuid.UUID,
+        links: list[SubscriptionLinkWrite],
+        *,
+        subscription_type_id: uuid.UUID | None,
     ) -> None:
         for link in links:
             await self._ensure_link_target(link)
@@ -1255,6 +1291,14 @@ class SubscriptionService:
             )
         )
         before = {(row.entity_type, row.entity_id) for row in existing}
+        # Only a website link being *made* asks whether the kind covers websites: the form
+        # re-posts every link on every save, and a link written while the type said yes is a
+        # stored decision that outlives a later flip of the flag (#335's rule) — refusing it
+        # here would make such an agreement unsaveable until somebody found the link to drop.
+        await self._ensure_websites_coverable(
+            subscription_type_id,
+            [link for link in links if (link.entity_type, link.entity_id) not in before],
+        )
         for row in existing:
             await self.links.delete(row)
         for link in links:
@@ -1371,8 +1415,8 @@ class SubscriptionService:
         )
 
     async def _ensure_link_target(self, link: SubscriptionLinkWrite) -> None:
-        """A linked project/task must be this tenant's — a bare table reference (§6)."""
-        table = "projects" if link.entity_type == "project" else "tasks"
+        """A linked project/task/website must be this tenant's — a bare table reference (§6)."""
+        table = _LINK_TABLES[link.entity_type]
         ok = await self.ctx.session.scalar(
             text(f"SELECT 1 FROM {table} WHERE id = :eid AND org_id = :oid"),  # noqa: S608
             {"eid": link.entity_id, "oid": self._org_id},
@@ -1384,6 +1428,160 @@ class SubscriptionService:
                 status_code=400,
                 fields={"links": "errors.not_found"},
             )
+
+    async def _ensure_websites_coverable(
+        self, subscription_type_id: uuid.UUID | None, links: list[SubscriptionLinkWrite]
+    ) -> None:
+        """A website link needs a kind that ``covers_websites`` (the type's decision, never a
+        key the code recognises). An agreement with no type at all covers nothing: "hosting"
+        is what the type says, and an untyped agreement has not said it."""
+        if not any(link.entity_type == "website" for link in links):
+            return
+        covers = False
+        if subscription_type_id is not None:
+            covers = bool(
+                await self.ctx.session.scalar(
+                    self.types.scoped_select()
+                    .where(SubscriptionType.id == subscription_type_id)
+                    .with_only_columns(SubscriptionType.covers_websites)
+                )
+            )
+        if not covers:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"links": "errors.subscriptions_type_no_websites"},
+            )
+
+    async def _linkable_conditions(self, entity_type: str, entity_id: uuid.UUID) -> list[Any]:
+        """Where the agreements that *could* cover ``entity`` are: the record's own client (a
+        website's is its domain's, a project's its own), alive, and — for a website — of a kind
+        that covers websites. A record this tenant does not hold answers an empty list, never
+        another client's agreements."""
+        if entity_type == "website":
+            company_id = await self.ctx.session.scalar(
+                text(
+                    "SELECT d.company_id FROM websites w JOIN domains d ON d.id = w.domain_id"
+                    " WHERE w.id = :eid AND w.org_id = :oid"
+                ),
+                {"eid": entity_id, "oid": self._org_id},
+            )
+        elif entity_type == "project":
+            company_id = await self.ctx.session.scalar(
+                text("SELECT company_id FROM projects WHERE id = :eid AND org_id = :oid"),
+                {"eid": entity_id, "oid": self._org_id},
+            )
+        else:
+            company_id = None
+        if company_id is None:
+            return [false()]
+        conditions: list[Any] = [
+            Subscription.company_id == company_id,
+            Subscription.status != SubscriptionStatus.CANCELLED.value,
+        ]
+        if entity_type == "website":
+            conditions.append(
+                Subscription.subscription_type_id.in_(
+                    self.types.scoped_select()
+                    .where(SubscriptionType.covers_websites.is_(True))
+                    .with_only_columns(SubscriptionType.id)
+                )
+            )
+        return conditions
+
+    async def link(self, subscription_id: uuid.UUID, link: SubscriptionLinkWrite) -> Subscription:
+        """Attach one record to the agreement — the website panel's "Koppelen".
+
+        Idempotent: a link already there is left as it is and nothing is announced twice. The
+        single-link twin of ``_replace_links``, so it is gated exactly as the form's save is
+        (the tenant check, the kind's ``covers_websites``), and it announces a newly covered
+        project the same way (#284).
+        """
+        self.ctx.require("subscriptions.subscription.write")
+        sub = await self.repo.get_or_404(subscription_id)
+        await self._ensure_link_target(link)
+        existing = await self.ctx.session.scalar(
+            self.links.scoped_select().where(
+                SubscriptionLink.subscription_id == sub.id,
+                SubscriptionLink.entity_type == link.entity_type,
+                SubscriptionLink.entity_id == link.entity_id,
+            )
+        )
+        if existing is None:
+            await self._ensure_websites_coverable(sub.subscription_type_id, [link])
+            await self.links.create(subscription_id=sub.id, **link.model_dump())
+            await ActivityService(self.ctx).record(
+                ENTITY_TYPE,
+                sub.id,
+                "linked",
+                {
+                    "entity_type": link.entity_type,
+                    "entity_id": str(link.entity_id),
+                    "label": await self._link_label(link.entity_type, link.entity_id),
+                },
+            )
+            if link.entity_type == "project":
+                await emit(
+                    "subscription.project_linked",
+                    self.ctx,
+                    {"subscription_id": sub.id, "project_ids": [link.entity_id]},
+                )
+        await self._attach([sub])
+        return sub
+
+    async def unlink(
+        self, subscription_id: uuid.UUID, entity_type: str, entity_id: uuid.UUID
+    ) -> None:
+        """Detach one record. A link that is not there is a 404: the caller named something
+        this agreement does not cover."""
+        self.ctx.require("subscriptions.subscription.write")
+        sub = await self.repo.get_or_404(subscription_id)
+        row = await self.ctx.session.scalar(
+            self.links.scoped_select().where(
+                SubscriptionLink.subscription_id == sub.id,
+                SubscriptionLink.entity_type == entity_type,
+                SubscriptionLink.entity_id == entity_id,
+            )
+        )
+        if row is None:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        label = await self._link_label(entity_type, entity_id)
+        await self.links.delete(row)
+        await ActivityService(self.ctx).record(
+            ENTITY_TYPE,
+            sub.id,
+            "unlinked",
+            {"entity_type": entity_type, "entity_id": str(entity_id), "label": label},
+        )
+
+    async def _link_label(self, entity_type: str, entity_id: uuid.UUID) -> str | None:
+        labels = await self._link_labels({(entity_type, entity_id)})
+        return labels.get((entity_type, entity_id))
+
+    async def _link_labels(
+        self, keys: set[tuple[str, uuid.UUID]]
+    ) -> dict[tuple[str, uuid.UUID], str]:
+        """What each linked record is called, one statement per kind over the whole page —
+        bare table reads, because a link names rows in tables this module may not import (§6).
+        A website has no name of its own: it is the host it answers on (``websites`` rule)."""
+        by_type: dict[str, list[uuid.UUID]] = {}
+        for entity_type, entity_id in keys:
+            by_type.setdefault(entity_type, []).append(entity_id)
+        labels: dict[tuple[str, uuid.UUID], str] = {}
+        for entity_type, ids in by_type.items():
+            sql = _LINK_LABEL_SQL.get(entity_type)
+            if sql is None:
+                continue
+            rows = (
+                await self.ctx.session.execute(
+                    text(sql).bindparams(bindparam("ids", expanding=True)),
+                    {"oid": self._org_id, "ids": ids},
+                )
+            ).all()
+            for row in rows:
+                labels[(entity_type, row[0])] = row[1]
+        return labels
 
     async def _current_amount(self, subscription_id: uuid.UUID) -> Decimal | None:
         today = await self._org_today()
@@ -1499,8 +1697,16 @@ class SubscriptionService:
             )
         ).scalars()
         links_by_sub: dict[uuid.UUID, list[SubscriptionLink]] = {}
+        link_keys: set[tuple[str, uuid.UUID]] = set()
         for link in link_rows:
             links_by_sub.setdefault(link.subscription_id, []).append(link)
+            link_keys.add((link.entity_type, link.entity_id))
+        link_labels = await self._link_labels(link_keys)
+        for link_list in links_by_sub.values():
+            for link in link_list:
+                link.label = link_labels.get(  # type: ignore[attr-defined]
+                    (link.entity_type, link.entity_id)
+                )
 
         directions = await billing_directions(self.ctx.session, self._org_id, subs)
         for sub in subs:

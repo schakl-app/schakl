@@ -17,6 +17,10 @@ import { apiFor } from "$lib/core/session";
 import { uptimeActions } from "$lib/integrations/uptime/uptime-actions.server";
 import { wordpressActions } from "$lib/integrations/wordpress/wordpress-actions.server";
 import "$lib/modules";
+import {
+  subscriptionActions,
+  subscriptionLinkActions,
+} from "$lib/modules/subscriptions/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -73,6 +77,10 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   ...wordpressActions,
   ...uptimeActions,
+  // The Abonnementen panel attaches the agreement that keeps this site online, and its ＋ opens
+  // the subscriptions module's own dialog — same contract as the two above.
+  ...subscriptionActions,
+  ...subscriptionLinkActions,
 
   update: async (event) => {
     const form = await event.request.formData();
