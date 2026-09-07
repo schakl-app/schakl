@@ -52,6 +52,15 @@ DOMAIN_BULK = BulkDescriptor(
         # statement over the whole selection, and clearable, since withdrawing it is a decision
         # somebody makes on purpose over rows they picked.
         BulkField("billed_until", clearable=True),
+        # The two remaining invoicing facts. A portfolio onboarded in one afternoon carries
+        # that afternoon as every start date (CLAUDE.md §10), and the fix is one date over the
+        # selection; it anchors the cycle, so it is settable and never emptiable — the import
+        # says the same. Set beside a *cleared* renewal date, the service works the new cycle
+        # out from the new anchor in the same call.
+        BulkField("start_date"),
+        # One negotiated price over a client's names, or — cleared — back to the TLD list
+        # price, which is a real answer rather than an empty one.
+        BulkField("price_override", clearable=True),
     ),
     delete_permission="domains.domain.delete",
     delete_row=_delete,

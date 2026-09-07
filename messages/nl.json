@@ -6028,6 +6028,7 @@
   "impex.column.domain.invoiceable": "Factureren",
   "domains.bulk.invoiceable_auto": "Register volgen",
   "domains.bulk.renewal_reset": "Datum opnieuw bepalen",
+  "domains.bulk.price_reset": "TLD-prijs gebruiken",
   "domains.filter.invoiceable_yes": "Wel factureren",
   "domains.filter.invoiceable_no": "Niet factureren",
   "module.mollie.label": "Mollie",
