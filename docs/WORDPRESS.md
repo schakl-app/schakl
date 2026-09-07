@@ -395,15 +395,116 @@ The downgrade narrows the column back, which **fails on any `rankmath` row** —
 behaviour: the rollback path is to unlink those first, and Postgres raises rather than
 truncating, so nothing is silently lost.
 
-## 7. Not built yet
+## 7. The site as a surface — what `/mcp/wordpress` serves
 
-- **The MCP half.** `mcp_server_path` is discovered and stored, but schakl has no MCP *client*
-  (`app/core/ai/tools.py` is a registry of our tools; `app/core/mcp/server.py` is us serving
-  MCP). The cheaper alternative — an `AIToolSpec` calling the abilities REST endpoints directly
-  — needs no adapter dependency and is the likelier next step. Whichever is built:
-  **confused-deputy (§12) applies in the other direction** — never pass an incoming MCP
-  credential outward; the site's password is resolved from our row, under our permission check,
-  for our caller's org. The two credentials must never meet.
+The ask that produced this section: *forty clients, each with their own WordPress, reachable by
+the agency's staff from schakl's MCP — even where the site has registered no abilities.* It is
+answered without an MCP client, without the adapter, and without a tool per site.
+
+### A site is a parameter, never a tool
+
+The tempting shape was schakl as an MCP *client* to each site's adapter — forty upstream servers
+proxied through. Three facts, one from the codebase and two from the adapter, rule it out:
+
+- `/mcp` is **derived from our routes, once per process** (`docs/MCP.md`). There is no
+  mechanism for a tool list that varies per tenant row, and there must not be: a chat client
+  puts every tool in the model's context on every turn, so forty sites with forty plugin sets
+  would be forty tool lists and no budget left for the CRM.
+- The adapter's default server is **itself three meta-tools** — discover, describe, execute —
+  over the abilities flagged `mcp.public`. That is exactly what one generic call to
+  `wp-abilities/v1/abilities/{name}/run` already gives, without a session-based Streamable HTTP
+  client, a second credential path, or a plugin that is not on wordpress.org.
+- The adapter **registers nothing that is not an ability**. "The site has no abilities" and
+  "the site's MCP server is empty" are the same sentence, so installing it on an ACF + CF7 site
+  changes nothing.
+
+So the surface is **routes on the `wordpress` router**, keyed on the credential row:
+
+| Route | Permission | What |
+|---|---|---|
+| `GET /sites?company_id=` | `site.read` | which site is this client's — rows now carry `company_name` and `domain_name` |
+| `GET /sites/{id}/summary` | `site.read` | name, WP + PHP version, post types with their `rest_base`, plugin namespaces, `has_forms` / `has_abilities` / `multilingual` |
+| `GET /sites/{id}/content?type=&search=&status=&lang=` | `content.read` | pages, posts, any custom post type; `context=edit`, so drafts and raw content |
+| `GET` / `PATCH /sites/{id}/content/{type}/{wp_id}` | `content.read` / `content.write` | one record whole: raw, rendered, `acf`, `meta` |
+| `POST /sites/{id}/content` | `content.write` | a new record, a draft unless told otherwise |
+| `GET /sites/{id}/media[/{wp_id}]` | `content.read` | what an ACF image id resolves to |
+| `GET` / `POST` / `PATCH /sites/{id}/forms[/{wp_id}]` | `forms.read` / `forms.write` | Contact Form 7: template, field names, both mails, messages |
+| `GET /sites/{id}/abilities` | `ability.read` | every ability registered for REST, with schema and `readonly` |
+| `POST /sites/{id}/abilities/run` | `ability.read`, refined | one ability by name; a write needs `ability.run` |
+
+Because a tool is a route, `/mcp/wordpress` is the same fourteen tools whether the agency holds
+four sites or four hundred (`test_the_mcp_section_does_not_grow_with_the_sites`), the compact
+profile never lists them, and a key minted without `wordpress.*` neither sees nor calls them.
+What differs per site — which plugins, which post types, which abilities — is *answered* by
+`summary` and `abilities`, never encoded in the tool list.
+
+### What was proven on a real site before it was built
+
+`itis-nl.com`, connected in Instellingen with an administrator's application password and probed
+as REST ✓, admin ✓, abilities ✓, Rank Math ✗ (404), MCP ✗. Read without the password:
+
+- **Pages are ACF field groups, not ACF blocks, with "Show in REST API" already on**: the public
+  `wp/v2/pages/1` answers `acf` with the slider, the diensten repeater and the CTA fields;
+  `post_content` is classic HTML with no block comment in it. Editing a page is one `PATCH`
+  with typed fields, not a rewrite of block JSON. Where a site *is* block-built the `content`
+  field carries the block markup, and the caller is told to read before writing.
+- **WPML** is installed, so a page exists per language: `lang` is passed through on list, read
+  and create, and surfaced on each row where the site says it.
+- **Contact Form 7 6.1.7** with Redirection for CF7 and the drag-and-drop upload add-on. The
+  forms route answers 403 anonymously and opens to the admin password.
+- **The MCP Adapter was installed all along**, on all three connected sites. The probe matched
+  `n.startswith("mcp/")` and the namespace is bare `mcp`, with each server a *route* under it —
+  which is what "no_mcp_namespace" on three working sites turned out to mean. The fake had
+  been taught the same wrong shape, so no test could catch it (§4, "the fake rejects a bad
+  credential everywhere" has a sibling: the fake serves the index the real server serves).
+
+### The audience decides the permission
+
+WordPress has no staging: an edit to a published page is the broadcast. So the split is by
+**who can see the result**, not by which field is touched:
+
+- `content.write` (member by default) creates drafts and edits anything not live.
+- `content.publish` (admin by default) edits anything a visitor or logged-in reader can see —
+  `publish`, `future`, `private` — and sets a draft to one of those. The read that precedes
+  every update is what decides, and the refusal comes before the site is asked.
+- `forms.write` sits with publish: a form is live the moment it saves and decides where a
+  client's leads land.
+- `ability.read` lists and runs abilities that **say** they are read-only (`annotations.readonly`
+  — the plugin author's claim, and an ability that makes none is treated as a write, so the
+  failure direction is "refused something harmless"). `ability.run` runs anything. Core decides
+  the verb from the same annotation (`GET` read-only, `DELETE` destructive + idempotent, else
+  `POST`), so the registration is read first and the run sent the way core insists.
+
+Every write is a trail line on the site row (§16): `content_created`, `content_updated` with
+the fields touched, `form_updated`, `ability_run` for a non-read-only run. The client's own
+WordPress records none of that about us.
+
+### The wire shapes, read from source
+
+- **CF7's read is nested, its write is flat.** `GET …/contact-forms/{id}` answers
+  `properties.form = {content, fields[]}`; `wpcf7_save_contact_form` takes `form` as a string
+  and `mail` / `messages` as dicts at the top level. A body posted in the read's shape is
+  silently ignored. The `fields` on our read are CF7's own parse of the template, minus the
+  submit button.
+- **Abilities are paginated** (`per_page ≤ 100`, `X-WP-Total`), and ACF 6.8 alone registers a
+  dozen per post type, so the list is walked to the end.
+- **`X-WP-Total` is the count** on every core list; a list response here carries it as `total`
+  beside what was shown (§17).
+- **The two core abilities' outputs are read by candidate key** (`wp_version` /
+  `wordpress_version` / `version`, `php_version` / `php`), because their shapes are documented
+  loosely and have not met a live site from here. Unverified until they have — add to §1's
+  checklist: `GET /sites/{id}/summary` on a real site and check `wp_version` is filled.
+
+## 8. Not built yet
+
+- **Media upload.** A `multipart` route is excluded from the tool surface by method
+  (`docs/MCP.md`) and would need the base64 JSON twin `POST /files/inline` has. Reads only for
+  now: an ACF image id resolves through `GET /media/{id}`.
+- **An MCP client to the adapter.** Not needed for anything above, and §8 says why. It would
+  only ever be worth it for a server that exposes tools that are *not* abilities, which the
+  adapter cannot do. If it is ever built: **confused-deputy (§12) applies in the other
+  direction** — never pass an incoming MCP credential outward; the site's password is resolved
+  from our row, under our permission check, for our caller's org.
 - **The report section.** The insights payload (competitors, per-query results, raw transcripts)
   is the most quotable material in the module and belongs in a monthly report — through
   `report_sections` on the descriptor, and through `present.py`, or a Dutch client will read

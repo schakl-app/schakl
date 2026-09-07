@@ -1377,6 +1377,35 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
+- **A client site is a parameter, never a tool** (`wordpress` §7, `docs/WORDPRESS.md`). The ask
+  was forty clients' WordPress installs, reachable by agency staff from schakl's MCP, on sites
+  that register no abilities at all. The tempting shape — schakl as an MCP *client* proxying each
+  site's adapter — fails on three facts: `/mcp` is derived from our routes once per process and
+  has no mechanism for a tool list that varies per row (nor should it, since a chat client budgets
+  every tool on every turn); the adapter's default server is *itself* three meta-tools over the
+  abilities flagged public, which one generic `abilities/{name}/run` call already gives; and the
+  adapter registers nothing that is not an ability, so on an ACF + CF7 site it is empty. So the
+  surface is **routes on the `wordpress` router keyed on the credential row** — summary, content,
+  media, forms, abilities — and `/mcp/wordpress` is the same fourteen tools at four sites or four
+  hundred, pinned by a test. What differs per site is *answered* (`summary`, `abilities`), never
+  encoded in the tool list. Four rules generalise. **The audience decides the permission**:
+  WordPress has no staging, so an edit to a published page *is* the broadcast, and the split is
+  `content.write` (drafts, member by default) against `content.publish` (anything a visitor can
+  see, admin by default), decided by the read that precedes every update and refused before the
+  site is asked; a form edit sits with publish, and an ability runs on `ability.read` only if its
+  own annotation says `readonly` — an ability that claims nothing is a write. **A fake taught the
+  wrong shape hides the bug the real server would show**: the MCP probe matched `mcp/` against the
+  namespace list, the adapter's namespace is bare `mcp` with each server a *route* under it, and
+  three live sites with the adapter installed all read "no_mcp_namespace" — found by reading their
+  indexes, not by any test, because the fake served the same wrong index. **A plugin's read and
+  write are not symmetric until the source says so**: CF7 answers `properties.form = {content,
+  fields}` and saves a flat `form` string, and a body posted in the read's shape is silently
+  ignored. And **a page built from ACF field groups is the best case for an agent, and a page
+  built from ACF blocks the worst**: the first is typed fields on the `acf` key, one `PATCH`; the
+  second is JSON inside block comments in `post_content` with no REST projection, so the raw
+  content is carried whole and the caller is told to read before writing. Deliberately *not*
+  built: a CF7 submission webhook into `interactions` (not wanted), and media upload (multipart,
+  needs the base64 twin).
 - **A guardrail nobody can see working gets switched off, and a decision nobody wrote down gets
   re-proposed forever** (#318 phases 4–5, `docs/GOOGLE_ADS.md` §10a/§10b). The write surface is
   bounded by a per-account policy, and four rules came out of building it. **A refusal has to model

@@ -37,6 +37,7 @@ arrives (the posture ``docs/OXXA.md`` takes, for the same reason).
 from __future__ import annotations
 
 import base64
+import json as _json
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -69,10 +70,31 @@ PLUGINS_PATH = "/wp-json/wp/v2/plugins"
 #: Rank Math's plugin file, as ``wp/v2/plugins`` keys it.
 RANKMATH_PLUGIN_PREFIX = "seo-by-rank-math/"
 
-#: The MCP Adapter's namespace prefix in the REST index. The route *after* it is per-server and
-#: configurable (``mcp-adapter-default-server`` is only the default), which is exactly why this
-#: is a prefix to discover with and never a path to hardcode (CLAUDE.md §12).
-MCP_NAMESPACE_PREFIX = "mcp/"
+#: The MCP Adapter's REST **namespace**. The servers are *routes* under it —
+#: ``/mcp/mcp-adapter-default-server`` by default, one more per server a plugin creates — which
+#: is why the server path is discovered from the index's ``routes`` and never hardcoded
+#: (CLAUDE.md §12). The first cut of this probe matched ``n.startswith("mcp/")`` against the
+#: namespace list, and the namespace is the bare ``mcp``: every connected site, adapter
+#: installed and answering, was recorded as ``no_mcp_namespace`` — found by reading three live
+#: sites' indexes rather than the module's own fake, which had been taught the same wrong shape.
+MCP_NAMESPACE = "mcp"
+#: The MCP Adapter's index route (``/mcp``); a server is anything one segment deeper.
+MCP_ROUTE_PREFIX = "/mcp/"
+
+#: Core content: ``/wp-json/wp/v2/<rest_base>``. Which ``rest_base`` a post type answers on is
+#: the site's own statement (``/wp/v2/types``), never derived from the type's slug — a custom
+#: post type registered as ``dienst`` may answer on ``diensten``.
+CONTENT_BASE = "/wp-json/wp/v2"
+#: Contact Form 7's own namespace. Its update takes the **flat** ``wpcf7_save_contact_form``
+#: shape (``form`` a string, ``mail`` a dict, ``messages`` a dict), while its read answers a
+#: nested ``properties`` — read from the plugin source (``includes/rest-api.php``,
+#: ``contact-form-functions.php``), because the two are not symmetric and a body posted in the
+#: read's shape is silently ignored.
+CF7_BASE = "/wp-json/contact-form-7/v1/contact-forms"
+#: The two core abilities WordPress 6.9 registers read-only, ``show_in_rest``. Together they say
+#: what core's REST never does on its own: the WordPress and PHP versions.
+CORE_SITE_INFO = "core/get-site-info"
+CORE_ENVIRONMENT_INFO = "core/get-environment-info"
 
 #: The Rank Math release that introduced AI Visibility. Below it the plugin is installed and the
 #: feature is simply not there — a different sentence from "not installed", and one the panel
@@ -274,6 +296,27 @@ class WordPressClient:
         async with self._http() as http:
             return await self._send(http, method, path, params=params, json=json)
 
+    async def request_page(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[Any, int | None]:
+        """One authenticated list read, returning ``(body, total)``.
+
+        WordPress puts the collection size in ``X-WP-Total`` rather than in the body, and a
+        list that does not say how much of it was shown is a prefix passed off as the answer
+        (§17). ``None`` where the site did not say.
+        """
+        async with self._http() as http:
+            body, headers = await self._send(http, "GET", path, params=params, with_headers=True)
+        raw = headers.get("x-wp-total")
+        try:
+            total = int(raw) if raw is not None else None
+        except ValueError:
+            total = None
+        return body, total
+
     async def _send(
         self,
         http: httpx.AsyncClient,
@@ -282,6 +325,7 @@ class WordPressClient:
         *,
         params: dict[str, Any] | None = None,
         json: Any = None,
+        with_headers: bool = False,
     ) -> Any:
         if _transport is None:
             # Only when we are really going out: a MockTransport target need not be routable,
@@ -302,7 +346,7 @@ class WordPressClient:
             body = None
 
         if response.is_success:
-            return body
+            return (body, response.headers) if with_headers else body
 
         text, code = _error_from_body(body, response.status_code)
         if response.status_code in (401, 403):
@@ -325,17 +369,112 @@ class WordPressClient:
     async def abilities(self) -> list[dict[str, Any]]:
         """Every ability this user may see. Rank Math's four AI Visibility ones are in here on
         a site running 6.9 + Rank Math ≥ 1.0.273, because it registers them ``show_in_rest``."""
-        body = await self.request("GET", ABILITIES_PATH)
-        if isinstance(body, list):
-            return [row for row in body if isinstance(row, dict)]
-        # Core paginates some collections into an envelope; accept either shape rather than
-        # reading "no abilities" off a wrapper we did not expect.
-        if isinstance(body, dict):
-            for key in ("abilities", "items", "data"):
-                value = body.get(key)
-                if isinstance(value, list):
-                    return [row for row in value if isinstance(row, dict)]
-        return []
+        rows: list[dict[str, Any]] = []
+        # Core paginates the list (`per_page` ≤ 100) and says how many there are in
+        # `X-WP-Total`; ACF 6.8 alone registers a dozen per post type, so one page of the
+        # default size is a prefix. Bounded, because a site that claims ten thousand abilities
+        # is not one to keep asking.
+        for page in range(1, 11):
+            body, total = await self.request_page(
+                ABILITIES_PATH, params={"per_page": 100, "page": page}
+            )
+            chunk = _ability_rows(body)
+            rows.extend(chunk)
+            if len(chunk) < 100 or (total is not None and len(rows) >= total):
+                break
+        return rows
+
+    async def ability(self, name: str) -> dict[str, Any]:
+        """One ability's registration: label, schemas, annotations."""
+        body = await self.request("GET", f"{ABILITIES_PATH}/{name}")
+        return body if isinstance(body, dict) else {}
+
+    async def run_ability(
+        self, name: str, annotations: dict[str, Any], input: Any = None
+    ) -> Any:
+        """Execute an ability the way core insists it be executed.
+
+        The verb is the ability's own claim about itself (``class-wp-rest-abilities-v1-run-
+        controller.php``): ``readonly`` → ``GET``, ``destructive`` + ``idempotent`` → ``DELETE``,
+        anything else → ``POST``. Sending the wrong one is a 405, so the caller passes the
+        annotations it read off the listing rather than guessing. ``GET``/``DELETE`` carry the
+        input as ``input[key]=value`` query parameters, which is what ``get_query_params()``
+        reads and what 7.1's schema coercion turns back into typed values; ``POST`` carries it
+        as ``{"input": …}`` in the body.
+        """
+        verb = "POST"
+        if annotations.get("readonly"):
+            verb = "GET"
+        elif annotations.get("destructive") and annotations.get("idempotent"):
+            verb = "DELETE"
+        path = f"{ABILITIES_PATH}/{name}/run"
+        if verb == "POST":
+            return await self.request("POST", path, json={"input": input})
+        return await self.request(verb, path, params=_query_input(input))
+
+    # --- core content --------------------------------------------------------------------- #
+    async def content_types(self) -> dict[str, dict[str, Any]]:
+        """Every post type this user may edit, keyed by slug, with its ``rest_base``."""
+        body = await self.request(
+            "GET", f"{CONTENT_BASE}/types", params={"context": "edit"}
+        )
+        if not isinstance(body, dict):
+            return {}
+        return {k: v for k, v in body.items() if isinstance(v, dict)}
+
+    async def list_content(
+        self, rest_base: str, params: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], int | None]:
+        """A page of one post type, ``context=edit`` so drafts and raw content are in it."""
+        body, total = await self.request_page(
+            f"{CONTENT_BASE}/{rest_base}", params={"context": "edit"} | params
+        )
+        rows = [row for row in body if isinstance(row, dict)] if isinstance(body, list) else []
+        return rows, total
+
+    async def get_content(self, rest_base: str, wp_id: int) -> dict[str, Any]:
+        body = await self.request(
+            "GET", f"{CONTENT_BASE}/{rest_base}/{wp_id}", params={"context": "edit"}
+        )
+        return body if isinstance(body, dict) else {}
+
+    async def write_content(
+        self, rest_base: str, wp_id: int | None, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create (``wp_id`` None) or update one record. Core's update is a ``POST`` too."""
+        path = f"{CONTENT_BASE}/{rest_base}" + (f"/{wp_id}" if wp_id is not None else "")
+        answer = await self.request("POST", path, params={"context": "edit"}, json=body)
+        return answer if isinstance(answer, dict) else {}
+
+    async def list_media(self, params: dict[str, Any]) -> tuple[list[dict[str, Any]], int | None]:
+        body, total = await self.request_page(f"{CONTENT_BASE}/media", params=params)
+        rows = [row for row in body if isinstance(row, dict)] if isinstance(body, list) else []
+        return rows, total
+
+    async def get_media(self, wp_id: int) -> dict[str, Any]:
+        body = await self.request("GET", f"{CONTENT_BASE}/media/{wp_id}")
+        return body if isinstance(body, dict) else {}
+
+    # --- Contact Form 7 ------------------------------------------------------------------- #
+    async def list_forms(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        body = await self.request("GET", CF7_BASE, params=params)
+        return [row for row in body if isinstance(row, dict)] if isinstance(body, list) else []
+
+    async def get_form(self, wp_id: int) -> dict[str, Any]:
+        body = await self.request("GET", f"{CF7_BASE}/{wp_id}")
+        return body if isinstance(body, dict) else {}
+
+    async def form_schema(self, wp_id: int) -> dict[str, Any]:
+        """The validation rules a submission is judged by — the closest thing CF7 has to a
+        field list, and public on the site, so it costs the credential nothing."""
+        body = await self.request("GET", f"{CF7_BASE}/{wp_id}/feedback/schema")
+        return body if isinstance(body, dict) else {}
+
+    async def write_form(self, wp_id: int | None, body: dict[str, Any]) -> dict[str, Any]:
+        """Create (``wp_id`` None) or update a form, in ``wpcf7_save_contact_form``'s flat shape."""
+        path = CF7_BASE + (f"/{wp_id}" if wp_id is not None else "")
+        answer = await self.request("POST", path, json=body)
+        return answer if isinstance(answer, dict) else {}
 
     async def ai_visibility_overview(self, *, refresh: bool = False) -> dict[str, Any]:
         """Rank Math's AI Visibility dashboard payload: ``{summary, brands[]}``.
@@ -414,13 +553,15 @@ class WordPressClient:
                 namespaces = [n for n in namespaces if isinstance(n, str)] if isinstance(
                     namespaces, list
                 ) else []
-                # Discovered, never assumed: the route after ``mcp/`` is per-server.
-                mcp = next((n for n in namespaces if n.startswith(MCP_NAMESPACE_PREFIX)), None)
+                # Discovered, never assumed: the namespace is `mcp` and each server is a route
+                # under it. A site with several servers (breik.nl carries an OAuth one beside
+                # the default) records the first that answers `POST`, which is the transport.
+                mcp = mcp_server_route(namespaces, index.get("routes"))
                 # Only decidable *because* the index answered — hence set here and nowhere
                 # else. An index that failed leaves `mcp` absent, not False.
                 caps["mcp"] = bool(mcp)
                 if mcp:
-                    observed["mcp_server_path"] = f"/wp-json/{mcp}"
+                    observed["mcp_server_path"] = f"/wp-json{mcp}"
                 else:
                     errors["mcp"] = "no_mcp_namespace"
                 if not any(n.startswith("rankmath/") for n in namespaces):
@@ -482,6 +623,81 @@ class WordPressClient:
                 observed["brand_count"] = len(brands) if isinstance(brands, list) else 0
 
         return caps, errors, observed
+
+
+def _ability_rows(body: Any) -> list[dict[str, Any]]:
+    """One page of the abilities list, whichever envelope it arrived in."""
+    if isinstance(body, list):
+        return [row for row in body if isinstance(row, dict)]
+    # Core paginates some collections into an envelope; accept either shape rather than
+    # reading "no abilities" off a wrapper we did not expect.
+    if isinstance(body, dict):
+        for key in ("abilities", "items", "data"):
+            value = body.get(key)
+            if isinstance(value, list):
+                return [row for row in value if isinstance(row, dict)]
+    return []
+
+
+def _query_input(input: Any) -> dict[str, Any]:
+    """An ability's input as ``GET``/``DELETE`` query parameters, PHP-style.
+
+    ``input[key]=value`` is what ``WP_REST_Request::get_query_params()`` folds back into an
+    array. A scalar rides as-is; a list becomes repeated keys; a nested object is flattened one
+    level (``input[a][b]=v``). Deeper nesting is JSON-encoded, which is the honest limit of a
+    query string and one a read-only ability rarely reaches.
+    """
+    if input is None:
+        return {}
+    if not isinstance(input, dict):
+        return {"input": input}
+    out: dict[str, Any] = {}
+    for key, value in input.items():
+        if isinstance(value, dict):
+            for sub, inner in value.items():
+                out[f"input[{key}][{sub}]"] = (
+                    inner if isinstance(inner, str | int | float | bool) else _json.dumps(inner)
+                )
+        elif isinstance(value, list):
+            out[f"input[{key}][]"] = [
+                v if isinstance(v, str | int | float | bool) else _json.dumps(v) for v in value
+            ]
+        elif isinstance(value, bool):
+            out[f"input[{key}]"] = "true" if value else "false"
+        else:
+            out[f"input[{key}]"] = value
+    return out
+
+
+def mcp_server_route(namespaces: list[str], routes: Any) -> str | None:
+    """The MCP Adapter's server route (``/mcp/<server>``) from a site's REST index, or ``None``.
+
+    The namespace is the bare ``mcp`` (an older adapter may have registered it with a slash, so
+    both spellings count); the servers are the routes exactly one segment below it. Preferring
+    the one that lists ``POST`` picks the transport over a discovery-only route, and the
+    default server over an OAuth metadata one, without naming either.
+    """
+    if not any(n == MCP_NAMESPACE or n.startswith(MCP_ROUTE_PREFIX[1:]) for n in namespaces):
+        return None
+    if not isinstance(routes, dict):
+        return None
+    candidates: list[tuple[int, str]] = []
+    for route, spec in routes.items():
+        if not isinstance(route, str) or not route.startswith(MCP_ROUTE_PREFIX):
+            continue
+        tail = route[len(MCP_ROUTE_PREFIX) :]
+        if not tail or "/" in tail or "(" in tail:
+            continue
+        methods: set[str] = set()
+        if isinstance(spec, dict):
+            for endpoint in spec.get("endpoints") or []:
+                if isinstance(endpoint, dict):
+                    methods.update(m for m in endpoint.get("methods") or [] if isinstance(m, str))
+        candidates.append((0 if "POST" in methods else 1, route))
+    if not candidates:
+        return None
+    candidates.sort()
+    return candidates[0][1]
 
 
 def _rankmath_version(plugins: list[Any]) -> str | None:

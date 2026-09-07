@@ -63,7 +63,9 @@ from app.integrations.wordpress.schemas import (
 
 #: ``websites`` belongs to another module; referenced as a bare table rather than imported
 #: (§6), the same bridge :mod:`app.integrations.wordpress.models` uses for the horizon clause.
-_websites = table("websites", column("id"), column("org_id"))
+_websites = table("websites", column("id"), column("org_id"), column("domain_id"))
+_domains = table("domains", column("id"), column("org_id"), column("company_id"), column("name"))
+_companies = table("companies", column("id"), column("org_id"), column("name"))
 
 ENTITY_TYPE = "wordpress_site"
 
@@ -117,8 +119,15 @@ def _classify(caps: dict[str, bool], errors: dict[str, str]) -> tuple[str, str |
     return WordPressStatus.UNREACHABLE.value, ISSUE_UNREACHABLE
 
 
-def _read(site: WordPressSite) -> WordPressSiteRead:
+#: What a site row says about *whose* it is: ``(company_id, company_name, domain_name)``.
+Labels = dict[uuid.UUID, tuple[uuid.UUID | None, str | None, str | None]]
+
+
+def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRead:
     """One row for the wire. The password becomes a *fact about* the password."""
+    company_id, company_name, domain_name = (labels or {}).get(
+        site.website_id, (None, None, None)
+    )
     return WordPressSiteRead(
         id=site.id,
         website_id=site.website_id,
@@ -131,6 +140,9 @@ def _read(site: WordPressSite) -> WordPressSiteRead:
         capability_errors=site.capability_errors or {},
         capabilities_checked_at=site.capabilities_checked_at,
         mcp_server_path=site.mcp_server_path,
+        company_id=company_id,
+        company_name=company_name,
+        domain_name=domain_name,
         rankmath_version=site.rankmath_version,
         rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
         last_verified_at=site.last_verified_at,
@@ -314,15 +326,64 @@ class WordPressService:
         self.activity = ActivityService(ctx)
 
     # --- reads ---------------------------------------------------------------------------- #
-    async def list(self, *, website_id: uuid.UUID | None = None) -> list[WordPressSiteRead]:
+    async def _labels(self, website_ids: list[uuid.UUID]) -> Labels:
+        """Whose site each is — one statement over the bare-table bridge, never one per row.
+
+        The join is the same website → domain → client walk the horizon clause makes, and it
+        is what lets an agent listing forty sites pick a client's by name. Read rather than
+        stored, because a domain moving to another client is that module's edit.
+        """
+        if not website_ids:
+            return {}
+        stmt = (
+            select(
+                _websites.c.id, _domains.c.company_id, _companies.c.name, _domains.c.name
+            )
+            .select_from(
+                _websites.join(_domains, _domains.c.id == _websites.c.domain_id).outerjoin(
+                    _companies, _companies.c.id == _domains.c.company_id
+                )
+            )
+            .where(
+                _websites.c.org_id == self.ctx.org.id,
+                _domains.c.org_id == self.ctx.org.id,
+                _websites.c.id.in_(website_ids),
+            )
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {wid: (cid, cname, dname) for wid, cid, cname, dname in rows}
+
+    async def list(
+        self,
+        *,
+        website_id: uuid.UUID | None = None,
+        company_id: uuid.UUID | None = None,
+    ) -> list[WordPressSiteRead]:
         stmt = self.repo.scoped_select().order_by(WordPressSite.created_at)
         if website_id is not None:
             stmt = stmt.where(WordPressSite.website_id == website_id)
+        if company_id is not None:
+            # The same walk as the horizon clause, narrowed to one client.
+            stmt = stmt.where(
+                WordPressSite.website_id.in_(
+                    select(_websites.c.id).where(
+                        _websites.c.org_id == self.ctx.org.id,
+                        _websites.c.domain_id.in_(
+                            select(_domains.c.id).where(
+                                _domains.c.org_id == self.ctx.org.id,
+                                _domains.c.company_id == company_id,
+                            )
+                        ),
+                    )
+                )
+            )
         rows = (await self.ctx.session.execute(stmt)).scalars().all()
-        return [_read(row) for row in rows]
+        labels = await self._labels([row.website_id for row in rows])
+        return [_read(row, labels) for row in rows]
 
     async def get(self, site_id: uuid.UUID) -> WordPressSiteRead:
-        return _read(await self.repo.get_or_404(site_id))
+        site = await self.repo.get_or_404(site_id)
+        return _read(site, await self._labels([site.website_id]))
 
     async def for_website(self, website_id: uuid.UUID) -> WordPressSiteRead | None:
         """The one credential a website has, or ``None``.

@@ -950,7 +950,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Domain
-         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`, `billed_until`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`, `billed_until`, `start_date`, `price_override`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_domain_api_v1_bulk_domain_update_post"];
         delete?: never;
@@ -14348,7 +14348,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Sites */
+        /**
+         * List Sites
+         * @description Every connected site, or a website's, or a **client's** — the question an agent asks
+         *     first, since a client is how it was told about the site.
+         */
         get: operations["list_sites_api_v1_wordpress_sites_get"];
         put?: never;
         /** Connect Site */
@@ -14402,6 +14406,48 @@ export interface paths {
         patch: operations["update_site_api_v1_wordpress_sites__site_id__patch"];
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/abilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Abilities
+         * @description Every ability the site registers for REST, with its input schema and whether it is
+         *     read-only — what ``run`` may be asked for.
+         */
+        get: operations["list_site_abilities_api_v1_wordpress_sites__site_id__abilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/abilities/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Site Ability
+         * @description Run one ability by name. A read-only ability runs on ``wordpress.ability.read``; any
+         *     other needs ``wordpress.ability.run`` — decided by the ability's own annotation.
+         */
+        post: operations["run_site_ability_api_v1_wordpress_sites__site_id__abilities_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/brands": {
         parameters: {
             query?: never;
@@ -14414,6 +14460,164 @@ export interface paths {
          * @description The Rank Math brands this site tracks — the marketing link picker's options.
          */
         get: operations["list_brands_api_v1_wordpress_sites__site_id__brands_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Content
+         * @description Pages, posts or any custom post type, drafts included, newest change first.
+         *
+         *     ``type`` is a post type slug from the summary; ``lang`` a WPML language on a multilingual
+         *     site. ``total`` is the site's own count for the filter.
+         */
+        get: operations["list_site_content_api_v1_wordpress_sites__site_id__content_get"];
+        put?: never;
+        /**
+         * Create Site Content
+         * @description A new page or post — a draft unless ``status`` says otherwise, and a live status needs
+         *     ``wordpress.content.publish``.
+         */
+        post: operations["create_site_content_api_v1_wordpress_sites__site_id__content_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/content/{type}/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Site Content
+         * @description One record whole: raw content, rendered HTML, the ACF fields, the meta.
+         */
+        get: operations["get_site_content_api_v1_wordpress_sites__site_id__content__type___wp_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Site Content
+         * @description Change a record. Absent fields are left alone. Editing anything a visitor can see, or
+         *     setting a live status, needs ``wordpress.content.publish``.
+         */
+        patch: operations["update_site_content_api_v1_wordpress_sites__site_id__content__type___wp_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Forms
+         * @description The site's Contact Form 7 forms.
+         */
+        get: operations["list_site_forms_api_v1_wordpress_sites__site_id__forms_get"];
+        put?: never;
+        /** Create Site Form */
+        post: operations["create_site_form_api_v1_wordpress_sites__site_id__forms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/forms/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Site Form
+         * @description One form whole: template, field names, both mails, messages, extra settings.
+         */
+        get: operations["get_site_form_api_v1_wordpress_sites__site_id__forms__wp_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Site Form
+         * @description Change a form. Live the moment it saves; absent fields are left alone.
+         */
+        patch: operations["update_site_form_api_v1_wordpress_sites__site_id__forms__wp_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Media
+         * @description The media library — what an ACF image id resolves to.
+         */
+        get: operations["list_site_media_api_v1_wordpress_sites__site_id__media_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/media/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Site Media */
+        get: operations["get_site_media_api_v1_wordpress_sites__site_id__media__wp_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Site Summary
+         * @description What the site is: name, WordPress and PHP version, post types, plugin namespaces.
+         *
+         *     The read to make first: it says whether the site has forms, abilities, several
+         *     languages, and which post types it answers for.
+         */
+        get: operations["site_summary_api_v1_wordpress_sites__site_id__summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -35338,6 +35542,56 @@ export interface components {
             /** Uptime Enabled */
             uptime_enabled?: boolean | null;
         };
+        /** WordPressAbility */
+        WordPressAbility: {
+            /** Annotations */
+            annotations?: {
+                [key: string]: boolean;
+            };
+            /** Category */
+            category?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Input Schema */
+            input_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Name */
+            name: string;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Readonly
+             * @default false
+             */
+            readonly: boolean;
+        };
+        /** WordPressAbilityResult */
+        WordPressAbilityResult: {
+            /** Name */
+            name: string;
+            /** Output */
+            output?: unknown;
+            /** Readonly */
+            readonly: boolean;
+        };
+        /** WordPressAbilityRun */
+        WordPressAbilityRun: {
+            /** Input */
+            input?: unknown;
+            /** Name */
+            name: string;
+        };
         /**
          * WordPressBrand
          * @description One tracked brand, as the marketing picker and the panel need it.
@@ -35378,6 +35632,347 @@ export interface components {
              */
             url: string;
         };
+        /**
+         * WordPressContentCreate
+         * @description A new record. ``draft`` unless told otherwise, because a create that publishes by
+         *     default is a create nobody reviews.
+         */
+        WordPressContentCreate: {
+            /** Acf */
+            acf?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Featured Media */
+            featured_media?: number | null;
+            /** Lang */
+            lang?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Parent */
+            parent?: number | null;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /** Template */
+            template?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default page
+             */
+            type: string;
+        };
+        /** WordPressContentList */
+        WordPressContentList: {
+            /** Items */
+            items: components["schemas"]["WordPressContentRow"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total?: number | null;
+        };
+        /**
+         * WordPressContentRead
+         * @description One record whole: raw content (block or classic HTML), the ACF fields, the meta.
+         */
+        WordPressContentRead: {
+            /** Acf */
+            acf?: {
+                [key: string]: unknown;
+            } | null;
+            /** Author */
+            author?: number | null;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Date */
+            date?: string | null;
+            /**
+             * Excerpt
+             * @default
+             */
+            excerpt: string;
+            /** Featured Media */
+            featured_media?: number | null;
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Link */
+            link?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            };
+            /** Modified */
+            modified?: string | null;
+            /** Parent */
+            parent?: number | null;
+            /**
+             * Rendered
+             * @default
+             */
+            rendered: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Template */
+            template?: string | null;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * WordPressContentRow
+         * @description One record in a list: enough to pick it, never its body.
+         */
+        WordPressContentRow: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Link */
+            link?: string | null;
+            /** Modified */
+            modified?: string | null;
+            /** Parent */
+            parent?: number | null;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /** WordPressContentType */
+        WordPressContentType: {
+            /**
+             * Hierarchical
+             * @default false
+             */
+            hierarchical: boolean;
+            /** Name */
+            name: string;
+            /** Rest Base */
+            rest_base: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * WordPressContentWrite
+         * @description What an update may change. Absent means leave alone (§18); nothing here is clearable
+         *     to ``null`` because WordPress has no empty title or content to clear to.
+         */
+        WordPressContentWrite: {
+            /** Acf */
+            acf?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Featured Media */
+            featured_media?: number | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Parent */
+            parent?: number | null;
+            /** Slug */
+            slug?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Template */
+            template?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** WordPressFormCreate */
+        WordPressFormCreate: {
+            /** Additional Settings */
+            additional_settings?: string | null;
+            /** Form */
+            form: string;
+            /** Locale */
+            locale?: string | null;
+            mail?: components["schemas"]["WordPressFormMail"] | null;
+            mail_2?: components["schemas"]["WordPressFormMail"] | null;
+            /** Messages */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /** Title */
+            title: string;
+        };
+        /** WordPressFormMail */
+        WordPressFormMail: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Additional Headers
+             * @default
+             */
+            additional_headers: string;
+            /**
+             * Attachments
+             * @default
+             */
+            attachments: string;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Exclude Blank
+             * @default false
+             */
+            exclude_blank: boolean;
+            /**
+             * Recipient
+             * @default
+             */
+            recipient: string;
+            /**
+             * Sender
+             * @default
+             */
+            sender: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+            /**
+             * Use Html
+             * @default false
+             */
+            use_html: boolean;
+        };
+        /**
+         * WordPressFormRead
+         * @description One form whole: its template, both mails, its messages and its extra settings.
+         */
+        WordPressFormRead: {
+            /**
+             * Additional Settings
+             * @default
+             */
+            additional_settings: string;
+            /** Config Errors */
+            config_errors?: {
+                [key: string]: unknown;
+            };
+            /** Fields */
+            fields?: string[];
+            /**
+             * Form
+             * @default
+             */
+            form: string;
+            /** Id */
+            id: number;
+            /** Locale */
+            locale?: string | null;
+            mail?: components["schemas"]["WordPressFormMail"];
+            mail_2?: components["schemas"]["WordPressFormMail"];
+            /** Messages */
+            messages?: {
+                [key: string]: string;
+            };
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /** WordPressFormRow */
+        WordPressFormRow: {
+            /** Id */
+            id: number;
+            /** Locale */
+            locale?: string | null;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * WordPressFormWrite
+         * @description ``wpcf7_save_contact_form``'s flat shape. Absent means leave alone.
+         */
+        WordPressFormWrite: {
+            /** Additional Settings */
+            additional_settings?: string | null;
+            /** Form */
+            form?: string | null;
+            /** Locale */
+            locale?: string | null;
+            mail?: components["schemas"]["WordPressFormMail"] | null;
+            mail_2?: components["schemas"]["WordPressFormMail"] | null;
+            /** Messages */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** WordPressMediaList */
+        WordPressMediaList: {
+            /** Items */
+            items: components["schemas"]["WordPressMediaRow"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total?: number | null;
+        };
+        /** WordPressMediaRow */
+        WordPressMediaRow: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** Date */
+            date?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Id */
+            id: number;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Source Url */
+            source_url: string;
+            /** Title */
+            title: string;
+            /** Width */
+            width?: number | null;
+        };
         /** WordPressSiteCreate */
         WordPressSiteCreate: {
             /**
@@ -35416,11 +36011,17 @@ export interface components {
             capability_errors?: {
                 [key: string]: string;
             };
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Domain Name */
+            domain_name?: string | null;
             /**
              * Id
              * Format: uuid
@@ -35458,6 +36059,50 @@ export interface components {
              * Format: uuid
              */
             website_id: string;
+        };
+        /**
+         * WordPressSiteSummary
+         * @description What a connected site is: name, versions, the post types and plugins it carries.
+         */
+        WordPressSiteSummary: {
+            /** Base Url */
+            base_url: string;
+            /** Content Types */
+            content_types?: components["schemas"]["WordPressContentType"][];
+            /** Description */
+            description?: string | null;
+            /**
+             * Has Abilities
+             * @default false
+             */
+            has_abilities: boolean;
+            /**
+             * Has Forms
+             * @default false
+             */
+            has_forms: boolean;
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Multilingual
+             * @default false
+             */
+            multilingual: boolean;
+            /** Name */
+            name?: string | null;
+            /** Namespaces */
+            namespaces?: string[];
+            /** Php Version */
+            php_version?: string | null;
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+            /** Timezone */
+            timezone?: string | null;
+            /** Wp Version */
+            wp_version?: string | null;
         };
         /** WordPressSiteUpdate */
         WordPressSiteUpdate: {
@@ -64418,6 +65063,7 @@ export interface operations {
         parameters: {
             query?: {
                 website_id?: string | null;
+                company_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -64604,6 +65250,72 @@ export interface operations {
             };
         };
     };
+    list_site_abilities_api_v1_wordpress_sites__site_id__abilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressAbility"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_site_ability_api_v1_wordpress_sites__site_id__abilities_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressAbilityRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressAbilityResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_brands_api_v1_wordpress_sites__site_id__brands_get: {
         parameters: {
             query?: never;
@@ -64622,6 +65334,383 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressBrand"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_site_content_api_v1_wordpress_sites__site_id__content_get: {
+        parameters: {
+            query?: {
+                type?: string;
+                search?: string | null;
+                status?: string | null;
+                lang?: string | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressContentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_site_content_api_v1_wordpress_sites__site_id__content_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressContentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressContentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_content_api_v1_wordpress_sites__site_id__content__type___wp_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                type: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressContentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_site_content_api_v1_wordpress_sites__site_id__content__type___wp_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                type: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressContentWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressContentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_site_forms_api_v1_wordpress_sites__site_id__forms_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressFormRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_site_form_api_v1_wordpress_sites__site_id__forms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressFormCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressFormRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_form_api_v1_wordpress_sites__site_id__forms__wp_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressFormRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_site_form_api_v1_wordpress_sites__site_id__forms__wp_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressFormWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressFormRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_site_media_api_v1_wordpress_sites__site_id__media_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMediaList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_media_api_v1_wordpress_sites__site_id__media__wp_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMediaRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    site_summary_api_v1_wordpress_sites__site_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteSummary"];
                 };
             };
             /** @description Validation Error */
