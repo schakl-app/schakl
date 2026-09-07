@@ -47,6 +47,12 @@ function parseLinks(
   }
 }
 
+/** The agreement's own billing direction: `"true"`/`"false"`, or `""` to follow the preset/type. */
+function readDirectionOverride(raw: FormDataEntryValue | null): boolean | null {
+  const value = String(raw ?? "").trim();
+  return value === "" ? null : value === "true";
+}
+
 /** The recurring-agreement fields create and update share (#30). */
 export function subscriptionBody(form: FormData) {
   const amount = String(form.get("amount") ?? "").trim();
@@ -63,6 +69,9 @@ export function subscriptionBody(form: FormData) {
     // "" is the inherit choice, and it must reach the API as an explicit null: the column's
     // third state is "follow the org", which is not the same as any level.
     auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),
+    // Same three states: "" follows the standard subscription and the type, and reaches the
+    // API as an explicit null so a cleared override is actually cleared.
+    billed_in_advance_override: readDirectionOverride(form.get("billed_in_advance_override")),
     included_hours: String(form.get("included_hours") ?? "").trim() || null,
     notes: String(form.get("notes") ?? "").trim() || null,
     amount: amount || undefined,

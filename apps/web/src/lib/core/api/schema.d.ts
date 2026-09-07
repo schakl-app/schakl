@@ -1070,7 +1070,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Subscription
-         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`, `billed_in_advance`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_subscription_api_v1_bulk_subscription_update_post"];
         delete?: never;
@@ -31237,6 +31237,8 @@ export interface components {
             /** Amount */
             amount: number | string;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /**
@@ -31398,6 +31400,8 @@ export interface components {
              * @default false
              */
             billed_in_advance: boolean;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /**
@@ -31837,6 +31841,8 @@ export interface components {
             /** Amount Valid From */
             amount_valid_from?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /** Company Id */

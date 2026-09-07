@@ -528,9 +528,27 @@ for accounting packages.
   per row in an order that never lands on a neighbour's old value, and walks back the same way.
   An agreement re-pointed at another type or preset gets the same treatment. And **a bulk change
   is said, not done quietly**: the save answers `shifted_subscriptions` and the screen prints it,
-  the shape `renamed_subscriptions` already had. Deliberately **no** per-agreement column: the
-  direction is a property of what is sold, and an agreement that needs the other one is an
-  agreement of another kind.
+  the shape `renamed_subscriptions` already had.
+- **And one agreement may say otherwise for itself** (`subscriptions.billed_in_advance_override`).
+  The rule above shipped with *no* per-agreement column, on the argument that the direction is a
+  property of what is sold and an agreement needing the other one is an agreement of another
+  kind. The owner reversed that the next day: an agency's hosting type bills in advance and one
+  client's hosting is billed in arrears *by agreement* — negotiated, not a different product —
+  and "make a type per client" is a settings screen answering a question about one contract.
+  So the resolution is three layers, each a diff over the one above (the `report_profiles
+  .sections` and `auto_invoice_mode` shape): the agreement's own say, else the standard
+  subscription's, else the type's, else arrears. Three things hold it up. **`NULL` at every level
+  means inherit**, so a row that never states one bills exactly as it did before the column
+  existed, and an explicit `null` on `PATCH` hands the decision back (absent leaves it alone,
+  §18). **The column is named `_override` on purpose**: the *resolved* answer rides every read as
+  `billed_in_advance` (`SubscriptionRead`, `_attach`), and a resolution written onto a mapped
+  column of the same name would be flushed as a stored decision on the next write. And **a flip
+  on the agreement moves its own claims** through the same `subscription.direction_changed` the
+  type and preset flips emit — while a type flip now counts only the agreements that still
+  *follow* it, so `shifted_subscriptions` is the number it says. The form asks it beside the
+  automation level ("Volg het standaardabonnement of type" is the default), the detail page
+  marks a resolved direction the agreement decided for itself, and the import, the export and
+  the bulk edit carry it as `billed_in_advance` (empty cell = follow again).
 - **"Already invoiced up to" is the operator's statement, and both halves read it**
   (`domains.billed_until`, `subscriptions.billed_until`). An agency arriving from another
   system brings agreements and domains that were invoiced *there* up to a date, and the

@@ -412,6 +412,31 @@
       inheritable
       orgMode={lookups.orgAutoInvoiceMode ?? "draft"}
     />
+    <!-- Which period an invoice covers. The kind decides (the type, or the standard
+         subscription), and this is the one agreement's own say over it — the same three-state
+         shape as the automation level above: "" follows, a value overrides. -->
+    <div>
+      <label for="sub-direction" class="mb-1 block text-sm font-medium text-text"
+        >{t("subscriptions.field.billing_direction")}</label
+      >
+      <select
+        id="sub-direction"
+        name="billed_in_advance_override"
+        class={inputClass}
+        value={editing?.billed_in_advance_override == null
+          ? ""
+          : editing.billed_in_advance_override
+            ? "true"
+            : "false"}
+      >
+        <option value="">{t("subscriptions.billing_direction.inherit_agreement")}</option>
+        <option value="true">{t("subscriptions.billing_direction.advance")}</option>
+        <option value="false">{t("subscriptions.billing_direction.arrears")}</option>
+      </select>
+      <p class="mt-1 text-xs text-text-muted">
+        {t("subscriptions.field.billing_direction_override_hint")}
+      </p>
+    </div>
     <div>
       <span class="mb-1 block text-sm font-medium text-text"
         >{t("subscriptions.field.projects")}</span

@@ -1174,6 +1174,13 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   agreement. A flip moves the claims of the agreements it reaches in the same transaction
   (`subscription.direction_changed`, handled by `invoicing`), because a claim keyed on `period_end`
   names a different boundary under the other reading, and the save reports how many it moved.
+  **One agreement may then say otherwise for itself** (`subscriptions.billed_in_advance_override`,
+  the owner's reversal of "no per-agreement column"): a client's hosting billed in arrears *by
+  agreement* is a negotiated exception, not a kind of its own. Three layers, each `NULL` = inherit
+  — the agreement, the standard subscription, the type — resolved by the same function, with the
+  agreement's own flip shifting its own claims and a type flip counting only the agreements that
+  still follow it. The column is `_override` because the resolved answer already rides the read
+  as `billed_in_advance`, and a resolution written onto a same-named mapped column is stored.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

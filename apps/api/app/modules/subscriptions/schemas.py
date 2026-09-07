@@ -172,6 +172,10 @@ class SubscriptionBase(BaseModel):
     #: for leave schedules. The vocabulary is core's, because `invoicing` resolves it and this
     #: module may not import from there (§6).
     auto_invoice_mode: AutoInvoiceMode | None = None
+    #: This agreement's own say on which period its invoice covers. ``None`` follows the
+    #: standard subscription and the type (the resolved answer is ``SubscriptionRead
+    #: .billed_in_advance``); a value is this one agreement's negotiated arrangement.
+    billed_in_advance_override: bool | None = None
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule = Field(default_factory=RolloverRule)
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
@@ -215,6 +219,9 @@ class SubscriptionUpdate(BaseModel):
     #: for leave schedules. The vocabulary is core's, because `invoicing` resolves it and this
     #: module may not import from there (§6).
     auto_invoice_mode: AutoInvoiceMode | None = None
+    #: Explicit ``null`` goes back to following the preset and the type; absent leaves it
+    #: alone. A change re-reads this agreement's periods, the invoiced ones included.
+    billed_in_advance_override: bool | None = None
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule | None = None
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
@@ -268,8 +275,11 @@ class SubscriptionRead(BaseModel):
     notice_period_days: int | None
     notes: str | None
     custom: dict[str, Any] = Field(default_factory=dict)
-    #: Resolved, read-only: the preset's override, else the type's, else in arrears. Which
-    #: period the next invoice covers — so a screen can say "16-05-2026 – 16-05-2027" and mean it.
+    #: The agreement's own say, if it made one (``None`` = follows the preset and the type).
+    billed_in_advance_override: bool | None = None
+    #: Resolved, read-only: the agreement's own override, else the preset's, else the type's,
+    #: else in arrears. Which period the next invoice covers — so a screen can say
+    #: "16-05-2026 – 16-05-2027" and mean it.
     billed_in_advance: bool = False
     #: The price valid today (from the history), and its monthly equivalent for MRR.
     amount: Decimal | None = None

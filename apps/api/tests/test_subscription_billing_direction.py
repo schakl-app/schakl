@@ -316,3 +316,184 @@ async def test_flipping_a_type_moves_the_periods_already_invoiced_with_it(client
         assert [(r["period_start"], r["period_end"]) for r in billed] == [
             (_iso(add_months(anchor, -1)), _iso(anchor))
         ]
+
+
+async def test_an_agreement_overrides_its_preset_and_type_and_null_follows_them_again(
+    client_for,
+) -> None:
+    """The third layer: one client negotiated the other arrangement. Its own say wins over the
+    preset's and the type's, an explicit null hands the decision back to them, and a flip of
+    the *type* leaves an agreement that decided for itself alone — and reports it as such."""
+    t = await make_tenant("direction-agreement")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    anchor = add_months(today, -1)
+    async with client_for(t.host) as c:
+        hosting = await _hosting_type(c, headers)  # in arrears, the default
+        template = await c.post(
+            "/api/v1/subscriptions/templates",
+            json={
+                "name": "Licentie",
+                "subscription_type_id": hosting["id"],
+                "interval": "monthly",
+                "amount": "20.00",
+                "billed_in_advance": True,
+            },
+            headers=headers,
+        )
+        assert template.status_code == 201, template.text
+        company = await _company(c, headers)
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company,
+                    "subscription_type_id": hosting["id"],
+                    "subscription_template_id": template.json()["id"],
+                    "name": "Licentie",
+                    "status": "active",
+                    "interval": "monthly",
+                    "amount": "20.00",
+                    "start_date": _iso(add_months(anchor, -6)),
+                    "next_invoice_date": _iso(anchor),
+                    "billed_in_advance_override": False,
+                },
+                headers=headers,
+            )
+        ).json()
+        # The preset says advance; this one agreement says arrears, and that is what it does.
+        assert sub["billed_in_advance_override"] is False
+        assert sub["billed_in_advance"] is False
+        assert await _backlog_rows(c, headers, sub["id"]) == [
+            (_iso(add_months(anchor, -1)), _iso(anchor), False),
+            (_iso(anchor), _iso(add_months(anchor, 1)), False),
+        ]
+
+        # A PATCH naming other fields leaves the override alone (absent means leave alone).
+        untouched = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}", json={"name": "Licentie Pro"}, headers=headers
+        )
+        assert untouched.json()["billed_in_advance_override"] is False
+
+        # An explicit null hands the decision back to the preset, and the periods follow.
+        reverted = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"billed_in_advance_override": None},
+            headers=headers,
+        )
+        assert reverted.status_code == 200, reverted.text
+        assert reverted.json()["billed_in_advance_override"] is None
+        assert reverted.json()["billed_in_advance"] is True
+        assert await _backlog_rows(c, headers, sub["id"]) == [
+            (_iso(anchor), _iso(add_months(anchor, 1)), False),
+            (_iso(add_months(anchor, 1)), _iso(add_months(anchor, 2)), False),
+        ]
+
+        # Decided for itself again — and now a flip of the *type* reaches every agreement of
+        # the kind except this one, which is what "shifted" has to count.
+        decided = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"billed_in_advance_override": True},
+            headers=headers,
+        )
+        assert decided.json()["billed_in_advance"] is True
+        flipped = await c.patch(
+            f"/api/v1/subscriptions/types/{hosting['id']}",
+            json={"billed_in_advance": True},
+            headers=headers,
+        )
+        assert flipped.status_code == 200, flipped.text
+        assert flipped.json()["shifted_subscriptions"] == 0
+        after = (await c.get(f"/api/v1/subscriptions/{sub['id']}", headers=headers)).json()
+        assert after["billed_in_advance"] is True
+
+
+async def test_an_agreement_s_own_flip_moves_its_invoiced_periods_with_it(client_for) -> None:
+    """The claim shift the type and preset flips carry, one layer down: an agreement that
+    states its own direction moves what it already invoiced in the same transaction."""
+    t = await make_tenant("direction-agreement-claims")
+    headers = await auth_cookie(t.user)
+    today = org_today()
+    anchor = add_months(today, -2)
+    async with client_for(t.host) as c:
+        await c.put(
+            "/api/v1/invoicing/settings",
+            json={"company_details": {"name": "Agency BV", "country": "NL"}},
+            headers=headers,
+        )
+        await c.get("/api/v1/invoicing/tax-rates", headers=headers)
+        hosting = await _hosting_type(c, headers)
+        company = await _company(c, headers)
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company,
+                    "subscription_type_id": hosting["id"],
+                    "name": "Hosting",
+                    "status": "active",
+                    "interval": "monthly",
+                    "amount": "25.00",
+                    "start_date": _iso(add_months(anchor, -6)),
+                    "next_invoice_date": _iso(anchor),
+                },
+                headers=headers,
+            )
+        ).json()
+        invoice = await c.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company,
+                "lines": [
+                    {
+                        "description": "Hosting",
+                        "quantity": "1",
+                        "unit_price": "25.00",
+                        "line_kind": "subscription",
+                        "subscription_id": sub["id"],
+                        "period_start": _iso(add_months(anchor, -1)),
+                        "period_end": _iso(anchor),
+                    }
+                ],
+            },
+            headers=headers,
+        )
+        assert invoice.status_code == 201, invoice.text
+
+        flipped = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"billed_in_advance_override": True},
+            headers=headers,
+        )
+        assert flipped.status_code == 200, flipped.text
+        billed = (
+            await c.get(
+                "/api/v1/invoicing/billed-periods",
+                params={"source": "subscription", "source_id": sub["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert [(r["period_start"], r["period_end"]) for r in billed] == [
+            (_iso(anchor), _iso(add_months(anchor, 1)))
+        ]
+        rows = await _backlog_rows(c, headers, sub["id"])
+        assert (_iso(anchor), _iso(add_months(anchor, 1)), False) not in rows
+        assert (_iso(add_months(anchor, 1)), _iso(add_months(anchor, 2)), False) in rows
+
+        # And back to following the type: the claim walks back with it.
+        back = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"billed_in_advance_override": None},
+            headers=headers,
+        )
+        assert back.json()["billed_in_advance"] is False
+        billed = (
+            await c.get(
+                "/api/v1/invoicing/billed-periods",
+                params={"source": "subscription", "source_id": sub["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert [(r["period_start"], r["period_end"]) for r in billed] == [
+            (_iso(add_months(anchor, -1)), _iso(anchor))
+        ]

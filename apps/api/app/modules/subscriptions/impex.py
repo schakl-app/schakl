@@ -55,7 +55,7 @@ _FIELDS = (
     "name", "end_date", "next_invoice_date", "billed_until", "included_hours", "notes",
     "company_id",
     "subscription_type_id", "subscription_template_id", "currency", "interval_count",
-    "notice_period_days",
+    "notice_period_days", "billed_in_advance_override",
 )
 
 #: The two halves of ``RolloverRule`` as two cells — a nested object has no flat spelling, and
@@ -204,6 +204,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             end_date=values.get("end_date"),
             next_invoice_date=values.get("next_invoice_date"),
             billed_until=values.get("billed_until"),
+            billed_in_advance_override=values.get("billed_in_advance_override"),
             included_hours=values.get("included_hours"),
             notice_period_days=_optional_int(values, "notice_period_days"),
             **({"rollover": rollover} if rollover is not None else {}),
@@ -294,6 +295,15 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
             data_type="date",
             clearable=False,
             aliases=("gefactureerd tot", "invoiced until", "billed until", "billed through"),
+        ),
+        # The agreement's own say on which period an invoice covers; an empty cell follows
+        # the standard subscription and the type (the resolved answer is not a column: it is
+        # the kind's decision, and exporting it would re-import it as a per-row override).
+        ImpexColumn(
+            "billed_in_advance",
+            data_type="bool",
+            field="billed_in_advance_override",
+            aliases=("vooraf",),
         ),
         ImpexColumn("included_hours", data_type="number"),
         # The price valid today; a changed value appends to the price history on update.

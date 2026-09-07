@@ -226,6 +226,15 @@ class Subscription(
     #: agency automating twelve hosting retainers still assembles by hand the one client whose
     #: invoice is argued over every month, and "turn the feature off" is not an answer to that.
     auto_invoice_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: This agreement's own say on which period its invoice covers, over what its standard
+    #: subscription and its type say (``SubscriptionType.billed_in_advance``): ``NULL`` follows
+    #: them, a value overrides for this one agreement. The same three-state discipline as
+    #: ``auto_invoice_mode`` and for the same reason — the kind states the rule and one client
+    #: has the other arrangement, negotiated, and "make it a kind of its own" is not an answer a
+    #: settings screen can give twelve times. Named ``_override`` because the *resolved* answer
+    #: rides the read as ``billed_in_advance`` (``_attach``), and a resolution written onto the
+    #: mapped column would be stored on the next flush.
+    billed_in_advance_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Hours of work the fee includes per period; consumption is measured against the time
     #: logged on the *linked* projects (the same aggregate every budget bar reads, #25).
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)

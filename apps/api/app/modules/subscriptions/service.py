@@ -81,7 +81,7 @@ ENTITY_TYPE = "subscription"
 _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
     "interval_count", "start_date", "end_date", "next_invoice_date", "billed_until",
-    "included_hours", "notice_period_days", "auto_invoice_mode",
+    "included_hours", "notice_period_days", "auto_invoice_mode", "billed_in_advance_override",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
@@ -186,6 +186,10 @@ def _direction(
     types: dict[uuid.UUID, bool],
     templates: dict[uuid.UUID, bool | None],
 ) -> bool:
+    # The agreement's own say first, then the preset's, then the kind's: each is a diff over
+    # the layer above it, and ``NULL`` at any level means *inherit*, never *unfilled*.
+    if sub.billed_in_advance_override is not None:
+        return sub.billed_in_advance_override
     if sub.subscription_template_id is not None:
         override = templates.get(sub.subscription_template_id)
         if override is not None:
@@ -203,12 +207,14 @@ async def billing_directions(
 
     The direction is a property of what is sold, so it lives on the subscription **type**
     (``billed_in_advance``, ``app.core.billing.period_span``); a standard subscription may say
-    otherwise for the agreements made from it (``NULL`` follows the type); an agreement with
-    neither bills in arrears, which is the cycle cron's original reading. Nothing is stored on
-    the agreement, so a type corrected in Instellingen reaches every agreement of that kind at
-    once — the failure this exists to end was a hosting agreement that could only ever offer
-    the year *behind* its renewal date, because "arrears" was written into the module rather
-    than onto the kind of thing sold.
+    otherwise for the agreements made from it (``NULL`` follows the type); one agreement may
+    say otherwise for itself (``billed_in_advance_override``, ``NULL`` follows the preset and
+    the type); an agreement with none of the three bills in arrears, which is the cycle cron's
+    original reading. The resolution is never copied onto the agreement, so a type corrected
+    in Instellingen reaches every agreement of that kind that has not decided for itself —
+    the failure this exists to end was a hosting agreement that could only ever offer the year
+    *behind* its renewal date, because "arrears" was written into the module rather than onto
+    the kind of thing sold.
 
     Two batched reads, org-filtered like every bare-table read here, whatever the number of
     agreements (docs/PERFORMANCE.md).
@@ -814,6 +820,7 @@ class SubscriptionService:
             auto_invoice_mode=(
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
+            billed_in_advance_override=data.billed_in_advance_override,
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
@@ -856,6 +863,9 @@ class SubscriptionService:
         if "billed_until" in sent:
             # Same split: explicit null withdraws the "already invoiced up to" statement.
             values["billed_until"] = data.billed_until
+        if "billed_in_advance_override" in sent:
+            # Same split again: explicit null goes back to following the preset and the type.
+            values["billed_in_advance_override"] = data.billed_in_advance_override
         if "name" in values:
             values["name"] = values["name"].strip()
         if "notes" in values:
@@ -882,9 +892,14 @@ class SubscriptionService:
                 ENTITY_TYPE, data.custom or {}
             )
 
-        # Pointing the agreement at another type or preset may flip which way its periods
-        # run; what it already invoiced has to follow (see ``_emit_direction_shift``).
-        rekeyed = "subscription_type_id" in sent or "subscription_template_id" in sent
+        # Pointing the agreement at another type or preset — or stating its own direction —
+        # may flip which way its periods run; what it already invoiced has to follow (see
+        # ``_emit_direction_shift``).
+        rekeyed = (
+            "subscription_type_id" in sent
+            or "subscription_template_id" in sent
+            or "billed_in_advance_override" in sent
+        )
         direction_before = (
             await billing_directions(self.ctx.session, self._org_id, [sub]) if rekeyed else {}
         )

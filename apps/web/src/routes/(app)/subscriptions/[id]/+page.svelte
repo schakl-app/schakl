@@ -107,13 +107,19 @@
           <dd class="text-text">{fmtNumericDate(sub.billed_until)}</dd>
         </div>
       {/if}
-      <!-- Resolved through the preset and the type: which period the next invoice covers. -->
+      <!-- Resolved through the agreement's own say, the preset and the type: which period
+           the next invoice covers — and whether this agreement decided for itself. -->
       <div class="flex justify-between gap-3">
         <dt class="text-text-muted">{t("subscriptions.field.billing_direction")}</dt>
         <dd class="text-text">
           {sub.billed_in_advance
             ? t("subscriptions.billing_direction.advance_short")
             : t("subscriptions.billing_direction.arrears_short")}
+          {#if sub.billed_in_advance_override != null}
+            <span class="text-xs text-text-muted"
+              >({t("subscriptions.billing_direction.own_setting")})</span
+            >
+          {/if}
         </dd>
       </div>
       {#if sub.included_hours != null}
