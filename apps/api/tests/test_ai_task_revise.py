@@ -240,7 +240,9 @@ async def test_revise_drops_what_it_was_not_shown_and_what_the_instruction_did_n
                         {"item_id": other_item, "done": True},
                         {"item_id": str(uuid.uuid4()), "title": "Spook"},
                     ],
-                    remove_item_ids=[other_item, first[:-1] + "0"],
+                    # One character off a real id — and never the same character, or one run
+                    # in sixteen removes the real step and the assertion below reads as flaky.
+                    remove_item_ids=[other_item, first[:-1] + ("0" if first[-1] != "0" else "1")],
                     links=[
                         {"url": "https://evil.example/login"},
                         {"url": "klant.nl/brief"},
