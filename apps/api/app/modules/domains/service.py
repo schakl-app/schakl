@@ -48,6 +48,7 @@ from app.modules.domains.invoiceable import (
     source_of,
 )
 from app.modules.domains.models import BILLABLE_STATUSES, Domain, DomainTldPrice
+from app.modules.domains.pricing import price_row_at
 from app.modules.domains.schemas import (
     DomainCreate,
     DomainUpdate,
@@ -448,13 +449,8 @@ class DomainService:
                 override: Decimal | None = domain.price_override,
             ) -> tuple[Decimal, str] | None:
                 """The price the cron would use at ``day``: the per-domain override, else the
-                newest TLD price valid then. Rows arrive sorted, so the last match wins."""
-                current = None
-                for row in rows:
-                    if row.valid_from <= day:
-                        current = row
-                    else:
-                        break
+                TLD price in force then (``pricing.price_row_at`` — the one rule both read)."""
+                current = price_row_at(rows, day, today)
                 if override is not None:
                     return override, (
                         current.currency if current is not None else org_currency

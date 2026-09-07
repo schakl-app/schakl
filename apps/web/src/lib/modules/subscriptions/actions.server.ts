@@ -32,19 +32,40 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
-/** The form posts its linked projects as one JSON field (single-save surface). */
+/** What an agreement may be attached to — the API's own vocabulary (`LinkEntityType`). */
+const LINK_KINDS = ["project", "task", "website"] as const;
+type LinkKind = (typeof LINK_KINDS)[number];
+
+function linkKind(raw: unknown): LinkKind | null {
+  return (LINK_KINDS as readonly string[]).includes(String(raw)) ? (raw as LinkKind) : null;
+}
+
+/**
+ * The form posts every link as one JSON field (single-save surface) — the projects it covers
+ * *and* the websites it keeps online. The save replaces the whole set, so a kind this parser
+ * dropped would be a kind every save silently unlinked.
+ */
 function parseLinks(
   raw: FormDataEntryValue | null,
-): { entity_type: "project"; entity_id: string }[] {
+): { entity_type: LinkKind; entity_id: string }[] {
   try {
     const parsed = JSON.parse(String(raw ?? "[]"));
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((l) => l && l.entity_type === "project" && typeof l.entity_id === "string")
-      .map((l) => ({ entity_type: "project" as const, entity_id: l.entity_id }));
+    return parsed.flatMap((l) => {
+      const kind = linkKind(l?.entity_type);
+      return kind && typeof l.entity_id === "string"
+        ? [{ entity_type: kind, entity_id: l.entity_id as string }]
+        : [];
+    });
   } catch {
     return [];
   }
+}
+
+/** The agreement's own billing direction: `"true"`/`"false"`, or `""` to follow the preset/type. */
+function readDirectionOverride(raw: FormDataEntryValue | null): boolean | null {
+  const value = String(raw ?? "").trim();
+  return value === "" ? null : value === "true";
 }
 
 /** The recurring-agreement fields create and update share (#30). */
@@ -63,6 +84,9 @@ export function subscriptionBody(form: FormData) {
     // "" is the inherit choice, and it must reach the API as an explicit null: the column's
     // third state is "follow the org", which is not the same as any level.
     auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),
+    // Same three states: "" follows the standard subscription and the type, and reaches the
+    // API as an explicit null so a cleared override is actually cleared.
+    billed_in_advance_override: readDirectionOverride(form.get("billed_in_advance_override")),
     included_hours: String(form.get("included_hours") ?? "").trim() || null,
     notes: String(form.get("notes") ?? "").trim() || null,
     amount: amount || undefined,
@@ -134,7 +158,18 @@ export async function createSubscriptionType(event: RequestEvent) {
   const key = slugify(label_i18n.nl || label_i18n.en || "");
   if (!key) return fail(400, { qcError: "errors.label_no_key" });
   const { data, error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
-    body: { key, label_i18n, position: 0, active: true, task_template_ids: [] },
+    // A type made inline bills in arrears until somebody says otherwise in Instellingen — the
+    // cron's original reading, and the only default that changes nothing for an existing type.
+    body: {
+      key,
+      label_i18n,
+      position: 0,
+      active: true,
+      task_template_ids: [],
+      billed_in_advance: false,
+      // ...and covers no website until Instellingen says so, for the same reason.
+      covers_websites: false,
+    },
   });
   if (error || !data) return fail(400, { qcError: createErrorKey(error, response) });
   const name = label_i18n.nl || label_i18n.en || key;
@@ -147,4 +182,47 @@ export const subscriptionActions = {
   createSubscriptionProject,
   createSubscriptionType,
   createSubscriptionCompany: createCompanyAction,
+};
+
+/**
+ * The actions behind a record's Abonnementen panel (`WebsiteSubscriptionsPanel`): attach one
+ * agreement to the record whose page this is, or detach one. The record's id comes from the
+ * **route**, never from the form — the panel is drawn on one record, and posting an
+ * `entity_id` beside it would be a second opinion about which (the uptime panel's rule).
+ * Which *kind* of record it is travels with the form, because a panel can be mounted on more
+ * than one host; it is checked against the API's own vocabulary.
+ */
+export const subscriptionLinkActions = {
+  subscriptionLink: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const subscription_id = String(form.get("subscription_id") ?? "").trim();
+    const entity_type = linkKind(form.get("entity_type"));
+    if (!subscription_id || !entity_type) {
+      return fail(400, { subscriptionLinkError: "errors.required" });
+    }
+    const { error } = await apiFor(event).POST("/api/v1/subscriptions/{subscription_id}/links", {
+      params: { path: { subscription_id } },
+      body: { entity_type, entity_id: event.params.id as string },
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { subscriptionLinkError: e.fields?.links ?? e.key });
+    }
+    return { subscriptionLinked: true };
+  },
+
+  subscriptionUnlink: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const subscription_id = String(form.get("subscription_id") ?? "").trim();
+    const entity_type = linkKind(form.get("entity_type"));
+    if (!subscription_id || !entity_type) {
+      return fail(400, { subscriptionLinkError: "errors.required" });
+    }
+    const { error } = await apiFor(event).DELETE(
+      "/api/v1/subscriptions/{subscription_id}/links/{entity_type}/{entity_id}",
+      { params: { path: { subscription_id, entity_type, entity_id: event.params.id as string } } },
+    );
+    if (error) return fail(400, { subscriptionLinkError: apiErrorKey(error).key });
+    return { subscriptionUnlinked: true };
+  },
 };

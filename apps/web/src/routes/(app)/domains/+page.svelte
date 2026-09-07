@@ -177,6 +177,20 @@
       type: "date",
       clearable: true,
     },
+    {
+      // Anchors the renewal cycle, so it has no empty state — and set together with the
+      // renewal date's "work it out again", the new cycle follows the new anchor.
+      key: "start_date",
+      label: t("impex.column.domain.start_date"),
+      type: "date",
+    },
+    {
+      key: "price_override",
+      label: t("impex.column.domain.price_override"),
+      type: "number",
+      clearable: true,
+      clearLabel: t("domains.bulk.price_reset"),
+    },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.

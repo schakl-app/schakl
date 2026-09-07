@@ -8,7 +8,7 @@
   import { Pencil, Power, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -95,6 +95,8 @@
       label: labelCell,
       key: keyCell,
       tasks: tasksCell,
+      billing: billingCell,
+      websites: websitesCell,
       active: activeCell,
     }),
   });
@@ -152,6 +154,18 @@
 
 {#snippet tasksCell(st: SubscriptionType)}
   <span class="tabular-nums text-text-muted">{(st.task_template_ids ?? []).length || "—"}</span>
+{/snippet}
+
+{#snippet billingCell(st: SubscriptionType)}
+  <span class="text-text-muted"
+    >{st.billed_in_advance
+      ? t("subscriptions.billing_direction.advance_short")
+      : t("subscriptions.billing_direction.arrears_short")}</span
+  >
+{/snippet}
+
+{#snippet websitesCell(st: SubscriptionType)}
+  <span class="text-text-muted">{st.covers_websites ? t("common.yes") : "—"}</span>
 {/snippet}
 
 {#snippet activeCell(st: SubscriptionType)}
@@ -274,6 +288,46 @@
           {t("settings.subscriptions.task_templates_help")}
         </p>
       </div>
+      <div>
+        <label for="st-billing" class="mb-1 block text-sm text-text"
+          >{t("subscriptions.field.billing_direction")}</label
+        >
+        <!-- Which period an invoice raised on the cycle date covers — a property of what this
+             type sells, read live by every agreement of the type (docs/INVOICING.md). -->
+        <select
+          id="st-billing"
+          name="billed_in_advance"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
+          value={editing?.billed_in_advance ? "true" : "false"}
+        >
+          <option value="false">{t("subscriptions.billing_direction.arrears")}</option>
+          <option value="true">{t("subscriptions.billing_direction.advance")}</option>
+        </select>
+        <p class="mt-1 text-xs text-text-muted">
+          {t("settings.subscriptions.billing_direction_help")}
+          {#if editing}
+            {t("settings.subscriptions.billing_direction_propagates")}
+          {/if}
+        </p>
+      </div>
+      <!-- Whether an agreement of this kind keeps a website online and may be attached to
+           one — hosting, maintenance. Presence is the question (`checked()` on the server),
+           never a particular value. -->
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="covers_websites"
+          value="true"
+          class="mt-0.5"
+          checked={editing?.covers_websites ?? false}
+        />
+        <span>
+          {t("settings.subscriptions.covers_websites")}
+          <span class="block text-xs text-text-muted"
+            >{t("settings.subscriptions.covers_websites_help")}</span
+          >
+        </span>
+      </label>
       <input
         type="hidden"
         name="position"
@@ -291,6 +345,12 @@
     </form>
   {/key}
 </Modal>
+
+{#if form?.shifted}
+  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
+    {tn("settings.subscriptions.shifted_subscriptions", form.shifted)}
+  </p>
+{/if}
 
 <form bind:this={toggleForm} method="POST" action="?/toggleType" use:enhance class="hidden">
   <input type="hidden" name="id" value={toggleId} />

@@ -1070,7 +1070,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Subscription
-         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`, `billed_in_advance`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_subscription_api_v1_bulk_subscription_update_post"];
         delete?: never;
@@ -2000,6 +2000,28 @@ export interface paths {
         };
         /** List Entity Types */
         get: operations["list_entity_types_api_v1_custom_fields_entity_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-fields/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scopes
+         * @description The dimensions a definition of ``entity_type`` may be narrowed to, with this tenant's
+         *     options for each (``scoping.py``). Empty for an entity type no module has registered a
+         *     dimension for — which is what tells the settings screen not to draw the control (#253).
+         */
+        get: operations["list_scopes_api_v1_custom_fields_scopes_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12407,7 +12429,11 @@ export interface paths {
         delete: operations["delete_subscription_type_api_v1_subscriptions_types__type_id__delete"];
         options?: never;
         head?: never;
-        /** Update Subscription Type */
+        /**
+         * Update Subscription Type
+         * @description Flipping ``billed_in_advance`` re-reads the periods of every agreement of this kind;
+         *     ``shifted_subscriptions`` reports how many, so the screen can say so.
+         */
         patch: operations["update_subscription_type_api_v1_subscriptions_types__type_id__patch"];
         trace?: never;
     };
@@ -12428,6 +12454,47 @@ export interface paths {
         head?: never;
         /** Update Subscription */
         patch: operations["update_subscription_api_v1_subscriptions__subscription_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Subscription
+         * @description Attach one project, task or website to the agreement. A website needs a kind that
+         *     ``covers_websites``; a link already there is left as it is.
+         */
+        post: operations["link_subscription_api_v1_subscriptions__subscription_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/links/{entity_type}/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Subscription
+         * @description Detach one record from the agreement.
+         */
+        delete: operations["unlink_subscription_api_v1_subscriptions__subscription_id__links__entity_type___entity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/subscriptions/{subscription_id}/prices": {
@@ -18026,6 +18093,36 @@ export interface components {
             };
             /** Value */
             value: string;
+        };
+        /** CustomFieldScopeOptionRead */
+        CustomFieldScopeOptionRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /** Value */
+            value: string;
+        };
+        /**
+         * CustomFieldScopeRead
+         * @description One dimension a definition of this entity type may be narrowed to (``scoping.py``).
+         *
+         *     ``key`` is what ``config_json.scope`` is keyed on; ``label_key`` names the dimension through
+         *     i18n; ``options`` are the tenant's current choices, a deactivated one flagged rather than
+         *     dropped so an existing scope keeps its label on the settings screen.
+         */
+        CustomFieldScopeRead: {
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Options */
+            options?: components["schemas"]["CustomFieldScopeOptionRead"][];
         };
         /**
          * CustomFieldType
@@ -31233,6 +31330,8 @@ export interface components {
             /** Amount */
             amount: number | string;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /**
@@ -31362,12 +31461,14 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "project" | "task";
+            entity_type: "project" | "task" | "website";
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Label */
+            label?: string | null;
         };
         /** SubscriptionLinkWrite */
         SubscriptionLinkWrite: {
@@ -31380,7 +31481,7 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "project" | "task";
+            entity_type: "project" | "task" | "website";
         };
         /** SubscriptionRead */
         SubscriptionRead: {
@@ -31389,6 +31490,13 @@ export interface components {
             /** Amount */
             amount?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /**
@@ -31484,6 +31592,8 @@ export interface components {
         SubscriptionTemplateCreate: {
             /** Amount */
             amount?: number | string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Currency
              * @default EUR
@@ -31519,6 +31629,8 @@ export interface components {
         SubscriptionTemplateRead: {
             /** Amount */
             amount?: string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Created At
              * Format: date-time
@@ -31576,10 +31688,14 @@ export interface components {
          *
          *     A rename carries over to the agreements created from this preset that still bear its old
          *     name; the count comes back so the screen can *say so* rather than change rows silently.
+         *     A change to ``billed_in_advance`` reaches every agreement made from it the same way (the
+         *     periods they already invoiced are re-read and their claims shifted), and is counted too.
          */
         SubscriptionTemplateSaved: {
             /** Amount */
             amount?: string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /**
              * Created At
              * Format: date-time
@@ -31628,6 +31744,11 @@ export interface components {
              */
             renamed_subscriptions: number;
             rollover?: components["schemas"]["RolloverRule"];
+            /**
+             * Shifted Subscriptions
+             * @default 0
+             */
+            shifted_subscriptions: number;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**
@@ -31640,6 +31761,8 @@ export interface components {
         SubscriptionTemplateUpdate: {
             /** Amount */
             amount?: number | string | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
             /** Currency */
             currency?: string | null;
             /** Included Hours */
@@ -31668,6 +31791,16 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
+            /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
             /** Key */
             key: string;
             /** Label I18N */
@@ -31689,6 +31822,16 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
+            /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
             /**
              * Created At
              * Format: date-time
@@ -31723,10 +31866,77 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * SubscriptionTypeSaved
+         * @description The save answer, with what the save reached beyond the type itself.
+         *
+         *     Flipping ``billed_in_advance`` re-reads every period of the agreements that follow this type,
+         *     the ones already invoiced included (their claims are shifted, see
+         *     ``SubscriptionTypeService.update``); the count comes back so the screen can *say so*.
+         */
+        SubscriptionTypeSaved: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Billed In Advance
+             * @default false
+             */
+            billed_in_advance: boolean;
+            /**
+             * Covers Websites
+             * @default false
+             */
+            covers_websites: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Shifted Subscriptions
+             * @default 0
+             */
+            shifted_subscriptions: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** SubscriptionTypeUpdate */
         SubscriptionTypeUpdate: {
             /** Active */
             active?: boolean | null;
+            /** Billed In Advance */
+            billed_in_advance?: boolean | null;
+            /** Covers Websites */
+            covers_websites?: boolean | null;
             /** Label I18N */
             label_i18n?: {
                 [key: string]: string;
@@ -31743,6 +31953,8 @@ export interface components {
             /** Amount Valid From */
             amount_valid_from?: string | null;
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /** Billed In Advance Override */
+            billed_in_advance_override?: boolean | null;
             /** Billed Until */
             billed_until?: string | null;
             /** Company Id */
@@ -40042,6 +40254,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+        };
+    };
+    list_scopes_api_v1_custom_fields_scopes_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldScopeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -59332,6 +59575,8 @@ export interface operations {
                 entity_id?: string | null;
                 /** @description include current-period usage per row */
                 usage?: boolean;
+                /** @description with entity_type/entity_id: the agreements that could be attached to the record instead of the ones already on it — its client's, alive, of a kind that attaches to it, not yet linked */
+                linkable?: boolean;
             };
             header?: never;
             path?: never;
@@ -59709,7 +59954,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                    "application/json": components["schemas"]["SubscriptionTypeSaved"];
                 };
             };
             /** @description Validation Error */
@@ -59809,6 +60054,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SubscriptionRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_subscription_api_v1_subscriptions__subscription_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionLinkWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_subscription_api_v1_subscriptions__subscription_id__links__entity_type___entity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                entity_type: "project" | "task" | "website";
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

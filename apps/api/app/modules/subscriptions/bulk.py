@@ -37,6 +37,9 @@ SUBSCRIPTION_BULK = BulkDescriptor(
         # statement over the whole selection; clearable, because withdrawing it is a decision
         # made on purpose over rows somebody picked.
         BulkField("billed_until", clearable=True),
+        # Twelve hosting agreements negotiated the other way round: one statement over the
+        # selection; clearable, because "follow the type again" is the third state (§18).
+        BulkField("billed_in_advance", clearable=True),
     ),
     delete_permission="subscriptions.subscription.delete",
     delete_row=_delete,

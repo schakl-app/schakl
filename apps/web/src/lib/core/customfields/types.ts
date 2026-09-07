@@ -8,6 +8,9 @@ import type { components } from "$lib/core/api/schema";
 
 export type CustomFieldDefinition = components["schemas"]["CustomFieldDefinitionRead"];
 export type CustomFieldOption = components["schemas"]["CustomFieldOption"];
+/** One dimension a definition may be narrowed to, with the tenant's options (`scope.ts`). */
+export type CustomFieldScope = components["schemas"]["CustomFieldScopeRead"];
+export type CustomFieldScopeOption = components["schemas"]["CustomFieldScopeOptionRead"];
 
 /** All v1 field types (mirrors the API `CustomFieldType`). */
 export type CustomFieldType = CustomFieldDefinition["data_type"];
@@ -19,7 +22,10 @@ export function fieldLabel(def: CustomFieldDefinition, locale: string): string {
 }
 
 /** Pick an option's label for the active locale, falling back to en, then the value. */
-export function optionLabel(opt: CustomFieldOption, locale: string): string {
+export function optionLabel(
+  opt: Pick<CustomFieldOption, "value" | "label_i18n">,
+  locale: string,
+): string {
   const labels = (opt.label_i18n ?? {}) as Record<string, string>;
   return labels[locale] || labels.en || labels.nl || opt.value;
 }

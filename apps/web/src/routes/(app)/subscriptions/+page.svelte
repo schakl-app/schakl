@@ -224,6 +224,14 @@
       type: "date",
       clearable: true,
     },
+    {
+      // The agreements' own say on which period an invoice covers; cleared, they follow their
+      // standard subscription and type again.
+      key: "billed_in_advance",
+      label: t("impex.column.subscription.billed_in_advance"),
+      type: "bool",
+      clearable: true,
+    },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.

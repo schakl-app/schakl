@@ -78,6 +78,23 @@ class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     #: into the tasks module's tables (§6, the ``SubscriptionLink`` rule): validated against the
     #: bare table on write, and a template deleted later is simply skipped when spawning.
     task_template_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    #: Which period an invoice raised on the cycle date covers — the year *ahead* of it (hosting,
+    #: licences, a registration: paid for before it is delivered) or the month *behind* it (a
+    #: retainer, billed once served). A property of what is sold, so it lives on the kind
+    #: (``app.core.billing.period_span``); ``False`` is the cycle cron's original reading, which
+    #: is what keeps an instance that never touches this billing exactly as it did.
+    billed_in_advance: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    #: Whether an agreement of this kind keeps a **website** online — hosting, maintenance — and
+    #: may therefore be attached to one (``SubscriptionLink`` with ``entity_type = "website"``).
+    #: A property of what is sold, like the direction above, so it lives on the kind rather than
+    #: on a key the code would have to recognise: the seeded ``hosting`` type ships with it on,
+    #: and a tenant's own "Webhosting" ticks it in Instellingen. Read when a website link is
+    #: *written*; a link already made survives a later flip, as every stored decision does.
+    covers_websites: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -114,6 +131,11 @@ class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
     rollover: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The preset's own say on ``SubscriptionType.billed_in_advance``: ``NULL`` follows the
+    #: agreement's type, a value overrides it for every agreement made from this preset. Unlike
+    #: the money it is **not** copied onto the agreement — it is read live, so the preset stays
+    #: the one place a "we bill this in advance" decision is made and corrected.
+    billed_in_advance: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Default invoice lines: ``[{description, quantity, unit_amount}]`` — a prefill blob, not
     #: rows to query, so JSONB rather than a child table.
     lines: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -213,6 +235,15 @@ class Subscription(
     #: agency automating twelve hosting retainers still assembles by hand the one client whose
     #: invoice is argued over every month, and "turn the feature off" is not an answer to that.
     auto_invoice_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: This agreement's own say on which period its invoice covers, over what its standard
+    #: subscription and its type say (``SubscriptionType.billed_in_advance``): ``NULL`` follows
+    #: them, a value overrides for this one agreement. The same three-state discipline as
+    #: ``auto_invoice_mode`` and for the same reason — the kind states the rule and one client
+    #: has the other arrangement, negotiated, and "make it a kind of its own" is not an answer a
+    #: settings screen can give twelve times. Named ``_override`` because the *resolved* answer
+    #: rides the read as ``billed_in_advance`` (``_attach``), and a resolution written onto the
+    #: mapped column would be stored on the next flush.
+    billed_in_advance_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Hours of work the fee includes per period; consumption is measured against the time
     #: logged on the *linked* projects (the same aggregate every budget bar reads, #25).
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
@@ -280,5 +311,5 @@ class SubscriptionLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
         nullable=False,
         index=True,
     )
-    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # project | task
+    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # project|task|website
     entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)

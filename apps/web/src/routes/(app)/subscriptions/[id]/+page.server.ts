@@ -25,13 +25,22 @@ export const load: PageServerLoad = async (event) => {
   const context = { entityId: subscription_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "subscription", event.locals.user);
-  const [subscription, types, ...panelData] = await Promise.all([
+  // The tenant's own fields, drawn on the page the same way the edit form draws them (§13).
+  // Read only where the viewer may read definitions — a portal login may not, and gets the
+  // page without that card rather than a 403 on the whole of it.
+  const canReadDefinitions = can(event.locals.user, "settings.customfields.read");
+  const [subscription, types, definitions, ...panelData] = await Promise.all([
     api.GET("/api/v1/subscriptions/{subscription_id}", {
       params: { path: { subscription_id }, query: { usage: true } },
     }),
     // The type vocabulary names the row; a client may read it (it is the label on their own
     // agreement, the way `contacts.type.read` is), and an inactive type still names a row.
     api.GET("/api/v1/subscriptions/types", { params: { query: { include_inactive: true } } }),
+    canReadDefinitions
+      ? api.GET("/api/v1/custom-fields/definitions", {
+          params: { query: { entity_type: "subscription" } },
+        })
+      : null,
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (subscription.error || !subscription.data) {
@@ -40,6 +49,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     subscription: subscription.data,
     types: types.data ?? [],
+    definitions: definitions?.data ?? [],
     canWrite: can(event.locals.user, "subscriptions.subscription.write"),
     locale: event.locals.locale,
     context,

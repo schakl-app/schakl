@@ -5,6 +5,8 @@
    * the one control staff get here is the way there.
    */
   import { page } from "$app/state";
+  import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
+  import { applicableDefinitions } from "$lib/core/customfields/scope";
   import { dateLocale, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { entityPanelComponent } from "$lib/core/registry";
@@ -37,6 +39,30 @@
   );
   const lines = $derived(sub.lines ?? []);
   const usage = $derived(sub.usage ?? null);
+  // What the agreement covers — the sites it keeps online first, then the work it pays for.
+  const LINK_ORDER = { website: 0, project: 1, task: 2 } as const;
+  const LINK_HREF = { website: "/websites", project: "/projects", task: "/tasks" } as const;
+  const links = $derived(
+    (sub.links ?? []).toSorted((a, b) => LINK_ORDER[a.entity_type] - LINK_ORDER[b.entity_type]),
+  );
+
+  // The tenant's own fields that apply to *this* agreement — a field attached to another type
+  // is not drawn here even where the row still holds a value for it (§13) — and hold a value.
+  const customValues = $derived((sub.custom ?? {}) as Record<string, unknown>);
+  const customDefinitions = $derived(
+    applicableDefinitions(data.definitions, {
+      subscription_type_id: sub.subscription_type_id ?? null,
+      subscription_template_id: sub.subscription_template_id ?? null,
+    }).filter((def) => {
+      const value = customValues[def.key];
+      return (
+        value !== undefined &&
+        value !== null &&
+        value !== "" &&
+        !(Array.isArray(value) && value.length === 0)
+      );
+    }),
+  );
 
   // Typed entity panels (the invoiced periods, contributed by `invoicing`) — composed, never
   // imported, the way the domain page does it.
@@ -107,6 +133,21 @@
           <dd class="text-text">{fmtNumericDate(sub.billed_until)}</dd>
         </div>
       {/if}
+      <!-- Resolved through the agreement's own say, the preset and the type: which period
+           the next invoice covers — and whether this agreement decided for itself. -->
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-muted">{t("subscriptions.field.billing_direction")}</dt>
+        <dd class="text-text">
+          {sub.billed_in_advance
+            ? t("subscriptions.billing_direction.advance_short")
+            : t("subscriptions.billing_direction.arrears_short")}
+          {#if sub.billed_in_advance_override != null}
+            <span class="text-xs text-text-muted"
+              >({t("subscriptions.billing_direction.own_setting")})</span
+            >
+          {/if}
+        </dd>
+      </div>
       {#if sub.included_hours != null}
         <div class="flex justify-between gap-3">
           <dt class="text-text-muted">{t("subscriptions.field.included_hours")}</dt>
@@ -149,6 +190,34 @@
       </ul>
     {/if}
   </Card>
+
+  {#if customDefinitions.length > 0}
+    <Card title={t("subscriptions.detail.custom_fields")}>
+      <CustomFieldsView
+        definitions={customDefinitions}
+        values={customValues}
+        locale={data.locale}
+      />
+    </Card>
+  {/if}
+
+  {#if links.length > 0}
+    <Card title={t("subscriptions.detail.covers")}>
+      <ul class="divide-y divide-border text-sm">
+        {#each links as link (link.id)}
+          <li class="flex items-center justify-between gap-3 py-2">
+            <a
+              href={`${LINK_HREF[link.entity_type]}/${link.entity_id}`}
+              class="min-w-0 flex-1 truncate text-brand hover:underline">{link.label ?? "—"}</a
+            >
+            <span class="shrink-0 rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+              >{t(`subscriptions.link_kind.${link.entity_type}`)}</span
+            >
+          </li>
+        {/each}
+      </ul>
+    </Card>
+  {/if}
 
   {#if sub.notes && !page.data.user?.isPortal}
     <Card title={t("subscriptions.field.notes")}>

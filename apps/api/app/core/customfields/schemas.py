@@ -54,6 +54,25 @@ class CustomFieldDefinitionUpdate(BaseModel):
     active: bool | None = None
 
 
+class CustomFieldScopeOptionRead(BaseModel):
+    value: str
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    active: bool = True
+
+
+class CustomFieldScopeRead(BaseModel):
+    """One dimension a definition of this entity type may be narrowed to (``scoping.py``).
+
+    ``key`` is what ``config_json.scope`` is keyed on; ``label_key`` names the dimension through
+    i18n; ``options`` are the tenant's current choices, a deactivated one flagged rather than
+    dropped so an existing scope keeps its label on the settings screen.
+    """
+
+    key: str
+    label_key: str
+    options: list[CustomFieldScopeOptionRead] = Field(default_factory=list)
+
+
 class CustomFieldDefinitionRead(CustomFieldDefinitionBase):
     model_config = ConfigDict(from_attributes=True)
 

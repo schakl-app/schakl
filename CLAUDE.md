@@ -1165,6 +1165,42 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   cron before it drafts, the anchor included; the other direction of the same claim tables
   (`GET /invoicing/billed-periods`) is what `invoicing` contributes to the domain and subscription
   pages, so a record page finally answers "which years did we bill, and on what".
+- **Which way a subscription's period runs is the type's decision** (`subscription_types
+  .billed_in_advance`, `docs/INVOICING.md`). The rule above stated the direction for two things and
+  wrote *arrears* into the subscriptions module for every agreement, so a hosting agreement renewing
+  on 16-05-2026 could only ever offer the year behind it. The direction lives on the kind now (with
+  a standard subscription able to override it, `NULL` = follow the type), resolved **live** by one
+  function every reader calls — backlog, picker, cron, the agreement's read — never copied onto the
+  agreement. A flip moves the claims of the agreements it reaches in the same transaction
+  (`subscription.direction_changed`, handled by `invoicing`), because a claim keyed on `period_end`
+  names a different boundary under the other reading, and the save reports how many it moved.
+  **One agreement may then say otherwise for itself** (`subscriptions.billed_in_advance_override`,
+  the owner's reversal of "no per-agreement column"): a client's hosting billed in arrears *by
+  agreement* is a negotiated exception, not a kind of its own. Three layers, each `NULL` = inherit
+  — the agreement, the standard subscription, the type — resolved by the same function, with the
+  agreement's own flip shifting its own claims and a type flip counting only the agreements that
+  still follow it. The column is `_override` because the resolved answer already rides the read
+  as `billed_in_advance`, and a resolution written onto a same-named mapped column is stored.
+- **A hosting agreement keeps a website online, and the website can say which one**
+  (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`,
+  `docs/INVOICING.md`). A website said where it *runs* (its hosting account) and never who *pays*
+  for that; an agreement attached to the work it covers (projects, tasks) and never to the asset
+  it keeps online. Four rules. **Which kinds attach to a website is the type's flag, never a key
+  the code recognises**: the seeded `hosting` ships with it on (backfilled by migration — under
+  `FORCE ROW LEVEL SECURITY` with no GUC bound, which is the `87e32dccc095` dance and was found
+  here the same way), and a tenant ticks it on "Onderhoud" in Instellingen. **The flag is asked
+  when a website link is written, and only then**: the form re-posts every link on every save, so
+  a link made while the type said yes survives a later flip (#335), and only a *new* website link
+  on a non-covering kind is refused, naming the field. **The record's page is where the link is
+  made**: the subscriptions module registers an entity panel on `website` whose picker is the
+  API's own shortlist (`linkable=true` — this client's covering agreements not yet on the site, so
+  an agent asks the same question a person does), whose writes post to host-page actions
+  (`subscriptionLinkActions`, the uptime panel's contract), and whose ＋ opens the module's dialog
+  with the client and the site already on the form (`EntityPanelContext.companyId` / `label`).
+  And **a link carries its label** (`SubscriptionLinkRead.label`, one bare-table statement per
+  kind over the page), so the agreement's page can print what it covers without a lookup of its
+  own. The per-record routes (`POST /{id}/links`, `DELETE /{id}/links/{type}/{id}`) exist because a
+  host page holds one link, not the agreement's whole set.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -1984,6 +2020,17 @@ cross-cutting capability**, not per-module code.
   definitions for that `entity_type`, builds a validator (types + required + options),
   coerces and validates `custom`, and rejects via the standard error envelope (i18n message
   keys) on failure. `required` is enforced here on every write.
+- **A definition may apply to *some* rows of its entity type** (`core/customfields/scoping.py`).
+  `config_json.scope = {<dimension>: [ids]}` — no migration, the `print_on_document` shape —
+  narrows a field to the rows whose value on that dimension is listed (OR across dimensions:
+  "attached to" semantics). Core names no module: the owning module registers a
+  `CustomFieldScopeSpec` per dimension (`register_scopes`), keyed on the **entity attribute**
+  the row is judged on, so one pure `applies()` serves the write, the document and the import.
+  A scope decides what a form draws, whether `required` binds and whether a flagged value prints;
+  a value on a row the field no longer applies to is **kept**. `row_scope=None` means everything
+  applies, which is every caller whose entity type registered nothing. First (and so far only)
+  user: `subscriptions` (`scopes.py`) — a field attached to a subscription type or a standard
+  subscription — `docs/INVOICING.md`.
 - **API:** entity responses include `custom`; a definitions endpoint returns the schema per
   `entity_type` so any client can render fields, labels, order, and validation.
 - **UI:** one generic `CustomFieldsForm` renders from definitions (every module inherits it);

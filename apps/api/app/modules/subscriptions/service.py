@@ -28,7 +28,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import bindparam, case, func, select, text
+from sqlalchemy import bindparam, case, false, func, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -42,6 +42,7 @@ from app.core.billing import add_months, first_boundary_ahead, period_boundaries
 from app.core.customfields import CustomFieldsService
 from app.core.customfields.format import document_note
 from app.core.customfields.format import printable as printable_fields
+from app.core.customfields.scoping import applicable
 from app.core.events import emit
 from app.core.models import OrgSettings
 from app.core.richtext import sanitize_markdown
@@ -77,17 +78,38 @@ from app.modules.subscriptions.schemas import (
 
 ENTITY_TYPE = "subscription"
 
+#: Where a link's target lives — bare table names, never another module's model (§6).
+_LINK_TABLES: dict[str, str] = {"project": "projects", "task": "tasks", "website": "websites"}
+
+#: ``(id, label)`` per kind, for the page's links in one statement each. A website is named by
+#: the host it answers on, exactly as its own page titles it.
+_LINK_LABEL_SQL: dict[str, str] = {
+    "project": "SELECT id, name FROM projects WHERE org_id = :oid AND id IN :ids",
+    "task": "SELECT id, title FROM tasks WHERE org_id = :oid AND id IN :ids",
+    "website": (
+        "SELECT w.id, CASE WHEN w.root THEN d.name ELSE 'www.' || d.name END"
+        " FROM websites w JOIN domains d ON d.id = w.domain_id"
+        " WHERE w.org_id = :oid AND w.id IN :ids"
+    ),
+}
+
 #: Definition fields the activity trail diffs (§16) — never notes or custom JSONB.
 _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
     "interval_count", "start_date", "end_date", "next_invoice_date", "billed_until",
-    "included_hours", "notice_period_days", "auto_invoice_mode",
+    "included_hours", "notice_period_days", "auto_invoice_mode", "billed_in_advance_override",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
 #: what a Dutch agency sells, never law: rename, deactivate or delete freely (#142).
 DEFAULT_SUBSCRIPTION_TYPES: list[dict] = [
-    {"key": "hosting", "label_i18n": {"nl": "Hosting", "en": "Hosting"}, "position": 10},
+    {
+        "key": "hosting",
+        "label_i18n": {"nl": "Hosting", "en": "Hosting"},
+        "position": 10,
+        # The one starter type everybody expects to attach to a website.
+        "covers_websites": True,
+    },
     {"key": "onderhoud", "label_i18n": {"nl": "Onderhoud", "en": "Maintenance"}, "position": 20},
     {"key": "marketing", "label_i18n": {"nl": "Marketing", "en": "Marketing"}, "position": 30},
     {"key": "support", "label_i18n": {"nl": "Support", "en": "Support"}, "position": 40},
@@ -177,6 +199,110 @@ def period_months(interval: str, interval_count: int) -> int:
     return _INTERVAL_MONTHS[interval] * max(1, interval_count)
 
 
+#: The event `invoicing` shifts its claims on: which way these agreements' periods now run.
+DIRECTION_CHANGED = "subscription.direction_changed"
+
+
+def _direction(
+    sub: Subscription,
+    types: dict[uuid.UUID, bool],
+    templates: dict[uuid.UUID, bool | None],
+) -> bool:
+    # The agreement's own say first, then the preset's, then the kind's: each is a diff over
+    # the layer above it, and ``NULL`` at any level means *inherit*, never *unfilled*.
+    if sub.billed_in_advance_override is not None:
+        return sub.billed_in_advance_override
+    if sub.subscription_template_id is not None:
+        override = templates.get(sub.subscription_template_id)
+        if override is not None:
+            return override
+    if sub.subscription_type_id is not None:
+        return types.get(sub.subscription_type_id, False)
+    return False
+
+
+async def billing_directions(
+    session: Any, org_id: uuid.UUID, subs: Sequence[Subscription]
+) -> dict[uuid.UUID, bool]:
+    """Whether each agreement bills its period **in advance** — the one resolution every reader
+    takes (the backlog, the picker, the cycle cron, the agreement's own read).
+
+    The direction is a property of what is sold, so it lives on the subscription **type**
+    (``billed_in_advance``, ``app.core.billing.period_span``); a standard subscription may say
+    otherwise for the agreements made from it (``NULL`` follows the type); one agreement may
+    say otherwise for itself (``billed_in_advance_override``, ``NULL`` follows the preset and
+    the type); an agreement with none of the three bills in arrears, which is the cycle cron's
+    original reading. The resolution is never copied onto the agreement, so a type corrected
+    in Instellingen reaches every agreement of that kind that has not decided for itself —
+    the failure this exists to end was a hosting agreement that could only ever offer the year
+    *behind* its renewal date, because "arrears" was written into the module rather than onto
+    the kind of thing sold.
+
+    Two batched reads, org-filtered like every bare-table read here, whatever the number of
+    agreements (docs/PERFORMANCE.md).
+    """
+    type_ids = {s.subscription_type_id for s in subs if s.subscription_type_id is not None}
+    template_ids = {
+        s.subscription_template_id for s in subs if s.subscription_template_id is not None
+    }
+    types: dict[uuid.UUID, bool] = {}
+    if type_ids:
+        types = dict(
+            (
+                await session.execute(
+                    select(SubscriptionType.id, SubscriptionType.billed_in_advance).where(
+                        SubscriptionType.org_id == org_id, SubscriptionType.id.in_(type_ids)
+                    )
+                )
+            ).all()
+        )
+    templates: dict[uuid.UUID, bool | None] = {}
+    if template_ids:
+        templates = dict(
+            (
+                await session.execute(
+                    select(
+                        SubscriptionTemplate.id, SubscriptionTemplate.billed_in_advance
+                    ).where(
+                        SubscriptionTemplate.org_id == org_id,
+                        SubscriptionTemplate.id.in_(template_ids),
+                    )
+                )
+            ).all()
+        )
+    return {sub.id: _direction(sub, types, templates) for sub in subs}
+
+
+async def _emit_direction_shift(
+    ctx: RequestContext,
+    subs: Sequence[Subscription],
+    before: dict[uuid.UUID, bool],
+    after: dict[uuid.UUID, bool],
+) -> int:
+    """Tell `invoicing` which agreements now read their periods the other way round.
+
+    A claim says "boundary B is billed" as ``period_end = B``, and under the other reading that
+    names the boundary a period *earlier*: left alone, every period ever invoiced would be
+    offered again — the duplicate the claim tables exist to prevent, re-entered through a
+    settings screen. The renewal fix shifted the rows by migration because *every* renewal
+    changed reading at once; here the change is one tenant's decision about one kind, so it is
+    shifted at the moment it is made, in this transaction, by the module that owns the claims.
+    Returns how many agreements were reached, so the screen can say so.
+    """
+    items = [
+        {
+            "subscription_id": str(sub.id),
+            "months": period_months(sub.interval, sub.interval_count),
+            "advance": after[sub.id],
+        }
+        for sub in subs
+        if before.get(sub.id, False) != after.get(sub.id, False)
+    ]
+    if items:
+        await emit(DIRECTION_CHANGED, ctx, {"items": items})
+    return len(items)
+
+
 #: Between a line's description and the agreement's document note: "Hosting · Website: klant.nl".
 NOTE_SEPARATOR = " \u00b7 "
 
@@ -195,7 +321,9 @@ async def document_notes(ctx: Any, subs: Sequence[Subscription]) -> dict[uuid.UU
     One definitions read for the whole set, never one per agreement (docs/PERFORMANCE.md),
     and the wording follows the **org's** default locale — the same locale the cron's draft
     is written in. ``ctx`` is a request context or the cron's ``SystemContext``; both carry
-    ``repo``/``session``/``org``.
+    ``repo``/``session``/``org``. A field scoped to a type or preset (``scopes.py``) rides
+    only the lines of the agreements it applies to — a stale value on an agreement since
+    moved to another type is kept on the row and printed nowhere.
     """
     if not subs:
         return {}
@@ -207,7 +335,18 @@ async def document_notes(ctx: Any, subs: Sequence[Subscription]) -> dict[uuid.UU
     )
     locale = (org_settings.default_locale if org_settings else None) or "nl"
     return {
-        sub.id: document_note(definitions, sub.custom or {}, locale) for sub in subs
+        sub.id: document_note(
+            applicable(definitions, _row_scope(sub)), sub.custom or {}, locale
+        )
+        for sub in subs
+    }
+
+
+def _row_scope(sub: Subscription) -> dict[str, Any]:
+    """The agreement's values on the two scope dimensions ``scopes.py`` registers."""
+    return {
+        "subscription_type_id": sub.subscription_type_id,
+        "subscription_template_id": sub.subscription_template_id,
     }
 
 
@@ -342,6 +481,7 @@ class SubscriptionService:
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
         usage: bool = False,
+        linkable: bool = False,
     ) -> tuple[Sequence[Subscription], int]:
         conditions = []
         if company_id is not None:
@@ -355,16 +495,22 @@ class SubscriptionService:
             # already its own filter, and the type is a closed vocabulary with its own control.
             conditions.append(Subscription.name.ilike(f"%{q.strip()}%"))
         if entity_type and entity_id:
-            # "Which agreements cover this project/task?" — the project panel's question.
-            conditions.append(
-                Subscription.id.in_(
-                    select(SubscriptionLink.subscription_id).where(
-                        SubscriptionLink.org_id == self._org_id,
-                        SubscriptionLink.entity_type == entity_type,
-                        SubscriptionLink.entity_id == entity_id,
-                    )
-                )
+            linked = select(SubscriptionLink.subscription_id).where(
+                SubscriptionLink.org_id == self._org_id,
+                SubscriptionLink.entity_type == entity_type,
+                SubscriptionLink.entity_id == entity_id,
             )
+            if linkable:
+                # The other question — "which agreements *could* cover this record?" — asked
+                # by the attach picker on a website's page: the record's own client, a kind that
+                # attaches to it, not already on it, and not over. Answered here rather than
+                # by the picker filtering a client's whole book, so an MCP caller gets the same
+                # shortlist a person does.
+                conditions.extend(await self._linkable_conditions(entity_type, entity_id))
+                conditions.append(Subscription.id.not_in(linked))
+            else:
+                # "Which agreements cover this project/task/website?" — the panel's question.
+                conditions.append(Subscription.id.in_(linked))
         stmt = self.repo.scoped_select().where(*conditions)
         sortable: dict[str, Any] = dict(SORTABLE)
         if sort and sort.removeprefix("-") == "amount":
@@ -424,6 +570,7 @@ class SubscriptionService:
         ):
             lines_by_sub.setdefault(line.subscription_id, []).append(line)
 
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         out: list[BillablePeriod] = []
         for sub in subs:
             boundary = sub.next_invoice_date
@@ -441,14 +588,19 @@ class SubscriptionService:
             ) or Decimal(0)
             months = period_months(sub.interval, sub.interval_count)
             rows = lines_by_sub.get(sub.id) or []
+            span = (
+                period_span(boundary, months, advance=directions[sub.id])
+                if boundary
+                else (None, None)
+            )
             out.append(
                 BillablePeriod(
                     subscription_id=sub.id,
                     name=sub.name,
                     currency=sub.currency,
                     amount=amount,
-                    period_start=add_months(boundary, -months) if boundary else None,
-                    period_end=boundary,
+                    period_start=span[0],
+                    period_end=span[1],
                     lines=tuple(
                         (row.description, row.quantity, row.unit_amount) for row in rows
                     )
@@ -536,9 +688,11 @@ class SubscriptionService:
 
         today = await self._org_today()
         notes = await document_notes(self.ctx, subs)
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         out: list[OpenAgreement] = []
         for sub in subs:
             history = prices_by_sub.get(sub.id) or []
+            advance = directions[sub.id]
             note = notes.get(sub.id, "")
 
             def price_at(day: date, rows: list[SubscriptionPrice] = history) -> Decimal:
@@ -565,6 +719,8 @@ class SubscriptionService:
                     # A period the operator says was invoiced already is not outstanding —
                     # the same statement the cron reads before it drafts.
                     billed_until=sub.billed_until,
+                    # Which period a boundary stands for is the kind's decision, read once.
+                    advance=advance,
                 )
                 if sub.next_invoice_date is not None
                 else ([], False)
@@ -579,7 +735,7 @@ class SubscriptionService:
                     (with_note(row.description, note), row.quantity, row.unit_amount)
                     for row in rows
                 ) or ((with_note(sub.name, note), Decimal(1), amount),)
-                period_start, period_end = period_span(boundary, months, advance=False)
+                period_start, period_end = period_span(boundary, months, advance=advance)
                 periods.append(
                     OpenPeriod(
                         period_start=period_start,
@@ -689,7 +845,14 @@ class SubscriptionService:
             await self._ensure_type(data.subscription_type_id)
         if data.subscription_template_id is not None:
             await self._ensure_template(data.subscription_template_id)
-        custom = await self.custom_fields.validate(ENTITY_TYPE, data.custom or {})
+        custom = await self.custom_fields.validate(
+            ENTITY_TYPE,
+            data.custom or {},
+            row_scope={
+                "subscription_type_id": data.subscription_type_id,
+                "subscription_template_id": data.subscription_template_id,
+            },
+        )
         sub = await self.repo.create(
             company_id=data.company_id,
             subscription_type_id=data.subscription_type_id,
@@ -706,6 +869,7 @@ class SubscriptionService:
             auto_invoice_mode=(
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
+            billed_in_advance_override=data.billed_in_advance_override,
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
@@ -718,7 +882,9 @@ class SubscriptionService:
             subscription_id=sub.id, amount=data.amount, valid_from=data.start_date
         )
         await self._replace_lines(sub.id, data.lines)
-        await self._replace_links(sub.id, data.links)
+        await self._replace_links(
+            sub.id, data.links, subscription_type_id=sub.subscription_type_id
+        )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, sub.id)
         await self._mark_activated(sub)
         await self._attach([sub])
@@ -748,6 +914,9 @@ class SubscriptionService:
         if "billed_until" in sent:
             # Same split: explicit null withdraws the "already invoiced up to" statement.
             values["billed_until"] = data.billed_until
+        if "billed_in_advance_override" in sent:
+            # Same split again: explicit null goes back to following the preset and the type.
+            values["billed_in_advance_override"] = data.billed_in_advance_override
         if "name" in values:
             values["name"] = values["name"].strip()
         if "notes" in values:
@@ -770,11 +939,40 @@ class SubscriptionService:
         if "rollover" in sent and data.rollover is not None:
             values["rollover"] = data.rollover.model_dump()
         if "custom" in sent:
+            # Judged against the type/preset the row is *about to* have — a PATCH may move
+            # the agreement onto a type whose scoped field is required in the same request.
             values["custom"] = await self.custom_fields.validate(
-                ENTITY_TYPE, data.custom or {}
+                ENTITY_TYPE,
+                data.custom or {},
+                row_scope={
+                    "subscription_type_id": values.get(
+                        "subscription_type_id", sub.subscription_type_id
+                    ),
+                    "subscription_template_id": values.get(
+                        "subscription_template_id", sub.subscription_template_id
+                    ),
+                },
             )
 
+        # Pointing the agreement at another type or preset — or stating its own direction —
+        # may flip which way its periods run; what it already invoiced has to follow (see
+        # ``_emit_direction_shift``).
+        rekeyed = (
+            "subscription_type_id" in sent
+            or "subscription_template_id" in sent
+            or "billed_in_advance_override" in sent
+        )
+        direction_before = (
+            await billing_directions(self.ctx.session, self._org_id, [sub]) if rekeyed else {}
+        )
         sub = await self.repo.update(sub, **values)
+        if rekeyed:
+            await _emit_direction_shift(
+                self.ctx,
+                [sub],
+                direction_before,
+                await billing_directions(self.ctx.session, self._org_id, [sub]),
+            )
 
         # A price change appends to the history — never mutates it (#30's decision).
         if "amount" in sent and data.amount is not None:
@@ -798,7 +996,9 @@ class SubscriptionService:
         if data.lines is not None:
             await self._replace_lines(sub.id, data.lines)
         if data.links is not None:
-            await self._replace_links(sub.id, data.links)
+            await self._replace_links(
+                sub.id, data.links, subscription_type_id=sub.subscription_type_id
+            )
 
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, sub.id, before, snapshot(sub, _AUDITED_FIELDS)
@@ -1073,7 +1273,11 @@ class SubscriptionService:
             )
 
     async def _replace_links(
-        self, subscription_id: uuid.UUID, links: list[SubscriptionLinkWrite]
+        self,
+        subscription_id: uuid.UUID,
+        links: list[SubscriptionLinkWrite],
+        *,
+        subscription_type_id: uuid.UUID | None,
     ) -> None:
         for link in links:
             await self._ensure_link_target(link)
@@ -1087,6 +1291,14 @@ class SubscriptionService:
             )
         )
         before = {(row.entity_type, row.entity_id) for row in existing}
+        # Only a website link being *made* asks whether the kind covers websites: the form
+        # re-posts every link on every save, and a link written while the type said yes is a
+        # stored decision that outlives a later flip of the flag (#335's rule) — refusing it
+        # here would make such an agreement unsaveable until somebody found the link to drop.
+        await self._ensure_websites_coverable(
+            subscription_type_id,
+            [link for link in links if (link.entity_type, link.entity_id) not in before],
+        )
         for row in existing:
             await self.links.delete(row)
         for link in links:
@@ -1203,8 +1415,8 @@ class SubscriptionService:
         )
 
     async def _ensure_link_target(self, link: SubscriptionLinkWrite) -> None:
-        """A linked project/task must be this tenant's — a bare table reference (§6)."""
-        table = "projects" if link.entity_type == "project" else "tasks"
+        """A linked project/task/website must be this tenant's — a bare table reference (§6)."""
+        table = _LINK_TABLES[link.entity_type]
         ok = await self.ctx.session.scalar(
             text(f"SELECT 1 FROM {table} WHERE id = :eid AND org_id = :oid"),  # noqa: S608
             {"eid": link.entity_id, "oid": self._org_id},
@@ -1216,6 +1428,160 @@ class SubscriptionService:
                 status_code=400,
                 fields={"links": "errors.not_found"},
             )
+
+    async def _ensure_websites_coverable(
+        self, subscription_type_id: uuid.UUID | None, links: list[SubscriptionLinkWrite]
+    ) -> None:
+        """A website link needs a kind that ``covers_websites`` (the type's decision, never a
+        key the code recognises). An agreement with no type at all covers nothing: "hosting"
+        is what the type says, and an untyped agreement has not said it."""
+        if not any(link.entity_type == "website" for link in links):
+            return
+        covers = False
+        if subscription_type_id is not None:
+            covers = bool(
+                await self.ctx.session.scalar(
+                    self.types.scoped_select()
+                    .where(SubscriptionType.id == subscription_type_id)
+                    .with_only_columns(SubscriptionType.covers_websites)
+                )
+            )
+        if not covers:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"links": "errors.subscriptions_type_no_websites"},
+            )
+
+    async def _linkable_conditions(self, entity_type: str, entity_id: uuid.UUID) -> list[Any]:
+        """Where the agreements that *could* cover ``entity`` are: the record's own client (a
+        website's is its domain's, a project's its own), alive, and — for a website — of a kind
+        that covers websites. A record this tenant does not hold answers an empty list, never
+        another client's agreements."""
+        if entity_type == "website":
+            company_id = await self.ctx.session.scalar(
+                text(
+                    "SELECT d.company_id FROM websites w JOIN domains d ON d.id = w.domain_id"
+                    " WHERE w.id = :eid AND w.org_id = :oid"
+                ),
+                {"eid": entity_id, "oid": self._org_id},
+            )
+        elif entity_type == "project":
+            company_id = await self.ctx.session.scalar(
+                text("SELECT company_id FROM projects WHERE id = :eid AND org_id = :oid"),
+                {"eid": entity_id, "oid": self._org_id},
+            )
+        else:
+            company_id = None
+        if company_id is None:
+            return [false()]
+        conditions: list[Any] = [
+            Subscription.company_id == company_id,
+            Subscription.status != SubscriptionStatus.CANCELLED.value,
+        ]
+        if entity_type == "website":
+            conditions.append(
+                Subscription.subscription_type_id.in_(
+                    self.types.scoped_select()
+                    .where(SubscriptionType.covers_websites.is_(True))
+                    .with_only_columns(SubscriptionType.id)
+                )
+            )
+        return conditions
+
+    async def link(self, subscription_id: uuid.UUID, link: SubscriptionLinkWrite) -> Subscription:
+        """Attach one record to the agreement — the website panel's "Koppelen".
+
+        Idempotent: a link already there is left as it is and nothing is announced twice. The
+        single-link twin of ``_replace_links``, so it is gated exactly as the form's save is
+        (the tenant check, the kind's ``covers_websites``), and it announces a newly covered
+        project the same way (#284).
+        """
+        self.ctx.require("subscriptions.subscription.write")
+        sub = await self.repo.get_or_404(subscription_id)
+        await self._ensure_link_target(link)
+        existing = await self.ctx.session.scalar(
+            self.links.scoped_select().where(
+                SubscriptionLink.subscription_id == sub.id,
+                SubscriptionLink.entity_type == link.entity_type,
+                SubscriptionLink.entity_id == link.entity_id,
+            )
+        )
+        if existing is None:
+            await self._ensure_websites_coverable(sub.subscription_type_id, [link])
+            await self.links.create(subscription_id=sub.id, **link.model_dump())
+            await ActivityService(self.ctx).record(
+                ENTITY_TYPE,
+                sub.id,
+                "linked",
+                {
+                    "entity_type": link.entity_type,
+                    "entity_id": str(link.entity_id),
+                    "label": await self._link_label(link.entity_type, link.entity_id),
+                },
+            )
+            if link.entity_type == "project":
+                await emit(
+                    "subscription.project_linked",
+                    self.ctx,
+                    {"subscription_id": sub.id, "project_ids": [link.entity_id]},
+                )
+        await self._attach([sub])
+        return sub
+
+    async def unlink(
+        self, subscription_id: uuid.UUID, entity_type: str, entity_id: uuid.UUID
+    ) -> None:
+        """Detach one record. A link that is not there is a 404: the caller named something
+        this agreement does not cover."""
+        self.ctx.require("subscriptions.subscription.write")
+        sub = await self.repo.get_or_404(subscription_id)
+        row = await self.ctx.session.scalar(
+            self.links.scoped_select().where(
+                SubscriptionLink.subscription_id == sub.id,
+                SubscriptionLink.entity_type == entity_type,
+                SubscriptionLink.entity_id == entity_id,
+            )
+        )
+        if row is None:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        label = await self._link_label(entity_type, entity_id)
+        await self.links.delete(row)
+        await ActivityService(self.ctx).record(
+            ENTITY_TYPE,
+            sub.id,
+            "unlinked",
+            {"entity_type": entity_type, "entity_id": str(entity_id), "label": label},
+        )
+
+    async def _link_label(self, entity_type: str, entity_id: uuid.UUID) -> str | None:
+        labels = await self._link_labels({(entity_type, entity_id)})
+        return labels.get((entity_type, entity_id))
+
+    async def _link_labels(
+        self, keys: set[tuple[str, uuid.UUID]]
+    ) -> dict[tuple[str, uuid.UUID], str]:
+        """What each linked record is called, one statement per kind over the whole page —
+        bare table reads, because a link names rows in tables this module may not import (§6).
+        A website has no name of its own: it is the host it answers on (``websites`` rule)."""
+        by_type: dict[str, list[uuid.UUID]] = {}
+        for entity_type, entity_id in keys:
+            by_type.setdefault(entity_type, []).append(entity_id)
+        labels: dict[tuple[str, uuid.UUID], str] = {}
+        for entity_type, ids in by_type.items():
+            sql = _LINK_LABEL_SQL.get(entity_type)
+            if sql is None:
+                continue
+            rows = (
+                await self.ctx.session.execute(
+                    text(sql).bindparams(bindparam("ids", expanding=True)),
+                    {"oid": self._org_id, "ids": ids},
+                )
+            ).all()
+            for row in rows:
+                labels[(entity_type, row[0])] = row[1]
+        return labels
 
     async def _current_amount(self, subscription_id: uuid.UUID) -> Decimal | None:
         today = await self._org_today()
@@ -1331,13 +1697,23 @@ class SubscriptionService:
             )
         ).scalars()
         links_by_sub: dict[uuid.UUID, list[SubscriptionLink]] = {}
+        link_keys: set[tuple[str, uuid.UUID]] = set()
         for link in link_rows:
             links_by_sub.setdefault(link.subscription_id, []).append(link)
+            link_keys.add((link.entity_type, link.entity_id))
+        link_labels = await self._link_labels(link_keys)
+        for link_list in links_by_sub.values():
+            for link in link_list:
+                link.label = link_labels.get(  # type: ignore[attr-defined]
+                    (link.entity_type, link.entity_id)
+                )
 
+        directions = await billing_directions(self.ctx.session, self._org_id, subs)
         for sub in subs:
             amount = current.get(sub.id)
             months = period_months(sub.interval, sub.interval_count)
             sub.company_name = company_names.get(sub.company_id, "")  # type: ignore[attr-defined]
+            sub.billed_in_advance = directions[sub.id]  # type: ignore[attr-defined]
             sub.amount = amount  # type: ignore[attr-defined]
             sub.monthly_equivalent = (  # type: ignore[attr-defined]
                 round(float(amount) / months, 2) if amount is not None else None
@@ -1398,14 +1774,46 @@ class SubscriptionTypeService:
 
     async def update(
         self, subscription_type_id: uuid.UUID, data: SubscriptionTypeUpdate
-    ) -> SubscriptionType:
+    ) -> tuple[SubscriptionType, int]:
+        """Save the type, and carry a **direction** change over to the agreements of this kind.
+
+        Returns the type and how many agreements now read their periods the other way. Only the
+        agreements that actually *follow* the type move — one whose standard subscription says
+        otherwise keeps that — and each one's invoiced periods are shifted with it by
+        `invoicing`, in this transaction (``_emit_direction_shift``). Said in the answer rather
+        than done quietly: it is a bulk change to what the backlog offers.
+        """
         self.ctx.require("subscriptions.type.manage")
         sub_type = await self.repo.get_or_404(subscription_type_id)
         if data.task_template_ids is not None:
             await self._ensure_task_templates(data.task_template_ids)
-        return await self.repo.update(
+        flips = (
+            data.billed_in_advance is not None
+            and data.billed_in_advance != sub_type.billed_in_advance
+        )
+        subs: list[Subscription] = []
+        before: dict[uuid.UUID, bool] = {}
+        if flips:
+            subs = list(
+                await self.ctx.session.scalars(
+                    self.ctx.repo(Subscription)
+                    .scoped_select()
+                    .where(Subscription.subscription_type_id == sub_type.id)
+                )
+            )
+            before = await billing_directions(self.ctx.session, self._org_id, subs)
+        sub_type = await self.repo.update(
             sub_type, **data.model_dump(mode="json", exclude_unset=True)
         )
+        shifted = 0
+        if flips and subs:
+            shifted = await _emit_direction_shift(
+                self.ctx,
+                subs,
+                before,
+                await billing_directions(self.ctx.session, self._org_id, subs),
+            )
+        return sub_type, shifted
 
     async def delete(self, subscription_type_id: uuid.UUID) -> None:
         self.ctx.require("subscriptions.type.manage")
@@ -1453,6 +1861,10 @@ class SubscriptionTemplateService:
         self.types = ctx.repo(SubscriptionType)
         self.subscriptions = ctx.repo(Subscription)
 
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
     async def list(self) -> Sequence[SubscriptionTemplate]:
         stmt = self.repo.scoped_select().order_by(
             SubscriptionTemplate.position, func.lower(SubscriptionTemplate.name)
@@ -1467,10 +1879,16 @@ class SubscriptionTemplateService:
 
     async def update(
         self, template_id: uuid.UUID, data: SubscriptionTemplateUpdate
-    ) -> tuple[SubscriptionTemplate, int]:
-        """Save the preset, and carry a **rename** over to the agreements it created.
+    ) -> tuple[SubscriptionTemplate, int, int]:
+        """Save the preset, and carry a **rename** — and a **direction** change — over to the
+        agreements it created.
 
-        Returns the preset and how many agreements followed. The rename touches only rows that
+        Returns the preset, how many agreements were renamed and how many now read their
+        periods the other way (``billed_in_advance``, read live through the preset rather than
+        copied, so a change here *is* a change to them; their invoiced periods are shifted by
+        `invoicing` in this transaction, ``_emit_direction_shift``).
+
+        The rename touches only rows that
         both came from this preset and *still carry its old name*: an agreement someone
         deliberately renamed ("Hosting Basis — extra IP") is that tenant's own wording, and a
         catalog edit must not overwrite it. Renaming an agreement is therefore also how it
@@ -1487,13 +1905,35 @@ class SubscriptionTemplateService:
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
         old_name = template.name
-        template = await self.repo.update(
-            template, **self._values(data, data.model_dump(exclude_unset=True))
+        sent = data.model_dump(exclude_unset=True)
+        flips = (
+            "billed_in_advance" in sent
+            and sent["billed_in_advance"] != template.billed_in_advance
         )
+        subs: list[Subscription] = []
+        before: dict[uuid.UUID, bool] = {}
+        if flips:
+            subs = list(
+                await self.ctx.session.scalars(
+                    self.subscriptions.scoped_select().where(
+                        Subscription.subscription_template_id == template.id
+                    )
+                )
+            )
+            before = await billing_directions(self.ctx.session, self._org_id, subs)
+        template = await self.repo.update(template, **self._values(data, sent))
         renamed = 0
         if template.name != old_name:
             renamed = await self._rename_agreements(template, old_name)
-        return template, renamed
+        shifted = 0
+        if flips and subs:
+            shifted = await _emit_direction_shift(
+                self.ctx,
+                subs,
+                before,
+                await billing_directions(self.ctx.session, self._org_id, subs),
+            )
+        return template, renamed, shifted
 
     async def _rename_agreements(self, template: SubscriptionTemplate, old_name: str) -> int:
         subs = list(

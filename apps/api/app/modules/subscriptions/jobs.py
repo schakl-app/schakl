@@ -27,6 +27,7 @@ from app.modules.subscriptions.models import (
 )
 from app.modules.subscriptions.service import (
     add_months,
+    billing_directions,
     document_notes,
     period_months,
     with_note,
@@ -55,9 +56,12 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
     # The agreement's flagged custom fields, as the clause its lines carry ("Website:
     # klant.nl") — the same helper the editor's picker uses, so both paths draft one line.
     notes = await document_notes(ctx, due)
+    # Which period a boundary pays for — the kind's decision, the same read the backlog makes.
+    directions = await billing_directions(session, org.id, due)
     fired = 0
     for sub in due:
         months = period_months(sub.interval, sub.interval_count)
+        advance = directions[sub.id]
         note = notes.get(sub.id, "")
         lines = (
             (
@@ -82,7 +86,7 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
         # whole answer the next morning rather than a month of surprises.
         while sub.next_invoice_date is not None and sub.next_invoice_date <= today:
             invoice_date = sub.next_invoice_date
-            period_start, period_end = period_span(invoice_date, months, advance=False)
+            period_start, period_end = period_span(invoice_date, months, advance=advance)
             # A period the operator says was invoiced already (``billed_until``) rolls the
             # cycle forward and raises nothing — the backlog reads the same statement, so the
             # two halves of "what is still to invoice" agree (docs/INVOICING.md).

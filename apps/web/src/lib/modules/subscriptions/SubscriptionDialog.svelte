@@ -21,17 +21,20 @@
   import { toastSuccess } from "$lib/core/ui/toast.svelte";
 
   import SubscriptionForm from "./SubscriptionForm.svelte";
-  import type { SubscriptionFormLookups } from "./types";
+  import type { SubscriptionFormLookups, SubscriptionLinkDraft } from "./types";
 
   let {
     open = $bindable(false),
     companyId,
     locale,
+    defaultLinks = [],
   }: {
     open?: boolean;
     /** Preselected in the form's client picker — a default that is visible and changeable. */
     companyId: string;
     locale: string;
+    /** Links the form opens with — the website whose panel raised this dialog (a chip). */
+    defaultLinks?: SubscriptionLinkDraft[];
   } = $props();
 
   let lookups = $state<SubscriptionFormLookups | null>(null);
@@ -114,6 +117,7 @@
         {lookups}
         {locale}
         defaultCompanyId={companyId}
+        {defaultLinks}
         action="?/createSubscription"
         projectAction="?/createSubscriptionProject"
         typeAction="?/createSubscriptionType"

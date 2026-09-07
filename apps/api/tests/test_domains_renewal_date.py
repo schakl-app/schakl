@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -339,6 +340,59 @@ async def test_a_selection_can_be_put_back_on_the_registers_date(
 
         row = (await c.get(f"/api/v1/domains/{domain['id']}", headers=headers)).json()
         assert row["next_invoice_date"] == "2027-03-01"
+
+
+async def test_a_selection_can_be_re_anchored_and_repriced(client_for) -> None:
+    """A portfolio onboarded in one afternoon carries that afternoon as every start date, and
+    a client's names get one negotiated price: both are one value over a selection. Set beside
+    a *cleared* renewal date, the new cycle follows the new anchor in the same call."""
+    t = await make_tenant("ren-bulk-anchor")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        one = await _domain(c, headers, "anker-een.nl", company, start_date="2026-01-10")
+        two = await _domain(c, headers, "anker-twee.nl", company, start_date="2026-01-10")
+
+        result = await c.post(
+            "/api/v1/bulk/domain/update",
+            json={
+                "ids": [one["id"], two["id"]],
+                "values": {
+                    "start_date": "2021-04-20",
+                    "price_override": "12.50",
+                    "next_invoice_date": None,
+                },
+            },
+            headers=headers,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json() == {"succeeded": 2, "failed": []}
+
+        expected = _anniversary(date(2021, 4, 20), org_today())
+        for domain in (one, two):
+            row = (await c.get(f"/api/v1/domains/{domain['id']}", headers=headers)).json()
+            assert row["start_date"] == "2021-04-20"
+            assert Decimal(row["price_override"]) == Decimal("12.50")
+            assert row["next_invoice_date"] == expected.isoformat()
+
+        # The anchor has no empty state — a blank start date is refused for the whole call.
+        refused = await c.post(
+            "/api/v1/bulk/domain/update",
+            json={"ids": [one["id"]], "values": {"start_date": None}},
+            headers=headers,
+        )
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["error"]["fields"] == {"start_date": "errors.required"}
+
+        # Clearing the price hands the domain back to the TLD list price.
+        cleared = await c.post(
+            "/api/v1/bulk/domain/update",
+            json={"ids": [one["id"]], "values": {"price_override": None}},
+            headers=headers,
+        )
+        assert cleared.status_code == 200, cleared.text
+        row = (await c.get(f"/api/v1/domains/{one['id']}", headers=headers)).json()
+        assert row["price_override"] is None
 
 
 async def test_an_export_round_trips_the_renewal_date_and_carries_the_registrars(

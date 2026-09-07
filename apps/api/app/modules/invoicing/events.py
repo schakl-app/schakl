@@ -32,7 +32,7 @@ from typing import Any
 from sqlalchemy import select, text
 
 from app.core.activity import ActivityService
-from app.core.billing import resolve_auto_invoice_mode
+from app.core.billing import add_months, resolve_auto_invoice_mode
 from app.core.events import EmitContext
 from app.core.models import OrgSettings
 from app.core.timezone import org_zoneinfo
@@ -476,3 +476,50 @@ async def on_domain_due(ctx: EmitContext, payload: dict[str, Any]) -> None:
         mode=mode,
         line_kind=LineKind.DOMAIN,
     )
+
+
+async def on_subscription_direction_changed(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    """An agreement's periods now run the other way round; move what it already billed with them.
+
+    A claim (``invoice_subscription_periods``) and a line's provenance both say "boundary B is
+    billed" as ``period_end = B``. Read in arrears that is ``[B − m, B]``; read in advance it is
+    ``[B, B + m]`` — so after a type or preset flips ``billed_in_advance``, the same row names the
+    boundary one period *earlier* than it did, and the boundary the document actually paid for
+    would be offered again. The renewal fix (``c8e4f2a7b9d1``) shifted every renewal claim by
+    migration because every renewal changed reading at once; this is one tenant's decision about
+    one kind of agreement, so the shift happens here, at the moment it is made, in the emitter's
+    transaction — and it walks back the same way when the decision is reversed.
+
+    ``invoices.period_*`` (the header a cron-raised document prints) is left as issued, exactly
+    as the migration left it: the document is what the client received and the header is not a
+    claim key. One statement per row, ordered so a row never lands on a neighbour's old value —
+    the unique key on ``(org, subscription, period_end)`` is checked per statement.
+    """
+    for item in payload.get("items") or []:
+        try:
+            subscription_id = uuid.UUID(str(item["subscription_id"]))
+            months = int(item["months"])
+            advance = bool(item["advance"])
+        except (KeyError, TypeError, ValueError):
+            logger.warning("direction change with unparsable item in org %s", ctx.org.slug)
+            continue
+        delta = months if advance else -months
+        for model in (InvoiceSubscriptionPeriod, InvoiceLine):
+            rows = list(
+                await ctx.session.scalars(
+                    select(model)
+                    .where(
+                        model.org_id == ctx.org.id,
+                        model.subscription_id == subscription_id,
+                        model.period_end.is_not(None),
+                    )
+                    # Moving forward, the latest row first; backward, the earliest — so the
+                    # value a row moves onto has already been vacated.
+                    .order_by(model.period_end.desc() if delta > 0 else model.period_end.asc())
+                )
+            )
+            for row in rows:
+                new_end = add_months(row.period_end, delta)
+                row.period_start = add_months(new_end, -months)
+                row.period_end = new_end
+                await ctx.session.flush()

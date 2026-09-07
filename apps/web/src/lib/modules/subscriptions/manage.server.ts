@@ -5,6 +5,7 @@
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
 import { locales } from "$lib/paraglide/runtime";
@@ -34,24 +35,39 @@ export const manageActions = {
     const label_i18n = parseLabelI18n(form);
     const position = Number(form.get("position") ?? 0) || 0;
     const task_template_ids = parseIds(form.get("task_template_ids"));
+    // Which period an invoice covers; the select always posts an answer, so this is a boolean.
+    const billed_in_advance = form.get("billed_in_advance") === "true";
+    // A checkbox: presence is the question (docs/UX.md, the reporting checkbox lesson).
+    const covers_websites = checked(form, "covers_websites");
     if (Object.keys(label_i18n).length === 0) return fail(400, { error: "errors.required" });
 
     if (type_id) {
-      const { error } = await apiFor(event).PATCH("/api/v1/subscriptions/types/{type_id}", {
+      const { data, error } = await apiFor(event).PATCH("/api/v1/subscriptions/types/{type_id}", {
         params: { path: { type_id } },
-        body: { label_i18n, position, task_template_ids },
+        body: { label_i18n, position, task_template_ids, billed_in_advance, covers_websites },
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
+      // A flipped direction re-reads the periods of every agreement of this kind, the ones
+      // already invoiced included — say how many rather than let a bulk change pass quietly.
+      return { saved: true, shifted: data?.shifted_subscriptions ?? 0 };
     } else {
       // The tenant only types the label; the immutable key is derived from it (#234).
       const key = slugify(label_i18n.nl || label_i18n.en || "");
       if (!key) return fail(400, { error: "errors.label_no_key" });
       const { error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
-        body: { key, label_i18n, position, active: true, task_template_ids },
+        body: {
+          key,
+          label_i18n,
+          position,
+          active: true,
+          task_template_ids,
+          billed_in_advance,
+          covers_websites,
+        },
       });
       if (error) return fail(400, { error: createErrorKey(error, response) });
     }
-    return { saved: true };
+    return { saved: true, shifted: 0 };
   },
 
   toggleType: async (event: RequestEvent) => {
@@ -85,6 +101,8 @@ export const manageActions = {
     const amount = String(form.get("amount") ?? "").trim();
     const included = String(form.get("included_hours") ?? "").trim();
     const notice = String(form.get("notice_period_days") ?? "").trim();
+    // Tri-state: "" is "follow the type" and travels as an explicit null (§18).
+    const direction = String(form.get("billed_in_advance") ?? "");
     const body = {
       name,
       subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
@@ -93,6 +111,7 @@ export const manageActions = {
       amount: amount || null,
       included_hours: included || null,
       notice_period_days: notice ? Number(notice) : null,
+      billed_in_advance: direction === "" ? null : direction === "true",
       notes: String(form.get("notes") ?? "").trim() || null,
       position: Number(form.get("position") ?? 0) || 0,
     };
@@ -105,7 +124,8 @@ export const manageActions = {
       // A rename follows through to the agreements made from this preset — say how many
       // rather than letting a bulk change happen quietly.
       const renamed = (data as { renamed_subscriptions?: number })?.renamed_subscriptions ?? 0;
-      return { saved: true, templateSaved: true, renamed };
+      const shifted = (data as { shifted_subscriptions?: number })?.shifted_subscriptions ?? 0;
+      return { saved: true, templateSaved: true, renamed, shifted };
     } else {
       const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/templates", {
         body: body as never,
@@ -124,7 +144,7 @@ export const manageActions = {
       }
     }
     // `templateSaved` keeps the subscriptions page's "opgeslagen als sjabloon" notice fed.
-    return { saved: true, templateSaved: true, renamed: 0 };
+    return { saved: true, templateSaved: true, renamed: 0, shifted: 0 };
   },
 
   deleteTemplate: async (event: RequestEvent) => {

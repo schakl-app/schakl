@@ -291,7 +291,13 @@
   {#if PanelComponent}
     <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
       <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
-      <PanelComponent data={panel.data} context={data.context} lookups={emptyLookups} />
+      <!-- The context carries what the record is and whose it is, so a panel that opens a
+           dialog from here (Abonnementen's ＋) pre-fills the client and names the site. -->
+      <PanelComponent
+        data={panel.data}
+        context={{ ...data.context, companyId: website.company_id ?? null, label: title }}
+        lookups={emptyLookups}
+      />
     </section>
   {/if}
 {/each}

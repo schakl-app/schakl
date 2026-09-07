@@ -156,7 +156,9 @@ class DomainTldPrice(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """Append-only per-TLD price history (#250) — ``SubscriptionPrice``'s shape applied to a
     TLD instead of an agreement. The current price for a TLD is the newest
     ``valid_from <= today``; a change appends (same-day rows are corrected in place), never
-    mutates, so an invoice drafted last year keeps the number it was drafted at."""
+    mutates, so an invoice drafted last year keeps the number it was drafted at. A renewal
+    that fell due before the list's first row is priced at that first row (``pricing.py``):
+    the first price an agency enters is what the TLD costs, not what it costs from today."""
 
     __tablename__ = "domain_tld_prices"
     __table_args__ = (

@@ -13,14 +13,30 @@ from app.core.customfields.registry import (
     customizable_entity_types,
     register_customizable,
 )
+from app.core.customfields.scoping import (
+    CustomFieldScopeSpec,
+    ScopeOption,
+    applicable,
+    applies,
+    register_scopes,
+    row_scope_from,
+    scopes_for,
+)
 from app.core.customfields.service import CustomFieldsService
 from app.core.customfields.types import CustomFieldType
 
 __all__ = [
     "CustomFieldDefinition",
+    "CustomFieldScopeSpec",
     "CustomFieldType",
     "CustomFieldsService",
     "CustomizableMixin",
+    "ScopeOption",
+    "applicable",
+    "applies",
     "customizable_entity_types",
     "register_customizable",
+    "register_scopes",
+    "row_scope_from",
+    "scopes_for",
 ]

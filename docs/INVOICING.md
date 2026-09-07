@@ -429,11 +429,17 @@ for accounting packages.
   (`unpriced_count`, over the whole filtered set), the page above the table links to the TLD
   price list, and the picker refuses to add the period as a line, because *offered at €0,00*
   is the silent error the old skip was written to avoid. Zero is a sentence here, not a price.
-  One consequence is worth knowing before it is reported as a bug: a TLD price applies **from
-  its `valid_from`**, and a period is priced at its own boundary (#250, history never
-  reprices), so a price entered today prices every renewal still ahead and leaves last month's
-  overdue one unpriced. That is the same rule the cron bills by, and the screen says so — the
-  fix is a price dated before the renewal, or a `price_override` on the domain.
+  A period is priced at its own boundary (#250, history never reprices) by the row in force
+  that day — and **a day before the list's first row takes that first row**
+  (`domains/pricing.py`, the one function the backlog seam and the renewal cron both read). The
+  first price an agency enters is what the TLD costs, not what it costs from today: the stricter
+  reading left every overdue renewal unpriced until somebody backdated a row, and then deleted
+  the one entered first, because the newer row outranks it — a sequence nobody works out from the
+  screen. A **scheduled** row never prices anything before its day (a change that has not
+  happened yet), so "no price" now means exactly that: nothing in force for the TLD, and no
+  `price_override` on the domain. The current row can be deleted from the price list for the
+  same reason a scheduled one always could: a price you can see and cannot remove is a wrong
+  date you cannot fix.
 - **What is still outstanding** (`GET /invoicing/outstanding`): the four buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,
@@ -495,6 +501,80 @@ for accounting packages.
   as every `start_date`, so the anchor's period began before it on all 170 domains, and the
   guard hid the whole register from the backlog while the cron billed each renewal that night.
   The floor already had this exemption; the start-date guard now has it too.
+- **Which way a subscription's period runs is the type's decision, not the module's**
+  (`subscription_types.billed_in_advance`, `subscription_templates.billed_in_advance`,
+  `subscriptions.service.billing_directions`). The rule above stated the direction for exactly two
+  things — a renewal in advance, a retainer in arrears — and wrote *arrears* into the subscriptions
+  module for every agreement. A hosting or licence agreement is sold the way a registration is: the
+  invoice raised on the cycle date pays for the year **ahead**. Found on a live instance the day
+  after: a yearly "Webhosting & Licenties" renewing on 16-05-2026 could only ever offer
+  "16-05-2025 – 16-05-2026", the operator said "invoiced up to 16-05-2026" to be rid of that year,
+  and the agreement vanished from the backlog with nothing to invoice — the cron then rolled it a
+  year on, drafting nothing. Four rules. **The direction lives on the kind**: `billed_in_advance`
+  on the subscription type (`NOT NULL DEFAULT false`, the cron's original reading, so an untouched
+  instance bills as it did), with the standard subscription carrying an optional override (`NULL`
+  follows the type) — read **live**, not copied onto the agreement like the money is, because a
+  "we sell this in advance" decision has one place to be made and corrected. **One resolution,
+  every reader**: `billing_directions` is called by `open_agreements` (the backlog and the picker),
+  `billable_periods`, the cycle cron and the agreement's own read (`SubscriptionRead
+  .billed_in_advance`), so a screen and the cron cannot disagree about which twelve months a date
+  stands for. **A flip carries the claims with it**: a claim says "boundary B is billed" as
+  `period_end = B`, which under the other reading names the boundary a period earlier, and the
+  period the document paid for would be offered again — the renewal fix shifted every claim by
+  migration because every renewal changed at once; here one tenant changes one kind, so the type
+  and preset services emit `subscription.direction_changed` for the agreements that actually
+  *follow* them (one whose preset says otherwise stays put) and `invoicing` moves
+  `invoice_subscription_periods` and the lines' provenance in the same transaction, one statement
+  per row in an order that never lands on a neighbour's old value, and walks back the same way.
+  An agreement re-pointed at another type or preset gets the same treatment. And **a bulk change
+  is said, not done quietly**: the save answers `shifted_subscriptions` and the screen prints it,
+  the shape `renamed_subscriptions` already had.
+- **And one agreement may say otherwise for itself** (`subscriptions.billed_in_advance_override`).
+  The rule above shipped with *no* per-agreement column, on the argument that the direction is a
+  property of what is sold and an agreement needing the other one is an agreement of another
+  kind. The owner reversed that the next day: an agency's hosting type bills in advance and one
+  client's hosting is billed in arrears *by agreement* — negotiated, not a different product —
+  and "make a type per client" is a settings screen answering a question about one contract.
+  So the resolution is three layers, each a diff over the one above (the `report_profiles
+  .sections` and `auto_invoice_mode` shape): the agreement's own say, else the standard
+  subscription's, else the type's, else arrears. Three things hold it up. **`NULL` at every level
+  means inherit**, so a row that never states one bills exactly as it did before the column
+  existed, and an explicit `null` on `PATCH` hands the decision back (absent leaves it alone,
+  §18). **The column is named `_override` on purpose**: the *resolved* answer rides every read as
+  `billed_in_advance` (`SubscriptionRead`, `_attach`), and a resolution written onto a mapped
+  column of the same name would be flushed as a stored decision on the next write. And **a flip
+  on the agreement moves its own claims** through the same `subscription.direction_changed` the
+  type and preset flips emit — while a type flip now counts only the agreements that still
+  *follow* it, so `shifted_subscriptions` is the number it says. The form asks it beside the
+  automation level ("Volg het standaardabonnement of type" is the default), the detail page
+  marks a resolved direction the agreement decided for itself, and the import, the export and
+  the bulk edit carry it as `billed_in_advance` (empty cell = follow again).
+- **A hosting agreement keeps a website online, and the website can say which one**
+  (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`). Every
+  hosting agreement on the demo instance was "Hosting & onderhoud webshop" on a client with two
+  sites, and nothing on either site said which agreement billed it: a website recorded where it
+  runs (`hosting_id`, the infrastructure) and never who pays, while an agreement linked to the
+  *work* it covers (projects, tasks — where its included hours burn) and never to the *asset* it
+  keeps online. So `website` is a third link kind, and four rules hold it up. **Which kinds of
+  agreement attach to a website is the type's decision** — `covers_websites` beside
+  `billed_in_advance`, seeded on for `hosting` and ticked per type in Instellingen →
+  Abonnementstypen, never a key the code recognises; the backfill for the seeded key had to lift
+  `FORCE ROW LEVEL SECURITY` for one statement (`87e32dccc095`'s dance), because an unqualified
+  UPDATE under it matches zero rows silently and the demo org's Hosting type stayed unticked after
+  an upgrade that said it had run. **The flag is a gate on writing, not a constraint on history**:
+  `_ensure_websites_coverable` runs over the links being *made* — the form re-posts every link on
+  every save, and refusing a link written while the type said yes would make the agreement
+  unsaveable until somebody found the chip to drop; the form draws existing website chips whatever
+  the type says, so they can be dropped, and offers the picker only while the type covers websites.
+  **The shortlist is the API's** (`GET /subscriptions?entity_type=website&entity_id=…&linkable=
+  true`): the site's client (its domain's), a covering kind, alive, not yet linked — resolved by the
+  service so the website panel, the MCP surface and a future domain panel ask one question. And
+  **a link says what it points at** (`SubscriptionLinkRead.label`, one grouped bare-table read per
+  kind in `_attach`), so the agreement's page prints "Dekt: novafietsen-shop.example · Website"
+  and the trail's `linked` / `unlinked` lines name the site rather than a UUID. The panel writes
+  through `POST /subscriptions/{id}/links` and `DELETE …/links/website/{website_id}` — idempotent
+  attach, a 404 for a link that is not there — because a host page holds one link and the
+  agreement's whole set is the form's to replace.
 - **"Already invoiced up to" is the operator's statement, and both halves read it**
   (`domains.billed_until`, `subscriptions.billed_until`). An agency arriving from another
   system brings agreements and domains that were invoiced *there* up to a date, and the
@@ -1011,6 +1091,26 @@ in two different places on purpose:
 The value is formatted the way the web formats it (`format_value`: an option's own label, a
 `dd-mm-yyyy` date, *Ja*/*Nee*), and an empty value prints nothing — an empty label on paper is
 worse than the field being absent.
+
+**A subscription field may be attached to a type or a standard subscription**
+(`core/customfields/scoping.py`, `subscriptions/scopes.py`). A "Website" field belongs on a
+hosting agreement and on nothing else, and a definition on the `subscription` entity type used
+to reach every agreement — so the field meant for hosting was asked for on every SEO retainer
+too. `config_json.scope = {"subscription_type_id": [...], "subscription_template_id": [...]}`
+(no migration, the `print_on_document` shape) narrows it: the field is drawn, and required if
+so marked, only on an agreement of one of those types *or* made from one of those presets, and
+a flagged value rides the invoice line only of the agreements it applies to. Three rules hold it
+up. **Core names no module** — the subscriptions module registers its two dimensions through
+`register_scopes`, each keyed on the *attribute* an agreement carries it under, which is what
+lets one pure `applies()` serve the write (the request's type), the document (the ORM row) and
+the import (the resolved cells) without any of them knowing what a subscription type is.
+**A value on a row the field no longer applies to is kept**, hidden on the form and printed
+nowhere, so moving an agreement to another type and back loses nothing. And **a scoped column is
+never file-required on an import** — a subscription sheet that omits the hosting-only column is
+a valid sheet — so it is judged per row, where the type is known (#289's rule). The settings
+screen draws the control only for an entity type some module has registered a dimension for
+(#253), reads this tenant's options off `GET /custom-fields/scopes`, and the API refuses any id
+those options do not list, which is also what keeps another org's ids out.
 
 ### What a template may rearrange (`render/blocks.py`)
 

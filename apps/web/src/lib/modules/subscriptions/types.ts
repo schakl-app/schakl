@@ -7,6 +7,14 @@ import type { AutoInvoiceMode } from "$lib/modules/invoicing/types";
 export type SubscriptionType = components["schemas"]["SubscriptionTypeRead"];
 export type SubscriptionTemplate = components["schemas"]["SubscriptionTemplateRead"];
 export type Subscription = components["schemas"]["SubscriptionRead"];
+export type SubscriptionLinkKind = components["schemas"]["SubscriptionLinkWrite"]["entity_type"];
+
+/** A link the form draws before it is saved: what it points at, and what to call it. */
+export interface SubscriptionLinkDraft {
+  entity_type: SubscriptionLinkKind;
+  entity_id: string;
+  label: string;
+}
 
 /**
  * Everything the agreement form's pickers draw from, gathered once by whoever mounts it: the

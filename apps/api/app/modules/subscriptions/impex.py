@@ -55,7 +55,7 @@ _FIELDS = (
     "name", "end_date", "next_invoice_date", "billed_until", "included_hours", "notes",
     "company_id",
     "subscription_type_id", "subscription_template_id", "currency", "interval_count",
-    "notice_period_days",
+    "notice_period_days", "billed_in_advance_override",
 )
 
 #: The two halves of ``RolloverRule`` as two cells — a nested object has no flat spelling, and
@@ -204,6 +204,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             end_date=values.get("end_date"),
             next_invoice_date=values.get("next_invoice_date"),
             billed_until=values.get("billed_until"),
+            billed_in_advance_override=values.get("billed_in_advance_override"),
             included_hours=values.get("included_hours"),
             notice_period_days=_optional_int(values, "notice_period_days"),
             **({"rollover": rollover} if rollover is not None else {}),
@@ -295,6 +296,15 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
             clearable=False,
             aliases=("gefactureerd tot", "invoiced until", "billed until", "billed through"),
         ),
+        # The agreement's own say on which period an invoice covers; an empty cell follows
+        # the standard subscription and the type (the resolved answer is not a column: it is
+        # the kind's decision, and exporting it would re-import it as a per-row override).
+        ImpexColumn(
+            "billed_in_advance",
+            data_type="bool",
+            field="billed_in_advance_override",
+            aliases=("vooraf",),
+        ),
         ImpexColumn("included_hours", data_type="number"),
         # The price valid today; a changed value appends to the price history on update.
         ImpexColumn("amount", data_type="number", clearable=False),
@@ -357,6 +367,8 @@ async def _create_type(ctx: RequestContext, values: dict[str, Any]) -> Any:
             label_i18n=merge_locale_labels(values) or {},
             position=_optional_int(values, "position") or 0,
             active=values.get("active") is not False,
+            billed_in_advance=values.get("billed_in_advance") is True,
+            covers_websites=values.get("covers_websites") is True,
         )
     )
 
@@ -370,6 +382,10 @@ async def _update_type(ctx: RequestContext, sub_type: Any, values: dict[str, Any
         fields["position"] = _optional_int(values, "position") or 0
     if "active" in values and values["active"] is not None:
         fields["active"] = values["active"]
+    if "billed_in_advance" in values and values["billed_in_advance"] is not None:
+        fields["billed_in_advance"] = values["billed_in_advance"]
+    if "covers_websites" in values and values["covers_websites"] is not None:
+        fields["covers_websites"] = values["covers_websites"]
     if fields:
         # ``key`` is immutable by omission — which is also why it is the natural key.
         await SubscriptionTypeService(ctx).update(sub_type.id, SubscriptionTypeUpdate(**fields))
@@ -391,6 +407,12 @@ SUBSCRIPTION_TYPE_IMPEX = ImpexDescriptor(
         *locale_label_columns(aliases={"nl": ("label", "naam"), "en": ("label", "name")}),
         ImpexColumn("position", data_type="number", clearable=False, aliases=("volgorde",)),
         ImpexColumn("active", data_type="bool", clearable=False, aliases=("actief",)),
+        ImpexColumn(
+            "billed_in_advance", data_type="bool", clearable=False, aliases=("vooraf",)
+        ),
+        ImpexColumn(
+            "covers_websites", data_type="bool", clearable=False, aliases=("websites",)
+        ),
         # ``task_template_ids`` is a list of ids into the tasks module — a list has no honest
         # single-cell spelling, and these are configured where the templates are.
     ),
@@ -434,7 +456,7 @@ async def _find_template(
     return found
 
 
-_TEMPLATE_FIELDS = ("name", "subscription_type_id", "currency", "notes")
+_TEMPLATE_FIELDS = ("name", "subscription_type_id", "currency", "notes", "billed_in_advance")
 
 
 def _template_fields(values: dict[str, Any]) -> dict[str, Any]:
@@ -518,6 +540,8 @@ SUBSCRIPTION_TEMPLATE_IMPEX = ImpexDescriptor(
             getter=lambda t: (t.rollover or {}).get("expires_after_periods"),
         ),
         ImpexColumn("notice_period_days", data_type="number", aliases=("opzegtermijn",)),
+        # Tri-state on purpose: an empty cell is "follow the type", which is a real value here.
+        ImpexColumn("billed_in_advance", data_type="bool", aliases=("vooraf",)),
         ImpexColumn("notes", aliases=("notities", "opmerkingen")),
         ImpexColumn("position", data_type="number", clearable=False, aliases=("volgorde",)),
     ),

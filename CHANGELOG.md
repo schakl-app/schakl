@@ -2,6 +2,115 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.45.0 — 2026-09-07
+
+Which way a subscription's period runs is now the type's decision, overridable per standard
+subscription and per agreement, so a hosting agreement can finally offer the year ahead. A hosting
+agreement can be attached to the website it keeps online, and "which agreement bills this site" is
+a panel on the website rather than a guess by name. A subscription custom field can be attached to
+a type or a standard subscription instead of applying to every agreement. A TLD's first price
+prices the overdue renewals before it, and the domain register's bulk edit now carries the start
+date and the agreed price beside the renewal date it already had.
+
+Three additive migrations, head revision `e3c9a5b7d2f4`: `d2b7e9c4a1f6` adds
+`subscription_types.billed_in_advance` (NOT NULL default false, the cron's original reading) and
+a nullable override on `subscription_templates`; `0e6fc8f7619e` adds
+`subscriptions.billed_in_advance_override` (nullable); `e3c9a5b7d2f4` adds
+`subscription_types.covers_websites` (NOT NULL default false) and **backfills the seeded
+`hosting` type to true** across every org. No new permission keys: `GET /custom-fields/scopes`
+rides `settings.customfields.read`, and `POST /subscriptions/{id}/links` plus
+`DELETE /subscriptions/{id}/links/{type}/{id}` ride `subscriptions.subscription.write`.
+`GET /subscriptions` takes `entity_type` + `entity_id` (+ `linkable=true`) for a linked-entity
+filter, `subscription.direction_changed` is a new in-process event, and the type and template
+saves report `shifted_subscriptions`. The public API reference and the typed client are
+regenerated.
+
+### Subscriptions
+
+- **A subscription type says whether its agreements bill in advance.** The renewal fix in v0.44.0
+  stated the period direction for two things and wrote *arrears* into the subscriptions module for
+  every agreement, so a hosting agreement renewing on 16-05-2026 could only ever offer the year
+  behind it, and "invoiced up to 16-05-2026" then left it with nothing. `billed_in_advance` lives
+  on the type, with an optional override on the standard subscription (`NULL` follows the type),
+  resolved live by one function the backlog, the picker, the cycle cron and the agreement's read
+  all call — nothing is copied onto the agreement. Instellingen → Abonnementstypen and
+  Standaardabonnementen get the control and a column, the agreement page says which way it bills,
+  and the import/export carries the column for both catalogs.
+- **Flipping a direction moves the claims it reaches, in the same transaction.** A claim keyed on
+  `period_end` names a different boundary under the other reading, so a type or preset flip (or
+  re-pointing an agreement) emits `subscription.direction_changed` and invoicing shifts the
+  affected agreements' period claims and line provenance one statement per row, in an order the
+  unique key survives, and walks back the same way. The save reports how many agreements moved
+  and the screens print it.
+- **One agreement may say otherwise for itself.** A client's hosting billed in arrears *by
+  agreement* is a negotiated exception, not a kind of its own, so the agreement is the third
+  layer: agreement → standard subscription → type, `NULL` = inherit at every level. The edit form
+  asks it beside the automation level ("Volg het standaardabonnement of type"), the detail page
+  marks a direction the agreement decided for itself, the trail records it, and the import/export
+  and bulk edit carry it as `billed_in_advance` (empty = follow again). Its own flip shifts its own
+  claims; a type flip now counts only the agreements that still follow it.
+- **A hosting agreement attaches to the website it keeps online.** A website said where it runs
+  and never who pays for that; an agreement attached to projects and tasks and never to the asset
+  it covers. Which kinds of agreement may attach to a website is the type's `covers_websites`
+  flag (ticked per type, with a Websites column; the seeded Hosting ships with it on), asked only
+  when a website link is *made*, so a link written while the type said yes survives a later flip.
+  The website page gains an Abonnementen panel — linked agreements with status, price and next
+  invoice date, a picker over the API-resolved shortlist (the site's client, a covering kind,
+  alive, not yet linked), detach per row, and "Nieuw abonnement" opening the dialog with the
+  client and the site already on the form. The subscription form offers the client's websites
+  while the picked type covers them and re-posts links of both kinds; the agreement's page gains a
+  "Dekt" card, and every link now carries a `label` so any reader prints what it points at.
+
+### Custom fields
+
+- **A subscription field can be attached to a type or a standard subscription.** A tenant defined
+  a "Website" field for hosting subscriptions and could neither reach it from an agreement nor
+  keep it off the SEO retainers, because a definition applied to every row of its entity type.
+  `config_json.scope` narrows a definition to the rows whose subscription type or standard
+  subscription is listed (no migration), and the field is drawn, required and printed on the
+  invoice line only where it applies; a value on a row the field no longer applies to is kept.
+  Core names no module — `core/customfields/scoping.py` composes one pure rule over dimensions
+  the owning module registers (`subscriptions/scopes.py`), read by the write, the document and
+  the import alike. The settings screen draws the control only for an entity type with
+  registered dimensions, reads the tenant's options off `GET /custom-fields/scopes`, and the API
+  refuses ids those options do not list. The subscription detail page now shows the record's own
+  custom fields.
+
+### Domains
+
+- **A TLD's first price also prices the renewals before it.** A price entered today left every
+  overdue renewal unpriced, and the way out — a backdated row, then deleting the newer one the
+  screen would not offer to delete — was not something anyone works out from the screen.
+  `domains/pricing.price_row_at` is the one rule the backlog seam and the renewal cron both read:
+  the row in force on the renewal day, else the list's first row for a day before the list began,
+  never a row still scheduled. The price list's row menu offers "Prijsregel verwijderen" for the
+  current row as well as scheduled ones; issued invoices keep their snapshot.
+- **The bulk edit carries the start date and the agreed price.** The renewal date and
+  "gefactureerd tot" were already there; a portfolio onboarded in one afternoon carries that
+  afternoon as every start date, and a client's names get one negotiated price. The start date
+  anchors the cycle so it is settable and never emptiable, and set beside a cleared renewal date
+  the new cycle follows the new anchor in the same call; the price clears back to the TLD list
+  price.
+
+### Housekeeping
+
+- The task-revise test forged a step id that was the real one once in sixteen runs, which is what
+  the red API shard on `dev` was.
+
+### Upgrade notes
+
+- `alembic upgrade head` runs unattended at start-up as usual. All three migrations are additive
+  column adds; `e3c9a5b7d2f4` also **updates existing rows** — every org's seeded `hosting`
+  subscription type gets `covers_websites = true`, under `NO FORCE ROW LEVEL SECURITY` for that
+  one statement because an unqualified `UPDATE` under forced RLS matches zero rows silently. A
+  tenant that renamed or deleted the seeded type ticks the flag by hand in Instellingen →
+  Abonnementstypen.
+- Every existing subscription type starts as **billed in arrears**, which is exactly how the cron
+  read every agreement before this release, so nothing is invoiced differently until a type is
+  flipped. Flip Hosting (and any other prepaid kind) once in Instellingen → Abonnementstypen; the
+  save shifts that kind's invoiced periods and reports how many agreements moved.
+- The direction, the website links and the scoped custom fields need no new grants.
+
 ## v0.44.0 — 2026-09-06
 
 A domain renewal is billed in advance, so the period on the backlog, in the picker and on the

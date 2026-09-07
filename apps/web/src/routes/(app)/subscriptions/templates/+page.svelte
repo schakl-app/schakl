@@ -106,6 +106,7 @@
       amount: amountCell,
       included_hours: includedCell,
       notice_period_days: noticeCell,
+      billing: billingCell,
       notes: notesCell,
     }),
   });
@@ -197,6 +198,11 @@
     {tn("settings.subscriptions.renamed_subscriptions", form.renamed)}
   </p>
 {/if}
+{#if form?.shifted}
+  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
+    {tn("settings.subscriptions.shifted_subscriptions", form.shifted)}
+  </p>
+{/if}
 
 <PriceIncreaseModal
   bind:open={priceOpen}
@@ -237,6 +243,17 @@
 
 {#snippet noticeCell(tpl: Template)}
   <span class="tabular-nums text-text-muted">{tpl.notice_period_days ?? "—"}</span>
+{/snippet}
+
+{#snippet billingCell(tpl: Template)}
+  <!-- The preset's own say; "—" is "follow the type", a real value rather than an absence. -->
+  <span class="text-text-muted"
+    >{tpl.billed_in_advance == null
+      ? "—"
+      : tpl.billed_in_advance
+        ? t("subscriptions.billing_direction.advance_short")
+        : t("subscriptions.billing_direction.arrears_short")}</span
+  >
 {/snippet}
 
 {#snippet notesCell(tpl: Template)}
@@ -397,6 +414,30 @@
             value={editing?.notice_period_days ?? ""}
             class={inputClass}
           />
+        </div>
+        <div>
+          <label for="tpl-billing" class="mb-1 block text-sm text-text"
+            >{t("subscriptions.field.billing_direction")}</label
+          >
+          <!-- Tri-state: an empty value posts "follow the type", which the action sends as an
+               explicit null (§18's absent-vs-null rule — the form always states its answer). -->
+          <select
+            id="tpl-billing"
+            name="billed_in_advance"
+            class={inputClass}
+            value={editing?.billed_in_advance == null
+              ? ""
+              : editing.billed_in_advance
+                ? "true"
+                : "false"}
+          >
+            <option value="">{t("subscriptions.billing_direction.inherit")}</option>
+            <option value="true">{t("subscriptions.billing_direction.advance")}</option>
+            <option value="false">{t("subscriptions.billing_direction.arrears")}</option>
+          </select>
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.subscriptions.billing_direction_template_help")}
+          </p>
         </div>
       </div>
       <div>
