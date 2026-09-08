@@ -2,6 +2,130 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.46.0 — 2026-09-08
+
+Deleting a client is now trashing it, and a client with a history cannot be deleted at all: the
+row hides for thirty days with an undo, and issued invoices, domains, hosting, agreements, projects
+and hours block the delete outright with the counts on the dialog. A client's WordPress installs
+are reachable from schakl's own MCP as fourteen tools that take the site as a parameter, plus a
+bounded passthrough to the site's whole REST API, each write split by whether a visitor can see the
+result. A standard subscription's notes may print on the invoice, resolved with their variables at
+the moment the invoice is drafted. And the domain register finally says what a client's domains
+add up to per year, invoiced and not invoiced kept apart.
+
+Two additive migrations, head revision `c4d8e2f6a1b3`: `b4d7e2a9c1f3` adds
+`subscription_templates.notes_on_invoice` (NOT NULL default false) and a nullable
+`subscriptions.notes_on_invoice_override`; `c4d8e2f6a1b3` adds `companies.deleted_at`,
+`deleted_by_user_id` and `deleted_by_name` (all nullable) plus a partial index. Nine new
+permission keys, all on the `wordpress` integration: `content.read`, `content.write`,
+`forms.read`, `ability.read` and `rest.read` default to admin and member; `content.publish`,
+`forms.write`, `ability.run` and `rest.write` default to admin only, and are granted to existing
+orgs' system roles by the start-up reconciler. New routes: `GET /domains/totals`; the per-entity
+trash surface `GET /trash/company`, `GET /trash/company/{id}`, `GET /trash/company/{id}/preview`,
+`POST /trash/company/{id}/restore` and `DELETE /trash/company/{id}` (all on
+`companies.company.delete`); and fourteen `wordpress` routes under `/wordpress/sites/{site_id}/`
+(`summary`, `content`, `media`, `forms`, `abilities`, `abilities/run`, `rest`), which also make up
+the new `/mcp/wordpress` section and join the `infra` bundle. One new cron job, `trash_purge`,
+nightly at 03:00. The public API reference and the typed client are regenerated.
+
+### Clients
+
+- **A delete is a trash, and it is undone from where it happened.** `DELETE /companies/{id}`
+  stamps `deleted_at` and nothing else moves: the client and every row that belongs to it through
+  `company_id` hide from every read, because the predicate lives in the tenant-scoped repository's
+  horizon condition and every hand-built read that already ANDed visibility on got it for free. The
+  trash is announced with an undo toast, the client list shows "Prullenbak (n)" while there is
+  anything in it, Instellingen → Prullenbak lists, restores and purges (tick to confirm), and a
+  trashed client's own URL sends whoever may restore it there with the row marked. The nightly
+  sweep runs the old cascade thirty days later.
+- **A record that must outlive the client blocks the delete.** Modules contribute what a client
+  delete would take with it through a core seam (`app/core/trash/`, `docs/TRASH.md`): issued
+  invoices and quotes, domains, hosting accounts, agreements, projects and time entries block with
+  a 409 naming the counts; tasks, contact links, contact moments, marketing links, drafts and
+  documents go along and are named. The dialog reads the preview before it asks, offers
+  Archiveren as the primary action for a client with a history, keeps the red button disabled
+  until the cost is known, and the purge re-checks the same blockers, so a client that grew an
+  invoice while trashed is kept and the screen says why.
+- **A trashed client still holds its client number**, and creating anything under a trashed
+  parent is refused. The routes are generated per entity on that entity's own delete permission,
+  so deny-by-default stays enumerable and every verb is a named MCP tool.
+
+### WordPress
+
+- **A client site is a parameter of the MCP surface, never a tool.** Proxying each site's MCP
+  Adapter would have meant a tool list that varies per row, which `/mcp` cannot express and a chat
+  client cannot afford. So the surface is routes on the `wordpress` router keyed on the credential
+  row: a site summary, content by post type (list, read, create, update), media, Contact Form 7
+  forms (read and write), and the site's abilities (list and run). `/mcp/wordpress` is the same
+  fourteen tools at four sites or four hundred, pinned by a test.
+- **The audience decides the permission.** WordPress has no staging, so an edit to a published
+  page is the broadcast: `content.write` covers drafts and is a member's by default,
+  `content.publish` covers anything a visitor can see and is an admin's, decided by the read that
+  precedes every update and refused before the site is asked. A form edit sits with publish, and
+  an ability runs on `ability.read` only when its own annotation says it is read-only. Every write
+  leaves a trail line on the site row.
+- **A bounded passthrough to the whole REST API** (`POST /wordpress/sites/{id}/rest`), because the
+  live sites carry WPML, LiteSpeed and FileBird and a curated route per plugin is a list that rots.
+  It hands an agent a WordPress administrator, so its bounds are the design: `rest.read` for GET,
+  `rest.write` for everything else (admin only, never on a default key), a write deny-list on the
+  site-takeover routes (users, plugins, themes, settings) refused for everybody before the site is
+  asked, paths relative to `/wp-json/` that cannot climb out, a trail line per write, and a 256 KB
+  cap on the answer that says what it cut.
+- **The MCP Adapter probe was matching the wrong index.** It looked for `mcp/` in the namespace
+  list, while the adapter's namespace is bare `mcp` with each server a route under it, so every
+  live site with the adapter installed read "no MCP namespace". Found by reading the real sites'
+  indexes; the fake had been taught the same wrong shape.
+
+### Subscriptions and invoicing
+
+- **A standard subscription's notes may print on the invoice.** The notes were written as the
+  transparency text for the client and shown to the agency alone. Whether they belong on the
+  invoice is now the preset's decision (`notes_on_invoice`, off unless told, so nothing already
+  running starts reaching clients on upgrade), an agreement may say otherwise for itself (three
+  states, `NULL` follows the preset), and one resolver is read by the agreement's read, the invoice
+  editor's picker and the cycle cron alike.
+- **Variables resolve where the text leaves the record.** `{{company_name}}` and its siblings are
+  filled in when the note lands on the drafted invoice, not when it is printed, so a price raised
+  later never restates itself on an invoice already sent; money in a note prints by the same rule
+  as the total beside it. Every markdown construct the editor can produce is styled inside the
+  notes of both shipped designs, so a heading inside a note is a heading within the notes and never
+  a second title on the sheet.
+- **Blockquotes survive saving again.** The markdown sanitiser escaped a leading `>`, so every
+  quote ever typed in the editor flattened on save, on the web and on paper.
+- **The web** carries the preset checkbox, the agreement form's three-state select, the detail
+  page's row with the rendered notes, a badge on the preset list, import/export and bulk-edit
+  columns, and the invoice editor appends a picked agreement's note under the notes field once.
+
+### Domains
+
+- **What a client's domains add up to, invoiced and not.** `GET /domains/totals` answers in one
+  grouped statement over exactly the register's filters, per client and as a whole:
+  `invoiced_yearly` beside `uninvoiced_yearly`, never netted, at the same resolved price the row
+  shows, plus a count of what is priced in neither sum rather than a reassuring zero. The client
+  hub's domains card carries the portfolio line under its rows and marks a not-invoiced row under
+  its price; the register heads each client section with its own figures and ends in a footer
+  under the columns they belong to. The "Eerstvolgende verlenging" tile keeps filtering on the
+  invoiced set, because a renewal nobody bills is not a conversation with the client.
+
+### Upgrade notes
+
+- `alembic upgrade head` runs unattended at start-up as usual. Both migrations are additive
+  column adds; no existing row changes meaning.
+- **Deleting a client behaves differently from today on.** It no longer runs the database
+  cascade: the client goes to the trash for thirty days and is restorable from Instellingen →
+  Prullenbak, and a client with issued documents, domains, hosting, agreements, projects or hours
+  cannot be deleted at all, only archived. An automation or MCP client that relied on
+  `DELETE /companies/{id}` removing the row outright should expect a 409 `errors.trash_blocked`
+  on such clients and a soft-deleted row on the rest.
+- **The nine new `wordpress` keys** are granted to each org's system roles once by the start-up
+  reconciler. The four write-side keys (`content.publish`, `forms.write`, `ability.run`,
+  `rest.write`) land on admin only; a custom role that should stage drafts on client sites needs
+  `content.write` ticked by hand, and `rest.write` should stay off every API key that is not
+  meant to hold a WordPress administrator.
+- **Nothing prints on invoices until a preset is switched on.** `notes_on_invoice` starts false
+  on every existing standard subscription; tick it per preset in Instellingen →
+  Standaardabonnementen, or per agreement where one differs.
+
 ## v0.45.0 — 2026-09-07
 
 Which way a subscription's period runs is now the type's decision, overridable per standard
