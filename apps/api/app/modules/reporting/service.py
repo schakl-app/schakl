@@ -586,10 +586,12 @@ class ReportService:
     """
 
     class _PortalReportRepository(TenantScopedRepository):
-        def horizon_condition(self):  # noqa: ANN202 — mirrors the base signature
+        def company_horizon(self):  # noqa: ANN202 — mirrors the base signature
+            # The company half only: the trash half rides in from the base's
+            # ``horizon_condition`` (docs/TRASH.md), which is why this is not that override.
             clause = getattr(self.model, "__portal_horizon_clause__", None)
             if clause is None:
-                return super().horizon_condition()
+                return super().company_horizon()
             return clause(self.company_scope)
 
     def __init__(self, ctx: RequestContext) -> None:

@@ -13899,6 +13899,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trash/company": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trash List Company
+         * @description The company records in the trash: who deleted each, when, when it will be purged, and what hangs off it. A record with anything in `blocking` is kept past the retention window until somebody restores it.
+         */
+        get: operations["trash_list_company_api_v1_trash_company_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/company/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trash Get Company
+         * @description One trashed company record. 404 for a live record: to this surface a row that is not in the trash does not exist.
+         */
+        get: operations["trash_get_company_api_v1_trash_company__entity_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Trash Purge Company
+         * @description Delete a trashed company record for good. Irreversible; refused (409) while anything in `blocking` still hangs off it. The nightly sweep does this by itself after the retention window.
+         */
+        delete: operations["trash_purge_company_api_v1_trash_company__entity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/company/{entity_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trash Preview Company
+         * @description What deleting a live company record would do: `blocking` lists the records that stop it (issued invoices, domains, agreements, projects, hours — these outlive a client, so a client holding any is archived rather than deleted), `taken_along` what hides with it and goes when it is purged. Read this before calling DELETE.
+         */
+        get: operations["trash_preview_company_api_v1_trash_company__entity_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/company/{entity_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trash Restore Company
+         * @description Bring a trashed company record back exactly as it was, with everything that hid with it.
+         */
+        post: operations["trash_restore_company_api_v1_trash_company__entity_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/hook/{token}": {
         parameters: {
             query?: never;
@@ -34692,6 +34776,85 @@ export interface components {
             tld: string;
             /** Valid From */
             valid_from?: string | null;
+        };
+        /**
+         * TrashDependentCount
+         * @description One contributing module's answer: how many of *its* rows hang off this record.
+         */
+        TrashDependentCount: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+        };
+        /**
+         * TrashItem
+         * @description One row in the trash.
+         */
+        TrashItem: {
+            /** Blocking */
+            blocking?: components["schemas"]["TrashDependentCount"][];
+            /**
+             * Deleted At
+             * Format: date-time
+             */
+            deleted_at: string;
+            /** Deleted By Name */
+            deleted_by_name?: string | null;
+            /** Deleted By User Id */
+            deleted_by_user_id?: string | null;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label: string;
+            /**
+             * Purge At
+             * Format: date-time
+             */
+            purge_at: string;
+            /** Taken Along */
+            taken_along?: components["schemas"]["TrashDependentCount"][];
+        };
+        /** TrashPage */
+        TrashPage: {
+            /** Items */
+            items: components["schemas"]["TrashItem"][];
+            /** Retention Days */
+            retention_days: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * TrashPreview
+         * @description What deleting a **live** record would do — read by the confirmation dialog before it asks.
+         *
+         *     ``blocking`` non-empty means the delete is refused (``errors.trash_blocked``) and the dialog
+         *     should offer the record's own gentler lifecycle instead; ``taken_along`` is what hides with
+         *     the record and goes when it is purged.
+         */
+        TrashPreview: {
+            /** Blocking */
+            blocking?: components["schemas"]["TrashDependentCount"][];
+            /** Can Trash */
+            can_trash: boolean;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Retention Days */
+            retention_days: number;
+            /** Taken Along */
+            taken_along?: components["schemas"]["TrashDependentCount"][];
         };
         /** TriggerInfo */
         TriggerInfo: {
@@ -64078,6 +64241,158 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TimeonWorkspaceRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_list_company_api_v1_trash_company_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_get_company_api_v1_trash_company__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_purge_company_api_v1_trash_company__entity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_preview_company_api_v1_trash_company__entity_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_restore_company_api_v1_trash_company__entity_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

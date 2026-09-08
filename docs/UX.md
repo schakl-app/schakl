@@ -771,6 +771,25 @@ contrast bug in dark mode rather than only an inconsistency.
 - **Activate/deactivate lives in the ⋯ menu too**, not as a bare inline button (custom-field
   definitions: ⋯ → Bewerken / Deactiveren / Verwijderen). It's a non-destructive toggle so it
   doesn't confirm, but it belongs with the record's other actions, not loose in the row.
+- **Verwijderen on a client is a choice between archive and trash, and the dialog knows which one
+  applies before it asks** (`CompanyDeleteDialog`, `docs/TRASH.md`). The old dialog said "{name}
+  verwijderen? Dit kan niet ongedaan worden gemaakt." and meant it: the cascade took the client's
+  invoices. Now the dialog reads `GET /trash/company/{id}/preview` on open — the confirm button is
+  held (`ConfirmDialog.confirmDisabled`) until the answer is in — and is the invoice cancel
+  dialog's shape: a radio posting as `mode`, **Archiveren** first and `primary` because it destroys
+  nothing, **Naar de prullenbak** red beneath it, disabled with the reason in numbers ("niet
+  mogelijk zolang de klant 12 facturen, 3 domeinen heeft") for a client with a history. The trash
+  option stays drawn when disabled: #253 is about a control that can *only* refuse, and this one is
+  paired with the one that works, so the disabled row is what teaches that the trash exists and is
+  not for this client. What goes along is listed under the pick ("Gaat mee: 3 taken, 2
+  koppelingen…"), because a delete that names one record while five disappear is the rule already
+  written for comment threads. **A trash is announced with an undo**: a toast with *Ongedaan
+  maken* on the list (its own delete, and a detail-page delete landing with `?trashed=<id>`, then
+  stripped), posting a hidden restore form — the toast's one permitted action is an offer, and
+  this is the offer. **The trash finds you**: *Prullenbak (n)* sits in the client list's header
+  only while n > 0, and opening a trashed client's own URL redirects whoever may restore it to
+  Instellingen → Prullenbak with the row marked. There, **Terugzetten** is inline and not red,
+  **Definitief verwijderen** is behind the ⋯ and asks for a tick — the `acknowledge` bar, met.
 - **A destructive action states its consequences in the dialog, and the reversible neighbour it
   should probably have been sits above it** (`ConfirmDialog`'s `consequences`). One sentence is
   enough for "delete this row?" and stops being enough the moment an action has effects the

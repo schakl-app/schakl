@@ -16,6 +16,7 @@ from app.modules.companies.mcp import COMPANY_MCP_TOOLS
 from app.modules.companies.panels import company_details_panel
 from app.modules.companies.permissions import COMPANY_PERMISSIONS
 from app.modules.companies.router import router
+from app.modules.companies.trash import COMPANY_TRASH
 from app.registry import ModuleDescriptor, registry
 
 # The company data horizon (#191): this module owns the assignment tables, so it hands core
@@ -33,6 +34,7 @@ module = ModuleDescriptor(
     mcp_tools=COMPANY_MCP_TOOLS,
     impex=[COMPANY_IMPEX],
     bulk=[COMPANY_BULK],
+    trash=[COMPANY_TRASH],
 )
 
 registry.register(module)

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from app.core.impex.spec import ImpexDescriptor, ImpexExtension
     from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
+    from app.core.trash.spec import TrashableSpec
 
 #: The two package roots a self-registering descriptor may live in (CLAUDE.md §6a). Order is the
 #: lookup order, so a name present in both resolves the way it did before the split.
@@ -378,6 +379,11 @@ class ModuleDescriptor:
     # borrows the module's own import shape, so a bulk edit is the form's write path repeated,
     # never a second one (CLAUDE.md §17's pattern, applied to a selection instead of a file).
     bulk: list[BulkDescriptor] = field(default_factory=list)
+    # The entities this module lets the tenant put in the trash rather than delete outright
+    # (docs/TRASH.md). ``app.core.trash.router`` mounts the list/restore/purge routes per entry,
+    # each declaring that entity's own delete permission — the bulk shape again. What *stops* a
+    # delete is contributed by the other modules through ``register_trash_dependent``.
+    trash: list[TrashableSpec] = field(default_factory=list)
     # Actions this module contributes to the automation rule engine (issue #27).
     automation_actions: list[AutomationActionSpec] = field(default_factory=list)
     # Sections this module contributes to a periodic client report (issue #300) — the panels

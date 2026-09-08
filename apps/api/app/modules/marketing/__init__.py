@@ -23,6 +23,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.core.trash import register_trash_dependent
 from app.modules.marketing.events import on_google_ads_account_attached
 from app.modules.marketing.jobs import (
     marketing_backfill_link,
@@ -34,6 +35,7 @@ from app.modules.marketing.panels import marketing_company_panel
 from app.modules.marketing.permissions import MARKETING_PERMISSIONS
 from app.modules.marketing.report_sections import MARKETING_REPORT_SECTIONS
 from app.modules.marketing.router import router
+from app.modules.marketing.trash import MARKETING_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -66,6 +68,10 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in MARKETING_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)
 
 # The return leg of the mirror `MarketingService._attach_ads_account` already had (#338): an Ads
 # account linked through the `google_ads` module gets its `gads` link here too, so the client's

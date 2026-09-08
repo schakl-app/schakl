@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from fastapi import Depends, Request
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.config import settings
 from app.core.auth.backend import session_org
@@ -33,6 +34,8 @@ from app.core.models import Membership, Org, OrgStatus
 from app.core.permissions.catalog import ROLE_CLIENT
 from app.core.permissions.models import MembershipRole, Role, RolePermission
 from app.core.permissions.permset import PermissionSet
+from app.core.scope import horizon_entity_model
+from app.core.trash.mixin import is_trashable
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
@@ -205,9 +208,21 @@ class RequestContext:
     #: that books the payment — the money moves and nothing records it.
     is_system: bool = False
 
-    def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
+    def repo(
+        self, model: type[ModelT], *, include_trashed: bool = False
+    ) -> TenantScopedRepository[ModelT]:
+        """The tenant-scoped repository for ``model``.
+
+        ``include_trashed`` is the trash can's own door (docs/TRASH.md): every other read
+        leaves a trashed row — and every row that belongs to one — out, so the surfaces that
+        list, restore and purge the trash are the only callers that ever say it.
+        """
         return TenantScopedRepository(
-            self.session, self.org.id, model, company_scope=self.company_scope
+            self.session,
+            self.org.id,
+            model,
+            company_scope=self.company_scope,
+            include_trashed=include_trashed,
         )
 
     # --- authorization (issue #19) ----------------------------------------- #
@@ -490,11 +505,13 @@ class TenantScopedRepository(Generic[ModelT]):
         model: type[ModelT],
         *,
         company_scope: frozenset[uuid.UUID] | None = None,
+        include_trashed: bool = False,
     ) -> None:
         self.session = session
         self.org_id = org_id
         self.model = model
         self.company_scope = company_scope
+        self.include_trashed = include_trashed
         # How this model anchors to a company, in precedence order: a clause it builds itself
         # (an indirect link — #285), else a column. `companies` names its own pk via
         # `__company_horizon_attr__`; every other model is matched on a `company_id` column.
@@ -504,16 +521,68 @@ class TenantScopedRepository(Generic[ModelT]):
         table_col = getattr(model, "__table__", None)
         table_col = table_col.c.get(attr) if table_col is not None else None
         self._horizon_nullable = bool(table_col.nullable) if table_col is not None else False
+        # The trash can (docs/TRASH.md). A trashable model hides its own trashed rows; a model
+        # that *belongs* to a trashable one through its ``company_id`` hides the rows whose
+        # parent is in the trash, so a client in the trash takes its tasks and contact moments
+        # out of sight with it. Resolved once here, exactly like the horizon anchor above.
+        self._trashed_col = model.deleted_at if is_trashable(model) else None
+        self._trashed_anchor = None
+        if (
+            self._trashed_col is None
+            and self._horizon_clause is None
+            and attr == "company_id"
+            and self._horizon_col is not None
+        ):
+            anchor = horizon_entity_model("company")
+            if anchor is not None and is_trashable(anchor):
+                self._trashed_anchor = anchor
+
+    def trash_condition(self):
+        """"Not in the trash, and not belonging to something in it" — or ``None`` when the
+        model has no trash to speak of, or the caller asked to see it (``include_trashed``).
+
+        The anchor form is a ``NOT EXISTS`` against the parent's own row rather than a
+        ``company_id NOT IN (…)``: a row attached to no company (``NULL``) must stay visible,
+        and ``NOT (NULL IN …)`` is ``NULL``, which drops it — the same trap the horizon's
+        nullable branch already sidesteps by hand.
+        """
+        if self.include_trashed:
+            return None
+        if self._trashed_col is not None:
+            return self._trashed_col.is_(None)
+        if self._trashed_anchor is not None:
+            # A fresh alias, never the anchor's own table: a statement that already joins
+            # ``companies`` for a label (the marketing picker, the revenue report) would
+            # otherwise auto-correlate both tables away and leave the subquery with no FROM.
+            anchor = aliased(self._trashed_anchor)
+            return ~exists(
+                select(literal(1))
+                .select_from(anchor)
+                .where(anchor.id == self._horizon_col, anchor.deleted_at.isnot(None))
+            )
+        return None
 
     def horizon_condition(self):
-        """The company horizon as a standalone predicate, or ``None`` when unrestricted (#191).
+        """Everything that decides whether a row is **visible** to this caller, as one standalone
+        predicate — the company horizon (#191) and the trash can (docs/TRASH.md) — or ``None``
+        when neither applies.
 
         ``scoped_select()`` is the normal path and already carries this. A read that *cannot*
         be built from it — a window fold over a subquery, a hand-built ``count(DISTINCT …)`` —
-        takes the predicate from here and ANDs it onto its own statement, so the horizon is
+        takes the predicate from here and ANDs it onto its own statement, so visibility is
         still expressed in exactly one place. Interactions' folded feed re-derived nothing and
-        simply had no horizon at all (#240); this is the seam it was missing.
+        simply had no horizon at all (#240); this is the seam it was missing. A subclass that
+        narrows the *company* rule (a portal repository) overrides ``company_horizon`` and
+        inherits the trash half — overriding this method is how one of the two halves gets
+        quietly dropped.
         """
+        parts = [c for c in (self.company_horizon(), self.trash_condition()) if c is not None]
+        if not parts:
+            return None
+        return parts[0] if len(parts) == 1 else and_(*parts)
+
+    def company_horizon(self):
+        """The company horizon alone, or ``None`` when unrestricted (#191)."""
         if self.company_scope is None:
             return None
         if self._horizon_clause is not None:

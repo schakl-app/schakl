@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
+
   import { applyAction, enhance } from "$app/forms";
+  import { replaceState } from "$app/navigation";
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
@@ -23,10 +26,11 @@
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
+  import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
+  import CompanyDeleteDialog from "$lib/modules/companies/CompanyDeleteDialog.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { HOURS_COLUMN, companyColumns } from "$lib/modules/companies/columns";
   import type { CompanyFilterKey } from "$lib/modules/companies/filters";
@@ -53,8 +57,57 @@
 
   let deleteId = $state("");
   let deleteName = $state("");
+  let deleteStatus = $state("");
   let confirmDelete = $state(false);
   const busy = new InFlight();
+
+  // --- the trash (docs/TRASH.md) ---------------------------------------------
+  // A trash is announced with an undo: the toast's Ongedaan maken posts the hidden restore form
+  // below. One announcement per outcome — `form` is re-read on every action on this page.
+  let restoreForm = $state<HTMLFormElement | null>(null);
+  let restoreId = $state("");
+  let restoreName = $state("");
+  let announced = $state<string | null>(null);
+
+  async function undoTrash(id: string, name: string) {
+    restoreId = id;
+    restoreName = name;
+    await tick();
+    restoreForm?.requestSubmit();
+  }
+  function announceTrashed(id: string, name: string) {
+    if (announced === `t:${id}`) return;
+    announced = `t:${id}`;
+    toastSuccess(t("companies.trashed_toast", { name }), () => void undoTrash(id, name));
+  }
+  $effect(() => {
+    const trashed = form?.trashed;
+    if (trashed) announceTrashed(trashed.id, trashed.name);
+    const archived = form?.archived;
+    if (archived && announced !== `a:${archived.id}`) {
+      announced = `a:${archived.id}`;
+      toastSuccess(t("companies.archived_toast", { name: archived.name }));
+    }
+    const restored = form?.restored;
+    if (restored && announced !== `r:${restored.id}`) {
+      announced = `r:${restored.id}`;
+      toastSuccess(t("companies.restored_toast", { name: restored.name }));
+    }
+  });
+  // A delete on the detail page lands here with `?trashed=<id>`: the same toast, then the marker
+  // leaves the URL — a reload must not announce a delete that happened a while ago.
+  onMount(() => {
+    const notice = data.trashedNotice;
+    if (!notice) return;
+    announceTrashed(notice.id, notice.name);
+    const url = new URL(page.url);
+    url.searchParams.delete("trashed");
+    try {
+      replaceState(url, {});
+    } catch {
+      // Router not ready — the marker stays for one reload; harmless.
+    }
+  });
 
   // Row actions render only for holders of the matching permission (#253) — the API refuses
   // them anyway; this stops a client-role login seeing buttons that only 403.
@@ -164,6 +217,7 @@
   function confirmDeleteOf(company: Company) {
     deleteId = company.id;
     deleteName = company.name;
+    deleteStatus = company.status;
     confirmDelete = true;
   }
 </script>
@@ -294,14 +348,27 @@
 
 <div class="mb-6 flex items-center justify-between">
   <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
-  {#if canWrite}
-    <button
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={() => (showCreate = !showCreate)}
-    >
-      {t("companies.new")}
-    </button>
-  {/if}
+  <div class="flex items-center gap-3">
+    {#if canDelete && data.trashCount > 0}
+      <!-- The trash finds you: drawn only when there is something in it (docs/TRASH.md). -->
+      <a
+        href="/settings/trash"
+        class="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-brand"
+        data-testid="trash-link"
+      >
+        <Trash2 size={14} aria-hidden="true" />
+        {t("companies.trash_link", { count: data.trashCount })}
+      </a>
+    {/if}
+    {#if canWrite}
+      <button
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => (showCreate = !showCreate)}
+      >
+        {t("companies.new")}
+      </button>
+    {/if}
+  </div>
 </div>
 
 <FilterBar filters={filterDefs} idPrefix="company-filter">
@@ -417,10 +484,27 @@
   onsize={table.onPageSize}
 />
 
-<ConfirmDialog
+<CompanyDeleteDialog
   bind:open={confirmDelete}
-  title={t("common.delete")}
-  message={t("companies.delete_confirm", { name: deleteName })}
-  action="?/delete"
-  fields={{ id: deleteId }}
+  companyId={deleteId}
+  name={deleteName}
+  status={deleteStatus}
+  fields={{ id: deleteId, name: deleteName }}
+  onfailure={(key) => toastError(t(key))}
 />
+
+<!-- The toast's undo posts this (docs/TRASH.md): a form, so the restore is the same action a
+     page without JavaScript could take, and `use:enhance` refreshes the list on success. -->
+<form
+  method="POST"
+  action="?/restore"
+  class="hidden"
+  bind:this={restoreForm}
+  use:enhance={() =>
+    async ({ update }) => {
+      await update({ reset: false });
+    }}
+>
+  <input type="hidden" name="id" value={restoreId} />
+  <input type="hidden" name="name" value={restoreName} />
+</form>

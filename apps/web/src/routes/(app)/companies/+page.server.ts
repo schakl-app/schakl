@@ -4,6 +4,7 @@ import { parseAssignees } from "$lib/core/assignees";
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { readFilters } from "$lib/core/filters/types";
+import { can } from "$lib/core/permissions";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -110,6 +111,24 @@ export const load: PageServerLoad = async (event) => {
   const definitions = parent.definitions;
   const members = parent.members;
 
+  // The trash (docs/TRASH.md), for whoever may open it: a chip in the header that says how many
+  // clients are in it — drawn only when non-zero, so an empty trash costs the screen nothing —
+  // and the undo toast a delete on the detail page hands over through `?trashed=`. Both are
+  // one indexed count over the rows that are actually in the trash; neither is fetched for a
+  // login that could not act on the answer.
+  const canDelete = can(event.locals.user, "companies.company.delete");
+  const trashedParam = event.url.searchParams.get("trashed");
+  const [trashPage, trashedRow] = canDelete
+    ? await Promise.all([
+        api.GET("/api/v1/trash/company", { params: { query: { limit: 1, offset: 0 } } }),
+        trashedParam
+          ? api.GET("/api/v1/trash/company/{entity_id}", {
+              params: { path: { entity_id: trashedParam } },
+            })
+          : Promise.resolve(null),
+      ])
+    : [null, null];
+
   // The create form's remaining lookups still stream in behind the list.
   const createForm = Promise.all([
     api.GET("/api/v1/contacts", {
@@ -140,6 +159,10 @@ export const load: PageServerLoad = async (event) => {
     statusFilter,
     statusQuery: status ?? "",
     mine,
+    trashCount: trashPage?.data?.total ?? 0,
+    trashedNotice: trashedRow?.data
+      ? { id: trashedRow.data.entity_id, name: trashedRow.data.label }
+      : null,
     locale: event.locals.locale,
   };
 };
@@ -277,14 +300,37 @@ export const actions: Actions = {
     return { created: true };
   },
 
+  /** The row's delete dialog (docs/TRASH.md): archive, or trash with an undo in the toast. */
   delete: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    if (id) {
-      await apiFor(event).DELETE("/api/v1/companies/{company_id}", {
+    const name = String(form.get("name") ?? "");
+    if (!id) return fail(400, { error: "errors.not_found" });
+    const api = apiFor(event);
+    if (String(form.get("mode") ?? "") === "archive") {
+      const { error } = await api.PATCH("/api/v1/companies/{company_id}", {
         params: { path: { company_id: id } },
+        body: { status: "archived" },
       });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+      return { archived: { id, name } };
     }
-    return { deleted: true };
+    const { error } = await api.DELETE("/api/v1/companies/{company_id}", {
+      params: { path: { company_id: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { trashed: { id, name } };
+  },
+  /** The toast's Ongedaan maken — the same restore the trash screen offers. */
+  restore: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const name = String(form.get("name") ?? "");
+    if (!id) return fail(400, { error: "errors.not_found" });
+    const { error } = await apiFor(event).POST("/api/v1/trash/company/{entity_id}/restore", {
+      params: { path: { entity_id: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { restored: { id, name } };
   },
 };

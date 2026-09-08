@@ -10,6 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.core.trash import register_trash_dependent
 from app.modules.invoicing.bulk import INVOICE_BULK
 from app.modules.invoicing.emails import INVOICING_EMAIL_KINDS
 from app.modules.invoicing.events import (
@@ -23,6 +24,7 @@ from app.modules.invoicing.panels import invoicing_company_panel
 from app.modules.invoicing.permissions import INVOICING_PERMISSIONS
 from app.modules.invoicing.router import router
 from app.modules.invoicing.summary import invoicing_company_summary
+from app.modules.invoicing.trash import INVOICING_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -59,6 +61,10 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in INVOICING_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)
 
 # The subscriptions module deliberately raises no invoices (#30); this is the consumer it
 # emits ``subscription.due`` for. Subscribed at import, like every cross-module reaction.

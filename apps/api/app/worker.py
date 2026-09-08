@@ -20,6 +20,7 @@ from app.config import settings
 from app.core.apikeys.jobs import flush_api_key_last_used
 from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
 from app.core.storage.jobs import storage_maintenance
+from app.core.trash.jobs import trash_purge
 from app.core.update_check import check_for_update
 from app.registry import module_package, registry
 
@@ -80,6 +81,10 @@ _CORE_CRON_JOBS = [
     # (docs/STORAGE.md). Nightly and off-peak: it reads every object it folds, and a file
     # delete now leaves its bytes for this job rather than paying for them in the request.
     cron(storage_maintenance, hour=3, minute=15),
+    # Purge what has sat in the trash past its retention window (docs/TRASH.md). Before the
+    # storage sweep on purpose: a purged record drops its documents' rows, and the blobs those
+    # rows owned are then reclaimed by the sweep that follows rather than a night later.
+    cron(trash_purge, hour=3, minute=0),
 ]
 
 if settings.is_cloud:

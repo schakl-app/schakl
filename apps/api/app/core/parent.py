@@ -20,6 +20,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.trash.mixin import trashable_table
 from app.errors import AppError
 
 
@@ -30,8 +31,12 @@ async def ensure_parent_in_tenant(
     is optional and simply not being set)."""
     if entity_id is None:
         return
+    # A parent in the trash is not a parent anything may be attached to (docs/TRASH.md): the
+    # row still exists, so the FK would accept it, and the new child would hide with a record
+    # nobody can see and come back attached to it on restore.
+    trashed = " AND deleted_at IS NULL" if trashable_table(table) else ""
     ok = await session.scalar(
-        text(f"SELECT 1 FROM {table} WHERE id = :id AND org_id = :oid"),  # noqa: S608 - literal table
+        text(f"SELECT 1 FROM {table} WHERE id = :id AND org_id = :oid{trashed}"),  # noqa: S608 - literal table
         {"id": entity_id, "oid": org_id},
     )
     if not ok:

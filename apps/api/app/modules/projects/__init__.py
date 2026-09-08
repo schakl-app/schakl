@@ -9,6 +9,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.core.trash import register_trash_dependent
 from app.modules.projects.attachments import on_file_event
 from app.modules.projects.budget_watch import watch_project_budgets
 from app.modules.projects.bulk import PROJECT_BULK
@@ -18,6 +19,7 @@ from app.modules.projects.mcp import PROJECT_MCP_TOOLS
 from app.modules.projects.panels import projects_company_panel
 from app.modules.projects.permissions import PROJECT_PERMISSIONS
 from app.modules.projects.router import router
+from app.modules.projects.trash import PROJECT_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -37,6 +39,10 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in PROJECT_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)
 
 # Document attachments (#123 follow-up): validate the target project, record on its trail.
 subscribe("file.attached", on_file_event)

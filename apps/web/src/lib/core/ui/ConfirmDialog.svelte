@@ -25,6 +25,7 @@
     confirmLabel,
     variant = "danger",
     acknowledge,
+    confirmDisabled = false,
     children,
     onfailure,
     onsuccess,
@@ -56,6 +57,12 @@
      * remembers it). A consequences list is read; a box has to be pressed. Reset on every open.
      */
     acknowledge?: string;
+    /**
+     * Hold the confirm button while the host is still finding out what the action would do — a
+     * dialog that reads the cost of a delete from the API must not offer the red button before
+     * the answer is in (the client's delete dialog, docs/TRASH.md).
+     */
+    confirmDisabled?: boolean;
     /**
      * Extra controls inside the posting form — a choice between two ways of doing the thing,
      * say — so what the user picks travels with the confirmation instead of through a
@@ -130,7 +137,11 @@
       {#each Object.entries(fields) as [name, value] (name)}
         <input type="hidden" {name} {value} />
       {/each}
-      <Button {variant} loading={busy.active} disabled={Boolean(acknowledge) && !acknowledged}>
+      <Button
+        {variant}
+        loading={busy.active}
+        disabled={confirmDisabled || (Boolean(acknowledge) && !acknowledged)}
+      >
         {confirmLabel ?? t("common.delete")}
       </Button>
     </div>

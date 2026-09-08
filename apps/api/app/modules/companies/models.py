@@ -27,6 +27,7 @@ from app.core.activity import AuditableMixin
 from app.core.assignees import AssigneeLinkMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
+from app.core.trash import TrashableMixin
 from app.db import Base
 
 
@@ -46,6 +47,7 @@ class Company(
     TimestampMixin,
     CustomizableMixin,
     AuditableMixin,
+    TrashableMixin,
     Base,
 ):
     __tablename__ = "companies"
@@ -66,6 +68,15 @@ class Company(
             "client_number",
             unique=True,
             postgresql_where=text("client_number IS NOT NULL"),
+        ),
+        # The trash can (docs/TRASH.md): the rows in it are few, and two things read exactly
+        # those — the trash screen, and the anti-join every dependent list runs to leave a
+        # trashed client's rows out. A partial index keeps both a probe over almost nothing.
+        Index(
+            "ix_companies_trashed",
+            "org_id",
+            "deleted_at",
+            postgresql_where=text("deleted_at IS NOT NULL"),
         ),
     )
 

@@ -915,6 +915,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   destroy what a different surface merely declines to draw. The portal rule follows the words,
   not the eye: a body image reads exactly when the record that embeds it does
   (`portal_may_read_serving`), while `client_visible` keeps gating attachments.
+- **Deleting a record is trashing it, and a record with a history cannot be deleted at all**
+  (`app/core/trash/`, `docs/TRASH.md`). Deleting a client ran the database cascade: paid, numbered,
+  ledger-booked invoices and quotes went with it — documents `DELETE /invoices/{id}?force=true`
+  would have refused — and hours stayed stamped as invoiced against an invoice that no longer
+  existed. Nothing on the dialog said so; it asked one question and offered one red button. Two
+  rules replace it, and neither is about companies. **A `DELETE` stamps `deleted_at`** and nothing
+  else moves: the row and every row that belongs to it through `company_id` hide from every read
+  because the predicate lives in `TenantScopedRepository.trash_condition`, folded into
+  `horizon_condition()` so every hand-built read that ANDs *visibility* on got the trash for free
+  (a portal repository overrides `company_horizon`, never `horizon_condition`, or it drops one
+  half); a restore clears the stamp and nothing has to be put back; the nightly sweep runs the
+  cascade thirty days later. **A record that must outlive the client blocks the delete**: modules
+  contribute `TrashDependent`s through a core seam (the panels pattern) — issued documents,
+  domains, hosting, agreements, projects and hours block, tasks and links go along — and the
+  dialog reads the counts first, names them, and offers **Archiveren** as the primary action with
+  the trash disabled and its reason in numbers. Archive is the lifecycle for a client you are done
+  with; the trash is for a mistake, and the purge re-checks the same blockers so a client that
+  grew one while trashed is kept and the screen says why. Three smaller ones ride along. **Routes
+  per entity, never a generic trash** (the bulk router's reason): each declares the entity's own
+  delete permission, so deny-by-default stays enumerable and every verb is a named MCP tool, and
+  the person who could delete a row is the person who may undo it — no new key. **A trashed row
+  still holds its unique number**: `client_numbers_taken` reads `include_trashed=True`, because
+  the partial unique index is on the table, not on what the screens show. And **the confirm is
+  held until the cost is known**: `ConfirmDialog.confirmDisabled`, so the red button is never
+  pressable on a client whose dependents are still being counted.
 - **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
   `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
   `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'
