@@ -109,9 +109,9 @@ nightly at 03:00. The public API reference and the typed client are regenerated.
 
 ### Housekeeping
 
-- The bulk-approve query-budget test forbade any statement naming `companies`, which the trash
-  anti-join inside the interactions read now does; it refuses a statement that *reads* companies
-  instead. That was the red API shard on `dev`.
+- Two query-budget tests (bulk approve, the uptime monitors' meta labels) forbade any statement
+  naming `companies`, which the trash anti-join inside an interactions or monitors read now does;
+  each refuses a statement that *reads* companies instead. Those were the red API shards on `dev`.
 
 ### Upgrade notes
 

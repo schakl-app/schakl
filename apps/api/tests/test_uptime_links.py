@@ -493,7 +493,14 @@ async def test_meta_resolves_the_names_it_promises(client_for, kuma, count_queri
             ).json()
         assert {m["company_name"] for m in page["items"]} == {"Klant BV"}
         assert {m["instance_name"] for m in page["items"]} == {"Kuma"}
-        companies = [s for s in counter.statements if "FROM companies" in s]
+        # The monitors read itself names ``companies`` since the trash (the ``NOT EXISTS``
+        # against a trashed parent, ``trash_condition``); the read counted here is the one
+        # that *selects from* companies for the labels.
+        companies = [
+            s
+            for s in counter.statements
+            if "FROM companies" in s and "FROM uptime_monitors" not in s
+        ]
         assert len(companies) == 1, f"one read for the page, not one per row: {companies}"
 
         # Off by default: a picker renders names it never reads.
