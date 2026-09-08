@@ -107,6 +107,12 @@ nightly at 03:00. The public API reference and the typed client are regenerated.
   under the columns they belong to. The "Eerstvolgende verlenging" tile keeps filtering on the
   invoiced set, because a renewal nobody bills is not a conversation with the client.
 
+### Housekeeping
+
+- The bulk-approve query-budget test forbade any statement naming `companies`, which the trash
+  anti-join inside the interactions read now does; it refuses a statement that *reads* companies
+  instead. That was the red API shard on `dev`.
+
 ### Upgrade notes
 
 - `alembic upgrade head` runs unattended at start-up as usual. Both migrations are additive
