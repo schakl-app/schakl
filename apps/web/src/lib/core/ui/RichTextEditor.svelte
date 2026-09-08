@@ -184,9 +184,10 @@
     // A clipboard image arrives as an anonymous `image.png`; name it for the moment it was
     // taken, on the org's clock (`$lib/core/files/paste`). A picked or dropped file keeps
     // the name somebody gave it.
-    const named = !file.name || /^image\.[a-z0-9]+$/i.test(file.name)
-      ? new File([file], pastedImageName(file), { type: file.type })
-      : file;
+    const named =
+      !file.name || /^image\.[a-z0-9]+$/i.test(file.name)
+        ? new File([file], pastedImageName(file), { type: file.type })
+        : file;
     imageBusy += 1;
     imageError = null;
     try {
@@ -227,6 +228,28 @@
     // selection, and with it the very preset group the user is in the middle of using.
     const { from } = editor.state.selection;
     editor.chain().focus().updateAttributes("fileimage", { width }).setNodeSelection(from).run();
+  }
+
+  /**
+   * Replace the source from outside — the invoice editor dropping a picked subscription's
+   * notes into the field beneath the lines. Parsed exactly as the initial value was, so the
+   * markup survives; before the editor chunk has arrived the textarea takes it instead, so a
+   * pick made in the first second is not lost. Reported through `onchange` like any edit.
+   */
+  export function setValue(markdown: string) {
+    serialized = markdown;
+    // `emitUpdate: false`: the source of record stays the markdown handed in, byte for byte,
+    // rather than the editor's re-serialisation of it — a construct the editor cannot hold (a
+    // table) would otherwise be flattened by the act of showing it. An edit re-serialises, as
+    // any edit does.
+    if (editor) {
+      editor.commands.setContent(renderMarkdown(markdown, { images: true }), {
+        emitUpdate: false,
+      });
+    } else if (fallback) {
+      fallback.value = markdown;
+    }
+    onchange?.(markdown);
   }
 
   onMount(() => {

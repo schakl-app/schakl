@@ -34,6 +34,14 @@ def test_sanitize_passes_none_through() -> None:
     assert sanitize_markdown(None) is None
 
 
+def test_sanitize_keeps_the_blockquote_marker() -> None:
+    # `>` opens nothing once every tag is gone, and at the start of a line it *is* markdown:
+    # escaping it stored `&gt; quote`, which no renderer downstream read as a quote.
+    clean = sanitize_markdown("> Vragen? Mail ons.\n\na > b <b>x</b>")
+    assert clean == "> Vragen? Mail ons.\n\na > b x"
+    assert sanitize_markdown(clean) == clean
+
+
 def test_plaintext_flattens_syntax() -> None:
     md = "# Onboarding\n\n- call **client**\n- send [invoice](https://x.com/very/long)\n\n> `note`"
     flat = " ".join(markdown_to_plaintext(md).split())

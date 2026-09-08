@@ -1070,7 +1070,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Subscription
-         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`, `billed_in_advance`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`, `billed_in_advance`, `notes_on_invoice`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_subscription_api_v1_bulk_subscription_update_post"];
         delete?: never;
@@ -15837,6 +15837,8 @@ export interface components {
              * @default false
              */
             no_cycle: boolean;
+            /** Notes */
+            notes?: string | null;
             /** Periods */
             periods?: components["schemas"]["PeriodOffer"][];
             /**
@@ -31727,6 +31729,8 @@ export interface components {
             next_invoice_date?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Notes On Invoice Override */
+            notes_on_invoice_override?: boolean | null;
             /** Notice Period Days */
             notice_period_days?: number | null;
             rollover?: components["schemas"]["RolloverRule"];
@@ -31902,6 +31906,13 @@ export interface components {
             next_invoice_date: string | null;
             /** Notes */
             notes: string | null;
+            /**
+             * Notes On Invoice
+             * @default false
+             */
+            notes_on_invoice: boolean;
+            /** Notes On Invoice Override */
+            notes_on_invoice_override?: boolean | null;
             /** Notice Period Days */
             notice_period_days: number | null;
             /**
@@ -31972,6 +31983,11 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /**
+             * Notes On Invoice
+             * @default false
+             */
+            notes_on_invoice: boolean;
             /** Notice Period Days */
             notice_period_days?: number | null;
             /**
@@ -32019,6 +32035,11 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /**
+             * Notes On Invoice
+             * @default false
+             */
+            notes_on_invoice: boolean;
             /** Notice Period Days */
             notice_period_days?: number | null;
             /**
@@ -32084,6 +32105,11 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /**
+             * Notes On Invoice
+             * @default false
+             */
+            notes_on_invoice: boolean;
             /** Notice Period Days */
             notice_period_days?: number | null;
             /**
@@ -32134,6 +32160,8 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Notes On Invoice */
+            notes_on_invoice?: boolean | null;
             /** Notice Period Days */
             notice_period_days?: number | null;
             /** Position */
@@ -32340,6 +32368,8 @@ export interface components {
             next_invoice_date?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Notes On Invoice Override */
+            notes_on_invoice_override?: boolean | null;
             /** Notice Period Days */
             notice_period_days?: number | null;
             rollover?: components["schemas"]["RolloverRule"] | null;

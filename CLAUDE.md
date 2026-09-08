@@ -1181,6 +1181,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   agreement's own flip shifting its own claims and a type flip counting only the agreements that
   still follow it. The column is `_override` because the resolved answer already rides the read
   as `billed_in_advance`, and a resolution written onto a same-named mapped column is stored.
+- **A note written for the client reaches the client's invoice, and the preset decides whether**
+  (`subscription_templates.notes_on_invoice`, `subscriptions.notes_on_invoice_override`,
+  `docs/INVOICING.md`). #259 made a standard subscription's notes a transparency text — "what
+  we do for you and what you may expect", with `{{company_name}}`-style variables — and then
+  showed it to the agency alone. The same three-state shape as the direction, one column over:
+  the preset says whether its agreements print their notes (off unless told, because a note an
+  agency wrote for itself must never start reaching clients on an upgrade), an agreement may say
+  otherwise for itself, `NULL` follows, one resolver is read by the read, the picker and the cron.
+  Three things generalise. **A variable is resolved where the text leaves the record, not where
+  it is printed** (`subscriptions/variables.py`, the API twin of the web's `variables.ts`, pinned
+  against it by a test): an invoice is a record, and an `{{amount}}` re-read at print time would
+  restate a price raised since — so the cron puts the resolved text on `subscription.due` and the
+  picker publishes it on `BillableSubscription.notes`, and both land through `sanitize_markdown`.
+  **A figure printed *onto* a document is formatted by the document's rule** — `fmt_money` moved
+  to `app/core/money.py` so the note's `€ 25,00` cannot disagree with the total beside it. And
+  **markup that can be typed must be styled where it prints**: every construct the editor can
+  produce is stated in each design's `.notes` — an `<h1>` inside a note is a heading within the
+  notes, never a second title for the sheet. Its sibling was found by the first blockquote to
+  reach paper: `sanitize_markdown` escaped a leading `>` to `&gt;`, so every quote ever typed in
+  the editor flattened on save, on the web and on the document alike.
 - **A hosting agreement keeps a website online, and the website can say which one**
   (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`,
   `docs/INVOICING.md`). A website said where it *runs* (its hosting account) and never who *pays*

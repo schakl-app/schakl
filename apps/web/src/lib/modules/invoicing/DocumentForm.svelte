@@ -113,6 +113,23 @@
   let currency = $state("");
   const effectiveCurrency = $derived(currency || doc?.currency || orgCurrency);
 
+  // The document's notes, and the way a picked agreement's notes join them (#259): appended
+  // under whatever is already there, once — picking March and then April of one agreement
+  // must not print its terms twice — and said so beside the field, since the editor is
+  // below the fold of the picker that caused it.
+  let notesEditor: RichTextEditor | undefined = $state();
+  // svelte-ignore state_referenced_locally
+  let notesValue = $state(doc?.notes ?? "");
+  let notesFromSubscription = $state(false);
+  function addSubscriptionNote(note: string) {
+    const text = note.trim();
+    if (!text || notesValue.includes(text)) return;
+    const next = notesValue.trim() ? `${notesValue.trimEnd()}\n\n${text}` : text;
+    notesValue = next;
+    notesEditor?.setValue(next);
+    notesFromSubscription = true;
+  }
+
   // Provenance rides back into the editor: the lines are replaced wholesale on save, so a
   // mapping that dropped what a line bills would post lines that had forgotten their claims —
   // and the API would dutifully release them, handing the period back to the cron that raised
@@ -423,6 +440,7 @@
       {locale}
       pricesIncludeTax={includeTax}
       formId={FORM_ID}
+      onnote={addSubscriptionNote}
     />
   {/if}
 
@@ -431,12 +449,19 @@
       >{t("invoicing.field.notes")}</label
     >
     <RichTextEditor
+      bind:this={notesEditor}
       id="doc-notes"
       name="notes"
       rows={2}
       value={doc?.notes ?? ""}
       scope={{ companyId: (createdCompanyId || companyId || doc?.company_id) ?? null }}
+      onchange={(v) => (notesValue = v)}
     />
+    {#if notesFromSubscription}
+      <p class="mt-1 text-xs text-text-muted" aria-live="polite">
+        {t("invoicing.field.notes_from_subscription")}
+      </p>
+    {/if}
   </div>
 
   {#if definitions.length > 0}

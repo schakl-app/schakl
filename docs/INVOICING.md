@@ -1107,6 +1107,31 @@ in two different places on purpose:
   cron-drafted one read the same, which is the seam's whole reason to exist. One line rather
   than a second row, because the editor's description is a single-line input and a period
   label already follows it in parentheses.
+- **A subscription's notes may print as the document's notes block** — the other half of the
+  same seam (`subscriptions.invoice_notes`). A standard subscription's notes are #259's
+  transparency text, "what we do for you and what you may expect", authored once with
+  `{{company_name}}`-style variables; until now only the agency ever read them. Whether they
+  belong on the invoice is a decision about *what is sold*, so it lives on the **standard
+  subscription** (`notes_on_invoice`, off unless a tenant says so — a note an agency wrote for
+  itself must never start reaching clients on an upgrade) and one agreement may say otherwise
+  for itself (`notes_on_invoice_override`, `NULL` follows; an agreement following no preset
+  keeps its notes to itself unless told). One resolution (`invoice_note_flags`) is read by the
+  agreement's own read, the picker and the cron alike. Three rules. **The variables are
+  resolved before the note leaves the agreement** (`subscriptions/variables.py`, the API twin
+  of the web's `variables.ts`, its vocabulary pinned against it by a test): an invoice is a
+  record, and an `{{amount}}` re-read at print time would restate a price raised since. The
+  values print the way the document prints the same figures — `app/core/money.fmt_money`,
+  lifted out of the renderer for exactly this, and `dd-mm-yyyy`. **Both drafting paths carry
+  the same text**: the cron puts it on `subscription.due` as `notes` and `invoicing` writes it
+  through the same `sanitize_markdown` a typed note meets; the picker publishes it on
+  `BillableSubscription.notes`, and the editor appends it under whatever the notes field
+  already holds, once per agreement (`DocumentForm.addSubscriptionNote`), saying so beside the
+  field. And **the markup reaches the paper**: the notes are markdown (#66) and every construct
+  an author can reach — a heading, a list, a table, a quote, a code span, a rule, a link — is
+  stated in each shipped design's own type (`.notes` in `letterhead.css` / `classic.css`), so an
+  `<h1>` inside a note is a heading *within the notes* and never a second title for the sheet.
+  Its sibling was found by the first blockquote to reach a document: `sanitize_markdown`
+  escaped a leading `>` to `&gt;`, so a quote flattened on save — everywhere, for a year.
 
 The value is formatted the way the web formats it (`format_value`: an option's own label, a
 `dd-mm-yyyy` date, *Ja*/*Nee*), and an empty value prints nothing — an empty label on paper is

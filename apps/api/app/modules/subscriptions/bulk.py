@@ -40,6 +40,8 @@ SUBSCRIPTION_BULK = BulkDescriptor(
         # Twelve hosting agreements negotiated the other way round: one statement over the
         # selection; clearable, because "follow the type again" is the third state (§18).
         BulkField("billed_in_advance", clearable=True),
+        # "Print the notes on these twelve" — and cleared, they follow their preset again.
+        BulkField("notes_on_invoice", clearable=True),
     ),
     delete_permission="subscriptions.subscription.delete",
     delete_row=_delete,

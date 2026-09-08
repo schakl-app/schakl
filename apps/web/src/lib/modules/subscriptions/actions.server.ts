@@ -62,8 +62,9 @@ function parseLinks(
   }
 }
 
-/** The agreement's own billing direction: `"true"`/`"false"`, or `""` to follow the preset/type. */
-function readDirectionOverride(raw: FormDataEntryValue | null): boolean | null {
+/** An agreement's own say over its preset — the billing direction, printing the notes:
+ *  `"true"`/`"false"`, or `""` to follow the standard subscription (and the type). */
+function readOverride(raw: FormDataEntryValue | null): boolean | null {
   const value = String(raw ?? "").trim();
   return value === "" ? null : value === "true";
 }
@@ -86,7 +87,9 @@ export function subscriptionBody(form: FormData) {
     auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),
     // Same three states: "" follows the standard subscription and the type, and reaches the
     // API as an explicit null so a cleared override is actually cleared.
-    billed_in_advance_override: readDirectionOverride(form.get("billed_in_advance_override")),
+    billed_in_advance_override: readOverride(form.get("billed_in_advance_override")),
+    // And whether its notes print on its invoices: "" follows the standard subscription.
+    notes_on_invoice_override: readOverride(form.get("notes_on_invoice_override")),
     included_hours: String(form.get("included_hours") ?? "").trim() || null,
     notes: String(form.get("notes") ?? "").trim() || null,
     amount: amount || undefined,

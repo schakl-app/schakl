@@ -113,6 +113,8 @@ export const manageActions = {
       notice_period_days: notice ? Number(notice) : null,
       billed_in_advance: direction === "" ? null : direction === "true",
       notes: String(form.get("notes") ?? "").trim() || null,
+      // A checkbox: presence is the answer (`forms.checked`), never a particular value.
+      notes_on_invoice: checked(form, "notes_on_invoice"),
       position: Number(form.get("position") ?? 0) || 0,
     };
     if (template_id) {

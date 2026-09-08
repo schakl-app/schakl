@@ -23,6 +23,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.core.money import fmt_money
 from app.core.phone import format_phone_international
 from app.core.richtext import markdown_to_html
 from app.i18n import translate
@@ -40,7 +41,6 @@ from app.modules.invoicing.render.colors import (
 )
 from app.modules.invoicing.render.qr import LIGHT, qr_svg, readable_dark
 
-CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 #: The order sections print in: what was worked, then what recurs, then what renews, then
 #: what was sold. Domains sit beside subscriptions rather than among them (#302) — both
 #: recur, but a register of renewals is reconciled against the registrar's own invoice and
@@ -83,21 +83,6 @@ def data_uri(payload: bytes | None, content_type: str | None) -> str | None:
         return None
     kind = (content_type or "image/png").split(";")[0].strip() or "image/png"
     return f"data:{kind};base64,{base64.b64encode(payload).decode('ascii')}"
-
-
-def fmt_money(value: Any, currency: str, locale: str) -> str:
-    amount = Decimal(str(value or 0)).quantize(Decimal("0.01"))
-    whole, frac = divmod(abs(amount), 1)
-    digits = f"{int(whole):,}"
-    cents = f"{int(round(frac * 100)):02d}"
-    if locale.startswith("nl") or locale.startswith("de"):
-        digits = digits.replace(",", ".")
-        formatted = f"{digits},{cents}"
-    else:
-        formatted = f"{digits}.{cents}"
-    sign = "-" if amount < 0 else ""
-    symbol = CURRENCY_SYMBOLS.get(currency)
-    return f"{sign}{symbol} {formatted}" if symbol else f"{sign}{currency} {formatted}"
 
 
 def _trim(value: Any) -> str:

@@ -11,9 +11,14 @@
   import { t } from "$lib/core/i18n";
   import { entityPanelComponent } from "$lib/core/registry";
   import Card from "$lib/core/ui/Card.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import PageHeader from "$lib/core/ui/PageHeader.svelte";
   import { pageTitle } from "$lib/core/title";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import {
+    resolveNoteVariables,
+    subscriptionNoteValues,
+  } from "$lib/modules/subscriptions/variables";
 
   let { data } = $props();
 
@@ -39,6 +44,23 @@
   );
   const lines = $derived(sub.lines ?? []);
   const usage = $derived(sub.usage ?? null);
+  // The notes resolve their variables for reading (#259) and render as the markdown they
+  // are — the same text, marked up the same way, that the invoice prints when the flag is on.
+  const notesDisplay = $derived(
+    resolveNoteVariables(
+      sub.notes ?? "",
+      subscriptionNoteValues({
+        companyName: sub.company_name,
+        subscriptionName: sub.name,
+        typeLabel: sub.subscription_type_id ? typeLabel : null,
+        amount: sub.amount,
+        interval: sub.interval,
+        includedHours: sub.included_hours,
+        startDate: sub.start_date,
+        brandName: page.data.theme?.brandName ?? null,
+      }),
+    ),
+  );
   // What the agreement covers — the sites it keeps online first, then the work it pays for.
   const LINK_ORDER = { website: 0, project: 1, task: 2 } as const;
   const LINK_HREF = { website: "/websites", project: "/projects", task: "/tasks" } as const;
@@ -148,6 +170,23 @@
           {/if}
         </dd>
       </div>
+      {#if sub.notes && !page.data.user?.isPortal}
+        <!-- Whether the notes below reach the client's invoice — resolved through the
+             agreement's own say and the preset, and whether this agreement decided itself. -->
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-muted">{t("subscriptions.field.notes_on_invoice")}</dt>
+          <dd class="text-text">
+            {sub.notes_on_invoice
+              ? t("subscriptions.notes_on_invoice.on_short")
+              : t("subscriptions.notes_on_invoice.off_short")}
+            {#if sub.notes_on_invoice_override != null}
+              <span class="text-xs text-text-muted"
+                >({t("subscriptions.notes_on_invoice.own_setting")})</span
+              >
+            {/if}
+          </dd>
+        </div>
+      {/if}
       {#if sub.included_hours != null}
         <div class="flex justify-between gap-3">
           <dt class="text-text-muted">{t("subscriptions.field.included_hours")}</dt>
@@ -221,7 +260,7 @@
 
   {#if sub.notes && !page.data.user?.isPortal}
     <Card title={t("subscriptions.field.notes")}>
-      <p class="whitespace-pre-line text-sm text-text">{sub.notes}</p>
+      <Markdown value={notesDisplay} class="text-sm text-text" />
     </Card>
   {/if}
 

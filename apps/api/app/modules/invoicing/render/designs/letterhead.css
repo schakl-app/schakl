@@ -217,9 +217,54 @@
 
   /* --- after the sum ------------------------------------------------------------------- */
   .reverse-charge { padding-top: 7mm; font-size: 8.5pt; }
-  .notes { padding-top: 7mm; font-size: 9.5pt; }
+  /* The notes are markdown (#66), and since a subscription's notes may print here (#259)
+     they carry whatever their author marked up: a heading, a list, a table of what the fee
+     includes, a quote, a link. Each construct is stated in the document's own type — an
+     <h1> inside a note is a heading *within the notes*, never a second title for the sheet,
+     and a table here is ruled the way the lines above it are — so no browser default ever
+     reaches paper. `overflow-wrap` because a pasted URL is the one word that will not break. */
+  .notes { padding-top: 7mm; font-size: 9.5pt; line-height: 1.45; overflow-wrap: anywhere; }
   .notes :first-child { margin-top: 0; }
-  .notes p, .notes ul, .notes ol { margin: 0 0 3mm; }
+  .notes > :last-child { margin-bottom: 0; }
+  .notes p, .notes ul, .notes ol, .notes blockquote, .notes pre, .notes table {
+    margin: 0 0 3mm;
+  }
   .notes ul, .notes ol { padding-left: 6mm; }
+  .notes li { margin-bottom: 0.8mm; }
+  .notes li > p { margin: 0; }
+  .notes h1, .notes h2, .notes h3, .notes h4, .notes h5, .notes h6 {
+    margin: 4mm 0 1.5mm; font-weight: 700; line-height: 1.25; letter-spacing: 0;
+    color: var(--ink); break-after: avoid;
+  }
+  .notes h1 { font-size: 11.5pt; }
+  .notes h2 { font-size: 10.5pt; }
+  .notes h3 { font-size: 9.5pt; }
+  .notes h4, .notes h5, .notes h6 {
+    font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
+  }
+  .notes a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--accent-line); }
+  .notes blockquote {
+    padding: 0.5mm 0 0.5mm 4mm; border-left: 2px solid var(--accent-line); color: var(--muted);
+  }
+  .notes blockquote p { margin: 0 0 1.5mm; }
+  .notes code {
+    font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 8.5pt;
+    padding: 0 1mm; background: var(--wash); border-radius: 1px;
+  }
+  .notes pre {
+    padding: 2.5mm 3mm; background: var(--wash); border-radius: 1px; white-space: pre-wrap;
+  }
+  .notes pre code { padding: 0; background: none; }
+  .notes hr { border: 0; border-top: 1px solid var(--accent-line); margin: 3mm 0; }
+  /* Sized to its content (the shell rules every table full-width): a two-column table of
+     response times is a small thing, and stretched across the sheet its second column
+     starts in the middle of nowhere. */
+  .notes table { width: auto; min-width: 50%; border-collapse: collapse; font-size: 9pt; }
+  .notes th, .notes td {
+    padding: 1.2mm 3mm 1.2mm 0; border-bottom: 1px solid var(--accent-line);
+    text-align: left; vertical-align: top;
+  }
+  .notes th { font-weight: 700; color: var(--ink); }
+  .notes tr { break-inside: avoid; }
   .payment-note { padding-top: 6mm; font-size: 9.5pt; }
   .doc-footer { padding-top: 6mm; font-size: 9pt; color: var(--ink); }

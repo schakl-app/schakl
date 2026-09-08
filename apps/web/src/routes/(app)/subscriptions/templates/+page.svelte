@@ -257,7 +257,17 @@
 {/snippet}
 
 {#snippet notesCell(tpl: Template)}
-  <span class="block max-w-64 truncate text-text-muted">{tpl.notes ?? "—"}</span>
+  <span class="flex max-w-64 items-center gap-2">
+    {#if tpl.notes && tpl.notes_on_invoice}
+      <!-- These notes leave the building: said on the row, not only in the dialog. -->
+      <span
+        class="shrink-0 rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted"
+        title={t("subscriptions.field.notes_on_invoice")}
+        >{t("subscriptions.notes_on_invoice.on_short")}</span
+      >
+    {/if}
+    <span class="min-w-0 truncate text-text-muted">{tpl.notes ?? "—"}</span>
+  </span>
 {/snippet}
 
 {#snippet rowActions(tpl: Template)}
@@ -462,6 +472,24 @@
           </div>
         {/if}
       </div>
+      <!-- Whether those notes print on the invoices the agreements made from this preset
+           raise. Presence is the question (`checked()` on the server), never a particular
+           value. A subscription can say otherwise for itself. -->
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="notes_on_invoice"
+          value="true"
+          class="mt-0.5"
+          checked={editing?.notes_on_invoice ?? false}
+        />
+        <span>
+          {t("subscriptions.field.notes_on_invoice")}
+          <span class="block text-xs text-text-muted"
+            >{t("settings.subscriptions.notes_on_invoice_template_help")}</span
+          >
+        </span>
+      </label>
       <input
         type="hidden"
         name="position"

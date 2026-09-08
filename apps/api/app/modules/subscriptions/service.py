@@ -40,7 +40,7 @@ from app.core.activity.service import snapshot
 # is re-exported under the name this module has always published (`jobs.py` imports it here).
 from app.core.billing import add_months, first_boundary_ahead, period_boundaries, period_span
 from app.core.customfields import CustomFieldsService
-from app.core.customfields.format import document_note
+from app.core.customfields.format import document_note, pick_locale
 from app.core.customfields.format import printable as printable_fields
 from app.core.customfields.scoping import applicable
 from app.core.events import emit
@@ -75,6 +75,7 @@ from app.modules.subscriptions.schemas import (
     SubscriptionUpdate,
     SubscriptionUsage,
 )
+from app.modules.subscriptions.variables import note_values, resolve_note_variables
 
 ENTITY_TYPE = "subscription"
 
@@ -98,6 +99,7 @@ _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
     "interval_count", "start_date", "end_date", "next_invoice_date", "billed_until",
     "included_hours", "notice_period_days", "auto_invoice_mode", "billed_in_advance_override",
+    "notes_on_invoice_override",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
@@ -273,6 +275,144 @@ async def billing_directions(
     return {sub.id: _direction(sub, types, templates) for sub in subs}
 
 
+async def invoice_note_flags(
+    session: Any, org_id: uuid.UUID, subs: Sequence[Subscription]
+) -> dict[uuid.UUID, bool]:
+    """Whether each agreement's notes print on the invoices it raises — the one resolution
+    every reader takes (the cycle cron, the picker, the agreement's own read).
+
+    The standard subscription decides (``notes_on_invoice``, off unless a tenant says so) and
+    one agreement may say otherwise for itself (``notes_on_invoice_override``, ``NULL``
+    follows the preset). An agreement following no preset and deciding nothing keeps its
+    notes to itself: the field began life as the agency's working notes (§6's "never the
+    agency's working notes on it", ``router.py``), and a note that starts reaching clients
+    because a flag *defaulted* is the failure this shape exists to prevent. One batched read.
+    """
+    template_ids = {
+        s.subscription_template_id for s in subs if s.subscription_template_id is not None
+    }
+    templates: dict[uuid.UUID, bool] = {}
+    if template_ids:
+        templates = dict(
+            (
+                await session.execute(
+                    select(
+                        SubscriptionTemplate.id, SubscriptionTemplate.notes_on_invoice
+                    ).where(
+                        SubscriptionTemplate.org_id == org_id,
+                        SubscriptionTemplate.id.in_(template_ids),
+                    )
+                )
+            ).all()
+        )
+    return {
+        sub.id: (
+            sub.notes_on_invoice_override
+            if sub.notes_on_invoice_override is not None
+            else bool(
+                sub.subscription_template_id is not None
+                and templates.get(sub.subscription_template_id, False)
+            )
+        )
+        for sub in subs
+    }
+
+
+async def invoice_notes(
+    ctx: Any,
+    subs: Sequence[Subscription],
+    *,
+    company_names: dict[uuid.UUID, str] | None = None,
+) -> dict[uuid.UUID, str]:
+    """Per agreement, the note its invoice prints — **resolved** markdown — or nothing.
+
+    The other half of :func:`document_notes`: that one folds the agreement's flagged custom
+    fields into its *lines*, this one carries the agreement's own notes (#259's transparency
+    text, "what we do for you and what you may expect") whole, as the document's notes block.
+    Both paths that draft a subscription invoice call it — the cycle cron and the editor's
+    picker — so a hand-picked month and a cron-drafted one read the same, which is the seam's
+    whole reason to exist (§6).
+
+    The variables are resolved *here* rather than left for the document, because the invoice
+    is a record: what it said is what it says, and a ``{{amount}}`` re-read at print time
+    would quietly restate a price raised since. The values are formatted the way the document
+    formats the same figures (``fmt_money``, ``dd-mm-yyyy``), in the org's default locale —
+    the locale the cron's draft is written in. Batched reads only, whatever the number of
+    agreements (docs/PERFORMANCE.md); ``company_names`` lets a caller that already read them
+    hand them over.
+    """
+    candidates = [s for s in subs if s.notes and s.notes.strip()]
+    if not candidates:
+        return {}
+    flags = await invoice_note_flags(ctx.session, ctx.org.id, candidates)
+    candidates = [s for s in candidates if flags.get(s.id)]
+    if not candidates:
+        return {}
+    org_settings = await ctx.session.scalar(
+        select(OrgSettings).where(OrgSettings.org_id == ctx.org.id)
+    )
+    locale = (org_settings.default_locale if org_settings else None) or "nl"
+    brand_name = org_settings.brand_name if org_settings else None
+
+    names: dict[uuid.UUID, str] = dict(company_names or {})
+    missing = {s.company_id for s in candidates if s.company_id not in names}
+    if missing:
+        # Bare-table read over a published column (§6), org-filtered like every join here.
+        for row in (
+            await ctx.session.execute(
+                text("SELECT id, name FROM companies WHERE org_id = :oid AND id IN :ids")
+                .bindparams(bindparam("ids", expanding=True)),
+                {"oid": ctx.org.id, "ids": list(missing)},
+            )
+        ).mappings():
+            names[row["id"]] = row["name"]
+
+    type_ids = {s.subscription_type_id for s in candidates if s.subscription_type_id}
+    type_labels: dict[uuid.UUID, str] = {}
+    if type_ids:
+        for type_id, label_i18n in (
+            await ctx.session.execute(
+                select(SubscriptionType.id, SubscriptionType.label_i18n).where(
+                    SubscriptionType.org_id == ctx.org.id, SubscriptionType.id.in_(type_ids)
+                )
+            )
+        ).all():
+            type_labels[type_id] = pick_locale(label_i18n, locale)
+
+    # The price valid today — what the agreement's own page prints for ``{{amount}}``.
+    today = datetime.now(await org_zoneinfo(ctx.session, ctx.org.id)).date()
+    current: dict[uuid.UUID, Decimal] = {}
+    for price in await ctx.session.scalars(
+        select(SubscriptionPrice)
+        .where(
+            SubscriptionPrice.org_id == ctx.org.id,
+            SubscriptionPrice.subscription_id.in_([s.id for s in candidates]),
+            SubscriptionPrice.valid_from <= today,
+        )
+        .order_by(SubscriptionPrice.subscription_id, SubscriptionPrice.valid_from.desc())
+    ):
+        current.setdefault(price.subscription_id, price.amount)
+
+    return {
+        sub.id: resolve_note_variables(
+            sub.notes,
+            note_values(
+                company_name=names.get(sub.company_id),
+                subscription_name=sub.name,
+                type_label=type_labels.get(sub.subscription_type_id),
+                amount=current.get(sub.id),
+                currency=sub.currency,
+                interval=sub.interval,
+                included_hours=sub.included_hours,
+                start_date=sub.start_date,
+                brand_name=brand_name,
+                locale=locale,
+            ),
+        ).strip()
+        for sub in candidates
+    }
+
+
 async def _emit_direction_shift(
     ctx: RequestContext,
     subs: Sequence[Subscription],
@@ -414,6 +554,10 @@ class OpenAgreement:
     #: bills itself from what is waiting for a human — resolving the level is `invoicing`'s
     #: job, but the override lives here and this module will not read that module's settings.
     auto_invoice_mode: str | None = None
+    #: The agreement's notes as its invoice prints them — variables resolved — when the
+    #: preset (or the agreement itself) says they belong there; ``""`` otherwise. Published
+    #: so the editor's picker can drop the same text the cron's draft would carry.
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -688,6 +832,7 @@ class SubscriptionService:
 
         today = await self._org_today()
         notes = await document_notes(self.ctx, subs)
+        invoice_texts = await invoice_notes(self.ctx, subs, company_names=names)
         directions = await billing_directions(self.ctx.session, self._org_id, subs)
         out: list[OpenAgreement] = []
         for sub in subs:
@@ -758,6 +903,7 @@ class SubscriptionService:
                     company_id=sub.company_id,
                     company_name=names.get(sub.company_id, "") if sub.company_id else "",
                     auto_invoice_mode=sub.auto_invoice_mode,
+                    notes=invoice_texts.get(sub.id, ""),
                 )
             )
         return out
@@ -870,6 +1016,7 @@ class SubscriptionService:
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
             billed_in_advance_override=data.billed_in_advance_override,
+            notes_on_invoice_override=data.notes_on_invoice_override,
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
@@ -917,6 +1064,9 @@ class SubscriptionService:
         if "billed_in_advance_override" in sent:
             # Same split again: explicit null goes back to following the preset and the type.
             values["billed_in_advance_override"] = data.billed_in_advance_override
+        if "notes_on_invoice_override" in sent:
+            # And once more: explicit null goes back to following the preset's say on printing.
+            values["notes_on_invoice_override"] = data.notes_on_invoice_override
         if "name" in values:
             values["name"] = values["name"].strip()
         if "notes" in values:
@@ -1709,11 +1859,13 @@ class SubscriptionService:
                 )
 
         directions = await billing_directions(self.ctx.session, self._org_id, subs)
+        note_flags = await invoice_note_flags(self.ctx.session, self._org_id, subs)
         for sub in subs:
             amount = current.get(sub.id)
             months = period_months(sub.interval, sub.interval_count)
             sub.company_name = company_names.get(sub.company_id, "")  # type: ignore[attr-defined]
             sub.billed_in_advance = directions[sub.id]  # type: ignore[attr-defined]
+            sub.notes_on_invoice = note_flags[sub.id]  # type: ignore[attr-defined]
             sub.amount = amount  # type: ignore[attr-defined]
             sub.monthly_equivalent = (  # type: ignore[attr-defined]
                 round(float(amount) / months, 2) if amount is not None else None

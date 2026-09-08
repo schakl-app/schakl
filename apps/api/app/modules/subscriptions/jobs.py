@@ -29,6 +29,7 @@ from app.modules.subscriptions.service import (
     add_months,
     billing_directions,
     document_notes,
+    invoice_notes,
     period_months,
     with_note,
 )
@@ -56,6 +57,9 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
     # The agreement's flagged custom fields, as the clause its lines carry ("Website:
     # klant.nl") — the same helper the editor's picker uses, so both paths draft one line.
     notes = await document_notes(ctx, due)
+    # The agreement's own notes, resolved, for the invoice's notes block — where the preset
+    # (or the agreement) says they belong there; the picker hands over the same text.
+    invoice_texts = await invoice_notes(ctx, due)
     # Which period a boundary pays for — the kind's decision, the same read the backlog makes.
     directions = await billing_directions(session, org.id, due)
     fired = 0
@@ -127,6 +131,8 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
                     # The clause on its own too, for the consumer's no-lines fallback,
                     # which builds a line from ``name`` and adds the period itself.
                     "detail": note,
+                    # The document's notes block, or None: the consumer writes it as-is.
+                    "notes": invoice_texts.get(sub.id) or None,
                     "lines": [
                         {
                             "description": with_note(line.description, note),

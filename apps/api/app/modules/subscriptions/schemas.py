@@ -121,6 +121,9 @@ class SubscriptionTemplateBase(BaseModel):
     billed_in_advance: bool | None = None
     lines: list[SubscriptionLineWrite] = Field(default_factory=list)
     notes: str | None = None
+    #: Whether the notes print on the invoices the agreements made from this preset raise —
+    #: with their variables filled in per agreement. Off unless a tenant says so.
+    notes_on_invoice: bool = False
     position: int = 0
 
 
@@ -142,6 +145,7 @@ class SubscriptionTemplateUpdate(BaseModel):
     billed_in_advance: bool | None = None
     lines: list[SubscriptionLineWrite] | None = None
     notes: str | None = None
+    notes_on_invoice: bool | None = None
     position: int | None = None
 
 
@@ -189,6 +193,10 @@ class SubscriptionBase(BaseModel):
     #: standard subscription and the type (the resolved answer is ``SubscriptionRead
     #: .billed_in_advance``); a value is this one agreement's negotiated arrangement.
     billed_in_advance_override: bool | None = None
+    #: This agreement's own say on whether its notes print on the invoices it raises. ``None``
+    #: follows the standard subscription (the resolved answer is ``SubscriptionRead
+    #: .notes_on_invoice``); a value decides for this one agreement.
+    notes_on_invoice_override: bool | None = None
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule = Field(default_factory=RolloverRule)
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
@@ -235,6 +243,8 @@ class SubscriptionUpdate(BaseModel):
     #: Explicit ``null`` goes back to following the preset and the type; absent leaves it
     #: alone. A change re-reads this agreement's periods, the invoiced ones included.
     billed_in_advance_override: bool | None = None
+    #: Explicit ``null`` goes back to following the preset; absent leaves it alone.
+    notes_on_invoice_override: bool | None = None
     included_hours: Decimal | None = Field(default=None, ge=0)
     rollover: RolloverRule | None = None
     notice_period_days: int | None = Field(default=None, ge=0, le=365)
@@ -294,6 +304,12 @@ class SubscriptionRead(BaseModel):
     #: else in arrears. Which period the next invoice covers — so a screen can say
     #: "16-05-2026 – 16-05-2027" and mean it.
     billed_in_advance: bool = False
+    #: The agreement's own say on printing its notes, if it made one (``None`` = follows the
+    #: preset).
+    notes_on_invoice_override: bool | None = None
+    #: Resolved, read-only: the agreement's own override, else the preset's flag, else off.
+    #: Whether the notes below — variables filled in — land on every invoice this raises.
+    notes_on_invoice: bool = False
     #: The price valid today (from the history), and its monthly equivalent for MRR.
     amount: Decimal | None = None
     monthly_equivalent: float | None = None

@@ -1030,6 +1030,11 @@ class BillableSubscription(BaseModel):
     #: named and none can be claimed. Surfaced as a warning rather than dropped: a paused or
     #: mis-set agreement is exactly what the user is looking for when they open the picker.
     no_cycle: bool = False
+    #: The agreement's notes as its invoice prints them (variables resolved), when its standard
+    #: subscription or the agreement itself says they belong there. The editor drops it into
+    #: the document's notes on the first pick, so a hand-made invoice carries what the cron's
+    #: draft would have carried.
+    notes: str | None = None
 
 
 class BillableDomain(BaseModel):

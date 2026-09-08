@@ -3670,7 +3670,7 @@ class InvoiceService(_DocumentService):
                 agreements,
                 spec=_CLAIM_SOURCES[0],
                 key=lambda a: a.subscription_id,
-                extra=lambda a: {"interval": a.interval},
+                extra=lambda a: {"interval": a.interval, "notes": a.notes or None},
             ),
             "domains": await self._with_claims(
                 agreements=renewals,

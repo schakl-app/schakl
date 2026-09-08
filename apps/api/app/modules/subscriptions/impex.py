@@ -55,7 +55,7 @@ _FIELDS = (
     "name", "end_date", "next_invoice_date", "billed_until", "included_hours", "notes",
     "company_id",
     "subscription_type_id", "subscription_template_id", "currency", "interval_count",
-    "notice_period_days", "billed_in_advance_override",
+    "notice_period_days", "billed_in_advance_override", "notes_on_invoice_override",
 )
 
 #: The two halves of ``RolloverRule`` as two cells — a nested object has no flat spelling, and
@@ -205,6 +205,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             next_invoice_date=values.get("next_invoice_date"),
             billed_until=values.get("billed_until"),
             billed_in_advance_override=values.get("billed_in_advance_override"),
+            notes_on_invoice_override=values.get("notes_on_invoice_override"),
             included_hours=values.get("included_hours"),
             notice_period_days=_optional_int(values, "notice_period_days"),
             **({"rollover": rollover} if rollover is not None else {}),
@@ -304,6 +305,13 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
             data_type="bool",
             field="billed_in_advance_override",
             aliases=("vooraf",),
+        ),
+        # Same tri-state for printing the notes: an empty cell follows the standard subscription.
+        ImpexColumn(
+            "notes_on_invoice",
+            data_type="bool",
+            field="notes_on_invoice_override",
+            aliases=("notities op factuur",),
         ),
         ImpexColumn("included_hours", data_type="number"),
         # The price valid today; a changed value appends to the price history on update.
@@ -456,7 +464,9 @@ async def _find_template(
     return found
 
 
-_TEMPLATE_FIELDS = ("name", "subscription_type_id", "currency", "notes", "billed_in_advance")
+_TEMPLATE_FIELDS = (
+    "name", "subscription_type_id", "currency", "notes", "billed_in_advance", "notes_on_invoice",
+)
 
 
 def _template_fields(values: dict[str, Any]) -> dict[str, Any]:
@@ -543,6 +553,13 @@ SUBSCRIPTION_TEMPLATE_IMPEX = ImpexDescriptor(
         # Tri-state on purpose: an empty cell is "follow the type", which is a real value here.
         ImpexColumn("billed_in_advance", data_type="bool", aliases=("vooraf",)),
         ImpexColumn("notes", aliases=("notities", "opmerkingen")),
+        # NOT NULL with a default, so an empty cell means "not carried by this file".
+        ImpexColumn(
+            "notes_on_invoice",
+            data_type="bool",
+            clearable=False,
+            aliases=("notities op factuur",),
+        ),
         ImpexColumn("position", data_type="number", clearable=False, aliases=("volgorde",)),
     ),
     fk_resolvers={"type": _resolve_type},
