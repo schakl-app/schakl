@@ -11,8 +11,14 @@
     email: string | null;
   };
   export type EmploymentKind = "employment" | "rate" | "availability";
-  /** Handed to a host via `register`; a ⋯ item calls it to open the right modal for a member. */
-  export type OpenEmployment = (member: EmploymentMember, kind: EmploymentKind) => void;
+  /** Handed to a host via `register`; a ⋯ item calls it to open the right modal for a member.
+   *  `highlightId` names the availability row an agenda chip deep-linked to, so the surface
+   *  opens on *that* row's editor rather than on the person's list with the row somewhere in it. */
+  export type OpenEmployment = (
+    member: EmploymentMember,
+    kind: EmploymentKind,
+    opts?: { highlightId?: string },
+  ) => void;
 
   /**
    * The employment actions for one member's ⋯ menu, shared by Instellingen → Gebruikers and the
@@ -130,6 +136,7 @@
   let employmentOpen = $state(false);
   let rateOpen = $state(false);
   let availabilityOpen = $state(false);
+  let availabilityHighlight = $state("");
   // `form` survives until the next navigation, so a run's receipt would still be showing the next
   // time the wizard opens. Whatever `form` holds at open is marked stale; a genuinely new action
   // result is a new object and so reads as live.
@@ -173,12 +180,14 @@
     terminateOpen = true;
   }
 
-  const open: OpenEmployment = (target, kind) => {
+  const open: OpenEmployment = (target, kind, opts) => {
     member = target;
     staleForm = form;
     if (kind === "rate") openRate(target);
-    else if (kind === "availability") availabilityOpen = true;
-    else employmentOpen = true;
+    else if (kind === "availability") {
+      availabilityHighlight = opts?.highlightId ?? "";
+      availabilityOpen = true;
+    } else employmentOpen = true;
   };
   // The host stores this to trigger a modal from a row's ⋯ menu — a callback prop, not an
   // imperative ref, so it fits how this codebase wires shared surfaces (ondone, oncreate, …).
@@ -219,6 +228,7 @@
       <AvailabilityManager
         entries={availabilityByUser[member.user_id] ?? []}
         userId={member.user_id}
+        highlightId={availabilityHighlight}
         error={form?.error ?? null}
       />
     {/key}

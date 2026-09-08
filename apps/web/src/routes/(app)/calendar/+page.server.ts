@@ -68,7 +68,7 @@ function hiddenPeopleFor(sourceKey: string, hidden: Set<string>): string[] {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const today = todayIso();
-  const { defaultView, hiddenSources, peopleBySource, colors } = await event.parent();
+  const { defaultView, hiddenSources, colors } = await event.parent();
 
   const rawDate = event.url.searchParams.get("date") ?? "";
   const date = isIsoDate(rawDate) ? rawDate : today;
@@ -77,7 +77,7 @@ export const load: PageServerLoad = async (event) => {
   const view: CalendarView = isCalendarView(rawView) ? rawView : defaultView;
 
   // The viewer rides along so a source can mark its events as own/draggable (#106) and decide
-  // which colleagues it may overlay (#188) — UX hints only; every move is re-checked by the API.
+  // which colleagues it may split into (#281) — UX hints only; every move is re-checked by the API.
   const baseRange = {
     ...rangeFor(view, date),
     locale: event.locals.locale,
@@ -91,15 +91,13 @@ export const load: PageServerLoad = async (event) => {
   // the hidden colleague's items itself, from `hiddenPeople`).
   const hidden = new Set(hiddenSources);
   const sources = allSources.filter((source) => !hidden.has(source.key));
-  // A per-source range carries that source's own colleague overlay (#188) and the viewer's
-  // personal colour overrides / per-colleague hides (#281).
-  // The events and the roster lookups go out together (#290). They are independent — both are
-  // built from `baseRange` — and awaiting the events first made the menu's people cost a second
-  // round-trip on every prev/next click (docs/PERFORMANCE.md).
+  // A per-source range carries the viewer's personal colour overrides / per-colleague hides
+  // (#281). The events and the roster lookups go out together (#290). They are independent —
+  // both are built from `baseRange` — and awaiting the events first made the menu's people cost
+  // a second round-trip on every prev/next click (docs/PERFORMANCE.md).
   //
-  // Rosters feed the per-person menu: the overlay picker (#188) and the split-by-colleague rows
-  // (#281). Both only for visible sources that offer them, and only if the viewer may see anyone
-  // else (the source returns [] otherwise).
+  // Rosters feed the split-by-colleague rows of the feeds menu (#281): only for visible sources
+  // that offer them, and only if the viewer may see anyone else (the source returns [] otherwise).
   // Whether an availability control belongs on this agenda at all (#368). A *permission* decides
   // who may write and the employment *kind* decides whether the surface exists: every member
   // holds `leave.availability.write:own`, so the permission alone would offer "beschikbaarheid
@@ -111,25 +109,17 @@ export const load: PageServerLoad = async (event) => {
   const writesAnyAvailability =
     writesAvailability && can(event.locals.user, "leave.availability.write", "any");
 
-  const [results, rosters, splitRosters, leaveProfile] = await Promise.all([
+  const [results, splitRosters, leaveProfile] = await Promise.all([
     Promise.all(
       sources.map((source) =>
         source
           .load(api, {
             ...baseRange,
-            people: peopleBySource[source.key] ?? [],
             color: colors[source.key],
             personColors: personColorsFor(source.key, colors),
             hiddenPeople: hiddenPeopleFor(source.key, hidden),
           })
           .catch(() => [] as CalendarEvent[]),
-      ),
-    ),
-    Promise.all(
-      allSources.map((source) =>
-        !hidden.has(source.key) && source.people
-          ? source.people(api, baseRange).catch(() => [] as CalendarPerson[])
-          : Promise.resolve([] as CalendarPerson[]),
       ),
     ),
     Promise.all(
@@ -153,8 +143,6 @@ export const load: PageServerLoad = async (event) => {
     defaultColor: source.color,
     colorable: source.colorable !== false,
     hidden: hidden.has(source.key),
-    people: rosters[index],
-    selectedPeople: peopleBySource[source.key] ?? [],
     // Split-by-colleague rows (#281): each with its own override (empty = auto, inherits the
     // feed colour / leave-type colour) and its own hidden flag.
     splitPeople: splitRosters[index].map((person) => ({
@@ -199,25 +187,6 @@ export const actions: Actions = {
       body: { prefs: { calendar: { hiddenSources } } },
     });
     return { sourcesSaved: true };
-  },
-
-  /**
-   * The colleagues this user overlays for one source (#188) — the whole selection for that
-   * source key per save, merged into the `calendar.people` map so other sources keep theirs.
-   */
-  savePeople: async (event) => {
-    const form = await event.request.formData();
-    const sourceKey = String(form.get("source") ?? "");
-    if (!sourceKey) return fail(400, { error: "errors.required" });
-    const ids = form.getAll("person").map(String).filter(Boolean);
-    const prefs = await apiFor(event).GET("/api/v1/prefs");
-    const people =
-      (prefs.data?.prefs as { calendar?: { people?: Record<string, string[]> } } | undefined)
-        ?.calendar?.people ?? {};
-    await apiFor(event).PUT("/api/v1/prefs", {
-      body: { prefs: { calendar: { people: { ...people, [sourceKey]: ids } } } },
-    });
-    return { peopleSaved: true };
   },
 
   /**

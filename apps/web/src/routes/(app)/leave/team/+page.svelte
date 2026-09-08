@@ -234,7 +234,7 @@
     if (!availabilityIntent || !openEmployment) return;
     const entry = data.availability.find((a) => a.id === availabilityIntent);
     const member = entry && data.members.find((m) => m.user_id === entry.user_id);
-    if (member) openEmployment(member, "availability");
+    if (member) openEmployment(member, "availability", { highlightId: availabilityIntent });
   });
   let rejectId = $state("");
   let rejectOpen = $state(false);

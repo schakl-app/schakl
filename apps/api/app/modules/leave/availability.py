@@ -13,6 +13,14 @@ there is nothing to place and nothing to keep in step with the rule that produce
 week's worked stretches, unioned with what ``extra`` rows add, then minus what ``unavailable``
 rows take away. The order is deliberate — **a "no" outranks a "yes"** — because booking someone
 who said they were away is a worse failure than missing a day they could have worked.
+
+**An extra day with hours on it states the day's hours.** A whole-day ``extra`` means "a day like
+the ones I work"; one carrying a window on a day the base week *already* works used to be unioned
+with that day, which made the window a no-op unless it reached past the roster — so "Friday
+10:00–14:00" on a Friday engaged 09:30–17:30 resolved to 09:30–17:30, the chip on the agenda
+never moved, and nothing on any screen said why. Nobody writes a window to mean nothing: the
+hours on an extra day *are* that day's hours, on a day the week works and on one it does not
+alike. Extending a day is still one row ("09:30–20:00"); shortening it no longer takes two.
 """
 
 from __future__ import annotations
@@ -161,12 +169,21 @@ def resolve_day(
     extras = [r for r in rows if r.kind == AvailabilityKind.EXTRA]
     blocks = [r for r in rows if r.kind == AvailabilityKind.UNAVAILABLE]
 
-    for row in extras:
-        window = _row_window(row, intervals)
-        if window is None:
+    # A one-sided window is closed against the *roster's* day ("until 14:00" on a 09:30 day is
+    # 09:30–14:00), so every extra is read against the untouched base rather than against what
+    # an earlier extra already added.
+    stated = [w for r in extras if (w := _row_window(r, intervals)) is not None]
+    whole = len(stated) < len(extras)
+    if stated and intervals and not whole:
+        # The hours on the extra day are the day's hours (see the module docstring): a stated
+        # window on a day the week already works replaces the roster's stretches for that day.
+        # A whole-day extra beside it keeps the roster and the window adds to it — the whole-day
+        # row says "the usual day", and the window cannot be asking for less than that.
+        intervals = _normalise(stated)
+    else:
+        if whole:
             intervals = _normalise([*intervals, *_day_intervals(base or typical)])
-        else:
-            intervals = _normalise([*intervals, window])
+        intervals = _normalise([*intervals, *stated])
     # An extra window that stretches a day the base week already works must not swallow its
     # lunch: a break is a window, not a duration (#46), and "available 08:00–18:00" does not
     # mean nine and a half hours became ten.

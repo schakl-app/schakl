@@ -203,7 +203,7 @@ registerWebModule({
       splitPeople: async (api, { user }): Promise<CalendarPerson[]> => {
         // Split the feed per colleague only for a viewer who may read others' leave; a plain
         // member sees just their own and keeps the single-colour feed (mirrors the API's team
-        // gate and `tasks.scheduled.people`). Everyone the roster lists — the viewer included —
+        // gate and `tasks.scheduled.splitPeople`). Everyone the roster lists — the viewer included —
         // gets an individual colour + show/hide row (#281).
         if (!hasPermission(user?.permissions, "leave.request.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
@@ -221,11 +221,15 @@ registerWebModule({
        * question — that feed says who is away, this one says who can be booked — and a viewer
        * planning work wants to switch one off without losing the other.
        *
-       * **Only the deviations are drawn.** Emitting every available day would put a chip on
-       * every working day of every freelancer, which is the roster redrawn as noise; the days
-       * that differ are the ones nobody already knows. That is `change`, not `deviates`: an
-       * exception that moves no hours (a whole-day extra on a day already worked) is a real row
-       * and not a difference, and drawing it would announce one nobody made.
+       * **Only the days somebody wrote about are drawn.** Emitting every available day would
+       * put a chip on every working day of every freelancer, which is the roster redrawn as
+       * noise; the days with a row on them are the ones nobody already knows. That is
+       * `deviates`, not `change` — and it used to be `change`, on the argument that a row
+       * moving no hours (a whole-day extra on a day already worked) is not a difference. True,
+       * and beside the point: a row you wrote and cannot find on the agenda is a row you write
+       * again (a live tenant had written the same Friday twice), and the chip is the only way
+       * from the agenda to the editor. The chip says what the day resolves to, which is honest
+       * for a row that changed nothing.
        *
        * No `move`. Dragging a chip here would edit the *row* behind it, and a row is not an
        * occurrence: one Friday of "every other Friday" would silently move the whole rhythm,
@@ -245,12 +249,14 @@ registerWebModule({
         });
         const hidden = new Set(hiddenPeople ?? []);
         return (data ?? [])
-          .filter((day) => day.change && !hidden.has(day.user_id))
+          .filter((day) => day.deviates && !hidden.has(day.user_id))
           .map((day) => {
             const own = day.user_id === user?.id;
-            const removed = day.change === "removed";
-            // A removed day has no window to state, so it says so in words; the other two say
-            // when the person *can* be booked, which is the question the feed exists to answer.
+            // A day that resolves to nothing has no window to state, so it says so in words;
+            // any other says when the person *can* be booked, which is the question the feed
+            // exists to answer. Read off the windows, not off `change`: an unavailable row on
+            // a day the week never worked changes nothing and is still a day off.
+            const removed = day.windows.length === 0;
             //
             // **State first, name second** — the opposite order to the absence feed, and the
             // month grid is why: a cell truncates at about twenty characters, and

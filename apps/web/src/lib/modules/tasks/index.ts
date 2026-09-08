@@ -140,36 +140,29 @@ registerWebModule({
   ],
   calendarSources: [
     {
-      // Planned task blocks (#188): the viewer's own always, plus any colleagues they overlaid
-      // through the per-person feed menu. Timed, so they land on the day/week time grid.
+      // Planned task blocks (#188): the viewer's own, and — for a viewer who may read the
+      // team's — everybody's, hidden per colleague through the split rows of the feeds menu
+      // (#281). One list, not two: the menu used to offer a "collega's" overlay picker *and* a
+      // per-colleague split under the same feed, and a reader could not tell them apart, so the
+      // overlay went. Timed, so they land on the day/week time grid.
       key: "tasks.scheduled",
       module: "tasks",
       labelKey: "tasks.calendar.scheduled",
       color: "sky",
       load: async (
         api,
-        { from, to, user, people, color, personColors, hiddenPeople },
+        { from, to, user, color, personColors, hiddenPeople },
       ): Promise<CalendarEvent[]> => {
         const writeOwn = hasPermission(user?.permissions, "tasks.schedule.write");
         const writeAny = hasPermission(user?.permissions, "tasks.schedule.write", "any");
-        const [own, team] = await Promise.all([
-          api.GET("/api/v1/tasks/schedules", {
-            params: { query: { date_from: from, date_to: to } },
-          }),
-          people?.length
-            ? api.GET("/api/v1/tasks/schedules", {
-                params: { query: { date_from: from, date_to: to, user_ids: people } },
-              })
-            : Promise.resolve(null),
-        ]);
-        // De-dupe by block id: a colleague the viewer overlaid who is also themselves would
-        // otherwise appear twice.
-        const byId = new Map<string, NonNullable<typeof own.data>[number]>();
-        for (const block of own.data ?? []) byId.set(block.id, block);
-        for (const block of team?.data ?? []) byId.set(block.id, block);
+        // One read: the API answers the team's blocks to a holder of `:any` and the viewer's own
+        // to anyone else, so the feed never has to know which it got.
+        const { data } = await api.GET("/api/v1/tasks/schedules", {
+          params: { query: { date_from: from, date_to: to, all_users: true } },
+        });
         // Colleagues the viewer hid from this split feed drop out entirely (#281).
         const hidden = new Set(hiddenPeople ?? []);
-        return [...byId.values()]
+        return (data ?? [])
           .filter((block) => !block.user_id || !hidden.has(block.user_id))
           .map((block) => {
             const mine = block.user_id === user?.id;
@@ -206,21 +199,14 @@ registerWebModule({
         });
         return error ? apiErrorKey(error).key : null;
       },
-      people: async (api, { user }): Promise<CalendarPerson[]> => {
-        // Only a holder of the any-scope read may overlay colleagues; a member gets no roster.
-        if (!hasPermission(user?.permissions, "tasks.schedule.read", "any")) return [];
-        const { data } = await api.GET("/api/v1/members/lookup");
-        // A colleague who left is not somebody to overlay: the lookup keeps them in the answer
-        // on purpose (the picker decides), and this picker decides they are out.
-        return (data ?? [])
-          .filter((m) => m.is_active)
-          .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
-      },
       splitPeople: async (api, { user }): Promise<CalendarPerson[]> => {
         // Per-person colour + show/hide rows (#281), exactly as the leave feeds offer them —
-        // this feed draws several colleagues' blocks and drew them all in one colour.
+        // this feed draws several colleagues' blocks and drew them all in one colour. Only a
+        // holder of the any-scope read gets the roster; a member sees their own feed, one colour.
         if (!hasPermission(user?.permissions, "tasks.schedule.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
+        // A colleague who left is not somebody to show: the lookup keeps them in the answer on
+        // purpose (the picker decides), and this menu decides they are out.
         return (data ?? [])
           .filter((m) => m.is_active)
           .map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));

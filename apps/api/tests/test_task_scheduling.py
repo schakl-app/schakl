@@ -211,6 +211,32 @@ async def test_schedule_own_vs_any_scoping(client_for) -> None:
         assert denied.status_code == 403
 
 
+async def test_all_users_is_the_team_feed_and_a_member_gets_their_own(client_for) -> None:
+    """``all_users`` answers everybody's blocks to a holder of ``:any`` — the agenda's team feed,
+    which the per-colleague menu hides per person — and a member's own to anyone else, because
+    that is the one feed they could have asked for and a 403 would empty their agenda."""
+    t = await make_tenant("sched-all")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _invite_member(c, owner_headers, "all@example.com")
+        member_headers = await auth_cookie(member)
+        task_id = await _make_task(c, owner_headers, assignee=member.id)
+        for user_id, start in ((member.id, "09:00"), (t.user.id, "13:00")):
+            res = await c.post(
+                "/api/v1/tasks/schedules",
+                json=_block(task_id=task_id, user_id=str(user_id), start_time=start),
+                headers=owner_headers,
+            )
+            assert res.status_code == 201, res.text
+
+        feed = f"/api/v1/tasks/schedules?date_from={_DAY}&date_to={_DAY}&all_users=true"
+        team = await c.get(feed, headers=owner_headers)
+        assert {row["user_id"] for row in team.json()} == {str(member.id), str(t.user.id)}
+        own = await c.get(feed, headers=member_headers)
+        assert own.status_code == 200
+        assert {row["user_id"] for row in own.json()} == {str(member.id)}
+
+
 async def test_feed_drops_a_deactivated_members_blocks_and_the_task_panel_keeps_them(
     client_for,
 ) -> None:

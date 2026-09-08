@@ -58,13 +58,23 @@
   let editEntry = $state<AvailabilityEntry | null>(null);
   let editOpen = $state(false);
 
-  // Scroll the deep-linked row into view once the list is on screen. A chip that navigates to a
-  // page and leaves the reader to find the row themselves is half a link.
+  // Scroll the deep-linked row into view once the list is on screen, and open its editor. A
+  // chip that navigates to a page and leaves the reader to find the row themselves is half a
+  // link — and clicking a day on the agenda means "this one": the editor is where its hours are
+  // changed, which is what somebody arriving from a chip that reads 09:30–17:30 has come to do.
+  // Once per arrival (a state initializer, not a reaction): closing the editor must not reopen it.
+  let opened = $state("");
   $effect(() => {
-    if (!highlightRowId) return;
+    if (!highlightRowId || opened === highlightRowId) return;
+    opened = highlightRowId;
     document
       .getElementById(`availability-${highlightRowId}`)
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const row = rows.find((r) => r.primary.id === highlightRowId);
+    if (row) {
+      editEntry = row.primary;
+      editOpen = true;
+    }
   });
 </script>
 

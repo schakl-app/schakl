@@ -12749,7 +12749,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Schedules */
+        /**
+         * List Schedules
+         * @description Planned blocks in a window: the caller's own, named people's (``user_ids``, ``:any`` for
+         *     anyone else), or everybody's (``all_users``, ``:any``; a holder of ``:own`` gets their own).
+         */
         get: operations["list_schedules_api_v1_tasks_schedules_get"];
         put?: never;
         /** Create Schedule */
@@ -61717,6 +61721,7 @@ export interface operations {
                 date_to?: string | null;
                 user_ids?: string[] | null;
                 task_id?: string | null;
+                all_users?: boolean;
             };
             header?: never;
             path?: never;

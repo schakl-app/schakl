@@ -1729,7 +1729,14 @@ contrast bug in dark mode rather than only an inconsistency.
 - **Agenda is a core surface like the dashboard**: the month view composes event feeds that
   modules contribute via the registry (`calendarSources`) — today the team's approved/pending
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
-  "?"; on mobile the grid becomes a per-day agenda list.
+  "?"; on mobile the grid becomes a per-day agenda list. **One per-person control under a feed**:
+  a feed that draws several colleagues offers `splitPeople` — a show/hide checkbox and a colour
+  swatch per colleague (#281) — and nothing else. The planned-tasks feed used to stack an additive
+  "collega's" overlay picker (#188) *above* that split, two lists of the same names under one
+  heading, of which only the second had a swatch; nobody could say what ticking the first did that
+  the second did not. So the feed loads the team (`/tasks/schedules?all_users=true`, a holder of
+  `:own` getting their own feed rather than a 403) and the split is the control. A viewer who may
+  read the team's planning therefore sees it by default, as they already did for leave.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
   Verlof: Mijn verlof | Team; Overzicht: Overzicht | Omzet | Projecten | Medewerkers | Uren |
   Marketing; Abonnementen:
