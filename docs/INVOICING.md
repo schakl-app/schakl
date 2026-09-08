@@ -398,6 +398,26 @@ for accounting packages.
     human being forbidden to bill one are different things, and "why is klant.nl not on the
     invoice" is exactly the question the picker exists to answer. Answering by omission is how
     the duplicate happens — the same rule `already_billed` follows below.
+- **What a portfolio adds up to is two sums, never one** (`GET /domains/totals`,
+  `DomainService.totals`). The flag above answers *whether* a domain bills; nothing answered what
+  a client's domains come to per year, and the obvious single figure would have been wrong in
+  both directions. An agency parks its own names on its own company record and sets them *not
+  invoiced*, and a client's self-registered domain is resolved the same way by the register: a
+  "yearly total" that dropped those makes the agency's forty internal domains vanish from its own
+  page, and one that summed them counts renewals nobody bills as revenue. So the aggregate carries
+  `invoiced_yearly` (what the renewal cron will bill) beside `uninvoiced_yearly` (what the
+  not-invoiced domains would cost at the same resolved price — override, else the TLD price in
+  force today), never netted, plus `unpriced_count` for the domains that are in neither sum
+  because summing "no price" as zero is the reassuring zero docs/UX.md forbids. It takes exactly
+  the list's filters through one `_filter_conditions`, so a footer and the rows above it are one
+  set, and it groups by client **in SQL** because the register is sectioned by client and paged —
+  a heading summed from the rows on the page is the total of the page (#37). Three surfaces read
+  it and word it through one `totals.ts`: the client hub's domains card (one line under the rows;
+  a not-invoiced row also says so under its price, or the price reads as revenue), the register's
+  section headings (each client's own figures, whichever page its rows are on) and the register's
+  footer (under the columns the figures belong to). The *Eerstvolgende verlenging* tile keeps
+  filtering on the invoiced set on purpose — it is a question about money, and a renewal nobody
+  bills is not a conversation with the client.
 - **The recurring backlog (#302)**: `GET /invoicing/recurring-backlog` is the *org-wide* other
   half of "nog te factureren" — agreement periods and domain renewals that no document claims,
   bucketed `company | month | source` with exact subtotals and a capped item list. Until it

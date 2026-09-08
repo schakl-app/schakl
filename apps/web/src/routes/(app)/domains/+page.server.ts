@@ -47,29 +47,34 @@ export const load: PageServerLoad = async (event) => {
 
   const paging = resolvePaging(event.url, pref);
 
-  // Only the URL-dependent read; every picker and definition set comes from the section
-  // layout, which does not rerun on search, filter or sort navigation (#290).
-  const domains = await api.GET("/api/v1/domains", {
-    params: {
-      query: {
-        limit: paging.limit,
-        offset: paging.offset,
-        sort,
-        q: filters.q,
-        company_id: filters.company,
-        status: filters.status,
-        registrar_provider_id: filters.registrar,
-        dns_provider_id: filters.dns,
-        // Absent is every domain; "false" is a filter in its own right ("what am I *not*
-        // billing?"), so this is a tri-state and never a plain boolean.
-        invoiceable: filters.invoiceable ? filters.invoiceable === "true" : undefined,
-      },
-    },
-  });
+  // The list's filters, once: the page and its totals must be asked about the same set, or
+  // the footer adds up rows the table above it does not show.
+  const query = {
+    q: filters.q,
+    company_id: filters.company,
+    status: filters.status,
+    registrar_provider_id: filters.registrar,
+    dns_provider_id: filters.dns,
+    // Absent is every domain; "false" is a filter in its own right ("what am I *not*
+    // billing?"), so this is a tri-state and never a plain boolean.
+    invoiceable: filters.invoiceable ? filters.invoiceable === "true" : undefined,
+  };
+
+  // Only the URL-dependent reads; every picker and definition set comes from the section
+  // layout, which does not rerun on search, filter or sort navigation (#290). The totals ride
+  // beside the page rather than after it: the section headings and the footer are the API's
+  // own aggregate over the whole filtered set, never a sum of the page (#37).
+  const [domains, totals] = await Promise.all([
+    api.GET("/api/v1/domains", {
+      params: { query: { limit: paging.limit, offset: paging.offset, sort, ...query } },
+    }),
+    api.GET("/api/v1/domains/totals", { params: { query } }),
+  ]);
 
   return {
     domains: domains.data?.items ?? [],
     total: domains.data?.total ?? 0,
+    totals: totals.data ?? null,
     paging,
     agencyLabel: event.locals.theme?.brandName ?? "",
     filters,

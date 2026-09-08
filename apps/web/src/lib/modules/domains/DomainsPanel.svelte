@@ -7,6 +7,7 @@
   import { can } from "$lib/core/permissions";
   import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
+  import { totalsParts, type DomainTotals } from "$lib/modules/domains/totals";
 
   interface PanelDomain {
     id: string;
@@ -17,6 +18,8 @@
     next_invoice_date?: string | null;
     resolved_price?: string | null;
     resolved_currency?: string | null;
+    /** The resolved billing answer (#298); absent on an older API, which read as invoiced. */
+    invoiceable?: boolean;
   }
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -24,6 +27,12 @@
   // The API caps the rows and sends the whole count beside them, so the card can say how much
   // it is *not* showing. Falls back to the rows on hand, which is what an older API would send.
   const total = $derived((data.total as number | undefined) ?? domains.length);
+  // The portfolio's figures over *every* domain, not the five shown: what bills per year and,
+  // kept apart from it, what the domains set "not invoiced" would cost — an agency's own names
+  // are parked on its own record and never billed, and a total that dropped them would answer
+  // a different question from the card it sits under (#298).
+  const totals = $derived((data.totals as DomainTotals | null | undefined) ?? null);
+  const totalsLine = $derived(totals ? totalsParts(totals, { count: false }) : []);
   // A website is the 0/1 child of a domain, so its quick link lives on the domain row: open the
   // existing one, or add one right there — everything for a client starts from the client page.
   const websitesEnabled = $derived(
@@ -64,6 +73,9 @@
             title={domain.name}
             meta={renewal(domain)}
             value={price(domain)}
+            valueMeta={domain.invoiceable === false && domain.resolved_price != null
+              ? t("domains.totals.not_invoiced")
+              : null}
             chip={t(`domains.status.${domain.status}`)}
           >
             {#snippet trailing()}
@@ -90,6 +102,19 @@
           </PanelRow>
         {/each}
       </ul>
+      {#if totalsLine.length > 0}
+        <!-- One line, under the rows and above the hand-over: the number a client conversation
+             about domains is actually about. The invoiced figure leads and is the dark one. -->
+        <p class="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-text-muted">
+          {#each totalsLine as part, index (index)}
+            <span
+              class={index === 0 && totals && totals.invoiced_count > 0
+                ? "font-medium text-text"
+                : ""}>{part}</span
+            >
+          {/each}
+        </p>
+      {/if}
     {/if}
   {/snippet}
   {#snippet actions()}

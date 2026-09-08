@@ -2177,6 +2177,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/domains/totals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain Totals
+         * @description What the filtered register adds up to, per client and as a whole.
+         *
+         *     Takes exactly the list's filters, so a footer under a list and the rows above it are the same
+         *     set. Invoiced and not-invoiced renewals are summed **separately** — an agency's own domains
+         *     are set *not invoiced* and still cost their renewal — and a domain with no price in force is
+         *     counted rather than summed as zero.
+         */
+        get: operations["domain_totals_api_v1_domains_totals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/domains/{domain_id}": {
         parameters: {
             query?: never;
@@ -18773,6 +18798,49 @@ export interface components {
             /** Domain */
             domain: string;
         };
+        /** DomainCompanyTotals */
+        DomainCompanyTotals: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Invoiced Count
+             * @default 0
+             */
+            invoiced_count: number;
+            /**
+             * Invoiced Yearly
+             * @default 0
+             */
+            invoiced_yearly: string;
+            /**
+             * Uninvoiced Count
+             * @default 0
+             */
+            uninvoiced_count: number;
+            /**
+             * Uninvoiced Yearly
+             * @default 0
+             */
+            uninvoiced_yearly: string;
+            /**
+             * Unpriced Count
+             * @default 0
+             */
+            unpriced_count: number;
+        };
         /** DomainCreate */
         DomainCreate: {
             auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
@@ -19023,6 +19091,66 @@ export interface components {
             /** Unavailable */
             unavailable?: string[];
             zone?: components["schemas"]["ZoneRead"] | null;
+        };
+        /**
+         * DomainTotals
+         * @description What a set of domains adds up to — and, separately, what of it actually bills.
+         *
+         *     An agency's own names (the internal domains parked on its own company record) and the
+         *     names a client registered elsewhere are set *not invoiced* (#298), and a total that then
+         *     silently dropped them would answer a different question from the list above it: "what does
+         *     this portfolio cost per year" and "what do we bill for it" are both wanted, and neither is
+         *     the other. So the two halves are carried side by side, never netted, and the count that
+         *     could not be priced is stated rather than summed as zero (docs/UX.md: an honest dash, never a
+         *     reassuring zero).
+         */
+        DomainTotals: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Invoiced Count
+             * @default 0
+             */
+            invoiced_count: number;
+            /**
+             * Invoiced Yearly
+             * @default 0
+             */
+            invoiced_yearly: string;
+            /**
+             * Uninvoiced Count
+             * @default 0
+             */
+            uninvoiced_count: number;
+            /**
+             * Uninvoiced Yearly
+             * @default 0
+             */
+            uninvoiced_yearly: string;
+            /**
+             * Unpriced Count
+             * @default 0
+             */
+            unpriced_count: number;
+        };
+        /**
+         * DomainTotalsReport
+         * @description The list's aggregate, over the same filters the list takes: one row for the whole
+         *     filtered set and one per client, so a sectioned page can head each client with its own
+         *     figures without summing the page (#37 — a page is not the set).
+         */
+        DomainTotalsReport: {
+            /** By Company */
+            by_company?: components["schemas"]["DomainCompanyTotals"][];
+            total: components["schemas"]["DomainTotals"];
         };
         /** DomainUpdate */
         DomainUpdate: {
@@ -41321,6 +41449,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    domain_totals_api_v1_domains_totals_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                q?: string | null;
+                /** @description The list's own filter: the resolved billing answer (#298). */
+                invoiceable?: boolean | null;
+                status?: string | null;
+                registrar_provider_id?: string | null;
+                dns_provider_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainTotalsReport"];
+                };
             };
             /** @description Validation Error */
             422: {

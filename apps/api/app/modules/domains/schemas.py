@@ -199,6 +199,47 @@ class DomainRead(BaseModel):
     updated_at: datetime
 
 
+# --- Portfolio totals ------------------------------------------------------------------ #
+
+
+class DomainTotals(BaseModel):
+    """What a set of domains adds up to — and, separately, what of it actually bills.
+
+    An agency's own names (the internal domains parked on its own company record) and the
+    names a client registered elsewhere are set *not invoiced* (#298), and a total that then
+    silently dropped them would answer a different question from the list above it: "what does
+    this portfolio cost per year" and "what do we bill for it" are both wanted, and neither is
+    the other. So the two halves are carried side by side, never netted, and the count that
+    could not be priced is stated rather than summed as zero (docs/UX.md: an honest dash, never a
+    reassuring zero).
+    """
+
+    count: int = 0
+    #: Domains whose renewal bills, and what those renewals come to per year.
+    invoiced_count: int = 0
+    invoiced_yearly: Decimal = Decimal("0")
+    #: Domains set (or resolved) to *not invoiced* — kept in the picture, priced at what they
+    #: *would* cost, because an internal domain still costs the agency its renewal.
+    uninvoiced_count: int = 0
+    uninvoiced_yearly: Decimal = Decimal("0")
+    #: Domains with neither a custom price nor a TLD price in force: absent from both sums.
+    unpriced_count: int = 0
+    currency: str = "EUR"
+
+
+class DomainCompanyTotals(DomainTotals):
+    company_id: uuid.UUID
+
+
+class DomainTotalsReport(BaseModel):
+    """The list's aggregate, over the same filters the list takes: one row for the whole
+    filtered set and one per client, so a sectioned page can head each client with its own
+    figures without summing the page (#37 — a page is not the set)."""
+
+    total: DomainTotals
+    by_company: list[DomainCompanyTotals] = Field(default_factory=list)
+
+
 # --- TLD price list (#250) ------------------------------------------------------------- #
 
 
