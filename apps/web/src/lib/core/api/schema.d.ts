@@ -20320,6 +20320,8 @@ export interface components {
             is_manager: boolean;
             /** Last Error */
             last_error?: string | null;
+            /** Last Sync Error */
+            last_sync_error?: string | null;
             /** Last Synced At */
             last_synced_at?: string | null;
             /** Last Verified At */

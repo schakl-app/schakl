@@ -111,6 +111,7 @@ def _read(row: GoogleAdsAccount, company_name: str | None = None) -> GoogleAdsAc
         active=row.active,
         status=row.status,
         last_error=row.last_error,
+        last_sync_error=row.last_sync_error,
         last_verified_at=row.last_verified_at,
         last_synced_at=row.last_synced_at,
     )
