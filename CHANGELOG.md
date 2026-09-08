@@ -24,8 +24,8 @@ orgs' system roles by the start-up reconciler. New routes: `GET /domains/totals`
 trash surface `GET /trash/company`, `GET /trash/company/{id}`, `GET /trash/company/{id}/preview`,
 `POST /trash/company/{id}/restore` and `DELETE /trash/company/{id}` (all on
 `companies.company.delete`); and fourteen `wordpress` routes under `/wordpress/sites/{site_id}/`
-(`summary`, `content`, `media`, `forms`, `abilities`, `abilities/run`, `rest`), which also make up
-the new `/mcp/wordpress` section and join the `infra` bundle. One new cron job, `trash_purge`,
+(`summary`, `content`, `media`, `forms`, `abilities`, `abilities/run`, `rest`), served as tools
+on the derived `/mcp/wordpress` section and the `infra` bundle like every other `wordpress` route. One new cron job, `trash_purge`,
 nightly at 03:00. The public API reference and the typed client are regenerated.
 
 ### Clients
