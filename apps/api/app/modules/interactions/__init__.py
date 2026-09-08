@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.trash import register_trash_dependent
 from app.modules.interactions.bulk import INTERACTION_BULK
 from app.modules.interactions.jobs import (
     interactions_enrich_task,
@@ -18,6 +19,7 @@ from app.modules.interactions.panels import interactions_company_panel
 from app.modules.interactions.permissions import INTERACTION_PERMISSIONS
 from app.modules.interactions.router import router
 from app.modules.interactions.summary import interactions_company_summary
+from app.modules.interactions.trash import INTERACTION_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -40,3 +42,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in INTERACTION_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)

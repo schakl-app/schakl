@@ -565,7 +565,11 @@ class ContactService:
         # RLS already scopes ``companies`` to the current org; the explicit filter is
         # defence-in-depth (Golden Rule 1).
         ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid"),
+            text(
+                # …and not in the trash (docs/TRASH.md): a row nobody can see is not a client
+                # anything may be attached to.
+                "SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid AND deleted_at IS NULL"
+            ),
             {"cid": company_id, "oid": self._org_id},
         )
         if not ok or (

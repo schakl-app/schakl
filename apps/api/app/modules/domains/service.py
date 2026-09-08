@@ -50,7 +50,10 @@ from app.modules.domains.invoiceable import (
 from app.modules.domains.models import BILLABLE_STATUSES, Domain, DomainTldPrice
 from app.modules.domains.pricing import price_row_at
 from app.modules.domains.schemas import (
+    DomainCompanyTotals,
     DomainCreate,
+    DomainTotals,
+    DomainTotalsReport,
     DomainUpdate,
     TldPriceGroup,
     TldPriceIncreaseItem,
@@ -336,6 +339,43 @@ class DomainService:
         count: bool = True,
         meta: bool = True,
     ) -> tuple[Sequence[Domain], int]:
+        conditions = self._filter_conditions(
+            company_id=company_id,
+            q=q,
+            invoiceable=invoiceable,
+            status=status,
+            registrar_provider_id=registrar_provider_id,
+            dns_provider_id=dns_provider_id,
+        )
+
+        stmt = self.repo.scoped_select().where(*conditions)
+        stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Domain.name))
+        stmt = stmt.limit(limit).offset(offset)
+        items = list((await self.ctx.session.execute(stmt)).scalars().all())
+
+        if count:
+            count_stmt = self.repo.scoped_count_select().where(*conditions)
+            total = int(await self.ctx.session.scalar(count_stmt) or 0)
+        else:
+            total = len(items)
+        if meta:
+            await self._attach(items)
+        else:
+            _blank_display_fields(items)
+        return items, total
+
+    def _filter_conditions(
+        self,
+        *,
+        company_id: uuid.UUID | None,
+        q: str | None,
+        invoiceable: bool | None,
+        status: str | None,
+        registrar_provider_id: uuid.UUID | None,
+        dns_provider_id: uuid.UUID | None,
+    ) -> list:
+        """The list's filters as SQL — one definition, read by the page *and* its totals, so a
+        footer can never add up a different set from the rows it sits under."""
         conditions = []
         if company_id is not None:
             conditions.append(Domain.company_id == company_id)
@@ -357,22 +397,101 @@ class DomainService:
             # the ones nobody has typed anything into.
             clause = invoiceable_condition(self._org_id)
             conditions.append(clause if invoiceable else ~clause)
+        return conditions
 
-        stmt = self.repo.scoped_select().where(*conditions)
-        stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Domain.name))
-        stmt = stmt.limit(limit).offset(offset)
-        items = list((await self.ctx.session.execute(stmt)).scalars().all())
+    async def totals(
+        self,
+        *,
+        company_id: uuid.UUID | None = None,
+        q: str | None = None,
+        invoiceable: bool | None = None,
+        status: str | None = None,
+        registrar_provider_id: uuid.UUID | None = None,
+        dns_provider_id: uuid.UUID | None = None,
+    ) -> DomainTotalsReport:
+        """What the filtered set adds up to, per client and as a whole — **one** statement.
 
-        if count:
-            count_stmt = self.repo.scoped_count_select().where(*conditions)
-            total = int(await self.ctx.session.scalar(count_stmt) or 0)
-        else:
-            total = len(items)
-        if meta:
-            await self._attach(items)
-        else:
-            _blank_display_fields(items)
-        return items, total
+        Two sums, kept apart on purpose. An agency parks its own names on its own company
+        record and sets them *not invoiced* (#298), and a client's self-registered domain is
+        resolved the same way by the register; a single "yearly total" would either count those
+        renewals as revenue or make them vanish, and both are wrong. So the invoiced half is
+        what the renewal cron will bill and the uninvoiced half is what those domains would
+        cost — the same resolved price the row shows (override, else the TLD price in force
+        today), never netted against each other. A domain with no price in force is counted in
+        ``unpriced_count`` and in neither sum: summing it as zero is the reassuring zero
+        docs/UX.md forbids.
+
+        Grouped by client in SQL because the register is sectioned by client and paged: a
+        heading summed from the rows on the page would be the total of the page (#37).
+        """
+        conditions = self._filter_conditions(
+            company_id=company_id,
+            q=q,
+            invoiceable=invoiceable,
+            status=status,
+            registrar_provider_id=registrar_provider_id,
+            dns_provider_id=dns_provider_id,
+        )
+        org_id = self._org_id
+        today = await self._org_today()
+        # The TLD price in force today, correlated per row — the same rule `_current_tld_prices`
+        # applies in Python for a page: newest `valid_from` not in the future wins.
+        list_price = (
+            select(DomainTldPrice.amount)
+            .where(
+                DomainTldPrice.org_id == org_id,
+                DomainTldPrice.tld == Domain.tld,
+                DomainTldPrice.valid_from <= today,
+            )
+            .order_by(DomainTldPrice.valid_from.desc())
+            .limit(1)
+            .correlate(Domain)
+            .scalar_subquery()
+        )
+        price = func.coalesce(Domain.price_override, list_price)
+        billed = invoiceable_condition(org_id)
+        zero = literal(Decimal("0"))
+        stmt = (
+            select(
+                Domain.company_id,
+                func.count().label("count"),
+                func.count().filter(billed).label("invoiced_count"),
+                func.coalesce(func.sum(price).filter(billed), zero).label("invoiced_yearly"),
+                func.count().filter(~billed).label("uninvoiced_count"),
+                func.coalesce(func.sum(price).filter(~billed), zero).label("uninvoiced_yearly"),
+                func.count().filter(price.is_(None)).label("unpriced_count"),
+            )
+            .select_from(Domain)
+            .where(Domain.org_id == org_id, *conditions)
+            .group_by(Domain.company_id)
+        )
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
+        rows = (await self.ctx.session.execute(stmt)).all()
+        currency = await self._org_currency()
+        by_company = [
+            DomainCompanyTotals(
+                company_id=row.company_id,
+                count=int(row.count),
+                invoiced_count=int(row.invoiced_count),
+                invoiced_yearly=Decimal(row.invoiced_yearly),
+                uninvoiced_count=int(row.uninvoiced_count),
+                uninvoiced_yearly=Decimal(row.uninvoiced_yearly),
+                unpriced_count=int(row.unpriced_count),
+                currency=currency,
+            )
+            for row in rows
+        ]
+        total = DomainTotals(currency=currency)
+        for group in by_company:
+            total.count += group.count
+            total.invoiced_count += group.invoiced_count
+            total.invoiced_yearly += group.invoiced_yearly
+            total.uninvoiced_count += group.uninvoiced_count
+            total.uninvoiced_yearly += group.uninvoiced_yearly
+            total.unpriced_count += group.unpriced_count
+        return DomainTotalsReport(total=total, by_company=by_company)
 
     async def get(self, domain_id: uuid.UUID) -> Domain:
         domain = await self.repo.get_or_404(domain_id)
@@ -910,7 +1029,11 @@ class DomainService:
 
     async def _ensure_company(self, company_id: uuid.UUID) -> None:
         ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid"),
+            text(
+                # …and not in the trash (docs/TRASH.md): a row nobody can see is not a client
+                # anything may be attached to.
+                "SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid AND deleted_at IS NULL"
+            ),
             {"cid": company_id, "oid": self._org_id},
         )
         if not ok:

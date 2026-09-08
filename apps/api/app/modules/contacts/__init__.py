@@ -11,6 +11,7 @@ from app.core.portal import (
     register_portal_user_resolver,
 )
 from app.core.scope import SCOPE_SOURCE_PORTAL, register_company_scope_resolver
+from app.core.trash import register_trash_dependent
 from app.modules.contacts.bulk import CONTACT_BULK
 from app.modules.contacts.impex import CONTACT_IMPEX, CONTACT_ON_COMPANY_EXTENSION
 from app.modules.contacts.mcp import CONTACT_MCP_TOOLS
@@ -22,6 +23,7 @@ from app.modules.contacts.portal import (
     resolve_portal_users,
 )
 from app.modules.contacts.router import router
+from app.modules.contacts.trash import CONTACT_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 # The client portal's data horizon (#193, on #191's seam): a contact-linked membership sees
@@ -53,3 +55,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in CONTACT_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)

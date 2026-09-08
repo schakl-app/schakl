@@ -398,6 +398,26 @@ for accounting packages.
     human being forbidden to bill one are different things, and "why is klant.nl not on the
     invoice" is exactly the question the picker exists to answer. Answering by omission is how
     the duplicate happens — the same rule `already_billed` follows below.
+- **What a portfolio adds up to is two sums, never one** (`GET /domains/totals`,
+  `DomainService.totals`). The flag above answers *whether* a domain bills; nothing answered what
+  a client's domains come to per year, and the obvious single figure would have been wrong in
+  both directions. An agency parks its own names on its own company record and sets them *not
+  invoiced*, and a client's self-registered domain is resolved the same way by the register: a
+  "yearly total" that dropped those makes the agency's forty internal domains vanish from its own
+  page, and one that summed them counts renewals nobody bills as revenue. So the aggregate carries
+  `invoiced_yearly` (what the renewal cron will bill) beside `uninvoiced_yearly` (what the
+  not-invoiced domains would cost at the same resolved price — override, else the TLD price in
+  force today), never netted, plus `unpriced_count` for the domains that are in neither sum
+  because summing "no price" as zero is the reassuring zero docs/UX.md forbids. It takes exactly
+  the list's filters through one `_filter_conditions`, so a footer and the rows above it are one
+  set, and it groups by client **in SQL** because the register is sectioned by client and paged —
+  a heading summed from the rows on the page is the total of the page (#37). Three surfaces read
+  it and word it through one `totals.ts`: the client hub's domains card (one line under the rows;
+  a not-invoiced row also says so under its price, or the price reads as revenue), the register's
+  section headings (each client's own figures, whichever page its rows are on) and the register's
+  footer (under the columns the figures belong to). The *Eerstvolgende verlenging* tile keeps
+  filtering on the invoiced set on purpose — it is a question about money, and a renewal nobody
+  bills is not a conversation with the client.
 - **The recurring backlog (#302)**: `GET /invoicing/recurring-backlog` is the *org-wide* other
   half of "nog te factureren" — agreement periods and domain renewals that no document claims,
   bucketed `company | month | source` with exact subtotals and a capped item list. Until it
@@ -1087,6 +1107,31 @@ in two different places on purpose:
   cron-drafted one read the same, which is the seam's whole reason to exist. One line rather
   than a second row, because the editor's description is a single-line input and a period
   label already follows it in parentheses.
+- **A subscription's notes may print as the document's notes block** — the other half of the
+  same seam (`subscriptions.invoice_notes`). A standard subscription's notes are #259's
+  transparency text, "what we do for you and what you may expect", authored once with
+  `{{company_name}}`-style variables; until now only the agency ever read them. Whether they
+  belong on the invoice is a decision about *what is sold*, so it lives on the **standard
+  subscription** (`notes_on_invoice`, off unless a tenant says so — a note an agency wrote for
+  itself must never start reaching clients on an upgrade) and one agreement may say otherwise
+  for itself (`notes_on_invoice_override`, `NULL` follows; an agreement following no preset
+  keeps its notes to itself unless told). One resolution (`invoice_note_flags`) is read by the
+  agreement's own read, the picker and the cron alike. Three rules. **The variables are
+  resolved before the note leaves the agreement** (`subscriptions/variables.py`, the API twin
+  of the web's `variables.ts`, its vocabulary pinned against it by a test): an invoice is a
+  record, and an `{{amount}}` re-read at print time would restate a price raised since. The
+  values print the way the document prints the same figures — `app/core/money.fmt_money`,
+  lifted out of the renderer for exactly this, and `dd-mm-yyyy`. **Both drafting paths carry
+  the same text**: the cron puts it on `subscription.due` as `notes` and `invoicing` writes it
+  through the same `sanitize_markdown` a typed note meets; the picker publishes it on
+  `BillableSubscription.notes`, and the editor appends it under whatever the notes field
+  already holds, once per agreement (`DocumentForm.addSubscriptionNote`), saying so beside the
+  field. And **the markup reaches the paper**: the notes are markdown (#66) and every construct
+  an author can reach — a heading, a list, a table, a quote, a code span, a rule, a link — is
+  stated in each shipped design's own type (`.notes` in `letterhead.css` / `classic.css`), so an
+  `<h1>` inside a note is a heading *within the notes* and never a second title for the sheet.
+  Its sibling was found by the first blockquote to reach a document: `sanitize_markdown`
+  escaped a leading `>` to `&gt;`, so a quote flattened on save — everywhere, for a year.
 
 The value is formatted the way the web formats it (`format_value`: an option's own label, a
 `dd-mm-yyyy` date, *Ja*/*Nee*), and an empty value prints nothing — an empty label on paper is

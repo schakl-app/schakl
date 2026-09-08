@@ -12,6 +12,7 @@ from arq import cron
 from app.core.activity import register_auditable
 from app.core.busy import register_busy_provider
 from app.core.events import subscribe
+from app.core.trash import register_trash_dependent
 from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.bulk import TASK_BULK
 from app.modules.tasks.emails import TASK_EMAIL_KINDS, tasks_send_contact_assigned
@@ -25,6 +26,7 @@ from app.modules.tasks.router import router
 from app.modules.tasks.scheduling import task_blocks_busy
 from app.modules.tasks.summary import tasks_company_summary
 from app.modules.tasks.templates import on_company_status, on_subscription_activated
+from app.modules.tasks.trash import TASK_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -55,6 +57,10 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in TASK_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)
 
 # A task keeps its own legacy TaskActivity trail (the #67 fold-in is still pending), so it does
 # not use ``AuditableMixin``. But contact-moment milestones (#152) are mirrored onto the core

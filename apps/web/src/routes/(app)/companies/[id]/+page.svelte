@@ -51,6 +51,7 @@
   import StateMark from "$lib/core/ui/StateMark.svelte";
   import SummaryStrip from "$lib/core/ui/SummaryStrip.svelte";
   import { toastError, toastSuccess } from "$lib/core/ui/toast.svelte";
+  import CompanyDeleteDialog from "$lib/modules/companies/CompanyDeleteDialog.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { arrangePanels, type HubRow } from "$lib/modules/companies/hub";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
@@ -116,6 +117,14 @@
     if (!editWasOpen) return;
     editWasOpen = false;
     clearEditIntent();
+  });
+
+  let archiveAnnounced = $state(false);
+  $effect(() => {
+    if (form?.archived && !archiveAnnounced) {
+      archiveAnnounced = true;
+      toastSuccess(t("companies.archived_toast", { name: company.name }));
+    }
   });
 
   // Header actions render only for holders of the matching permission (#253).
@@ -670,9 +679,12 @@
   </SlideOver>
 {/if}
 
-<ConfirmDialog
+<!-- Archive or trash — the dialog reads what hangs off the client before it asks (docs/TRASH.md).
+     A trash redirects to the list with an undo; an archive stays here and says so. -->
+<CompanyDeleteDialog
   bind:open={confirmDelete}
-  title={t("common.delete")}
-  message={t("companies.delete_confirm", { name: company.name })}
-  action="?/delete"
+  companyId={company.id}
+  name={company.name}
+  status={company.status}
+  onfailure={(key) => toastError(t(key))}
 />

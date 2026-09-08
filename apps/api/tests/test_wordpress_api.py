@@ -222,7 +222,7 @@ async def test_no_rank_math_is_a_working_connection(client_for, wp) -> None:
 
 
 async def test_no_mcp_adapter_is_a_working_connection(client_for, wp) -> None:
-    wp.mcp_namespace = None
+    wp.mcp_server = None
     t = await make_tenant("wp-no-mcp")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:

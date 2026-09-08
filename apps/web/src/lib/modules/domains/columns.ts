@@ -69,7 +69,9 @@ export const DOMAIN_COLUMNS: ColumnMeta[] = [
     align: "right",
     width: 140,
   },
-  { key: "price", labelKey: "domains.price", align: "right", width: 110 },
+  // Wide enough for "niet gefactureerd" under the figure (#298): a price on a domain nobody
+  // bills is what it costs, and the cell says so rather than letting the column read as revenue.
+  { key: "price", labelKey: "domains.price", align: "right", width: 140 },
   // Resolved server-side from a three-state flag and the registrar registers (#298), so there
   // is nothing to sort by — a quiet header, like the price beside it. Wider than a plain yes/no
   // because the "volgt register" badge sits beside the answer.

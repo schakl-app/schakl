@@ -614,6 +614,31 @@
         </div>
       {/if}
     </div>
+    <!-- Whether the notes above print on the invoices this agreement raises. The standard
+         subscription decides and this is the one agreement's own say over it — the same
+         three-state shape as the billing direction: "" follows, a value overrides. -->
+    <div>
+      <label for="sub-notes-on-invoice" class="mb-1 block text-sm font-medium text-text"
+        >{t("subscriptions.field.notes_on_invoice")}</label
+      >
+      <select
+        id="sub-notes-on-invoice"
+        name="notes_on_invoice_override"
+        class={inputClass}
+        value={editing?.notes_on_invoice_override == null
+          ? ""
+          : editing.notes_on_invoice_override
+            ? "true"
+            : "false"}
+      >
+        <option value="">{t("subscriptions.notes_on_invoice.inherit")}</option>
+        <option value="true">{t("subscriptions.notes_on_invoice.on")}</option>
+        <option value="false">{t("subscriptions.notes_on_invoice.off")}</option>
+      </select>
+      <p class="mt-1 text-xs text-text-muted">
+        {t("subscriptions.field.notes_on_invoice_override_hint")}
+      </p>
+    </div>
     {#if lookups.definitions.length > 0}
       <!-- A field attached to a type or a preset appears the moment one is picked (§13). -->
       <CustomFieldsForm

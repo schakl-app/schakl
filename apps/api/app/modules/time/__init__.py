@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.trash import register_trash_dependent
 from app.modules.time.impex import TIME_ENTRY_IMPEX
 from app.modules.time.jobs import purge_stale_time_drafts
 from app.modules.time.mcp import TIME_MCP_TOOLS
@@ -16,6 +17,7 @@ from app.modules.time.permissions import TIME_PERMISSIONS
 from app.modules.time.reminders import send_timesheet_reminders
 from app.modules.time.router import router
 from app.modules.time.summary import time_company_summary
+from app.modules.time.trash import TIME_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -40,3 +42,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in TIME_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)

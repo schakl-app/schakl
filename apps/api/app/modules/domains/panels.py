@@ -25,9 +25,12 @@ _PANEL_LIMIT = 5
 
 
 async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    domains, total = await DomainService(ctx).list(
-        limit=_PANEL_LIMIT, offset=0, company_id=company_id
-    )
+    service = DomainService(ctx)
+    domains, total = await service.list(limit=_PANEL_LIMIT, offset=0, company_id=company_id)
+    # What the whole portfolio comes to — the five rows are a window, the figure is the answer.
+    # Invoiced and not-invoiced kept apart (#298): an agency's own names are set *not invoiced*
+    # and still cost their renewal. One grouped statement, skipped when there is nothing to add.
+    totals = (await service.totals(company_id=company_id)).total if total else None
     # Which domains already carry their (0/1) website — so the panel can link to it, or offer
     # "＋ website" where there is none: everything for a client starts from the client's page.
     # Raw table SQL (the websites service's own `_attach` pattern) — never a Python import of
@@ -71,9 +74,13 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
                     str(d.resolved_price) if d.resolved_price is not None else None  # type: ignore[attr-defined]
                 ),
                 "resolved_currency": d.resolved_currency,  # type: ignore[attr-defined]
+                # Resolved, not stored (#298): a price on a row nobody bills reads as revenue
+                # unless the row says otherwise.
+                "invoiceable": d.invoiceable_effective,  # type: ignore[attr-defined]
             }
             for d in domains
         ],
+        "totals": totals.model_dump(mode="json") if totals is not None else None,
     }
 
 

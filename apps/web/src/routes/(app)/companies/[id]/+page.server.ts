@@ -76,7 +76,18 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/members/lookup"),
   ]);
   const company = companyRes.data;
-  if (!company) throw error(404, { code: "not_found", message: "errors.not_found" });
+  if (!company) {
+    // A bookmark, a chip or an old notification can still name a client that is in the trash.
+    // Whoever may bring it back is sent to where that is done, with the row marked; anybody
+    // else gets the 404 the API gave — a record they cannot restore is a record that is gone.
+    if (can(event.locals.user, "companies.company.delete")) {
+      const trashed = await api.GET("/api/v1/trash/company/{entity_id}", {
+        params: { path: { entity_id: company_id } },
+      });
+      if (trashed.data) throw redirect(303, `/settings/trash?highlight=${company_id}`);
+    }
+    throw error(404, { code: "not_found", message: "errors.not_found" });
+  }
 
   // The edit modal's own lookups stream in behind the page (the `createForm` pattern): nothing
   // on the client page draws them, and most visits never open the modal. One call covers both
@@ -330,11 +341,30 @@ export const actions: Actions = {
     return { templateApplied: true };
   },
 
+  /**
+   * The delete dialog's two ways out (docs/TRASH.md). `mode=archive` is a status write — the
+   * client leaves the working set and keeps everything; `mode=trash` is the DELETE, which the
+   * API refuses (409, `errors.trash_blocked`) for a client with a history the dialog should
+   * already have shown. The refusal is read and shown, never swallowed: a delete that redirects
+   * as if it worked is the worst answer available to "did that go through?".
+   */
   delete: async (event) => {
-    await apiFor(event).DELETE("/api/v1/companies/{company_id}", {
-      params: { path: { company_id: event.params.id } },
+    const form = await event.request.formData();
+    const api = apiFor(event);
+    const company_id = event.params.id;
+    if (String(form.get("mode") ?? "") === "archive") {
+      const { error: apiError } = await api.PATCH("/api/v1/companies/{company_id}", {
+        params: { path: { company_id } },
+        body: { status: "archived" },
+      });
+      if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+      return { archived: true };
+    }
+    const { error: apiError } = await api.DELETE("/api/v1/companies/{company_id}", {
+      params: { path: { company_id } },
     });
-    throw redirect(303, "/companies");
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    throw redirect(303, `/companies?trashed=${company_id}`);
   },
 
   // Contactmomenten panel contract (lib/modules/interactions).

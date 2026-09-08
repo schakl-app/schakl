@@ -66,6 +66,7 @@
     formId,
     /** Quotes bill no hours and claim no period, so they get the sections without the pickers. */
     pickable = true,
+    onnote,
   }: {
     lines: EditableLine[];
     taxRates: TaxRate[];
@@ -83,6 +84,13 @@
     pricesIncludeTax?: boolean;
     formId?: string;
     pickable?: boolean;
+    /**
+     * A picked agreement's notes, as its invoice prints them (`BillableSubscription.notes`):
+     * the host owns the document's notes field and decides how they land there. Called once
+     * per distinct note per pick, never per period — twelve months of one agreement is one
+     * note.
+     */
+    onnote?: (note: string) => void;
   } = $props();
 
   const activeRates = $derived(taxRates.filter((r) => r.active));
@@ -187,6 +195,7 @@
    *  a line of each kind is made of. */
   function addPicked(ids: string[]) {
     const added: EditableLine[] = [];
+    const notes: string[] = [];
     for (const id of ids) {
       const [prefix, ...rest] = id.split(":");
       if (prefix === "t") {
@@ -215,6 +224,9 @@
       const period = source?.periods?.find((p) => p.period_end === periodEnd);
       if (!source || !period) continue;
       const claim = isAgreement ? { subscription_id: source.id } : { domain_id: source.id };
+      if (isAgreement && "notes" in source && source.notes && !notes.includes(source.notes)) {
+        notes.push(source.notes);
+      }
       // An agreement's own lines become the document's, each keeping its own description —
       // "Hosting" and "Onderhoud" on one retainer stay two readable lines, not one lump.
       const offers = period.lines?.length
@@ -242,6 +254,7 @@
       }
     }
     if (added.length) lines = [...lines, ...added];
+    for (const note of notes) onnote?.(note);
   }
 
   function removeLine(line: EditableLine) {

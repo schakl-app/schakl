@@ -140,6 +140,12 @@ class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     #: rows to query, so JSONB rather than a child table.
     lines: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Whether the notes of every agreement made from this preset print on the invoices it
+    #: raises (#259's transparency text, resolved per agreement). Off by default: a note an
+    #: agency wrote for itself must never start reaching clients on an upgrade. Read live,
+    #: like ``billed_in_advance``, so the preset stays the one place the decision is made —
+    #: and one agreement may say otherwise (``Subscription.notes_on_invoice_override``).
+    notes_on_invoice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
@@ -244,6 +250,13 @@ class Subscription(
     #: rides the read as ``billed_in_advance`` (``_attach``), and a resolution written onto the
     #: mapped column would be stored on the next flush.
     billed_in_advance_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: This agreement's own say on whether its notes print on the invoices it raises, over
+    #: what its standard subscription says (``SubscriptionTemplate.notes_on_invoice``):
+    #: ``NULL`` follows the preset (and an agreement following no preset keeps its notes to
+    #: itself), a value decides for this one agreement. Same ``_override`` naming and for the
+    #: same reason as the direction: the *resolved* answer rides the read as
+    #: ``notes_on_invoice`` (``_attach``), so a same-named mapped column would be flushed.
+    notes_on_invoice_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Hours of work the fee includes per period; consumption is measured against the time
     #: logged on the *linked* projects (the same aggregate every budget bar reads, #25).
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)

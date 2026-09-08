@@ -446,6 +446,76 @@ async def test_the_outstanding_picker_labels_a_non_invoiced_domain_rather_than_h
         assert domains["elders.nl"]["periods"], "the periods are listed, not withheld"
 
 
+async def test_the_totals_keep_a_non_invoiced_domain_in_the_picture_priced_apart(
+    client_for, cloudflare
+) -> None:
+    """An agency parks its own names on its own company record and sets them *not invoiced*;
+    a client's self-registered domain is resolved the same way by the register. Neither may
+    vanish from what the portfolio adds up to, and neither may be counted as revenue — so the
+    totals carry two sums, never netted, and a domain with no price in force is counted rather
+    than summed as zero."""
+    cloudflare.add_registration("vanons.nl")
+    today = datetime.now(UTC).date()
+    t = await make_tenant("inv-totals")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        client = await _company(c, headers)
+        agency = await _company(c, headers, "Bureau zelf")
+        await c.post(
+            "/api/v1/domains/tld-prices",
+            json={
+                "tld": "nl",
+                "amount": "12.50",
+                "valid_from": (today - timedelta(days=30)).isoformat(),
+            },
+            headers=headers,
+        )
+        # The client: one name we hold (bills at the list price), one they registered elsewhere.
+        await _domain(c, headers, "vanons.nl", client)
+        await _domain(c, headers, "elders.nl", client)
+        # The agency's own: never invoiced, and still costing its renewal — plus one we decided
+        # to bill but never priced.
+        await _domain(c, headers, "intern.nl", agency, invoiceable=False, price_override="20.00")
+        await _domain(c, headers, "zonderprijs.org", agency, invoiceable=True)
+        await _cf_synced(c, headers, cloudflare)
+
+        res = await c.get("/api/v1/domains/totals", headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        total = body["total"]
+        assert total["count"] == 4
+        assert total["invoiced_count"] == 2 and total["invoiced_yearly"] == "12.50"
+        assert total["uninvoiced_count"] == 2 and total["uninvoiced_yearly"] == "32.50"
+        assert total["unpriced_count"] == 1
+        by_company = {row["company_id"]: row for row in body["by_company"]}
+        assert by_company[agency]["invoiced_count"] == 1
+        assert by_company[agency]["invoiced_yearly"] == "0"
+        assert by_company[agency]["uninvoiced_yearly"] == "20.00"
+        assert by_company[client]["uninvoiced_count"] == 1
+        assert by_company[client]["uninvoiced_yearly"] == "12.50"
+
+        # The list's own filters, so the footer and the rows are one set.
+        narrowed = (
+            await c.get("/api/v1/domains/totals", headers=headers, params={"company_id": agency})
+        ).json()
+        assert narrowed["total"]["count"] == 2 and len(narrowed["by_company"]) == 1
+        not_billed = (
+            await c.get("/api/v1/domains/totals", headers=headers, params={"invoiceable": "false"})
+        ).json()["total"]
+        assert not_billed["count"] == 2 and not_billed["invoiced_count"] == 0
+        assert not_billed["uninvoiced_yearly"] == "32.50"
+
+        # The client card says the same thing about the same rows.
+        panels = (await c.get(f"/api/v1/companies/{agency}/panels", headers=headers)).json()
+        panel = next(p for p in panels if p["key"] == "domains.company")["data"]
+        assert panel["totals"]["uninvoiced_count"] == 1
+        assert panel["totals"]["uninvoiced_yearly"] == "20.00"
+        assert {d["name"]: d["invoiceable"] for d in panel["domains"]} == {
+            "intern.nl": False,
+            "zonderprijs.org": True,
+        }
+
+
 async def test_the_export_carries_the_stored_decision_and_re_imports_unchanged(
     client_for, cloudflare
 ) -> None:

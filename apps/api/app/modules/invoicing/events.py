@@ -35,6 +35,7 @@ from app.core.activity import ActivityService
 from app.core.billing import add_months, resolve_auto_invoice_mode
 from app.core.events import EmitContext
 from app.core.models import OrgSettings
+from app.core.richtext import sanitize_markdown
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.i18n import translate
@@ -179,6 +180,7 @@ async def _draft_period_invoice(
     currency: str,
     mode: AutoInvoiceMode,
     line_kind: LineKind,
+    notes: str | None = None,
 ) -> None:
     """The shared drafting core: company snapshot, org tax defaults, snapshotted lines,
     recomputed totals, one DRAFT invoice carrying ``link_field`` for idempotency — then as
@@ -272,7 +274,9 @@ async def _draft_period_invoice(
         currency=(currency or "EUR").upper(),
         locale=locale,
         intro=None,
-        notes=None,
+        # The agreement's own notes, already resolved by whoever owns the agreement; the same
+        # write guard every hand-typed note meets (#66), because a payload is not a form.
+        notes=sanitize_markdown(notes) or None,
         template_id=settings_row.default_template_id if settings_row else None,
         prices_include_tax=include_tax,
         period_start=period_start,
@@ -398,6 +402,7 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
         currency=payload.get("currency") or "EUR",
         mode=mode,
         line_kind=LineKind.SUBSCRIPTION,
+        notes=str(payload["notes"]) if payload.get("notes") else None,
     )
 
 

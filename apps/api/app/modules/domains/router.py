@@ -14,6 +14,7 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.domains.schemas import (
     DomainCreate,
     DomainRead,
+    DomainTotalsReport,
     DomainUpdate,
     TldPriceGroup,
     TldPriceIncreaseRequest,
@@ -101,6 +102,42 @@ async def create_domain(
 ) -> DomainRead:
     domain = await DomainService(ctx).create(payload)
     return DomainRead.model_validate(domain)
+
+
+# --- Portfolio totals — a literal segment, so declared before ``/{domain_id}`` --------- #
+
+
+@router.get(
+    "/totals",
+    response_model=DomainTotalsReport,
+    dependencies=[require_permission("domains.domain.read")],
+)
+async def domain_totals(
+    company_id: uuid.UUID | None = Query(None),
+    q: str | None = Query(None, max_length=200),
+    invoiceable: bool | None = Query(
+        None, description="The list's own filter: the resolved billing answer (#298)."
+    ),
+    status: str | None = Query(None, max_length=50),
+    registrar_provider_id: uuid.UUID | None = Query(None),
+    dns_provider_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> DomainTotalsReport:
+    """What the filtered register adds up to, per client and as a whole.
+
+    Takes exactly the list's filters, so a footer under a list and the rows above it are the same
+    set. Invoiced and not-invoiced renewals are summed **separately** — an agency's own domains
+    are set *not invoiced* and still cost their renewal — and a domain with no price in force is
+    counted rather than summed as zero.
+    """
+    return await DomainService(ctx).totals(
+        company_id=company_id,
+        q=q,
+        invoiceable=invoiceable,
+        status=status,
+        registrar_provider_id=registrar_provider_id,
+        dns_provider_id=dns_provider_id,
+    )
 
 
 # --- TLD price list (#250) — literal segments, so declared before ``/{domain_id}`` ----- #

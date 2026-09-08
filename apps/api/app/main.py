@@ -49,6 +49,7 @@ from app.core.setup import router as setup_router
 from app.core.storage.router import router as files_router
 from app.core.system import readiness
 from app.core.system import router as system_router
+from app.core.trash.router import build_trash_router
 from app.core.userprefs import router as userprefs_router
 from app.errors import register_error_handlers
 from app.registry import MODULE_ROOTS, module_package, registry
@@ -188,6 +189,8 @@ def create_app() -> FastAPI:
     # its module's license gate, because a bulk write must not be the one way an uncovered
     # module can still be written to (app/core/bulk/router.py).
     api.include_router(build_bulk_router())
+    # And the trash can, per opted-in entity for the same reason (app/core/trash/router.py).
+    api.include_router(build_trash_router())
     # Same reason, for the mails modules let a tenant rewrite: keys are stored data, so a
     # collision or a badly namespaced one is a build break rather than a tenant discovering
     # their invoice template rewriting somebody else's mail (app/core/email/kinds.py).

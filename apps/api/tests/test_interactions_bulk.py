@@ -430,8 +430,16 @@ async def test_bulk_approve_loads_the_whole_selection_in_one_query(
         ]
         assert len(loads) == 1, "\n\n".join(loads)
         # And the response is counts, not ten presented rows: no batched label lookup over
-        # companies/projects/tasks/contacts is paid for output the caller never reads.
-        assert counter.matching("from companies") == []
+        # companies/projects/tasks/contacts is paid for output the caller never reads. The
+        # interactions read itself names ``companies`` since the trash: its ``NOT EXISTS`` against
+        # a trashed parent rides every scoped select (``trash_condition``), so what is refused
+        # here is a statement that *reads* companies, never the anti-join inside the load.
+        labels = [
+            statement
+            for statement in counter.matching("from companies")
+            if "from interactions" not in statement.lower()
+        ]
+        assert labels == [], "\n\n".join(labels)
 
 
 async def test_duplicate_ids_are_collapsed_not_approved_twice(client_for) -> None:

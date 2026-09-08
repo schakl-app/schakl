@@ -51,6 +51,11 @@ class WordPressSiteRead(BaseModel):
     capabilities_checked_at: datetime | None = None
 
     mcp_server_path: str | None = None
+    #: Whose site this is, resolved through website → domain → client, so an agent listing
+    #: forty sites can pick a client's without a second call per row.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
+    domain_name: str | None = None
     rankmath_version: str | None = None
     #: Whether this Rank Math is new enough to have AI Visibility at all (≥ 1.0.273). Resolved
     #: server-side so the panel never re-implements a version comparison in two languages.
@@ -189,3 +194,263 @@ def brand_from_payload(row: Any) -> WordPressBrand | None:
         analysis_status=txt("analysis_status"),
         last_analyzed=txt("last_analyzed"),
     )
+
+
+# ---------------------------------------------------------------- the site as a surface
+#
+# Every shape below is **hand-written**, never a passthrough of WordPress's own response
+# (`PublicInvoiceRead`'s rule): a subset expressed as an omission leaks the next field a
+# plugin adds, and a client's `wp/v2` row carries author e-mail addresses, edit locks and
+# `_links` an agent has no use for and a context budget cannot afford (docs/MCP.md).
+
+
+class WordPressContentType(BaseModel):
+    slug: str
+    name: str
+    rest_base: str
+    hierarchical: bool = False
+
+
+class WordPressSiteSummary(BaseModel):
+    """What a connected site is: name, versions, the post types and plugins it carries."""
+
+    site_id: uuid.UUID
+    base_url: str
+    name: str | None = None
+    description: str | None = None
+    #: From ``core/get-environment-info`` where the site has abilities; ``None`` where it does
+    #: not, never guessed (the model's own "no ``wp_version`` column" rule).
+    wp_version: str | None = None
+    php_version: str | None = None
+    #: The site's own locale and timezone, as WordPress states them.
+    locale: str | None = None
+    timezone: str | None = None
+    #: Post types this credential may edit, with the REST base each answers on.
+    content_types: list[WordPressContentType] = Field(default_factory=list)
+    #: The REST namespaces the site registers — the honest plugin inventory: ``contact-form-7/v1``
+    #: says CF7 is there, ``wpml/v1`` that pages come per language.
+    namespaces: list[str] = Field(default_factory=list)
+    has_forms: bool = False
+    has_abilities: bool = False
+    multilingual: bool = False
+
+
+class WordPressContentRow(BaseModel):
+    """One record in a list: enough to pick it, never its body."""
+
+    id: int
+    type: str
+    slug: str
+    title: str
+    status: str
+    link: str | None = None
+    modified: str | None = None
+    parent: int | None = None
+    #: WPML's language, where the site says one. ``None`` on a monolingual site.
+    lang: str | None = None
+
+
+class WordPressContentList(BaseModel):
+    items: list[WordPressContentRow]
+    #: The site's own count for the filter — ``None`` where it did not say (§17).
+    total: int | None = None
+    page: int
+    per_page: int
+
+
+class WordPressContentRead(WordPressContentRow):
+    """One record whole: raw content (block or classic HTML), the ACF fields, the meta."""
+
+    #: The stored markup — block comments on a block-built page, classic HTML otherwise.
+    content: str = ""
+    #: What the theme renders it as, for a reader who wants the page rather than its source.
+    rendered: str = ""
+    excerpt: str = ""
+    template: str | None = None
+    #: ACF field values, exactly as ACF exposes them on this post type — present only where a
+    #: field group has "Show in REST API" on. Images and relations arrive as ids; resolve them
+    #: through the media read.
+    acf: dict[str, Any] | None = None
+    meta: dict[str, Any] = Field(default_factory=dict)
+    featured_media: int | None = None
+    author: int | None = None
+    date: str | None = None
+
+
+#: WordPress statuses a visitor (or a logged-in reader) can see. Setting one, or editing a
+#: record that carries one, is `wordpress.content.publish` rather than `.write`.
+LIVE_STATUSES = frozenset({"publish", "future", "private"})
+WRITABLE_STATUSES = frozenset({"publish", "future", "draft", "pending", "private"})
+
+
+class WordPressContentWrite(BaseModel):
+    """What an update may change. Absent means leave alone (§18); nothing here is clearable
+    to ``null`` because WordPress has no empty title or content to clear to."""
+
+    title: str | None = Field(default=None, max_length=500)
+    #: Raw content, in the site's own storage format. For a block-built page that is block
+    #: markup; sending plain HTML to one turns it classic, which is a real edit and a visible
+    #: one — read the record first.
+    content: str | None = None
+    excerpt: str | None = None
+    slug: str | None = Field(default=None, max_length=200)
+    status: str | None = None
+    template: str | None = None
+    parent: int | None = None
+    #: ACF field values to set. Merged by ACF field by field; a field left out is untouched,
+    #: ``null`` clears one.
+    acf: dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+    featured_media: int | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, value: str | None) -> str | None:
+        if value is not None and value not in WRITABLE_STATUSES:
+            raise ValueError("errors.wordpress_unknown_status")
+        return value
+
+
+class WordPressContentCreate(WordPressContentWrite):
+    """A new record. ``draft`` unless told otherwise, because a create that publishes by
+    default is a create nobody reviews."""
+
+    type: str = "page"
+    title: str = Field(min_length=1, max_length=500)
+    status: str = "draft"
+    #: WPML: which language the record is created in.
+    lang: str | None = Field(default=None, max_length=10)
+
+
+class WordPressMediaRow(BaseModel):
+    id: int
+    title: str
+    source_url: str
+    mime_type: str | None = None
+    alt: str = ""
+    width: int | None = None
+    height: int | None = None
+    date: str | None = None
+
+
+class WordPressMediaList(BaseModel):
+    items: list[WordPressMediaRow]
+    total: int | None = None
+    page: int
+    per_page: int
+
+
+class WordPressFormRow(BaseModel):
+    id: int
+    slug: str
+    title: str
+    locale: str | None = None
+
+
+class WordPressFormMail(BaseModel):
+    subject: str = ""
+    sender: str = ""
+    recipient: str = ""
+    body: str = ""
+    additional_headers: str = ""
+    attachments: str = ""
+    use_html: bool = False
+    exclude_blank: bool = False
+    active: bool = True
+
+
+class WordPressFormRead(WordPressFormRow):
+    """One form whole: its template, both mails, its messages and its extra settings."""
+
+    #: The form template — CF7's own tag language (``[text* your-name]``).
+    form: str = ""
+    #: The input names the template declares, read off CF7's own parse of it.
+    fields: list[str] = Field(default_factory=list)
+    mail: WordPressFormMail = Field(default_factory=WordPressFormMail)
+    mail_2: WordPressFormMail = Field(default_factory=WordPressFormMail)
+    messages: dict[str, str] = Field(default_factory=dict)
+    additional_settings: str = ""
+    #: What CF7's configuration validator complains about, keyed by property. Empty when
+    #: it is happy or when the site does not run the validator.
+    config_errors: dict[str, Any] = Field(default_factory=dict)
+
+
+class WordPressFormWrite(BaseModel):
+    """``wpcf7_save_contact_form``'s flat shape. Absent means leave alone."""
+
+    title: str | None = Field(default=None, max_length=200)
+    locale: str | None = Field(default=None, max_length=20)
+    form: str | None = None
+    mail: WordPressFormMail | None = None
+    mail_2: WordPressFormMail | None = None
+    messages: dict[str, str] | None = None
+    additional_settings: str | None = None
+
+
+class WordPressFormCreate(WordPressFormWrite):
+    title: str = Field(min_length=1, max_length=200)
+    form: str = Field(min_length=1)
+
+
+class WordPressAbility(BaseModel):
+    name: str
+    label: str = ""
+    description: str = ""
+    category: str | None = None
+    #: The plugin's own claims: ``readonly``, ``destructive``, ``idempotent``.
+    annotations: dict[str, bool] = Field(default_factory=dict)
+    readonly: bool = False
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
+
+
+class WordPressAbilityRun(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    input: Any = None
+
+
+class WordPressAbilityResult(BaseModel):
+    name: str
+    readonly: bool
+    output: Any = None
+
+
+#: The verbs a passthrough may send. ``HEAD``/``OPTIONS`` answer nothing an agent can use.
+REST_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+
+
+class WordPressRestCall(BaseModel):
+    """One call to the site's REST API, verbatim, under the stored credential.
+
+    ``path`` is relative to ``/wp-json/`` (``wp/v2/settings``, ``wpml/v1/…``); a leading slash
+    or a leading ``/wp-json/`` is tolerated because that is how people paste them.
+    """
+
+    method: str = "GET"
+    path: str = Field(min_length=1, max_length=500)
+    #: Query parameters. For a GET, the whole request.
+    params: dict[str, Any] | None = None
+    #: JSON body, for anything but a GET.
+    body: Any = None
+
+    @field_validator("method")
+    @classmethod
+    def _known_method(cls, value: str) -> str:
+        method = value.strip().upper()
+        if method not in REST_METHODS:
+            raise ValueError("errors.wordpress_rest_method")
+        return method
+
+
+class WordPressRestResult(BaseModel):
+    method: str
+    #: The path as sent, normalised, so the caller sees what the deny-list judged.
+    path: str
+    data: Any = None
+    #: ``X-WP-Total`` where the site sent one.
+    total: int | None = None
+    #: The answer was cut to fit the response ceiling. ``shown`` is how many rows survived
+    #: of a list; ``dropped`` names the keys removed from an object. Never silent (§17).
+    truncated: bool = False
+    shown: int | None = None
+    dropped: list[str] = Field(default_factory=list)

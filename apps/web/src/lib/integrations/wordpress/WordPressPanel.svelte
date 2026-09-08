@@ -65,8 +65,10 @@
 
   /**
    * The surfaces one Application Password reaches, in the order they matter. `rest` first
-   * because everything else is meaningless without it; `mcp` last because it is the one nothing
-   * in schakl uses yet.
+   * because everything else is meaningless without it; `mcp` last because schakl never calls
+   * it — the site's content, forms and abilities are served through schakl's *own* MCP section
+   * (`/mcp/wordpress`, docs/WORDPRESS.md §7), and the adapter is only worth knowing about for
+   * somebody who wants to point Claude Desktop at one site directly.
    */
   const SURFACES = ["rest", "admin", "abilities", "rankmath_aiv", "mcp"] as const;
 
@@ -217,6 +219,9 @@
       </div>
     {/if}
   </dl>
+  {#if site.status === "active"}
+    <p class="mt-2 text-xs text-muted">{t("wordpress.mcp_hint")}</p>
+  {/if}
 
   <!-- What the credential was observed to reach, per surface, with the site's own words for
        every refusal. -->
@@ -241,7 +246,10 @@
           {#if site.capability_errors[key]}
             <!-- The site's own text, untranslated on purpose: it is a quote, and translating a
                  quote is how a diagnosis stops matching the log line an admin is reading. -->
-            <p class="ml-6 truncate font-mono text-xs text-muted" title={site.capability_errors[key]}>
+            <p
+              class="ml-6 truncate font-mono text-xs text-muted"
+              title={site.capability_errors[key]}
+            >
               {site.capability_errors[key]}
             </p>
           {/if}

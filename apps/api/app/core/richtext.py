@@ -83,7 +83,13 @@ def sanitize_markdown(value: str | None) -> str | None:
     """
     if value is None:
         return None
-    return nh3.clean(value, tags=set(), attributes={})
+    # nh3 escapes a bare ``>`` to ``&gt;`` along with dropping the tags, and a ``>`` at the start
+    # of a line is markdown's blockquote marker: the editor writes ``> quote``, the sanitizer
+    # stored ``&gt; quote``, and every renderer downstream printed a paragraph beginning with a
+    # literal ">" — a quote flattened on save, on the web and on the invoice alike. With every
+    # tag already gone a ``>`` can open nothing, so it goes back to being the character the
+    # author typed. ``<`` stays escaped: that one *is* the half of a tag worth refusing.
+    return nh3.clean(value, tags=set(), attributes={}).replace("&gt;", ">")
 
 
 # Applied in order to collapse the common inline/block markdown constructs to their text. This is

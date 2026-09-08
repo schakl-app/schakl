@@ -915,6 +915,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   destroy what a different surface merely declines to draw. The portal rule follows the words,
   not the eye: a body image reads exactly when the record that embeds it does
   (`portal_may_read_serving`), while `client_visible` keeps gating attachments.
+- **Deleting a record is trashing it, and a record with a history cannot be deleted at all**
+  (`app/core/trash/`, `docs/TRASH.md`). Deleting a client ran the database cascade: paid, numbered,
+  ledger-booked invoices and quotes went with it — documents `DELETE /invoices/{id}?force=true`
+  would have refused — and hours stayed stamped as invoiced against an invoice that no longer
+  existed. Nothing on the dialog said so; it asked one question and offered one red button. Two
+  rules replace it, and neither is about companies. **A `DELETE` stamps `deleted_at`** and nothing
+  else moves: the row and every row that belongs to it through `company_id` hide from every read
+  because the predicate lives in `TenantScopedRepository.trash_condition`, folded into
+  `horizon_condition()` so every hand-built read that ANDs *visibility* on got the trash for free
+  (a portal repository overrides `company_horizon`, never `horizon_condition`, or it drops one
+  half); a restore clears the stamp and nothing has to be put back; the nightly sweep runs the
+  cascade thirty days later. **A record that must outlive the client blocks the delete**: modules
+  contribute `TrashDependent`s through a core seam (the panels pattern) — issued documents,
+  domains, hosting, agreements, projects and hours block, tasks and links go along — and the
+  dialog reads the counts first, names them, and offers **Archiveren** as the primary action with
+  the trash disabled and its reason in numbers. Archive is the lifecycle for a client you are done
+  with; the trash is for a mistake, and the purge re-checks the same blockers so a client that
+  grew one while trashed is kept and the screen says why. Three smaller ones ride along. **Routes
+  per entity, never a generic trash** (the bulk router's reason): each declares the entity's own
+  delete permission, so deny-by-default stays enumerable and every verb is a named MCP tool, and
+  the person who could delete a row is the person who may undo it — no new key. **A trashed row
+  still holds its unique number**: `client_numbers_taken` reads `include_trashed=True`, because
+  the partial unique index is on the table, not on what the screens show. And **the confirm is
+  held until the cost is known**: `ConfirmDialog.confirmDisabled`, so the red button is never
+  pressable on a client whose dependents are still being counted.
 - **A field is required at the schema, defaulted by whoever has nobody to ask, and never made
   `NOT NULL` in the same release** (#392, `docs/UX.md`). A task with no `due_date` is absent from
   `?due=overdue`, from `?due=today`, from the Agenda's deadline feed and from both dashboards'
@@ -1181,6 +1206,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   agreement's own flip shifting its own claims and a type flip counting only the agreements that
   still follow it. The column is `_override` because the resolved answer already rides the read
   as `billed_in_advance`, and a resolution written onto a same-named mapped column is stored.
+- **A note written for the client reaches the client's invoice, and the preset decides whether**
+  (`subscription_templates.notes_on_invoice`, `subscriptions.notes_on_invoice_override`,
+  `docs/INVOICING.md`). #259 made a standard subscription's notes a transparency text — "what
+  we do for you and what you may expect", with `{{company_name}}`-style variables — and then
+  showed it to the agency alone. The same three-state shape as the direction, one column over:
+  the preset says whether its agreements print their notes (off unless told, because a note an
+  agency wrote for itself must never start reaching clients on an upgrade), an agreement may say
+  otherwise for itself, `NULL` follows, one resolver is read by the read, the picker and the cron.
+  Three things generalise. **A variable is resolved where the text leaves the record, not where
+  it is printed** (`subscriptions/variables.py`, the API twin of the web's `variables.ts`, pinned
+  against it by a test): an invoice is a record, and an `{{amount}}` re-read at print time would
+  restate a price raised since — so the cron puts the resolved text on `subscription.due` and the
+  picker publishes it on `BillableSubscription.notes`, and both land through `sanitize_markdown`.
+  **A figure printed *onto* a document is formatted by the document's rule** — `fmt_money` moved
+  to `app/core/money.py` so the note's `€ 25,00` cannot disagree with the total beside it. And
+  **markup that can be typed must be styled where it prints**: every construct the editor can
+  produce is stated in each design's `.notes` — an `<h1>` inside a note is a heading within the
+  notes, never a second title for the sheet. Its sibling was found by the first blockquote to
+  reach paper: `sanitize_markdown` escaped a leading `>` to `&gt;`, so every quote ever typed in
+  the editor flattened on save, on the web and on the document alike.
 - **A hosting agreement keeps a website online, and the website can say which one**
   (`subscription_types.covers_websites`, `subscription_links.entity_type = "website"`,
   `docs/INVOICING.md`). A website said where it *runs* (its hosting account) and never who *pays*
@@ -1377,6 +1422,43 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
+- **A client site is a parameter, never a tool** (`wordpress` §7, `docs/WORDPRESS.md`). The ask
+  was forty clients' WordPress installs, reachable by agency staff from schakl's MCP, on sites
+  that register no abilities at all. The tempting shape — schakl as an MCP *client* proxying each
+  site's adapter — fails on three facts: `/mcp` is derived from our routes once per process and
+  has no mechanism for a tool list that varies per row (nor should it, since a chat client budgets
+  every tool on every turn); the adapter's default server is *itself* three meta-tools over the
+  abilities flagged public, which one generic `abilities/{name}/run` call already gives; and the
+  adapter registers nothing that is not an ability, so on an ACF + CF7 site it is empty. So the
+  surface is **routes on the `wordpress` router keyed on the credential row** — summary, content,
+  media, forms, abilities — and `/mcp/wordpress` is the same fourteen tools at four sites or four
+  hundred, pinned by a test. What differs per site is *answered* (`summary`, `abilities`), never
+  encoded in the tool list. Four rules generalise. **The audience decides the permission**:
+  WordPress has no staging, so an edit to a published page *is* the broadcast, and the split is
+  `content.write` (drafts, member by default) against `content.publish` (anything a visitor can
+  see, admin by default), decided by the read that precedes every update and refused before the
+  site is asked; a form edit sits with publish, and an ability runs on `ability.read` only if its
+  own annotation says `readonly` — an ability that claims nothing is a write. **A fake taught the
+  wrong shape hides the bug the real server would show**: the MCP probe matched `mcp/` against the
+  namespace list, the adapter's namespace is bare `mcp` with each server a *route* under it, and
+  three live sites with the adapter installed all read "no_mcp_namespace" — found by reading their
+  indexes, not by any test, because the fake served the same wrong index. **A plugin's read and
+  write are not symmetric until the source says so**: CF7 answers `properties.form = {content,
+  fields}` and saves a flat `form` string, and a body posted in the read's shape is silently
+  ignored. And **a page built from ACF field groups is the best case for an agent, and a page
+  built from ACF blocks the worst**: the first is typed fields on the `acf` key, one `PATCH`; the
+  second is JSON inside block comments in `post_content` with no REST projection, so the raw
+  content is carried whole and the caller is told to read before writing. Deliberately *not*
+  built: a CF7 submission webhook into `interactions` (not wanted), and media upload (multipart,
+  needs the base64 twin). Its sibling is the **passthrough** (`POST /sites/{id}/rest`), the
+  `google_ads.query.run` shape one integration over: any call the site's REST API takes, because
+  the live sites carry WPML, LiteSpeed and FileBird and a curated route per plugin is a list that
+  rots. It is the route that hands an agent a WordPress administrator, so its bounds are the
+  design — `rest.read` for `GET` and `rest.write` (admin only, never on a default key) for the
+  rest; a write deny-list on the site-takeover routes (users, plugins, themes, settings) refused
+  for everybody before the site is asked; path hygiene relative to `/wp-json/`; a trail line per
+  write; and a 256 KB cap that says what it cut. The defence against a prompt injection in a page
+  the agent reads is not in the route: it is minting read-only keys by default.
 - **A guardrail nobody can see working gets switched off, and a decision nobody wrote down gets
   re-proposed forever** (#318 phases 4–5, `docs/GOOGLE_ADS.md` §10a/§10b). The write surface is
   bounded by a per-account policy, and four rules came out of building it. **A refusal has to model

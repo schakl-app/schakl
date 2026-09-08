@@ -32,6 +32,7 @@
   import { DOMAIN_COLUMNS } from "$lib/modules/domains/columns";
   import type { DomainFilterKey } from "$lib/modules/domains/filters";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
+  import { totalsParts } from "$lib/modules/domains/totals";
 
   let { data, form } = $props();
 
@@ -290,6 +291,16 @@
 
   const groupOf = (domain: Domain): string => domain.company_id;
 
+  // What each client's domains add up to — the API's grouped aggregate over the *whole*
+  // filtered set, so a heading over a client whose seventh domain is on the next page still
+  // says seven (#37). Invoiced and not-invoiced kept apart (#298): the agency's own names are
+  // set *not invoiced* and still cost their renewal, and a total that dropped them would answer
+  // a different question from the rows beneath it.
+  const totalsByCompany = $derived(
+    Object.fromEntries((data.totals?.by_company ?? []).map((row) => [row.company_id, row])),
+  );
+  const grandTotals = $derived(data.totals?.total ?? null);
+
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
@@ -315,8 +326,70 @@
       invoiceable: invoiceableCell,
       created_at: createdCell,
     }),
+    // The footer is the API's figure for the whole filtered set, under the column it belongs
+    // to; `DataTable` never sums the page. Only where there is something to add.
+    totals: () =>
+      grandTotals && grandTotals.count > 0
+        ? { name: countTotal, price: priceTotal, invoiceable: invoiceableTotal }
+        : {},
   });
 </script>
+
+{#snippet countTotal()}
+  <!-- The count leads; what is *not* in the money figure beside it is said here, under the
+       one column wide enough to hold a sentence — a 110px price column is for a number. -->
+  <span class="block text-text">
+    {grandTotals?.count === 1
+      ? t("domains.totals.count_one")
+      : t("domains.totals.count", { count: grandTotals?.count ?? 0 })}
+  </span>
+  {#if grandTotals && (grandTotals.uninvoiced_count > 0 || grandTotals.unpriced_count > 0)}
+    <span class="block text-xs font-normal text-text-muted">
+      {totalsParts({ ...grandTotals, invoiced_count: 0 }, { count: false }).join(" · ")}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet priceTotal()}
+  <!-- The invoiced sum and nothing else: what the renewal cron will bill. The not-invoiced
+       half is never folded in, and an unpriced remainder is said (in the first column) rather
+       than summed as zero. -->
+  {#if grandTotals}
+    <span class="block text-text">
+      {grandTotals.invoiced_count > 0 ? fmtMoney(Number(grandTotals.invoiced_yearly)) : "—"}
+    </span>
+    {#if grandTotals.uninvoiced_count > 0}
+      <span class="block truncate text-xs font-normal text-text-muted">
+        {t("domains.invoiceable.column").toLowerCase()}
+      </span>
+    {/if}
+  {/if}
+{/snippet}
+
+{#snippet invoiceableTotal()}
+  {#if grandTotals}
+    <span class="text-text-muted">
+      {t("common.yes")}
+      {grandTotals.invoiced_count} · {t("common.no")}
+      {grandTotals.uninvoiced_count}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet groupSummary(key: string)}
+  {@const g = totalsByCompany[key]}
+  {#if g}
+    <!-- The client's own figures, on the heading, whatever page its rows are on. The count
+         is the heading's own "(n)", so this line starts at the money. -->
+    <span class="inline-flex flex-wrap items-center gap-x-3 text-xs tabular-nums text-text-muted">
+      {#each totalsParts(g, { count: false }) as part, index (index)}
+        <span class={index === 0 && g.invoiced_count > 0 ? "font-medium text-text" : ""}
+          >{part}</span
+        >
+      {/each}
+    </span>
+  {/if}
+{/snippet}
 
 {#snippet nameCell(domain: Domain)}
   <a href="/domains/{domain.id}" class="block truncate font-medium text-text hover:text-brand"
@@ -385,16 +458,26 @@
 {/snippet}
 
 {#snippet priceCell(domain: Domain)}
-  <!-- Override → TLD list price → an honest dash, never a reassuring zero (docs/UX.md). -->
-  <span class="tabular-nums text-text-muted">
+  <!-- Override → TLD list price → an honest dash, never a reassuring zero (docs/UX.md). A
+       price on a domain nobody bills is what it *costs*, not what it earns, so the cell says so
+       rather than letting the column read as one revenue figure (#298). -->
+  <span class="block tabular-nums text-text-muted">
     {domain.resolved_price != null ? fmtMoney(Number(domain.resolved_price)) : "—"}
   </span>
+  {#if !domain.invoiceable_effective && domain.resolved_price != null}
+    <span class="block truncate text-xs text-text-muted">{t("domains.totals.not_invoiced")}</span>
+  {/if}
 {/snippet}
 
 {#snippet invoiceableCell(domain: Domain)}
   <!-- The resolved answer (#298). "Volgt register" is the interesting one: it says the
-       decision is the register's, so the row changes when the register does. -->
-  <span class="flex min-w-0 items-center gap-1 overflow-hidden text-text-muted">
+       decision is the register's, so the row changes when the register does. A "Nee" is the
+       one worth noticing on a price list, so it is the darker of the two. -->
+  <span
+    class="flex min-w-0 items-center gap-1 overflow-hidden {domain.invoiceable_effective
+      ? 'text-text-muted'
+      : 'text-text'}"
+  >
     <!-- The answer is two letters and is what the column is for, so it never gives way; the
          badge behind it is the part that ellipsizes when the column is dragged narrow. -->
     <span class="shrink-0">{domain.invoiceable_effective ? t("common.yes") : t("common.no")}</span>
@@ -519,6 +602,7 @@
   locale={data.locale}
   {groups}
   groupBy={groupOf}
+  {groupSummary}
   collapsed={table.collapsed}
   oncollapse={table.onCollapse}
   rowHref={(domain) => `/domains/${domain.id}`}

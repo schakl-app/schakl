@@ -852,7 +852,7 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         assert len(counter.matching("from time_entries")) == 1
         # And the client labels are one lookup over the rows that survived the cut, never one
         # per row and never over every active project in the org.
-        assert len(counter.matching("from companies")) == 1
+        assert len(counter.matching("id, name from companies")) == 1
         # The tail carries its hours, not merely its count (#437): "Koel" fell past the cut,
         # so the donut's "overig" slice has 2 of its 8 hours to draw.
         assert res.json()["tail_spent_hours"] == 2.0

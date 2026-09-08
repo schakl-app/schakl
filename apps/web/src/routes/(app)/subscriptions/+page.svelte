@@ -232,6 +232,13 @@
       type: "bool",
       clearable: true,
     },
+    {
+      // Whether the notes print on the invoices; cleared, they follow their preset again.
+      key: "notes_on_invoice",
+      label: t("impex.column.subscription.notes_on_invoice"),
+      type: "bool",
+      clearable: true,
+    },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
   // render in different places and must never disagree about what this list can do.
@@ -662,6 +669,11 @@
   <input type="hidden" name="included_hours" value={tplDraft?.included_hours ?? ""} />
   <input type="hidden" name="notice_period_days" value={tplDraft?.notice_period_days ?? ""} />
   <input type="hidden" name="notes" value={tplDraft?.notes ?? ""} />
+  <!-- The preset inherits what this agreement decided about printing its notes (a checkbox
+       on the server: present means on). -->
+  {#if tplDraft?.notes_on_invoice}
+    <input type="hidden" name="notes_on_invoice" value="true" />
+  {/if}
   <!-- This agreement becomes an instance of the preset it just defined, so renaming the
        standard subscription later renames it along with the rest. -->
   <input type="hidden" name="link_subscription_id" value={tplDraft?.id ?? ""} />

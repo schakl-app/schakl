@@ -28,6 +28,7 @@ from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
+from app.core.trash.service import TrashService
 from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.companies.models import Company, CompanyAssignee, CompanySettings
@@ -282,7 +283,14 @@ class CompanyService:
         """
         if not numbers:
             return {}
-        stmt = self.repo.scoped_select().where(Company.client_number.in_(numbers))
+        # A client in the trash still *holds* its number: the partial unique index is on the
+        # table, not on what the screens show, so a free-looking number would 500 on insert.
+        # Restoring is what gives it back; deleting for good is what frees it.
+        stmt = (
+            self.ctx.repo(Company, include_trashed=True)
+            .scoped_select()
+            .where(Company.client_number.in_(numbers))
+        )
         return {
             company.client_number: company.id
             for company in (await self.ctx.session.execute(stmt)).scalars()
@@ -437,9 +445,18 @@ class CompanyService:
         return company
 
     async def delete(self, company_id: uuid.UUID) -> None:
+        """Put the client in the trash (docs/TRASH.md).
+
+        Not a status write: ``archived`` is a lifecycle the client went through and this is a
+        record leaving the working set, so it must not fire ``company.status_changed`` — the
+        onboarding templates, the notifications and the automation rules all hang off that.
+        Refused (409, the counts in ``details``) while the client holds anything that has to
+        outlive it: an issued invoice, a domain, an agreement, a project, logged hours. Such a
+        client is archived, and the dialog offers exactly that.
+        """
         self.ctx.require("companies.company.delete")
         company = await self.repo.get_or_404(company_id)
-        await self.repo.delete(company)
+        await TrashService(self.ctx).trash(Company.__entity_type__, company)
 
 
 # --------------------------------------------------------------------------- #

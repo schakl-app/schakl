@@ -315,6 +315,18 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     group: "data",
     permissions: ["impex.export"],
   },
+  {
+    // The trash (docs/TRASH.md): what was deleted, who did it, and the way back. Gated on the
+    // delete permission of any trashable entity — the person who may delete a client is the
+    // person who may undo it — and the page guards itself the same way.
+    key: "trash",
+    href: "/settings/trash",
+    titleKey: "trash.title",
+    subtitleKey: "trash.settings.subtitle",
+    keywordsKey: "settings.search.trash",
+    group: "data",
+    permissions: ["companies.company.delete"],
+  },
 
   // --- Modules ----------------------------------------------------------- //
   {

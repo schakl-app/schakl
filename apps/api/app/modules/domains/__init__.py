@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.trash import register_trash_dependent
 from app.modules.domains.bulk import DOMAIN_BULK
 from app.modules.domains.impex import DOMAIN_IMPEX, TLD_PRICE_IMPEX
 from app.modules.domains.jobs import (
@@ -19,6 +20,7 @@ from app.modules.domains.panels import domains_company_panel
 from app.modules.domains.permissions import DOMAIN_PERMISSIONS
 from app.modules.domains.router import router
 from app.modules.domains.summary import domains_company_summary
+from app.modules.domains.trash import DOMAIN_TRASH_DEPENDENTS
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -46,3 +48,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# What deleting a client means for the rows this module holds about it (docs/TRASH.md).
+for _dependent in DOMAIN_TRASH_DEPENDENTS:
+    register_trash_dependent("company", _dependent)
