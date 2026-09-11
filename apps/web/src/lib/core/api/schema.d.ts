@@ -13126,6 +13126,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/ai/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe Revise Instruction
+         * @description Speech to text for the revise box: an instruction spoken instead of typed.
+         *
+         *     The words come back to be read and corrected before they are applied — nothing is written
+         *     here. The route is the task write it serves (§15); the service asks ``ai.use`` and the
+         *     ``:own`` rule, exactly as the revise does.
+         */
+        post: operations["transcribe_revise_instruction_api_v1_tasks__task_id__ai_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists": {
         parameters: {
             query?: never;
@@ -34301,6 +34325,11 @@ export interface components {
             start?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** TimeReconstructRequest */
         TimeReconstructRequest: {
@@ -62844,6 +62873,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskReviseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_revise_instruction_api_v1_tasks__task_id__ai_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */

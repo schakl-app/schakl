@@ -10,8 +10,10 @@
    * holds is stale.
    *
    * What it offers is what reviewing a plan needs: tick, add a step, **click a step to edit
-   * it** (Enter saves, Escape cancels, blur saves), remove one, start a new list, and let
-   * schakl write the steps from the notes. Reordering and per-step descriptions stay on the
+   * it** (Enter saves, Escape cancels, blur saves), **click its explanation to change it**
+   * (or add one — the detail a reviewer most often wants to write down is *why* a step is
+   * there, read straight off the e-mail beside them), remove one, start a new list, describe
+   * the list itself, and let schakl write the steps from the notes. Reordering stays on the
    * card — a review checks the plan against the e-mail beside it; restructuring is what the
    * card is for.
    *
@@ -24,6 +26,7 @@
   import { t } from "$lib/core/i18n";
   import Button from "$lib/core/ui/Button.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
 
   interface ChecklistItem {
     id: string;
@@ -63,6 +66,11 @@
   let editingTitle = $state("");
   let editInput = $state<HTMLInputElement | null>(null);
   let generating = $state(false);
+  // One description editor open at a time — a step's (`item:<id>`) or a list's
+  // (`list:<id>`) — holding the editor's live markdown; the editor reports through
+  // `onchange` because it sits outside any form here.
+  let describing = $state<string | null>(null);
+  let describingText = $state("");
 
   async function call(
     key: string,
@@ -101,9 +109,14 @@
     // gesture; a refusal puts the box back.
     const next = !item.done;
     item.done = next;
-    const ok = await call(`toggle:${item.id}`, "PATCH", `/checklists/${checklist.id}/items/${item.id}`, {
-      done: next,
-    });
+    const ok = await call(
+      `toggle:${item.id}`,
+      "PATCH",
+      `/checklists/${checklist.id}/items/${item.id}`,
+      {
+        done: next,
+      },
+    );
     if (!ok) item.done = !next;
   }
 
@@ -138,9 +151,14 @@
     if (!title || title === item.title) return;
     const previous = item.title;
     item.title = title;
-    const ok = await call(`edit:${item.id}`, "PATCH", `/checklists/${checklist.id}/items/${item.id}`, {
-      title,
-    });
+    const ok = await call(
+      `edit:${item.id}`,
+      "PATCH",
+      `/checklists/${checklist.id}/items/${item.id}`,
+      {
+        title,
+      },
+    );
     if (!ok) item.title = previous;
   }
 
@@ -150,6 +168,33 @@
 
   async function removeItem(checklist: Checklist, item: ChecklistItem) {
     await call(`del:${item.id}`, "DELETE", `/checklists/${checklist.id}/items/${item.id}`);
+  }
+
+  function describeKey(checklist: Checklist, item: ChecklistItem | null): string {
+    return item ? `item:${item.id}` : `list:${checklist.id}`;
+  }
+
+  function startDescribe(key: string, current: string | null | undefined) {
+    describing = key;
+    describingText = current ?? "";
+  }
+
+  function cancelDescribe() {
+    describing = null;
+  }
+
+  /** Save a step's or a list's description — the one field, through its own PATCH. */
+  async function commitDescribe(checklist: Checklist, item: ChecklistItem | null) {
+    const key = describeKey(checklist, item);
+    if (describing !== key) return;
+    const next = describingText.trim();
+    const previous = (item ? item.description : checklist.description) ?? "";
+    describing = null;
+    if (next === previous.trim()) return;
+    const path = item
+      ? `/checklists/${checklist.id}/items/${item.id}`
+      : `/checklists/${checklist.id}`;
+    await call(`describe:${key}`, "PATCH", path, { description: next || null });
   }
 
   async function generate() {
@@ -175,6 +220,36 @@
     }
   }
 </script>
+
+{#snippet describeForm(checklist: Checklist, item: ChecklistItem | null)}
+  <!-- The description editor for one step or one list. `name={null}`: no form here, every
+       write is its own request, and the editor reports its markdown through `onchange`. A
+       Save/Cancel pair rather than save-on-blur — a rich editor's toolbar is a blur. -->
+  <div class="mt-1 space-y-2">
+    <RichTextEditor
+      name={null}
+      rows={2}
+      value={describingText}
+      placeholder={t("tasks.checklist.description_placeholder")}
+      onchange={(next) => (describingText = next)}
+    />
+    <div class="flex gap-2">
+      <Button
+        type="button"
+        size="xs"
+        loading={busyKey === `describe:${describeKey(checklist, item)}`}
+        onclick={() => commitDescribe(checklist, item)}
+      >
+        {t("common.save")}
+      </Button>
+      <button
+        type="button"
+        class="rounded-lg border border-border px-2 py-1 text-xs"
+        onclick={cancelDescribe}>{t("common.cancel")}</button
+      >
+    </div>
+  </div>
+{/snippet}
 
 <div class="space-y-3">
   <div class="flex items-center justify-between gap-2">
@@ -205,8 +280,32 @@
           </span>
         {/if}
       </div>
-      {#if checklist.description}
-        <div class="mt-1 text-sm"><Markdown value={checklist.description} /></div>
+      {#if describing === describeKey(checklist, null)}
+        {@render describeForm(checklist, null)}
+      {:else if checklist.description}
+        <div
+          role="button"
+          tabindex="0"
+          class="-mx-1 mt-1 cursor-text rounded px-1 text-sm hover:bg-surface"
+          title={t("tasks.checklist.description_edit_hint")}
+          onclick={() => startDescribe(describeKey(checklist, null), checklist.description)}
+          onkeydown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              startDescribe(describeKey(checklist, null), checklist.description);
+            }
+          }}
+        >
+          <Markdown value={checklist.description} />
+        </div>
+      {:else}
+        <button
+          type="button"
+          class="mt-1 text-xs text-text-muted hover:text-brand"
+          onclick={() => startDescribe(describeKey(checklist, null), null)}
+        >
+          ＋ {t("tasks.checklist.description_add")}
+        </button>
       {/if}
       <ul class="mt-2 space-y-1">
         {#each items as item (item.id)}
@@ -251,10 +350,34 @@
                   onclick={() => startEdit(item)}>{item.title}</button
                 >
               {/if}
-              {#if item.description}
-                <div class="px-1 text-xs text-text-muted">
+              {#if describing === describeKey(checklist, item)}
+                {@render describeForm(checklist, item)}
+              {:else if item.description}
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="cursor-text rounded px-1 text-xs text-text-muted hover:bg-surface"
+                  title={t("tasks.checklist.description_edit_hint")}
+                  onclick={() => startDescribe(describeKey(checklist, item), item.description)}
+                  onkeydown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      startDescribe(describeKey(checklist, item), item.description);
+                    }
+                  }}
+                >
                   <Markdown value={item.description} />
                 </div>
+              {:else}
+                <!-- Only on hover/focus of the row, like the delete: forty steps each wearing
+                     a "toelichting" line would drown the plan they explain. -->
+                <button
+                  type="button"
+                  class="px-1 text-xs text-text-muted opacity-0 transition-opacity hover:text-brand focus:opacity-100 group-hover:opacity-100"
+                  onclick={() => startDescribe(describeKey(checklist, item), null)}
+                >
+                  ＋ {t("tasks.checklist.description_add")}
+                </button>
               {/if}
             </div>
             <button
@@ -284,8 +407,7 @@
           aria-label={t("tasks.checklist.item_placeholder")}
           class={inputClass}
         />
-        <Button variant="secondary" size="xs" loading={busyKey === `add:${checklist.id}`}
-          >＋</Button
+        <Button variant="secondary" size="xs" loading={busyKey === `add:${checklist.id}`}>＋</Button
         >
       </form>
     </div>

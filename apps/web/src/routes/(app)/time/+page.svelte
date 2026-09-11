@@ -275,8 +275,10 @@
         parsed.billable !== null ||
         parsed.break_minutes;
       if (!useful) {
-        // Ambiguity stays visible (#129): keep the text so the user can refine it.
-        aiError = "ai.time.parse_empty";
+        // Ambiguity stays visible (#129): keep the text so the user can refine it. A cut-off
+        // answer is a different sentence from an unreadable line — the first asks for a
+        // retry, the second for more words.
+        aiError = parsed.truncated ? "ai.time.parse_truncated" : "ai.time.parse_empty";
         return;
       }
       let start: string = parsed.start ?? "";
@@ -376,11 +378,7 @@
     aiStatus = "voice.transcribing";
     try {
       // The shared helper is what reads a 413 as "too long" whichever layer answered it.
-      const outcome = await transcribeClip(
-        "/ai/time/transcribe",
-        audio,
-        page.data.locale ?? "nl",
-      );
+      const outcome = await transcribeClip("/ai/time/transcribe", audio, page.data.locale ?? "nl");
       if (outcome.budget) {
         aiBudget = true;
         return;

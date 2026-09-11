@@ -9,6 +9,7 @@ can cross a tenant.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -18,6 +19,7 @@ from pwdlib import PasswordHash
 from sqlalchemy import select
 
 from app.core.ai.providers import AIEvent, ToolCall
+from app.core.ai.transcribe import Transcript
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.assist import SUBMIT_CHANGES, SUBMIT_CHECKLIST
@@ -470,3 +472,169 @@ async def test_generate_checklist_writes_one_list_with_its_steps(client_for, mon
         ).scalars().all()
     assert "checklist_created" in actions
     assert "ai_checklist" in actions
+
+
+async def test_revise_shows_the_whole_card_and_changes_status_labels_and_the_roster(
+    client_for, monkeypatch
+) -> None:
+    """The model reads what a colleague reads — the client by name, who is on it, its labels,
+    the conversation — and may move the task, label it and hand it to a colleague it was
+    shown; a colleague or label it was not shown is dropped, never guessed."""
+    t = await make_tenant("revise-card")
+    headers = await auth_cookie(t.user)
+    async with async_session_maker() as session:
+        colleague = User(
+            id=uuid.uuid4(),
+            email="revise-card-colleague@example.com",
+            full_name="Femke de Wit",
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(colleague)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, colleague.id, "member")
+        await session.commit()
+    seen: dict = {}
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        task_id, _checklist_id, _items = await _task_with_steps(c, headers)
+        label = await c.post(
+            "/api/v1/tasks/labels", json={"name": "Spoed", "color": "red"}, headers=headers
+        )
+        assert label.status_code == 201, label.text
+        label_id = label.json()["id"]
+        comment = await c.post(
+            f"/api/v1/tasks/{task_id}/comments",
+            json={"body": "De klant vraagt of het blauw kan."},
+            headers=headers,
+        )
+        assert comment.status_code == 201, comment.text
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _changes(
+                    status="in_progress",
+                    allocated_minutes=120,
+                    visible_to_client=True,
+                    add_label_ids=[label_id, str(uuid.uuid4())],
+                    add_assignee_user_ids=[str(colleague.id), str(uuid.uuid4())],
+                    summary="Gestart, gelabeld, Femke erbij.",
+                ),
+                seen,
+            ),
+        )
+        revised = await c.post(
+            f"/api/v1/tasks/{task_id}/ai/revise",
+            json={"instruction": "start ermee, label spoed, zet Femke erbij, budget 2 uur"},
+            headers=headers,
+        )
+        assert revised.status_code == 200, revised.text
+        body = revised.json()
+        assert set(body["changed"]) >= {
+            "status",
+            "allocated_minutes",
+            "visible_to_client",
+            "assignees",
+            "labels",
+        }
+        task = body["task"]
+        assert task["status"] == "in_progress"
+        assert task["allocated_minutes"] == 120
+        assert task["visible_to_client"] is True
+        assert [label["name"] for label in task["labels"]] == ["Spoed"]
+        # The creator stays primary; the colleague joins beside them. The invented id is gone.
+        roster = {a["user_id"]: a["is_primary"] for a in task["assignees"]}
+        assert roster == {str(t.user.id): True, str(colleague.id): False}
+
+        sent = seen["messages"][0].content
+        assert "Standaardklant" in sent  # the client by name, through the directory seam
+        assert "De klant vraagt of het blauw kan." in sent  # the conversation
+        assert "Femke de Wit" in sent and "Spoed" in sent  # the vocabulary
+        assert "in_progress" in sent and "\"vocabulary\"" in sent
+
+
+async def test_revise_writes_notes_onto_a_task_that_had_none(client_for, monkeypatch) -> None:
+    """"Schrijf een omschrijving" on an empty task lands as the task's own description — the
+    field the box could not fill before, because the prompt only spoke of *keeping* notes."""
+    t = await make_tenant("revise-notes")
+    headers = await auth_cookie(t.user)
+    seen: dict = {}
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/tasks",
+            json={
+                "company_id": await default_company(c, headers),
+                "title": "Nieuwsbrief september",
+                "due_date": FAR_FUTURE_DUE,
+            },
+            headers=headers,
+        )
+        task_id = created.json()["id"]
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _changes(
+                    description="Nieuwsbrief voor september: onderwerpen verzamelen en opmaken.",
+                    summary="Omschrijving geschreven.",
+                ),
+                seen,
+            ),
+        )
+        revised = await c.post(
+            f"/api/v1/tasks/{task_id}/ai/revise",
+            json={"instruction": "schrijf een omschrijving"},
+            headers=headers,
+        )
+        assert revised.status_code == 200, revised.text
+        body = revised.json()
+        assert body["changed"] == ["description"]
+        assert body["task"]["description"].startswith("Nieuwsbrief voor september")
+        assert "omschrijving" in seen["system"]
+
+
+async def test_revise_transcribe_is_the_task_write_it_serves(client_for, monkeypatch) -> None:
+    """The spoken instruction is transcribed behind the same gate the revise uses — the task
+    write, not ``tasks.task.create`` — and the words come back unapplied."""
+    t = await make_tenant("revise-speech")
+    headers = await auth_cookie(t.user)
+
+    async def fake_transcribe(config, clip, *, language):  # noqa: ANN001, ANN003
+        return Transcript(text="voeg een stap toe voor de DNS", seconds=4)
+
+    monkeypatch.setattr("app.core.ai.features.provider_transcribe", fake_transcribe)
+    webm = base64.b64encode(b"\x1a\x45\xdf\xa3" + b"\x00" * 64).decode()
+    async with client_for(t.host) as c:
+        await c.put(
+            "/api/v1/ai/settings",
+            json={
+                **SETTINGS_BODY,
+                "speech_provider": "openai",
+                "speech_api_key": "sk-speech-secret-456",
+                "speech_model": "whisper-1",
+            },
+            headers=headers,
+        )
+        task_id, _checklist_id, _items = await _task_with_steps(c, headers)
+        spoken = await c.post(
+            f"/api/v1/tasks/{task_id}/ai/transcribe", json={"audio": webm}, headers=headers
+        )
+        assert spoken.status_code == 200, spoken.text
+        assert spoken.json()["text"] == "voeg een stap toe voor de DNS"
+        # Nothing was written: the words are for the speaker to read first.
+        detail = await c.get(f"/api/v1/tasks/{task_id}", headers=headers)
+        assert [i["title"] for i in detail.json()["checklists"][0]["items"]] == [
+            "Concept maken",
+            "Teksten plaatsen",
+        ]
+        # Another tenant's task is a 404 here exactly as the revise is.
+        other = await make_tenant("revise-speech-other")
+        other_headers = await auth_cookie(other.user)
+    async with client_for(other.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=other_headers)
+        refused = await c.post(
+            f"/api/v1/tasks/{task_id}/ai/transcribe", json={"audio": webm}, headers=other_headers
+        )
+        assert refused.status_code in {403, 404}, refused.text

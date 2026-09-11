@@ -40,6 +40,7 @@ from app.core.ai.schemas import (
     WritingAssistRequest,
 )
 from app.core.ai.service import AIService
+from app.core.ai.timehints import local_hints
 from app.core.ai.tools import get_tool, get_tools, result_text, run_tool
 from app.core.ai.transcribe import transcribe as provider_transcribe
 from app.core.timezone import org_today
@@ -130,9 +131,12 @@ _PARSE_TOOL_NAMES = ("companies.find", "projects.find", "tasks.find")
 _PARSE_MAX_ROUNDS = 2
 #: A break longer than a day is a misread, not a break.
 _MAX_BREAK_MINUTES = 24 * 60
-#: A draft entry is a dozen short fields. The 8192 default is sized for a written report and
-#: only costs latency here.
-_PARSE_MAX_TOKENS = 1024
+#: A draft entry is a dozen short fields, so the 8192 default (sized for a written report) is
+#: not needed — but 1024 was too tight: on a reasoning model the ceiling counts the *thinking*
+#: too (``max_completion_tokens``), and a parse that spent its budget before the tool call
+#: came back as an all-null draft, which the screen read as "kon geen registratie afleiden".
+#: A cut-off answer costs more than a long one ever would.
+_PARSE_MAX_TOKENS = 4096
 
 
 def _seen_ids(texts: list[str]) -> set[str]:
@@ -234,6 +238,7 @@ async def parse_time_entry(
     history: list[ChatMessage] = [ChatMessage(role="user", content=payload.text)]
     tool_texts: list[str] = []
     submitted: dict[str, Any] = {}
+    truncated = False
 
     try:
         for round_no in range(_PARSE_MAX_ROUNDS):
@@ -250,8 +255,14 @@ async def parse_time_entry(
                 # the month per round bought nothing.
                 config=config,
             )
+            truncated = truncated or service.truncated
             if not calls:
-                break
+                # A free round that answered in prose ("Ik heb de registratie ingevuld…", or a
+                # question) used to end the loop here with nothing submitted — the commonest
+                # way a perfectly good line came back as an empty draft. The prose is dropped
+                # (a history ending in an assistant turn is a prefill to one provider and a
+                # refusal to another) and the forced round simply runs.
+                continue
             history.append(ChatMessage(role="assistant", content=text, tool_calls=tuple(calls)))
             done = False
             for call in calls:
@@ -284,11 +295,24 @@ async def parse_time_entry(
             parsed_date = None
     billable = submitted.get("billable")
     break_minutes = _parse_minutes(submitted.get("break_minutes"))
+    # What the line states without ambiguity — "gisteren", "14:00-16:30", "2 uur" — read here
+    # rather than by the model, and used only where the model left a blank (``timehints``). A
+    # parse that never reached its tool call (prose, a cut-off answer) still fills the form
+    # with the part of the line that has exactly one meaning.
+    hints = local_hints(payload.text, today=today)
+    start = _parse_hhmm(submitted.get("start")) or hints.start
+    end = _parse_hhmm(submitted.get("end"))
+    if end is None and hints.end is not None and start == hints.start:
+        end = hints.end
+    duration = _parse_minutes(submitted.get("duration_minutes"))
+    if duration is None and start is None:
+        duration = hints.duration_minutes
     return TimeParseResult(
-        date=parsed_date,
-        start=_parse_hhmm(submitted.get("start")),
-        end=_parse_hhmm(submitted.get("end")),
-        duration_minutes=_parse_minutes(submitted.get("duration_minutes")),
+        date=parsed_date or hints.date,
+        start=start,
+        end=end,
+        duration_minutes=duration,
+        truncated=truncated,
         company_id=_checked_uuid(submitted.get("company_id"), seen),
         project_id=_checked_uuid(submitted.get("project_id"), seen),
         task_id=_checked_uuid(submitted.get("task_id"), seen),

@@ -8,6 +8,14 @@
    * name and behind every rule an ordinary edit meets. The answer is a diff: what the
    * instruction did not mention is left exactly as it was.
    *
+   * The instruction may be spoken as well as typed. The microphone lands the words **in the
+   * field**, never straight into the model (#246's rule, one box over): a misheard client or
+   * colleague name is only fixable while the words are visible, and the press that applies
+   * them is the reader's. Drawn only where it can work — the org has a speech provider, this
+   * browser can record — and it transcribes through the task's own route
+   * (`POST /tasks/{id}/ai/transcribe`), which carries the task write this box already needs
+   * rather than the create the dictated *task* needs.
+   *
    * The host decides what happens afterwards through `onapplied`: the card reloads its data,
    * the slide-over adopts the row the API hands back. Both are told the model's one-sentence
    * summary and the kinds of change that landed, so the reader knows what to check without
@@ -19,9 +27,19 @@
    * made, not a fault.
    */
   import { Sparkles } from "@lucide/svelte";
+  import { onMount } from "svelte";
 
+  import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import { t } from "$lib/core/i18n";
   import Button from "$lib/core/ui/Button.svelte";
+  import {
+    MAX_TASK_RECORD_MS,
+    Recorder,
+    VoiceButton,
+    recordingSupported,
+    transcribeClip,
+  } from "$lib/core/voice";
 
   export interface ReviseResult {
     task: Record<string, unknown>;
@@ -55,6 +73,56 @@
   let summary = $state<string | null>(null);
   let truncated = $state(false);
   let nothingChanged = $state(false);
+  let field = $state<HTMLTextAreaElement | null>(null);
+
+  // --- dictation --------------------------------------------------------------------------
+  const recorder = new Recorder(MAX_TASK_RECORD_MS);
+  let micSupported = $state(false);
+  let voiceStatus = $state<string | null>(null);
+  let limitNote = $state<string | null>(null);
+  onMount(() => {
+    micSupported = recordingSupported();
+    return () => recorder.abort();
+  });
+  // The host already gates on `task_assist` and the task write; the two conditions left are
+  // the org's speech provider (`speech`, resolved server-side) and this browser's microphone.
+  const canDictate = $derived(aiEnabled(page.data.user, "speech") && micSupported);
+
+  async function dictate() {
+    error = null;
+    limitNote = null;
+    const audio = await recorder.start();
+    if (recorder.error) {
+      error = recorder.error;
+      return;
+    }
+    if (!audio) return; // aborted, or nothing captured
+    limitNote = recorder.stoppedAtLimit
+      ? t("voice.limit_reached", { minutes: Math.round(recorder.maxMs / 60_000) })
+      : null;
+    voiceStatus = "voice.transcribing";
+    try {
+      const outcome = await transcribeClip(
+        `/api/v1/tasks/${taskId}/ai/transcribe`,
+        audio,
+        page.data.locale ?? "nl",
+      );
+      if (outcome.budget) {
+        budgetReached = true;
+        return;
+      }
+      if (outcome.error || !outcome.text) {
+        error = outcome.error ?? "voice.error_no_speech";
+        return;
+      }
+      // Append: a second breath adds to the first, it does not replace it. Into the field,
+      // not into the model — the words are read before they are applied.
+      instruction = instruction.trim() ? `${instruction.trim()} ${outcome.text}` : outcome.text;
+      field?.focus();
+    } finally {
+      voiceStatus = null;
+    }
+  }
 
   async function apply(override = false) {
     const text = instruction.trim();
@@ -108,6 +176,7 @@
   <div class="flex items-start gap-2">
     <textarea
       {id}
+      bind:this={field}
       bind:value={instruction}
       rows={compact ? 2 : 2}
       disabled={busy}
@@ -115,6 +184,14 @@
       {onkeydown}
       class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60"
     ></textarea>
+    {#if canDictate}
+      <VoiceButton
+        {recorder}
+        onstart={() => void dictate()}
+        onstop={() => recorder.stop()}
+        disabled={busy || voiceStatus !== null}
+      />
+    {/if}
     <Button
       type="button"
       size="sm"
@@ -128,6 +205,8 @@
   </div>
   {#if busy}
     <p class="text-xs text-text-muted" aria-live="polite">{t("tasks.ai.revise_busy")}</p>
+  {:else if voiceStatus}
+    <p class="text-xs text-text-muted" aria-live="polite">{t(voiceStatus)}</p>
   {:else if budgetReached}
     <p class="text-xs text-amber-700 dark:text-amber-400" role="alert">
       {t("ai.budget_notice")}
@@ -137,6 +216,8 @@
     </p>
   {:else if error}
     <p class="text-xs text-red-600 dark:text-red-400" role="alert">{t(error)}</p>
+  {:else if limitNote}
+    <p class="text-xs text-text-muted" role="status">{limitNote}</p>
   {:else if nothingChanged}
     <p class="text-xs text-text-muted" aria-live="polite">{t("tasks.ai.revise_nothing")}</p>
   {:else if summary}

@@ -12,6 +12,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.ai.schemas import TaskTranscribeRequest, TimeTranscribeResult
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.tasks.intake import TaskIntakeService
@@ -646,6 +647,27 @@ async def generate_checklist_with_ai(
     from app.modules.tasks.assist import generate_checklist
 
     return await generate_checklist(ctx, task_id, payload)
+
+
+@router.post(
+    "/{task_id}/ai/transcribe",
+    response_model=TimeTranscribeResult,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def transcribe_revise_instruction(
+    task_id: uuid.UUID,
+    payload: TaskTranscribeRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TimeTranscribeResult:
+    """Speech to text for the revise box: an instruction spoken instead of typed.
+
+    The words come back to be read and corrected before they are applied — nothing is written
+    here. The route is the task write it serves (§15); the service asks ``ai.use`` and the
+    ``:own`` rule, exactly as the revise does.
+    """
+    from app.modules.tasks.assist import transcribe_instruction
+
+    return await transcribe_instruction(ctx, task_id, payload)
 
 
 @router.patch(

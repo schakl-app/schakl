@@ -2288,8 +2288,15 @@ contrast bug in dark mode rather than only an inconsistency.
   for"), had no strip for a screenshot, and threw away a corrected title the moment the reader
   followed the link to the full card. Four things changed, and the last is the rule. The
   checklist is edited in place (`TaskChecklistEditor`: tick, add, click a step to rename it,
-  remove, a new list) over the task's own endpoints, because the four pages the dialog is drawn
-  on own no action that knows the task. Screenshots and files land on the card's own strip
+  click its explanation to change it — or add one, the detail a reviewer most wants to write
+  down being *why* a step is there, read off the e-mail beside them — remove, a new list, and
+  the list's own description) over the task's own endpoints, because the four pages the dialog
+  is drawn on own no action that knows the task. The card's use mode got the same affordance
+  in the same pass: a step's toelichting is the part of a plan that changes while the work is
+  being done, and editing it used to cost ⋯ → Bewerken, the pencil on the step and a save at
+  the foot of the page — three gestures for one sentence. Clicking the rendered note opens its
+  editor in place (the `InlineText` shape, #455), an empty one is a small "toelichting"
+  affordance drawn on hover of the row, and the same forms serve both modes. Screenshots and files land on the card's own strip
   (`FileAttachments` in `direct` mode, Ctrl+V anywhere while the dialog is open — listening in
   the capture phase so a host page's own strip does not take the paste first). The box under
   the notes changes the task in words (`TaskAIRevise`, docs/AI.md), the same box the card has.
