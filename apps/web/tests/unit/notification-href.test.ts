@@ -30,6 +30,7 @@ const API_ENTITY_TYPES = [
   "timesheet",
   "interaction",
   "snelstart_account",
+  "task_intake",
 ] as const;
 
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -104,6 +105,10 @@ describe("notificationHref", () => {
       at("interaction", "interactions.mentioned", { task_id: "not-used-any-more" }),
       `/interactions?owner=all&interaction=${ID}`,
     );
+  });
+
+  test("a parked mail to the task address opens its own row on the inbox page", () => {
+    assert.equal(at("task_intake", "task.intake_parked"), `/tasks/inbox?open=${ID}`);
   });
 
   test("a failed accounting sync opens the connection that failed", () => {

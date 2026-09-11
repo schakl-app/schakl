@@ -30,6 +30,8 @@ from app.modules.notifications.events import (
     PROJECT_ASSIGNED,
     SNELSTART_SYNC_FAILED,
     TASK_ASSIGNED,
+    TASK_INTAKE_CREATED,
+    TASK_INTAKE_PARKED,
     TASK_MENTIONED,
     TASK_OVERDUE,
     TASK_REPLIED,
@@ -51,6 +53,11 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         TASK_OVERDUE,
         # Being scheduled onto someone's calendar (#188) is news you act on now, not tomorrow.
         TASK_SCHEDULED,
+        # The answer to a mail you just sent to the task address: whether it became a task, or
+        # is waiting for you to name the client. Tomorrow's digest is too late for either — the
+        # mail was sent from a phone in a meeting, and the confirmation is what closes the loop.
+        TASK_INTAKE_CREATED,
+        TASK_INTAKE_PARKED,
         LEAVE_REQUESTED,
         LEAVE_APPROVED,
         LEAVE_REJECTED,

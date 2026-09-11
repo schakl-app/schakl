@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.tasks.intake import TaskIntakeService
 from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
@@ -48,11 +49,16 @@ from app.modules.tasks.schemas import (
     TaskChecklistGenerateRequest,
     TaskCreate,
     TaskDetail,
+    TaskIntakeComplete,
+    TaskIntakeRead,
+    TaskIntakeSummary,
     TaskLabelsSet,
     TaskListItem,
     TaskRead,
     TaskReviseRequest,
     TaskReviseResult,
+    TaskSettingsRead,
+    TaskSettingsUpdate,
     TaskUpdate,
     TemplateApply,
     TemplateCreate,
@@ -195,6 +201,82 @@ async def my_open_tasks(
 ) -> list[TaskListItem]:
     """Open/in-progress tasks assigned to the current user (My Day)."""
     return await TaskService(ctx).my_open(limit=limit)
+
+
+# --------------------------------------------------------------------------- #
+# Org settings + the e-mail intake (literal paths, before ``/{task_id}``)
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/settings",
+    response_model=TaskSettingsRead,
+    dependencies=[require_permission("tasks.settings.manage")],
+)
+async def get_settings(ctx: RequestContext = Depends(require_context)) -> TaskSettingsRead:
+    """The org's tasks settings: the e-mail intake address. No saved row means the defaults."""
+    return await TaskIntakeService(ctx).settings()
+
+
+@router.put(
+    "/settings",
+    response_model=TaskSettingsRead,
+    dependencies=[require_permission("tasks.settings.manage")],
+)
+async def update_settings(
+    payload: TaskSettingsUpdate, ctx: RequestContext = Depends(require_context)
+) -> TaskSettingsRead:
+    return await TaskIntakeService(ctx).update_settings(payload)
+
+
+@router.get(
+    "/intake",
+    response_model=list[TaskIntakeRead],
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def list_intake(
+    status: str | None = Query(None, max_length=20),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: RequestContext = Depends(require_context),
+) -> list[TaskIntakeRead]:
+    """The caller's own mails to the task address — parked ones first in the UI, recent ones
+    for the record. Never another sender's: a mail is its sender's until it is a task."""
+    return await TaskIntakeService(ctx).list_mine(status=status, limit=limit)
+
+
+@router.get(
+    "/intake/summary",
+    response_model=TaskIntakeSummary,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def intake_summary(ctx: RequestContext = Depends(require_context)) -> TaskIntakeSummary:
+    """How many of the caller's mails wait for a client — the strip on the board."""
+    return await TaskIntakeService(ctx).summary()
+
+
+@router.post(
+    "/intake/{intake_id}/create",
+    response_model=TaskRead,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def complete_intake(
+    intake_id: uuid.UUID,
+    payload: TaskIntakeComplete,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskRead:
+    """Finish a parked mail by hand: name the client, and the task is created as the caller."""
+    task = await TaskIntakeService(ctx).complete(intake_id, payload)
+    return TaskRead.model_validate(task)
+
+
+@router.delete(
+    "/intake/{intake_id}",
+    status_code=204,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def discard_intake(
+    intake_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> None:
+    """Throw a parked mail away. The receipt stays, so the same mail cannot come back."""
+    await TaskIntakeService(ctx).discard(intake_id)
 
 
 # --------------------------------------------------------------------------- #

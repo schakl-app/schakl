@@ -13,6 +13,7 @@ const FEATURES = [
   "task_assist",
   "reporting",
   "email_assist",
+  "task_intake",
 ] as const;
 
 // Instellingen → AI (#126): provider, write-only key, model, per-feature toggles, house

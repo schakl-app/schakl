@@ -700,3 +700,105 @@ class TaskTemplateItem(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     checklist_items_rich: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
+
+
+class TaskSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Org-wide tasks settings (one row per org, absent = the defaults).
+
+    Today that is the **intake address** (``taak@bureau.nl``): the address an employee mails a
+    task to, read by the connected-mailbox feeds through ``app.core.mailbox.intake``. The
+    receipt counters beside it exist because silence is how a broken alias survives (CLAUDE.md
+    §10, Timeon): an address nothing has ever arrived on and an address that stopped working
+    look identical until the screen prints when the last mail came in.
+    """
+
+    __tablename__ = "task_settings"
+    __table_args__ = (UniqueConstraint("org_id", name="uq_task_settings_org"),)
+
+    intake_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    #: The deadline a mailed task gets when the mail states none: the org's today plus this
+    #: many days. One, by the owner's decision — a mailed task is rarely for today.
+    intake_default_due_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    intake_last_received_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    intake_received_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class TaskIntakeStatus(StrEnum):
+    #: A task was made; ``task_id`` names it.
+    CREATED = "created"
+    #: No client could be resolved; the sender finishes it by hand (``/tasks/inbox``).
+    NEEDS_CLIENT = "needs_client"
+    #: The sender may not create tasks here. Stored so the refusal has a screen.
+    REFUSED = "refused"
+    #: The sender threw a parked mail away.
+    DISCARDED = "discarded"
+
+
+class TaskIntakeMessage(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One mail that reached the intake address — the receipt, the parked queue and the
+    provenance in one row.
+
+    Three purposes, one table. It is the **idempotency** the feeds rely on: the sender's Sent
+    copy and every colleague's Cc copy of one mail arrive through different mailboxes in either
+    order, and the partial unique index on the RFC-822 ``Message-ID`` makes the second one a
+    no-op in the database rather than in application code (docs/PAYMENTS.md). It is the
+    **parked queue**: a mail whose client could not be resolved waits here for its sender, body
+    and attachments kept so the task they finish by hand carries everything the mail did. And
+    it is **provenance**: a task's trail line points back at the mail it was made from.
+    """
+
+    __tablename__ = "task_intake_messages"
+    __table_args__ = (
+        Index(
+            "uq_task_intake_messages_rfc822",
+            "org_id",
+            "rfc822_message_id",
+            unique=True,
+            postgresql_where=text("rfc822_message_id IS NOT NULL"),
+        ),
+        # A message with no Message-ID at all (rare, but a provider may strip it): the
+        # provider's own id inside its source is the next-best identity.
+        Index(
+            "uq_task_intake_messages_provider",
+            "org_id",
+            "source",
+            "provider_message_id",
+            unique=True,
+        ),
+        Index("ix_task_intake_messages_org_sender_status", "org_id", "sender_user_id", "status"),
+    )
+
+    rfc822_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider_message_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_thread_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # The colleague who mailed it. SET NULL so the receipt outlives the account (it is what
+    # keeps a second copy a no-op), with the address and name snapshotted beside it (#64).
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    sender_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    sender_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    #: Why it is not a task: ``no_client`` / ``ambiguous_client`` / ``no_permission`` /
+    #: ``outside_horizon``. An i18n key suffix (``tasks.intake.reason.<value>``).
+    reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    #: What the parser and the model made of it — the title, the resolved ids, which fields
+    #: the model filled — so the parked screen can prefill and the trail can say who decided.
+    hints: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1726,6 +1726,14 @@ contrast bug in dark mode rather than only an inconsistency.
   saved still appears (fallback to its declared position), so a pref can never make new
   functionality invisible. Icons from lucide; collapsible to an icon rail; on mobile it is a
   drawer behind the hamburger — the saved order carries over unchanged.
+- **Taken → E-mailinbox is not a permanent tab.** A mail to the org's task address (Instellingen
+  → Taken) that could not become a task on its own waits on `/tasks/inbox` for its sender; the
+  tab is drawn with the count and only while something waits, or while you are on it — a queue
+  that is empty most days is the one people stop reading (the Timeon lesson). `Taak aanmaken`
+  opens the ordinary quick-create dialog over the parked mail, prefilled, posting to the mail's
+  own create action so the words, steps, links and attachments travel with the task; the client
+  is the one thing it asks for, because it is the one thing the mail could not say. The
+  notification that sent you here opens *that* row (`?open=`) and highlights it.
 - **Agenda is a core surface like the dashboard**: the month view composes event feeds that
   modules contribute via the registry (`calendarSources`) — today the team's approved/pending
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a

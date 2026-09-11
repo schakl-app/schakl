@@ -19,6 +19,7 @@ export type AIFeature =
   | "task_assist"
   | "reporting"
   | "email_assist"
+  | "task_intake"
   | "speech";
 
 /** Svelte context key the (app) layout provides; shared components (the editor's writing

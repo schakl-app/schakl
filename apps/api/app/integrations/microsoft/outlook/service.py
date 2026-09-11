@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
 from app.core.htmlmd import html_to_markdown, referenced_cids, rewrite_cid_images
+from app.core.mailbox.intake import intake_target, merge_links, without_intake
 from app.core.mailbox.internals import (
     Internals,
     Mailbox,
@@ -293,13 +294,20 @@ async def classify(
     participants = matching.participants_of(message)
     if not participants:
         return Decision(reason=SkipReason.NO_PARTICIPANTS)
+    # The org's task address among the recipients — the Gmail feed's rule, same seam
+    # (app/core/mailbox/intake.py): decided first, carried whatever the timeline half says.
+    intake = intake_target(participants, internals.intake_addresses)
+    if intake is not None:
+        participants = without_intake(participants, internals.intake_addresses)
     if _defer_to_owner_mailbox(connection, message, folders, participants, internals):
         owner = matching.intended_owner(participants, internals.owner_by_email.keys())
-        return Decision(reason=SkipReason.DEFERRED_TO_OWNER, detail={"owner": owner or ""})
+        return Decision(
+            reason=SkipReason.DEFERRED_TO_OWNER, detail={"owner": owner or ""}, intake=intake
+        )
 
     internal = matching.internal_only(participants, internals.ours)
     if internal and not settings_row.outlook_log_internal:
-        return Decision(reason=SkipReason.INTERNAL_ONLY)
+        return Decision(reason=SkipReason.INTERNAL_ONLY, intake=intake)
     addresses = tuple(sorted({p["email"] for p in participants}))
     if cache is not None and addresses in cache.contacts_by_addresses:
         matches = cache.contacts_by_addresses[addresses]
@@ -310,7 +318,7 @@ async def classify(
     if not internal and not matching.has_external_match(matches, internals.company_ids):
         # A mail with an outsider on it still needs that outsider to be a contact we know —
         # and "known" has to mean known *and outside* (#324).
-        return Decision(reason=SkipReason.NO_EXTERNAL_MATCH)
+        return Decision(reason=SkipReason.NO_EXTERNAL_MATCH, intake=intake)
 
     if not conversation_id:
         inherited = None
@@ -333,7 +341,7 @@ async def classify(
     if internal and not mappings:
         # An opted-in internal mail has no contact to map from: it always waits for its owner.
         pending = True
-    return Decision(mappings=mappings, pending=pending)
+    return Decision(mappings=mappings, pending=pending, intake=intake)
 
 
 async def _ingest_message(
@@ -355,6 +363,9 @@ async def _ingest_message(
     ctx = SystemContext(org=org, session=session)
     message_id = str(message.get("id") or "")
     decision = await classify(session, org, connection, settings_row, message, folders, internals)
+    outcome = None
+    if decision.intake is not None:
+        outcome = await _run_intake(ctx, client, message, decision.intake, internals)
     if not decision.logs:
         await _record_skip(session, org, connection, message, decision.reason, decision.detail)
         logger.debug(
@@ -364,7 +375,7 @@ async def _ingest_message(
             org.id,
             decision.reason,
         )
-        return 0
+        return 1 if outcome is not None and outcome.status == "created" else 0
 
     participants = matching.participants_of(message)
     reviewers = colleagues_on(participants, internals) - {connection.user_id}
@@ -386,7 +397,7 @@ async def _ingest_message(
         rfc822_message_id=matching.rfc822_id_of(message),
         deep_link=deep_link(message),
         pending=decision.pending,
-        mappings=decision.mappings,
+        mappings=merge_links(decision.mappings, outcome),
         reviewer_user_ids=reviewers,
         source=SOURCE,
     )
@@ -397,6 +408,102 @@ async def _ingest_message(
         # already in worker context, no user is waiting.
         await _fetch_body_with(client, ctx, row.id, message_id, row.owner_user_id)
     return 1
+
+
+async def _run_intake(
+    ctx: SystemContext, client, message: dict, intake, internals: Internals
+):  # noqa: ANN001, ANN201
+    """Fetch the whole message and hand it to whoever owns the intake address — the Gmail
+    feed's ``_run_intake`` over Graph: the body in the format it was written, the file
+    attachments by ``$value``. Its own savepoint, named in the log when it fails."""
+    from app.core.mailbox.intake import IntakeAttachment, IntakeMessage, dispatch
+
+    message_id = str(message.get("id") or "")
+    participants = matching.participants_of(message)
+    sender = matching.sender_of(participants)
+    if sender is None:
+        return None
+    response = await client.get(
+        f"/me/messages/{message_id}",
+        params={"$select": "body,hasAttachments"},
+        headers={"Prefer": BODY_PREFER},
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    payload = response.json() or {}
+    body = payload.get("body") or {}
+    content = body.get("content") or ""
+    if (body.get("contentType") or "").lower() == "html":
+        body_markdown = html_to_markdown(content)
+        body_text = matching.html_to_text(content)
+    else:
+        body_markdown = None
+        body_text = content.strip() or None
+    attachments: list[IntakeAttachment] = []
+    if payload.get("hasAttachments", True):
+        listing = await client.get(
+            f"/me/messages/{message_id}/attachments",
+            params={"$select": "id,name,contentType,size,isInline,contentId"},
+        )
+        parts = (
+            [
+                part
+                for part in (listing.json() or {}).get("value") or []
+                if part.get("id")
+                and (part.get("@odata.type") or FILE_ATTACHMENT) == FILE_ATTACHMENT
+            ]
+            if listing.status_code < 400
+            else []
+        )
+        inline_cids = referenced_cids(body_markdown)
+        for part in parts:
+            content_id = (part.get("contentId") or "").strip().strip("<>") or None
+            inline = content_id in inline_cids if content_id else False
+            if not inline and not part.get("name"):
+                continue
+            bytes_response = await client.get(
+                f"/me/messages/{message_id}/attachments/{part['id']}/$value"
+            )
+            if bytes_response.status_code >= 400:
+                logger.warning("outlook intake attachment fetch failed for %s", message_id)
+                continue
+            attachments.append(
+                IntakeAttachment(
+                    filename=str(part.get("name") or content_id or "bijlage"),
+                    content_type=str(part.get("contentType") or "application/octet-stream"),
+                    data=bytes_response.content,
+                    content_id=content_id if inline else None,
+                )
+            )
+    sender_name = next((p.get("name") for p in participants if p.get("email") == sender), None)
+    intake_message = IntakeMessage(
+        address=intake,
+        source=SOURCE,
+        sender_email=sender,
+        sender_name=sender_name,
+        sender_user_id=internals.owner_by_email.get(sender),
+        subject=message.get("subject") or None,
+        body_text=body_text,
+        body_markdown=body_markdown,
+        participants=participants,
+        attachments=attachments,
+        rfc822_message_id=matching.rfc822_id_of(message),
+        provider_message_id=message_id,
+        provider_thread_id=message.get("conversationId"),
+        occurred_at=matching.occurred_at_of(message),
+        deep_link=deep_link(message),
+        internals=internals,
+    )
+    try:
+        async with ctx.session.begin_nested():
+            return await dispatch(ctx, intake_message)
+    except Exception:  # noqa: BLE001 — named, never dropped; the timeline half still runs
+        logger.warning(
+            "intake handler failed for outlook message %s (org %s)", message_id, ctx.org.id,
+            exc_info=True,
+        )
+        return None
 
 
 async def _notify_pending(

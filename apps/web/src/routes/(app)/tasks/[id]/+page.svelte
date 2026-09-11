@@ -1059,6 +1059,9 @@
         to: String(a.payload.to ?? ""),
       });
     }
+    if (a.action === "created" && a.payload.via === "email") {
+      return t("tasks.activity.created_from_email");
+    }
     if (a.action === "ai_revised") {
       return t("tasks.activity.ai_revised", { summary: String(a.payload.summary ?? "") });
     }

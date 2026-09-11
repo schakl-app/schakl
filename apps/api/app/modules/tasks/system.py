@@ -34,6 +34,8 @@ from app.modules.tasks.models import (
     TaskChecklist,
     TaskChecklistItem,
     TaskComment,
+    TaskLabel,
+    TaskLabelLink,
     TaskLink,
     TaskPriority,
     TaskStatus,
@@ -73,13 +75,23 @@ async def mirror_primary_assignee(
 
 
 async def _record(
-    ctx: EmitContext, task_id: uuid.UUID, action: str, actor_name: str | None, payload: dict
+    ctx: EmitContext,
+    task_id: uuid.UUID,
+    action: str,
+    actor_name: str | None,
+    payload: dict,
+    *,
+    actor_user_id: uuid.UUID | None = None,
 ) -> None:
     ctx.session.add(
         TaskActivity(
             org_id=ctx.org.id,
             task_id=task_id,
-            actor_user_id=None,  # NULL actor = the system; the name says which automation.
+            # NULL actor = the system; the name says which automation. A **real** user id is
+            # written only when a person asked for the write in absentia (the e-mail intake:
+            # the sender is the actor, the worker merely carried the request), never the
+            # placeholder a ``SystemContext`` carries, which exists in no table.
+            actor_user_id=actor_user_id,
             actor_name=actor_name,
             action=action,
             payload=payload,
@@ -132,8 +144,16 @@ async def create_task_system(
     due_date: date | None = None,
     actor_name: str | None = None,
     extra_payload: dict[str, Any] | None = None,
+    actor_user_id: uuid.UUID | None = None,
+    requires_interaction: bool = False,
+    created_payload: dict[str, Any] | None = None,
 ) -> Task:
     """Create a task as the system — an automation rule firing, with nobody in front of it.
+
+    ``actor_user_id`` names the person the write is *for* when there is one (the e-mail intake:
+    the sender asked for this task, the worker only carried it), so the trail reads "Jan maakte
+    deze taak aan" rather than "systeem". ``created_payload`` rides the ``created`` trail line —
+    provenance such as the mail it came from.
 
     ``due_date`` is the rule's own answer (``due_days`` on the action config, resolved by the
     caller). ``None`` falls back to **the org's today**, never to ``NULL``: a deadline is
@@ -180,12 +200,15 @@ async def create_task_system(
         status=TaskStatus.OPEN.value,
         priority=priority,
         due_date=due_date,
+        requires_interaction=requires_interaction,
         position=max_position + 1024.0,
     )
     ctx.session.add(task)
     await ctx.session.flush()
     await mirror_primary_assignee(ctx.session, ctx.org.id, task.id, assignee_user_id)
-    await _record(ctx, task.id, "created", actor_name, {})
+    await _record(
+        ctx, task.id, "created", actor_name, created_payload or {}, actor_user_id=actor_user_id
+    )
     await _emit(
         ctx,
         "task.created",
@@ -201,6 +224,34 @@ async def create_task_system(
     if task.assignee_user_id is not None:
         await _emit(ctx, "task.assigned", task, [task.assignee_user_id], None, extra_payload)
     return task
+
+
+async def set_task_labels_system(
+    ctx: EmitContext, task_id: uuid.UUID, label_ids: list[uuid.UUID]
+) -> int:
+    """Attach labels to a task as the system. Only labels of this org are written — an id from
+    anywhere else (a model's guess, another tenant's) is dropped, never raised on."""
+    if not label_ids:
+        return 0
+    known = set(
+        (
+            await ctx.session.execute(
+                select(TaskLabel.id).where(
+                    TaskLabel.org_id == ctx.org.id, TaskLabel.id.in_(list(label_ids))
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    written = 0
+    for label_id in dict.fromkeys(label_ids):
+        if label_id not in known:
+            continue
+        ctx.session.add(TaskLabelLink(org_id=ctx.org.id, task_id=task_id, label_id=label_id))
+        written += 1
+    await ctx.session.flush()
+    return written
 
 
 async def set_task_status_system(

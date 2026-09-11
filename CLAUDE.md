@@ -978,6 +978,35 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   project has exactly one. The column stays nullable for a release (expand/contract), and
   `tests/conftest.default_company` is the suite's stand-in client, created lazily per host so a
   test that never makes a task never gains a company row.
+- **A task arrives by e-mail, and the sender is the actor** (`taak@bureau.nl`,
+  `app/core/mailbox/intake.py`, `app/modules/tasks/intake.py`, `docs/AI.md`). An employee mails
+  the org's task address — a note, a forwarded client mail, a photo — and a task lands on their
+  board. No new transport: both connected-mailbox feeds already process a colleague's *sent*
+  mail, so the sender's own mailbox is the copy whose authorship the provider vouches for, and
+  a `From` that resolves to nobody in `Internals.owner_by_email` is refused before a row exists.
+  Five rules. **The address is a registry, not a feed's knowledge**: core holds the seam (an
+  address provider and a handler per intake kind; `tasks` registers the first), the feeds ask
+  `intake_target` *before* the chatter and match gates and strip the address out of the
+  participant list, so a mail to `taak@` alone is chatter for the timeline and a task for the
+  intake, and a client thread with `taak@` in Cc is **both** — the contact moment lands filed
+  onto the task the same mail made (`merge_links`). **One mail is one act, decided by the
+  database**: the receipt row's partial unique index on the RFC-822 id makes the second copy a
+  no-op whichever mailbox polls first, and the loser answers with the winner's links. **The
+  sender's words outrank everything**: `[Klant]` in the subject, directive lines (`klant:`,
+  `voor:`, `deadline:`, `project:`, `labels:`, `prioriteit:`), then the forwarded block's people
+  through the feeds' own contact match and ranking (#305), then — with `task_intake` on — the
+  model, which fills only what is still blank, grounded per type under the sender's own horizon
+  (`app/core/principal.member_context`: the permissions and company groups a request from them
+  would have run with, so a `tasks.task.create` they lack refuses here too). **A missing client
+  parks; a missing deadline defaults** (#391/#392 one door over: today + the org's setting, the
+  owner's call at one day) — the parked mail keeps its words and attachments under Taken →
+  E-mailinbox, a tab drawn only while something waits, and finishing it is the ordinary
+  `TaskService.create` as the person. And **the confirmation is a notification the sender can
+  act on**: client, assignee and deadline in the sentence, which of them the model chose, through
+  their own preferences — `task.assigned` is excluded for the sender's own mail, or one mail is
+  two bells. Deliberately not a Redis bucket, not an inbound webhook and not a per-tenant SMTP
+  listener: the address must merely exist (an alias or group), and a second delivery path would
+  be a second answer to "who wrote this".
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

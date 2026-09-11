@@ -19,6 +19,9 @@ ENTITY_INTERACTION = "interaction"
 #: A connected accounting administration (#377). Not a record anybody opens — which is exactly
 #: why the event that names it must hint its recipients rather than rely on watchers.
 ENTITY_SNELSTART_ACCOUNT = "snelstart_account"
+#: A mail to the task address that could not become a task on its own (the tasks module's
+#: ``task_intake_messages``): the parked-queue row its sender is asked to finish.
+ENTITY_TASK_INTAKE = "task_intake"
 
 ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TASK,
@@ -28,6 +31,7 @@ ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TIMESHEET,
     ENTITY_INTERACTION,
     ENTITY_SNELSTART_ACCOUNT,
+    ENTITY_TASK_INTAKE,
 )
 
 # --- event types ------------------------------------------------------------------------- #
@@ -52,6 +56,11 @@ TASK_OVERDUE = "task.overdue"
 # A task planned onto someone's calendar (#188). Recipient = the person the block is for; the
 # actor (the scheduler) is auto-excluded, so planning your own task is silent.
 TASK_SCHEDULED = "task.scheduled"
+# A mail to the task address became a task (recipient = the colleague who sent the mail); or it
+# could not, and waits for them to name the client. Both are emitted by the worker with no actor,
+# so their sentences are whole ones rather than actor-prefixed predicates.
+TASK_INTAKE_CREATED = "task.intake_created"
+TASK_INTAKE_PARKED = "task.intake_parked"
 # projects
 PROJECT_ASSIGNED = "project.assigned"
 PROJECT_STATUS_CHANGED = "project.status_changed"
@@ -98,6 +107,8 @@ EVENT_TYPES: tuple[str, ...] = (
     TASK_DUE_SOON,
     TASK_OVERDUE,
     TASK_SCHEDULED,
+    TASK_INTAKE_CREATED,
+    TASK_INTAKE_PARKED,
     PROJECT_ASSIGNED,
     PROJECT_STATUS_CHANGED,
     PROJECT_BUDGET_THRESHOLD,
@@ -125,6 +136,8 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TASK_DUE_SOON: ENTITY_TASK,
     TASK_OVERDUE: ENTITY_TASK,
     TASK_SCHEDULED: ENTITY_TASK,
+    TASK_INTAKE_CREATED: ENTITY_TASK,
+    TASK_INTAKE_PARKED: ENTITY_TASK_INTAKE,
     PROJECT_ASSIGNED: ENTITY_PROJECT,
     PROJECT_STATUS_CHANGED: ENTITY_PROJECT,
     PROJECT_BUDGET_THRESHOLD: ENTITY_PROJECT,

@@ -76,6 +76,10 @@ export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
     employees: "overview.tab.employees",
     revenue: "overview.tab.revenue",
   },
+  tasks: {
+    // The sender's own mails to the task address (`/tasks/inbox`).
+    inbox: "tasks.inbox.title",
+  },
   leave: {
     availability: "leave.availability.title",
   },

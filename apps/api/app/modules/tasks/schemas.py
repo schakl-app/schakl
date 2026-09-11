@@ -1095,3 +1095,71 @@ class ScheduleLogTime(BaseModel):
 # names resolve, and an incomplete model raises on its first validation — which would be the
 # first ``POST /tasks`` in production and not the import here.
 TaskCreate.model_rebuild()
+
+
+# --------------------------------------------------------------------------- #
+# Org settings + the e-mail intake (docs/UX.md, CLAUDE.md §10 "A task arrives by e-mail")
+# --------------------------------------------------------------------------- #
+class TaskSettingsRead(BaseModel):
+    intake_address: str | None = None
+    intake_default_due_days: int = Field(default=1, ge=0, le=365)
+    intake_last_received_at: datetime | None = None
+    intake_received_count: int = 0
+
+
+class TaskSettingsUpdate(BaseModel):
+    """A **partial** update: only the fields present in the body are written. An explicit
+    ``null`` intake address switches the intake off (§18's pair)."""
+
+    intake_address: str | None = Field(default=None, max_length=320)
+    intake_default_due_days: int | None = Field(default=None, ge=0, le=365)
+
+    @field_validator("intake_address")
+    @classmethod
+    def _address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().lower()
+        if not cleaned:
+            return None
+        local, sep, domain = cleaned.partition("@")
+        if not sep or not local or "." not in domain or any(ch.isspace() for ch in cleaned):
+            raise ValueError("errors.invalid_email")
+        return cleaned
+
+
+class TaskIntakeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    status: str
+    reason: str | None = None
+    subject: str | None = None
+    sender_user_id: uuid.UUID | None = None
+    sender_email: str
+    sender_name: str | None = None
+    body_text: str | None = None
+    body_markdown: str | None = None
+    received_at: datetime
+    task_id: uuid.UUID | None = None
+    hints: dict[str, Any] = Field(default_factory=dict)
+    decided_at: datetime | None = None
+    created_at: datetime
+
+
+class TaskIntakeSummary(BaseModel):
+    """The strip on the board: how many of *my* mails are waiting for a client."""
+
+    needs_client: int = 0
+
+
+class TaskIntakeComplete(BaseModel):
+    """Finish a parked mail by hand: the client it was missing, and anything the sender wants
+    to correct while they are here. Everything else comes off the row."""
+
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=512)
+    due_date: date | None = None
+    assignees: list[AssigneeWrite] | None = None
+    assignee_user_id: uuid.UUID | None = None

@@ -18,6 +18,7 @@
     "task_assist",
     "reporting",
     "email_assist",
+    "task_intake",
   ] as const;
 
   const DEFAULT_MODELS: Record<string, string> = {

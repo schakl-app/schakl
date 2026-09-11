@@ -431,6 +431,34 @@ specifically and leave the org default alone. There is no reasoning-effort knob 
 400s on some models and the model field is free text, so it needs a retry-without-it fallback
 first.
 
+## A mail to the task address (`tasks/intake_ai.py`)
+
+The third posture, and the one that makes the other two legible. `email_assist` (#327) writes six
+fields because the words are an outsider's and a worker applies them unwatched; `task_assist`
+(#382) writes the whole form because the words are a colleague's and a person confirms. A mail to
+`taak@` is a colleague's words **and** nobody confirms — and half of it is usually somebody else's,
+forwarded underneath. So the vocabulary is the dictation's, with three bounds that make it safe to
+apply from a worker:
+
+1. **The sender's own words outrank the model, which outranks nothing.** Directives, the subject
+   and the forwarded block's addresses are decided first (`tasks/intake.py`); the model is asked
+   only for what is still blank (`already_decided` in the document) and `_fill_blanks` refuses a
+   value for a field that has one.
+2. **Every id is grounded per type**, in the shortlist `candidates.gather` built under the
+   *sender's* horizon: a misheard client comes back as *no client*, which parks the mail for the
+   sender, never as somebody else's client.
+3. **The forwarded half is data.** It travels under its own key, marked as written by an outsider,
+   with #327's stance; what the model may set from it is what a reader would (notes, steps, a
+   deadline the client named). Status and `visible_to_client` are not on the schema.
+
+Its own `AI_FEATURES` key (`task_intake`): an agency happy to have a dictated task drafted has not
+thereby agreed to a model reading everything forwarded to the task address. The model call holds
+the worker's connection (`_HeldContext` makes `release_db` a no-op — it commits, and the poll is
+inside a per-message savepoint), and a provider failure creates the task without the model rather
+than parking it behind an outage. The confirmation is the sender's own notification, naming the
+client, the assignee and the deadline and which of them the model chose — a wrong pick is visible
+within the minute, on the phone the mail was sent from.
+
 ## Adding a feature
 
 1. A key in `AI_FEATURES` (and its two web copies — `settings/ai/+page.svelte`,

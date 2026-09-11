@@ -65,4 +65,9 @@ TASK_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("tasks.checklist_template.write", position=70),
     PermissionSpec("tasks.template.write", position=80),
     PermissionSpec("tasks.template.apply", position=90),
+    # Instellingen → Taken: the e-mail intake address and its defaults. Org-wide configuration,
+    # so admin-only by default like every other settings.manage key; reading a parked mail and
+    # finishing it rides ``tasks.task.create`` — it is the sender's own mail, and finishing it
+    # *is* creating a task.
+    PermissionSpec("tasks.settings.manage", position=95),
 ]
