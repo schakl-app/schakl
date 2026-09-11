@@ -1975,7 +1975,15 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   share no memory (docs/PAYMENTS.md's rule, one protocol over). And **an anonymous `/mcp` request
   now answers 401 with the `WWW-Authenticate` challenge** — a behaviour change, and the fix to
   two things at once: an OAuth client discovers the server *by being refused*, and an anonymous
-  `tools/list` disclosed the tenant's whole module set to nobody in particular.
+  `tools/list` disclosed the tenant's whole module set to nobody in particular. Its fourth
+  consequence was found by a module shipping: **a consent that was not narrowed is stored as a
+  rule, never as today's expansion** (`app/core/apikeys/scopes.py`). The screen wrote the ticked
+  list onto the key, and a list is frozen on the day of consent — a connector consented before
+  Search Console existed answered 403 on every Search Console tool and no screen said why, since
+  a chat client never prompts to re-consent. So `mcp:full` / `mcp:read` are stored as the token
+  and expanded against the live catalog on every request, at the same place the owner's live
+  permissions already cap the key; a widening can therefore follow the catalog and never exceed
+  the person. "Choose myself" stays a fixed list and says so on screen.
 - **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
   OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
   travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it

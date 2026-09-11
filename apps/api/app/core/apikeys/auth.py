@@ -55,11 +55,6 @@ def _unauthorized() -> AppError:
     return AppError("unauthorized", "errors.unauthorized", status_code=401)
 
 
-def _split_and_check(perms: PermissionSet, scope: str) -> bool:
-    base, sep, suffix = scope.partition(":")
-    return perms.has(base, suffix if sep else None)
-
-
 async def resolve_api_key_context(
     request: Request, session: AsyncSession, org: Org
 ) -> RequestContextLike | None:
@@ -124,8 +119,12 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     membership, granted, holds_client = row
     owner_perms = PermissionSet.of(granted)
     # Effective = key.scopes ∩ owner's live permissions, re-evaluated every request: a demoted
-    # member's key is demoted with them.
-    effective = [s for s in key.scopes if _split_and_check(owner_perms, s)]
+    # member's key is demoted with them. A coarse scope (`mcp:full` / `mcp:read`, the record of
+    # an OAuth consent that was not narrowed) expands against today's catalog here, which is
+    # what lets a connector reach a module that shipped after it was connected.
+    from app.core.apikeys.scopes import effective_scopes
+
+    effective = effective_scopes(list(key.scopes), owner_perms)
     # The company horizon (#191) rides the owner's membership, exactly like a session —
     # a personal key must not see further than the person it acts as.
     from app.core.scope import SCOPE_SOURCE_PORTAL, resolve_company_scope_details

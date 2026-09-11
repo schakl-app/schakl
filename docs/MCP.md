@@ -263,6 +263,29 @@ the narrowing a person did on screen is re-derived against two authorities befor
 written: the permission catalog, and the consenting user's own live grants. A client asking for
 everything cannot talk a member into granting what the member does not have.
 
+**A consent that was not narrowed is stored as a rule, never as today's expansion**
+(`app/core/apikeys/scopes.py`). The first version of the screen offered every permission the person
+held, ticked, and wrote the ticked list onto the key — which is a list frozen on the day of consent.
+Search Console shipped thirteen releases after the first connectors were consented; a key holding
+the 220 strings its owner had in August could not name a module that did not exist yet, so every
+Search Console tool answered 403 and nothing on any screen said why. A chat client never prompts to
+re-consent, so the connector stayed poorer for as long as nobody guessed. The screen now asks one
+question in three answers: **everything I can do** stores `mcp:full`, **read only** stores
+`mcp:read`, and both are expanded against the live catalog on every request the key makes — the
+same place the owner's live permissions already cap it (`apikeys/auth.py`), so the rule can widen
+with the catalog and never past the person. **Choose myself** stores the ticked keys as the fixed
+list it always was, and says on screen that it is one. Which of the three are offered follows the
+request (`offered_coarse_scopes`): a client that asked for `mcp:read` is never offered the writes,
+and one that named explicit keys is offered no rule at all. A service-account key cannot carry a
+coarse scope — it has no owner to expand against — and the key screen's own "full access" preset
+still enumerates, because a hand-minted key is a list somebody chose to write down. Two smaller
+things rode along, both found the day a real consent screen was looked at: the endpoint read
+`PermissionSpec.label_key` — the *override* field, empty on every spec — instead of `i18n_key`, so
+every label resolved to an empty string and the screen was two boxes of bare checkboxes; and the
+list is grouped per module under the same `permissions.group.<module>` headings the roles matrix
+prints, because "not all permissions are here" was reported about a 12 rem scroll box that held
+every one of them.
+
 **Single use is the database's job.** Redemption is a conditional
 `UPDATE … WHERE redeemed_at IS NULL RETURNING`. A client that retries a slow token request has two
 exchanges in flight against two API replicas that share no memory, and "have we redeemed this?"

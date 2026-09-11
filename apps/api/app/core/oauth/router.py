@@ -34,6 +34,7 @@ from app.core.oauth.service import (
     COARSE_SCOPES,
     OAuthService,
     expand_scopes,
+    offered_coarse_scopes,
     validate_redirect_uris,
 )
 from app.core.permissions.deps import no_permission_required, require_permission
@@ -193,7 +194,12 @@ async def register_client(
 
 class ConsentScope(BaseModel):
     value: str
+    #: ``permissions.<key>`` — the same label the roles matrix and the key screen print. The
+    #: web resolves it; the API picks no locale for someone else's screen (§17).
     label_key: str
+    #: The catalog group (``PermissionSpec.module``), so the screen can head the list per module
+    #: with ``permissions.group.<group>`` rather than pour 220 rows into one box.
+    group: str
     read: bool
 
 
@@ -204,7 +210,12 @@ class ConsentRequest(BaseModel):
     client_name: str
     client_uri: str | None
     redirect_uri: str
+    #: Every exact permission the person may hand over, for the "choose myself" path.
     scopes: list[ConsentScope]
+    #: The coarse grants on offer (``mcp:full``, ``mcp:read``), broadest first, or none when the
+    #: client named explicit keys. A coarse grant is stored as the *rule* and expanded on every
+    #: request, so it keeps up with modules enabled later (``apikeys/scopes.py``).
+    coarse: list[str]
     resource: str | None
 
 
@@ -236,7 +247,11 @@ async def consent_request(
     resolved = expand_scopes(requested, ctx.permissions)
     from app.core.permissions.catalog import all_permissions
 
-    labels = {spec.key: spec.label_key for spec in all_permissions()}
+    # ``i18n_key``, never the raw ``label_key`` field — that one is the *override* a spec may
+    # set and is empty on every spec that does not, which is all of them. Reading it here drew a
+    # consent screen of bare checkboxes: every label resolved to "" and nobody could tell one
+    # box from the next.
+    specs = {spec.key: spec for spec in all_permissions()}
     return ConsentRequest(
         client_name=client.client_name,
         client_uri=client.client_uri,
@@ -244,11 +259,14 @@ async def consent_request(
         scopes=[
             ConsentScope(
                 value=value,
-                label_key=labels.get(value.split(":")[0], value),
-                read=value.split(":")[0].rsplit(".", 1)[-1] == "read",
+                label_key=specs[base].i18n_key if base in specs else value,
+                group=specs[base].module if base in specs else base.split(".", 1)[0],
+                read=base.rsplit(".", 1)[-1] == "read",
             )
             for value in resolved
+            for base in (value.split(":")[0],)
         ],
+        coarse=offered_coarse_scopes(requested),
         resource=resource,
     )
 

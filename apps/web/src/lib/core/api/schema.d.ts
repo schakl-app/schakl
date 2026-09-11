@@ -18083,6 +18083,8 @@ export interface components {
             client_name: string;
             /** Client Uri */
             client_uri: string | null;
+            /** Coarse */
+            coarse: string[];
             /** Redirect Uri */
             redirect_uri: string;
             /** Resource */
@@ -18097,6 +18099,8 @@ export interface components {
         };
         /** ConsentScope */
         ConsentScope: {
+            /** Group */
+            group: string;
             /** Label Key */
             label_key: string;
             /** Read */
