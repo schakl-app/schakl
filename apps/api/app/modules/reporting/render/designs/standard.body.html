@@ -152,16 +152,21 @@
            The landing-page column is only drawn where the section carries one — a Search
            Console-sourced ranking table knows the query and not which page answered it, and a
            column of dashes is worse than no column (§17's rule, one layer over). #}
+        {% if part.compare_label %}
+          <p class="compared">{{ labels.compared_with }} {{ part.compare_label }}</p>
+        {% endif %}
         {% for group in part.groups %}
           {% set span = 3 + (1 if part.show_landing_page else 0) %}
           <table class="data">
             {# Two position columns, the second wide enough to carry the move beside the rank:
                the VERSCHIL column it used to be is now drawn *in* the end cell, as an arrow
-               and a signed count, so the number and how it got there are read in one place. #}
+               and a signed count, so the number and how it got there are read in one place.
+               The landing page gets as much as the keyword: it is the longest thing on the row
+               and the one that used to break mid-word. #}
             <colgroup>
               <col style="width: {{ part.rank_name_width }}%" />
-              {% if part.show_landing_page %}<col style="width: 26%" />{% endif %}
-              <col style="width: 11%" /><col style="width: 24%" />
+              {% if part.show_landing_page %}<col style="width: 32%" />{% endif %}
+              <col style="width: 12%" /><col style="width: 22%" />
             </colgroup>
             {# The theme's name lives *inside* the head, so a group that runs over a page break
                carries its name onto the next sheet — `display: table-header-group` repeats a
@@ -177,8 +182,12 @@
                 {% if part.show_landing_page %}
                   <th>{{ icon('landing_page') }}{{ labels.landing_page }}</th>
                 {% endif %}
-                <th class="num">{{ labels.start_position }}</th>
-                <th class="num" title="{{ labels.move }}">{{ labels.end_position }}</th>
+                {# Headed with the day each rank was read on ("1 aug" against "31 aug") — or,
+                   for a Search Console table, the month it averages — so the column says
+                   *when* and not merely "Begin". The words stay for a report stored before
+                   the section carried its dates. #}
+                <th class="num" title="{{ labels.start_position }}">{{ part.begin_label or labels.start_position }}</th>
+                <th class="num" title="{{ labels.end_position }} · {{ labels.move }}">{{ part.end_label or labels.end_position }}</th>
               </tr>
             </thead>
             <tbody>
@@ -186,7 +195,7 @@
                 <tr>
                   <td>{{ row.keyword }}</td>
                   {% if part.show_landing_page %}
-                    <td class="url">{{ row.landing_page or '-' }}</td>
+                    <td class="url">{% if row.landing_page %}{{ fmt_url(row.landing_page) }}{% else %}-{% endif %}</td>
                   {% endif %}
                   <td class="pos">{{ row.begin or '-' }}</td>
                   {# The rank, and beside it the move that produced it: the badge carries the

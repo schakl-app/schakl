@@ -14,6 +14,7 @@ the charts through :class:`~app.core.documents.ChartStyle` rather than any of th
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from markupsafe import Markup, escape
@@ -27,6 +28,7 @@ from app.core.documents import (
     share_palette,
 )
 from app.i18n import translate
+from app.modules.reporting.prompts import span_label
 
 #: Metrics a document renders as a percentage rather than a count. ``delta`` is not among them:
 #: a change has its own renderer (:func:`fmt_delta`, signed, and a multiplier past the point a
@@ -41,7 +43,7 @@ _DURATION_METRICS = {"userEngagementDuration", "avg_engagement_time"}
 _CURRENCY_METRICS = {"totalRevenue", "conversionsValue", "cost"}
 #: Metrics that are a percentage *change* rather than a measurement. Not ``change``, which is a
 #: rankings section's move in positions — three places, not three percent.
-_DELTA_METRICS = {"delta"}
+_DELTA_METRICS = {"delta", "keyEvents_delta"}
 #: Metrics where a *lower* number is the better one, so a fall reads as good.
 _LOWER_IS_BETTER = {"position", "avg_position"}
 
@@ -402,6 +404,9 @@ def fmt_delta(value: Any, locale: str) -> str:
 _CHANGE_HOSTS: dict[str, tuple[str, ...]] = {
     "delta": ("sessions", "keyEvents", "totalUsers", "clicks", "impressions"),
     "change": ("avg_position", "position", "end"),
+    # The channel table's goals, beside the sessions that already carry ``delta``: a second
+    # percentage on the same row needs its own key, or the first host would take both.
+    "keyEvents_delta": ("keyEvents",),
 }
 
 #: The two triangles a change is drawn with — solid, 16×16, filled in ``currentColor`` so they
@@ -590,6 +595,7 @@ def build_context(
         "fmt_delta": lambda value: fmt_delta(value, locale),
         "delta_class": delta_class,
         "change_badge": lambda key, value: change_badge(key, value, locale),
+        "fmt_url": fmt_url,
         "tile_rows": tile_rows,
         "icon": metric_icon,
     }
@@ -666,7 +672,16 @@ def _shaped_part(
         # keyword. A Search Console-sourced table knows the query and not which page answered
         # it, and a column of dashes is worse than no column.
         "show_landing_page": _has_landing_pages(data),
-        "rank_name_width": 39.0 if _has_landing_pages(data) else 65.0,
+        "rank_name_width": 34.0 if _has_landing_pages(data) else 66.0,
+        # What the two position columns are headed with: the day (or month) each was measured
+        # over, where the section says — "1 aug" against "31 aug" — and the generic "Begin" /
+        # "Einde" only for a snapshot stored before the section carried its spans.
+        "begin_label": _span_label(data.get("begin_span"), locale),
+        "end_label": _span_label(data.get("end_span"), locale),
+        # A section measured against a span of its own (the rankings, against last month) names
+        # it under its tiles, because the cover's "vergeleken met augustus 2025" no longer
+        # describes them and a percentage with the wrong denominator under it is a lie (#312).
+        "compare_label": _span_label(data.get("compare_period"), locale),
         "chart": _chart(data.get("chart"), style, locale),
         # How many things the chart draws, so a design can decide whether it will fit beside a
         # table without parsing the SVG it was handed.
@@ -1078,6 +1093,37 @@ def _row_colors(
         )
         if not segment.tail
     }
+
+
+def _span_label(span: Any, locale: str) -> str | None:
+    """A stored ``{"start": iso, "end": iso}`` as a heading, or ``None`` where there is none."""
+    if not isinstance(span, dict):
+        return None
+    try:
+        start = date.fromisoformat(str(span.get("start")))
+        end = date.fromisoformat(str(span.get("end")))
+    except (TypeError, ValueError):
+        return None
+    return span_label(start, end, locale)
+
+
+def fmt_url(value: Any) -> Markup:
+    """A landing page as a printed cell: no scheme, and a break opportunity at every ``/``.
+
+    A URL column is the narrowest thing on a rankings table and the least breakable — one
+    unbroken token — so it either overflowed or, under ``overflow-wrap: anywhere``, broke in
+    the middle of a word (``archery-\\ntag-in-zeeland``, ``boereng\\nolf``). The scheme says
+    nothing a reader needs and costs eight characters of every row; a ``<wbr>`` after each
+    slash lets the line break where a path already does, and the mid-word break stays as the
+    fallback for a segment longer than the column.
+    """
+    text = str(value or "")
+    for prefix in ("https://", "http://"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    text = text.rstrip("/")
+    return Markup("<wbr>/").join(escape(piece) for piece in text.split("/"))
 
 
 def _has_landing_pages(data: dict[str, Any]) -> bool:

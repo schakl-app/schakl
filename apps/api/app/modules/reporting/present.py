@@ -42,6 +42,7 @@ from typing import Any
 
 from app.i18n import translate
 from app.modules.reporting.render.context import (
+    _span_label,
     always_zero,
     channel_label,
     fmt_delta,
@@ -145,7 +146,13 @@ def section(
         {**parts[0], "kind": data.get("kind")} if parts else data, locale, internal=internal
     )
     out: dict[str, Any] = {"title": title}
-    totals = _totals(data, locale, compare_label)
+    # A section measured against a span of its own (the rankings, against last month) hands
+    # the model *that* label, or the paragraph says "augustus 2025" about a July figure —
+    # which is exactly what the first live report did.
+    own_compare = _span_label(data.get("compare_period"), locale)
+    if own_compare:
+        out["compared_with"] = own_compare
+    totals = _totals(data, locale, own_compare or compare_label)
     if totals:
         out["totals"] = totals
     groups = data.get("groups") or []
@@ -225,6 +232,11 @@ def _rows(
     columns = list(data.get("columns") or [])
     currency = data.get("currency")
     channels = (data.get("kind") or "") == "channels"
+    # The position columns are named for the day (or month) they were read over, exactly as the
+    # document heads them — "Begin periode (1 aug)" — so a sentence can say when, not just that.
+    spans = {
+        key: _span_label(data.get(f"{key}_span"), locale) for key in ("begin", "end")
+    }
     out: list[dict[str, str]] = []
     for row in rows[:MAX_ROWS]:
         if not isinstance(row, dict):
@@ -238,15 +250,18 @@ def _rows(
                 )
         for key in columns:
             if key in row:
-                entry[metric_label(key, locale)] = fmt_metric(
-                    key, row.get(key), locale, currency
-                )
+                label = metric_label(key, locale)
+                if spans.get(key):
+                    label = f"{label} ({spans[key]})"
+                entry[label] = fmt_metric(key, row.get(key), locale, currency)
         # A split table carries a comparison the columns do not name (it rides the row), and it
         # is the whole point of half the sentences a report writes. The same goes for a change
         # the page draws *inside* another column (`render.context.attach_changes` folds `delta`
         # into the sessions cell and `change` into the position's): the document no longer has
         # a column for it, and the model still needs the figure to write "a quarter up".
-        for key in ("compare_sessions", "compare_keyEvents", "delta", "change"):
+        for key in (
+            "compare_sessions", "compare_keyEvents", "delta", "keyEvents_delta", "change",
+        ):
             if key in row and key not in columns and row.get(key) is not None:
                 entry[metric_label(key, locale)] = fmt_metric(key, row[key], locale)
         # `status` ("improved" / "declined" / "new") is deliberately left out: it is an English

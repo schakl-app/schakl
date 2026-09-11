@@ -4007,6 +4007,7 @@
   "marketing.metric.compare_sessions": "Sessies vorig jaar",
   "marketing.metric.compare_keyEvents": "Vorig jaar",
   "marketing.metric.delta": "Verandering",
+  "marketing.metric.keyEvents_delta": "Verandering doelen",
   "marketing.metric.share": "Aandeel",
   "marketing.drilldown.top_pages": "Toppagina's",
   "marketing.drilldown.channels": "Kanalen",

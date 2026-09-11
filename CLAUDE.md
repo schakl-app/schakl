@@ -681,6 +681,22 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   The host column is told it is one and paid for out of the same width budget, the rows and the
   model's copy are untouched, and the rankings cell lost its wash — a coloured badge on a cell
   washed the same colour is a badge nobody can see. At the renderer, so stored reports print it too.
+- **A rank is compared with last month, and a column says when it was read** (`docs/REPORTING.md`).
+  The first August report printed *Gem. positie 7,0 ▼ −32,6%* against **August 2025**, because the
+  rankings tiles borrowed the report's own comparison window — right for traffic, where
+  seasonality is the argument (#312), and wrong for a level: where a term stood a year ago says
+  nothing about whether this month's work moved it. So `marketing.rankings` reads the SE Ranking
+  totals a second time against `compare_window(…, PREVIOUS)` and a Search Console table's `begin`
+  is the previous month's average; and because the cover's *vergeleken met augustus 2025* no
+  longer describes those tiles, the section **states its own span** (`compare_period`, drawn
+  under the strip and handed to the model as `compared_with`) — a percentage is a claim about two
+  spans and both must be on the page. Its siblings: the position columns are headed with the day
+  each rank was read on (`begin_span`/`end_span` → *1 aug* / *31 aug*; a month for Search
+  Console; the words only for a snapshot stored before the spans existed), a landing page breaks
+  at a slash rather than mid-word (`fmt_url`), and the channel table carries the **goals** each
+  channel produced (a live `channels` × `keyEvents` read folded onto the stored rows by label,
+  with its own `keyEvents_delta` key because a second percentage on a row cannot share the
+  first's name; a failed read costs the column, never the table).
 - **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
   Five faults on one real July report, and only three of them were on the warnings strip the
   agency reads; the two worse ones were on the client's page and named nothing. **A metric whose

@@ -4007,6 +4007,7 @@
   "marketing.metric.compare_sessions": "Sessions last year",
   "marketing.metric.compare_keyEvents": "Last year",
   "marketing.metric.delta": "Change",
+  "marketing.metric.keyEvents_delta": "Change in goals",
   "marketing.metric.share": "Share",
   "marketing.drilldown.top_pages": "Top pages",
   "marketing.drilldown.channels": "Channels",

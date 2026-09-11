@@ -121,7 +121,9 @@ def client_system(
         f"You write the monthly performance report {brand} sends to its clients.",
         f"Write in {language_name(locale)}.",
         f"The report covers {period_label}."
-        + (f" It is compared with {compare_label}." if compare_label else ""),
+        + (f" It is compared with {compare_label}." if compare_label else "")
+        + " A section that carries its own \"compared_with\" is compared with that span "
+        "instead; name that span, never the report's, when you describe its change.",
         _GROUNDING,
         _AS_PRINTED,
         "Your job is to make the overall picture understandable to someone who is not a "
@@ -160,7 +162,9 @@ def internal_system(
         "this client. It is never shown to the client.",
         f"Write in {language_name(locale)}.",
         f"The report covers {period_label}."
-        + (f" It is compared with {compare_label}." if compare_label else ""),
+        + (f" It is compared with {compare_label}." if compare_label else "")
+        + " A section that carries its own \"compared_with\" is compared with that span "
+        "instead; name that span, never the report's, when you describe its change.",
         _GROUNDING,
         _AS_PRINTED,
         "Be direct, concrete and short. Name the page, the keyword, the channel or the "
@@ -230,6 +234,37 @@ _MONTHS = {
         "July", "August", "September", "October", "November", "December",
     ),
 }
+
+#: The conventional three-letter forms — stated, not sliced, because Dutch shortens *maart* to
+#: ``mrt`` and a ``[:3]`` would print ``maa``.
+_SHORT_MONTHS = {
+    "nl": ("jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"),
+    "en": ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
+}
+
+
+def day_label(value: date, locale: str) -> str:
+    """One day, short: ``1 aug`` in Dutch, ``Aug 1`` in English.
+
+    What heads a column that holds the rank *on* a day — a rank tracker's first and last day of
+    the month. The year is the report's and is printed on its cover; repeating it in a table
+    head would spend the column's width on the one part of the date every reader already knows.
+    """
+    lang = (locale or "nl").split("-")[0]
+    month = _SHORT_MONTHS.get(lang, _SHORT_MONTHS["nl"])[value.month - 1]
+    if lang == "nl":
+        return f"{value.day} {month}"
+    return f"{month} {value.day}"
+
+
+def span_label(start: date, end: date, locale: str) -> str:
+    """A span as a column heading: a single day by :func:`day_label`, anything longer by
+    :func:`period_label` — so Search Console's month-average column reads ``juli 2026`` and a
+    rank tracker's day column ``1 aug``, and nobody has to know which source the table came from
+    to know what its columns are about."""
+    if start == end:
+        return day_label(start, locale)
+    return period_label(start, end, locale)
 
 
 def period_label(start: date, end: date, locale: str) -> str:
