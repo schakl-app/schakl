@@ -21,6 +21,32 @@
   // somebody decides whether to trust the connection, so it has to look like their workspace.
   const brand = $derived(page.data.theme?.brandName || "");
 
+  /**
+   * Three answers, and the first two are *rules* rather than lists (`apikeys/scopes.py`).
+   *
+   * "Everything I can do" stores `mcp:full` and "read only" stores `mcp:read`; both expand
+   * against the catalog on every request the connector makes, which is what lets it reach a
+   * module the agency switches on next quarter. "Choose myself" stores the ticked keys as a
+   * fixed list — the honest shape for a person who narrowed the offer, and said so on screen,
+   * because a connector consented in August could not name Search Console in September and
+   * nothing told anyone why.
+   *
+   * Which modes are offered is the API's answer (`coarse`): a client that asked for reads is
+   * never offered the writes, and a client that named explicit keys gets the list and nothing
+   * coarse at all.
+   */
+  type Mode = "full" | "read" | "custom";
+  // Read once, like `selected` below: the offer is decided when the page opens.
+  // svelte-ignore state_referenced_locally
+  const coarse = data.consent.coarse;
+  const MODES = (
+    [
+      ["full", "mcp:full"],
+      ["read", "mcp:read"],
+    ] as const
+  ).filter(([, scope]) => coarse.includes(scope));
+  let mode = $state<Mode>(MODES.length > 0 ? MODES[0][0] : "custom");
+
   // Every offered scope starts ticked — the API already narrowed the list to what this person
   // holds, so the default is "what the client asked for and you can actually give". Untick is
   // how a person narrows it; there is no control that could widen it, here or at the API.
@@ -30,8 +56,24 @@
   // svelte-ignore state_referenced_locally
   let selected = $state<string[]>(data.consent.scopes.map((s) => s.value));
 
-  const reads = $derived(data.consent.scopes.filter((s) => s.read));
-  const writes = $derived(data.consent.scopes.filter((s) => !s.read));
+  // What the form posts. A coarse mode posts one token; the custom pick posts its list.
+  const posted = $derived(
+    mode === "full" ? ["mcp:full"] : mode === "read" ? ["mcp:read"] : selected,
+  );
+
+  // Grouped per catalog module, in the catalog's own order, each heading the same
+  // `permissions.group.<group>` the roles matrix prints — so the list is a table of contents
+  // and not two hundred rows in a scroll box, which is how "not all permissions are here"
+  // came to be reported about a box that held every one of them.
+  const groups = $derived.by(() => {
+    const out: { group: string; scopes: typeof data.consent.scopes }[] = [];
+    for (const scope of data.consent.scopes) {
+      const entry = out.find((g) => g.group === scope.group);
+      if (entry) entry.scopes.push(scope);
+      else out.push({ group: scope.group, scopes: [scope] });
+    }
+    return out;
+  });
 
   function toggle(value: string) {
     selected = selected.includes(value)
@@ -44,6 +86,13 @@
     selected = on
       ? [...new Set([...selected, ...keys])]
       : selected.filter((v) => !keys.includes(v));
+  }
+
+  function suffixLabel(value: string): string | null {
+    const suffix = value.split(":")[1];
+    if (suffix === "own") return t("oauth.consent.scope_own");
+    if (suffix === "any") return t("oauth.consent.scope_any");
+    return null;
   }
 </script>
 
@@ -101,47 +150,88 @@
       />
       <input type="hidden" name="state" value={data.request.state} />
       <input type="hidden" name="resource" value={data.request.resource} />
-      {#each selected as scope (scope)}
+      {#each posted as scope (scope)}
         <input type="hidden" name="scopes" value={scope} />
       {/each}
 
-      {#each [{ list: reads, key: "read" }, { list: writes, key: "write" }] as group (group.key)}
-        {#if group.list.length > 0}
-          <div class="mt-4">
-            <div class="mb-1 flex items-center justify-between">
-              <span class="text-xs font-semibold tracking-wide text-text uppercase">
-                {t(`oauth.consent.group_${group.key}`)}
-              </span>
-              <button
-                type="button"
-                class="text-xs text-brand hover:underline"
-                onclick={() =>
-                  toggleGroup(group.list, !group.list.every((s) => selected.includes(s.value)))}
+      <div class="space-y-2">
+        {#each [...MODES.map(([key]) => key), "custom"] as key (key)}
+          <label
+            class="flex cursor-pointer items-start gap-2 rounded-lg border p-3 {mode === key
+              ? 'border-brand bg-brand/5'
+              : 'border-border hover:border-brand'}"
+          >
+            <input
+              type="radio"
+              name="mode"
+              value={key}
+              checked={mode === key}
+              onchange={() => (mode = key as Mode)}
+              class="mt-0.5 h-3.5 w-3.5"
+            />
+            <span class="min-w-0">
+              <span class="block text-sm text-text">{t(`oauth.consent.mode_${key}`)}</span>
+              <span class="mt-0.5 block text-xs text-text-muted"
+                >{t(`oauth.consent.mode_${key}_help`)}</span
               >
-                {group.list.every((s) => selected.includes(s.value))
-                  ? t("oauth.consent.none")
-                  : t("oauth.consent.all")}
-              </button>
+            </span>
+          </label>
+        {/each}
+      </div>
+
+      {#if mode === "custom"}
+        <p class="mt-3 text-xs text-text-muted">
+          {t("oauth.consent.selected", {
+            count: selected.length,
+            total: data.consent.scopes.length,
+          })}
+        </p>
+        <div
+          class="mt-2 max-h-[60vh] space-y-3 overflow-y-auto rounded-lg border border-border p-3"
+        >
+          {#each groups as { group, scopes } (group)}
+            <div>
+              <div class="mb-1 flex items-center justify-between">
+                <span class="text-xs font-semibold tracking-wide text-text uppercase">
+                  {t(`permissions.group.${group}`)}
+                </span>
+                <button
+                  type="button"
+                  class="text-xs text-brand hover:underline"
+                  onclick={() =>
+                    toggleGroup(scopes, !scopes.every((s) => selected.includes(s.value)))}
+                >
+                  {scopes.every((s) => selected.includes(s.value))
+                    ? t("oauth.consent.none")
+                    : t("oauth.consent.all")}
+                </button>
+              </div>
+              <div class="space-y-1">
+                {#each scopes as scope (scope.value)}
+                  <label class="flex items-center gap-2 text-xs text-text">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(scope.value)}
+                      onchange={() => toggle(scope.value)}
+                      class="h-3.5 w-3.5 rounded border-border"
+                    />
+                    <span>{t(scope.label_key)}</span>
+                    {#if suffixLabel(scope.value)}
+                      <span class="text-text-muted/70">({suffixLabel(scope.value)})</span>
+                    {/if}
+                    {#if !scope.read}
+                      <span
+                        class="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                        >{t("oauth.consent.group_write")}</span
+                      >
+                    {/if}
+                  </label>
+                {/each}
+              </div>
             </div>
-            <div class="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-              {#each group.list as scope (scope.value)}
-                <label class="flex items-center gap-2 text-xs text-text">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(scope.value)}
-                    onchange={() => toggle(scope.value)}
-                    class="h-3.5 w-3.5 rounded border-border"
-                  />
-                  <span>{t(scope.label_key)}</span>
-                  {#if scope.value.includes(":")}
-                    <span class="text-text-muted/70">({scope.value.split(":")[1]})</span>
-                  {/if}
-                </label>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      {/each}
+          {/each}
+        </div>
+      {/if}
 
       <p class="mt-3 flex items-start gap-2 text-xs text-text-muted">
         <ShieldCheck size={14} class="mt-0.5 shrink-0" />
@@ -153,7 +243,7 @@
       {/if}
 
       <div class="mt-5 flex items-center gap-2">
-        <Button loading={busy.is("approve")} disabled={selected.length === 0}>
+        <Button loading={busy.is("approve")} disabled={posted.length === 0}>
           <Check size={16} />
           {t("oauth.consent.approve")}
         </Button>

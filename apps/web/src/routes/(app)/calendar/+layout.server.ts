@@ -17,7 +17,6 @@ export const load: LayoutServerLoad = async (event) => {
           calendar?: {
             view?: string;
             hiddenSources?: unknown;
-            people?: unknown;
             colors?: unknown;
           };
         }
@@ -32,15 +31,6 @@ export const load: LayoutServerLoad = async (event) => {
   const hiddenSources = Array.isArray(storedHidden)
     ? storedHidden.filter((s): s is string => typeof s === "string")
     : [];
-  // Per-source colleague overlays (#188): `{ "<sourceKey>": ["<userId>", …] }`. Same prefs read.
-  const rawPeople = calendar?.people;
-  const peopleBySource: Record<string, string[]> = {};
-  if (rawPeople && typeof rawPeople === "object") {
-    for (const [key, ids] of Object.entries(rawPeople as Record<string, unknown>)) {
-      if (Array.isArray(ids))
-        peopleBySource[key] = ids.filter((v): v is string => typeof v === "string");
-    }
-  }
   // Personal colour overrides (#281): a flat `{ "<sourceKey>"|"<sourceKey>:person:<userId>":
   // "<token|#hex>" }`. Same prefs read; the page load splits it per source.
   const rawColors = calendar?.colors;
@@ -50,5 +40,5 @@ export const load: LayoutServerLoad = async (event) => {
       if (typeof value === "string" && value) colors[key] = value;
     }
   }
-  return { defaultView, hiddenSources, peopleBySource, colors };
+  return { defaultView, hiddenSources, colors };
 };

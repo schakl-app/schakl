@@ -2,6 +2,81 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.46.1 — 2026-09-11
+
+Three fixes, each found on a live instance. A connector that consented before a module shipped
+no longer stays locked out of it: a consent that was not narrowed is stored as a rule that follows
+the permission catalog, and the consent screen finally prints the name of every permission it
+offers. A freelancer's extra day shows on the agenda, keeps the hours that were typed for it, and
+can be edited from the chip. And the Google Ads account lists lead with the nightly sync's stamp
+instead of the last manual check's, so an account that synced this morning no longer reads as a
+sync that stopped in August.
+
+No migrations; the schema head stays at `c4d8e2f6a1b3`. No new permission keys, no new
+environment variables. Two response shapes grew: `GET /oauth/consent` returns a `group` per scope
+and a `coarse` list of the rule-style grants on offer, and `GoogleAdsAccountRead` carries
+`last_sync_error`. API keys may now hold the coarse scopes `mcp:full` and `mcp:read`, expanded
+against the live catalog on every request. The public API reference and the typed client are
+regenerated.
+
+### API keys & MCP
+
+- **An unnarrowed consent is a rule, not a frozen list.** The consent screen wrote the ticked
+  permissions onto the key verbatim, so a connector consented in August held the 220 strings its
+  owner had that day and answered 403 on every Search Console tool that shipped afterwards, with
+  nothing on any screen saying why and no chat client ever prompting to re-consent. The screen
+  now asks one question in three answers: *everything I can do* stores `mcp:full`, *read only*
+  stores `mcp:read`, and both expand against today's catalog at the same place the owner's live
+  permissions already cap the key (`app/core/apikeys/scopes.py`), so a grant can widen with the
+  catalog and never past the person. *Choose myself* stores the ticked keys as the fixed list it
+  always was, and says so on screen. Which answers are offered follows the request: a client
+  that asked for `mcp:read` is never offered the writes, and one that named explicit keys is
+  offered no rule at all. A service-account key cannot carry a coarse scope.
+- **Every permission on the consent screen has a name.** The endpoint read the spec's override
+  label, which is empty on every spec, so the screen was two scroll boxes of bare checkboxes and
+  "not all permissions are here" was reported about a box that held every one of them. The list
+  is grouped per module under the headings the roles matrix prints, every row visible, with a
+  count, a write badge and the scope in words (own records / anyone's records).
+- Instellingen → API en MCP prints a coarse key as words ("Everything you can do", "Everything
+  you can read") instead of "1 permission".
+
+### Leave & agenda
+
+- **An extra day is drawn whether or not it moves any hours.** The availability feed drew only
+  days whose hours changed, so a whole-day extra on a Friday the roster already works never
+  appeared, and a freelancer engaged for Fridays wrote the same day twice in a month. The feed
+  draws every day a row applies to, and the chip says what the day resolves to.
+- **The hours on an extra day are that day's hours.** A windowed extra on a worked day was
+  unioned with the roster, so "10:00–14:00" on a 09:30–17:30 Friday resolved to the full day and
+  editing the times visibly did nothing. The extra tab draws Van/Tot outright with a hint, and a
+  whole-day extra still means the usual working day.
+- **Editing an availability row works again.** Every host page held a create form beside the
+  edit modal, both under one literal form id, so the browser bound the edit's date and times to
+  the create form and each edit posted without a date and answered 500. Each form has its own id,
+  the API refuses a cleared `date` or `kind` with a 422 naming the field, and the chip's deep link
+  opens the row's editor on the freelancer's page and on the roster alike.
+- **The planned-tasks feed shows the team by default.** It offered a "collega's" overlay picker
+  and a per-colleague split under one heading, and nobody could tell them apart. The overlay is
+  gone; the feed reads everybody's blocks for a holder of `tasks.schedule.read:any` and the
+  caller's own otherwise, with *Per collega* as the one control, as the leave feed already did.
+
+### Google Ads
+
+- **The account lists lead with the nightly sync.** `last_verified_at` is written by
+  "Controleren" and was the only date either list drew, while the nightly mirror's error column
+  was not on the read at all, so a failed nightly was invisible and a healthy one read as
+  "gecontroleerd 16 aug". Both `/marketing/google-ads` and Instellingen → Google Ads now print
+  `last_synced_at`, or the sync's own error where it failed, with the check's stamp after it.
+
+### Upgrade notes
+
+- No migrations; `alembic upgrade head` is a no-op.
+- **Existing connectors keep the list they consented to.** A connector that answers 403 on a
+  module enabled after it was connected is holding a frozen list; reconnecting it once in the
+  client stores the rule instead. Nothing changes for keys minted by hand on the key screen.
+- Any client of `GET /google-ads/accounts` that displayed `last_verified_at` as the sync
+  stamp should read `last_synced_at` and `last_sync_error` instead.
+
 ## v0.46.0 — 2026-09-08
 
 Deleting a client is now trashing it, and a client with a history cannot be deleted at all: the

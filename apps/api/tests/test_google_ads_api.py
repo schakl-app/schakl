@@ -9,6 +9,7 @@ horizon on the parameterless account list, and — the reason the seam exists at
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select, text
@@ -624,3 +625,38 @@ async def test_an_account_with_no_client_has_no_client_name(client_for) -> None:
     assert created.status_code == 201
     assert created.json()["company_id"] is None
     assert created.json()["company_name"] is None
+
+
+async def test_the_listing_carries_the_nightly_sync_state(client_for) -> None:
+    """``last_synced_at`` and ``last_sync_error`` are the nightly mirror's own columns, and both
+    ride the read. Only ``last_synced_at`` did before, and the screens printed neither — they
+    drew the manual check's stamp, so the live instance read "gecontroleerd 16 aug" over thirteen
+    accounts that had synced that very morning, and a nightly that *did* fail would have been
+    invisible on every screen."""
+    t = await make_tenant("gads-sync-state")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/google-ads/accounts", json={"customer_id": "1112223333"}, headers=headers
+        )
+    assert created.status_code == 201
+    account_id = uuid.UUID(created.json()["id"])
+    synced_at = datetime(2026, 9, 8, 5, 15, tzinfo=UTC)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = await session.get(GoogleAdsAccount, account_id)
+        assert row is not None
+        row.last_synced_at = synced_at
+        row.last_sync_error = "errors.google_ads_token_unreadable"
+        await session.commit()
+    async with client_for(t.host) as c:
+        listing = await c.get("/api/v1/google-ads/accounts", headers=headers)
+        detail = await c.get(f"/api/v1/google-ads/accounts/{account_id}", headers=headers)
+    assert listing.status_code == 200
+    assert detail.status_code == 200
+    for body in (listing.json()[0], detail.json()):
+        assert body["last_sync_error"] == "errors.google_ads_token_unreadable"
+        stamped = datetime.fromisoformat(body["last_synced_at"].replace("Z", "+00:00"))
+        assert stamped == synced_at
+        # The manual check's stamp is a different fact and stays its own field.
+        assert body["last_verified_at"] is None

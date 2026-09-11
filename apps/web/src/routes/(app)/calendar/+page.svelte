@@ -49,25 +49,6 @@
   let scheduleOpen = $state(false);
   let availabilityOpen = $state(false);
 
-  // Per-person feed overlays (#188): a writable derived, following the stored selection per
-  // source until a toggle overwrites it (the `hiddenDraft` pattern below).
-  let peopleDraft = $derived(
-    Object.fromEntries(data.sourceOptions.map((s) => [s.key, s.selectedPeople ?? []])),
-  );
-  let activePeopleSource = $state<string | null>(null);
-  let peopleForm: HTMLFormElement | undefined = $state();
-  function togglePerson(sourceKey: string, personId: string) {
-    const current = peopleDraft[sourceKey] ?? [];
-    peopleDraft = {
-      ...peopleDraft,
-      [sourceKey]: current.includes(personId)
-        ? current.filter((p) => p !== personId)
-        : [...current, personId],
-    };
-    activePeopleSource = sourceKey;
-    setTimeout(() => peopleForm?.requestSubmit(), 0);
-  }
-
   const SHORTCUT_KEY: Record<CalendarView, string> = { day: "d", week: "w", month: "m", year: "y" };
 
   let saveForm: HTMLFormElement | undefined = $state();
@@ -244,16 +225,6 @@
   <input type="hidden" name="colors" value={JSON.stringify(colorsDraft)} />
 </form>
 
-<!-- Per-person feed overlay (#188): posts one source's whole colleague selection per toggle. -->
-<form method="POST" action="?/savePeople" bind:this={peopleForm} use:enhance class="hidden">
-  <input type="hidden" name="source" value={activePeopleSource ?? ""} />
-  {#if activePeopleSource}
-    {#each peopleDraft[activePeopleSource] ?? [] as pid (pid)}
-      <input type="hidden" name="person" value={pid} />
-    {/each}
-  {/if}
-</form>
-
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <h1 class="text-xl font-semibold text-text">{t("calendar.title")}</h1>
   <div class="flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
@@ -363,29 +334,11 @@
                   />
                 </div>
               {/if}
-              <!-- Per-person overlay (#188): a manager picks whose schedule to lay over their own. -->
-              {#if source.people && source.people.length > 0 && !hiddenDraft.includes(source.key)}
-                <div class="ml-6 border-l border-border pl-1">
-                  <p class="px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
-                    {t("calendar.people.label")}
-                  </p>
-                  {#each source.people as person (person.id)}
-                    <label
-                      class="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm text-text hover:bg-surface"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={(peopleDraft[source.key] ?? []).includes(person.id)}
-                        onchange={() => togglePerson(source.key, person.id)}
-                        class="h-3.5 w-3.5 rounded border-border"
-                      />
-                      {person.name}
-                    </label>
-                  {/each}
-                </div>
-              {/if}
               <!-- Split a feed per colleague (#281): each shows and recolours on its own. Reuses
-                   the same hidden-list round-trip via a namespaced key (`toggleSource(pKey)`). -->
+                   the same hidden-list round-trip via a namespaced key (`toggleSource(pKey)`).
+                   The one per-person control under a feed: an additive "collega's" overlay used
+                   to sit above it on the planned-tasks feed, and two lists of the same names
+                   under one heading is a menu nobody can read. -->
               {#if source.splitPeople.length > 0 && !hiddenDraft.includes(source.key)}
                 <div class="ml-6 border-l border-border pl-1">
                   <p class="px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">

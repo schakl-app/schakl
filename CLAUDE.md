@@ -1975,7 +1975,15 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   share no memory (docs/PAYMENTS.md's rule, one protocol over). And **an anonymous `/mcp` request
   now answers 401 with the `WWW-Authenticate` challenge** — a behaviour change, and the fix to
   two things at once: an OAuth client discovers the server *by being refused*, and an anonymous
-  `tools/list` disclosed the tenant's whole module set to nobody in particular.
+  `tools/list` disclosed the tenant's whole module set to nobody in particular. Its fourth
+  consequence was found by a module shipping: **a consent that was not narrowed is stored as a
+  rule, never as today's expansion** (`app/core/apikeys/scopes.py`). The screen wrote the ticked
+  list onto the key, and a list is frozen on the day of consent — a connector consented before
+  Search Console existed answered 403 on every Search Console tool and no screen said why, since
+  a chat client never prompts to re-consent. So `mcp:full` / `mcp:read` are stored as the token
+  and expanded against the live catalog on every request, at the same place the owner's live
+  permissions already cap the key; a widening can therefore follow the catalog and never exceed
+  the person. "Choose myself" stays a fixed list and says so on screen.
 - **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
   OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
   travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it
@@ -2248,16 +2256,26 @@ apply as everywhere.
   offset to page on and no column to sort by (docs/PERFORMANCE.md names the exception), which is
   exactly why the window has to be a control and not a constant. And **a feed you can read and
   cannot write makes the user retype the day already on the screen**: the agenda's ＋ now records
-  availability and hands the leave form its date, because `CalendarSourceSpec` has `load`, `move`,
-  `people` and `splitPeople` and no create seam — the generic version of that is the right fix and
+  availability and hands the leave form its date, because `CalendarSourceSpec` has `load`, `move`
+  and `splitPeople` and no create seam — the generic version of that is the right fix and
   the hardcoded menu is the honest interim.
-- **On the agenda it is its own feed, and only the deviations are drawn** (`leave.availability`,
-  the §6 calendar-source pattern). Separate from `leave.team` because it answers the opposite
-  question — that feed says who is away, this one says who can be booked — and a viewer planning
-  work switches one off without losing the other. Drawing *every* available day would be the
-  roster redrawn as noise, so the feed reads `change`, not `deviates`: an exception that moves no
-  hours is a real row and not a difference. Two rendering rules came out of looking at it rather
-  than reasoning about it. **A month cell truncates at about twenty characters**, so the chip
+- **On the agenda it is its own feed, and every day somebody wrote about is drawn**
+  (`leave.availability`, the §6 calendar-source pattern). Separate from `leave.team` because it
+  answers the opposite question — that feed says who is away, this one says who can be booked —
+  and a viewer planning work switches one off without losing the other. Drawing *every* available
+  day would be the roster redrawn as noise, so the feed reads `deviates`: the days with a row on
+  them. It read `change` first, on the argument that a row moving no hours (a whole-day extra on a
+  day the roster already works) is not a difference — true, and it cost a live tenant the row: a
+  freelancer engaged for Fridays wrote "extra Friday" twice in a month because the first one never
+  appeared, and the chip is the only way from the agenda to the editor (which the deep link now
+  opens). **A row you wrote and cannot find is a row you write again.** Its sibling is the
+  resolution rule the chip drew from: a windowed `extra` on a worked day was *unioned* with the
+  roster, so "Friday 10:00–14:00" on a 09:30–17:30 Friday resolved to 09:30–17:30 and editing the
+  hours visibly did nothing. Nobody writes a window to mean nothing, so **the hours on an extra day
+  are that day's hours** (`availability.resolve_day`) — on a day the week works and on one it does
+  not alike; a whole-day extra still means "a day like the ones I work", and the extra tab draws
+  the two time fields outright rather than behind a "deel van een dag" link. Two rendering rules
+  came out of looking at it rather than reasoning about it. **A month cell truncates at about twenty characters**, so the chip
   leads with the state and not the name — `Lotte de Vries · Bes…` is as ambiguous as no chip at
   all on the one bit that matters, while `Beschikbaar 09:00…` beside `Niet beschikbaar…` is not;
   the name survives in the `title` attribute and in every wider view. And **a colour token that is

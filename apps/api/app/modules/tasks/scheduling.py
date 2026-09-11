@@ -101,15 +101,19 @@ class TaskScheduleService:
         date_to: date | None = None,
         user_ids: list[uuid.UUID] | None = None,
         task_id: uuid.UUID | None = None,
+        all_users: bool = False,
     ) -> list[ScheduleItem]:
         """Blocks overlapping ``[date_from, date_to]`` (org-local days), decorated with the task
         and the person for a one-fetch calendar/timesheet feed.
 
         No ``user_ids`` → the caller's own blocks (the personal feed). Explicit ``user_ids`` →
-        those people's blocks, which needs ``:any`` unless every id is the caller's own (the
-        per-person team overlay). ``task_id`` narrows to one task (the task page's panel, which
-        wants *every* block regardless of date) — so the window is optional when it is set, but
-        one of a range or a task is always required to keep the query bounded.
+        those people's blocks, which needs ``:any`` unless every id is the caller's own.
+        ``all_users`` → everybody's blocks, the agenda's team feed, which is what the split-by-
+        colleague menu hides per person; a caller without ``:any`` gets their own feed rather than
+        a refusal, because it is the one answer they could have asked for. ``task_id`` narrows to
+        one task (the task page's panel, which wants *every* block regardless of date) — so the
+        window is optional when it is set, but one of a range or a task is always required to keep
+        the query bounded.
         """
         if task_id is None and (date_from is None or date_to is None):
             raise AppError("required", "errors.required", status_code=422)
@@ -130,6 +134,8 @@ class TaskScheduleService:
             if not can_any and set(user_ids) - {self.ctx.user.id}:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
             targets = user_ids
+        elif all_users and can_any and not portal:
+            targets = None
         elif task_id is not None:
             targets = None if (can_any or portal) else [self.ctx.user.id]
         else:
@@ -623,10 +629,17 @@ async def list_schedules(
     date_to: date | None = Query(None),
     user_ids: list[uuid.UUID] | None = Query(None),
     task_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> list[ScheduleItem]:
+    """Planned blocks in a window: the caller's own, named people's (``user_ids``, ``:any`` for
+    anyone else), or everybody's (``all_users``, ``:any``; a holder of ``:own`` gets their own)."""
     return await TaskScheduleService(ctx).list_in_range(
-        date_from=date_from, date_to=date_to, user_ids=user_ids, task_id=task_id
+        date_from=date_from,
+        date_to=date_to,
+        user_ids=user_ids,
+        task_id=task_id,
+        all_users=all_users,
     )
 
 

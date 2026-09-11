@@ -169,6 +169,16 @@ button was already `MarketingConnectDialog`, so what it added over its neighbour
 place to read the same answer. `last_error` and `last_verified_at` are still stored, still on
 `/marketing/google-ads` and still in the MCP surface; what the hub keeps is the badge.
 
+**The status line on both account lists is the nightly's, and the manual check's follows it.**
+`last_verified_at` is written when somebody presses *Controleren* (or by the verify at link time),
+and it was the only date either list printed — so on the live instance thirteen accounts that
+synced at 05:15 every morning read *gecontroleerd 16 aug* and were reported as a sync that had
+stopped in August, while a nightly that *did* fail would have shown nothing at all, because
+`last_sync_error` was not on the read. `GoogleAdsAccountRead` carries it now, and the line leads
+with `last_synced_at` (or the sync's error, translated where it is one of our keys and printed as
+Google wrote it otherwise) before the check's stamp. A stamp a screen prints has to be the stamp
+of the thing the reader is asking about.
+
 ## 8. The credential moved house (expand/contract)
 
 `google_ads_settings.developer_token_encrypted` is the new home. The migration **copied** the

@@ -8,6 +8,7 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
+  import { syncErrorText } from "$lib/integrations/google_ads/syncStatus";
   import MarketingConnectDialog from "$lib/modules/marketing/MarketingConnectDialog.svelte";
 
   let { data, form } = $props();
@@ -104,10 +105,26 @@
                 {account.last_error ?? t("google_ads.panel.error")}
               </span>
             </span>
-          {:else if account.last_verified_at}
+          {:else if account.last_sync_error}
+            <span class="mt-3 flex items-start gap-1.5 text-xs text-text">
+              <AlertTriangle size={13} class="mt-0.5 shrink-0" aria-hidden="true" />
+              <span class="min-w-0 break-words">
+                {t("google_ads.panel.sync_failed")}
+                {syncErrorText(account.last_sync_error)}
+              </span>
+            </span>
+          {:else}
+            <!-- The nightly's stamp leads; the manual check's follows. Printing only the check
+                 read as "gecontroleerd 16 aug" over an account that synced this morning. -->
             <span class="mt-3 block text-xs text-text-muted">
-              {t("google_ads.panel.verified")}
-              {fmtDateTime(account.last_verified_at)}
+              {#if account.last_synced_at}
+                {t("google_ads.panel.synced")} {fmtDateTime(account.last_synced_at)}
+              {:else}
+                {t("google_ads.panel.never_synced")}
+              {/if}
+              {#if account.last_verified_at}
+                · {t("google_ads.panel.verified")} {fmtDateTime(account.last_verified_at)}
+              {/if}
             </span>
           {/if}
         </a>

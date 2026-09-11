@@ -520,7 +520,9 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.api.clients_help")}</p>
 
       {#if form?.clientSecret}
-        <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950">
+        <div
+          class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950"
+        >
           <p class="text-sm font-medium text-amber-900 dark:text-amber-200">
             {t(form?.rotated ? "settings.api.client_rotated" : "settings.api.client_created", {
               name: form.clientName ?? "",
@@ -612,8 +614,7 @@
               required
               rows="2"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-              placeholder="https://voorbeeld.nl/oauth/callback"
-            ></textarea>
+              placeholder="https://voorbeeld.nl/oauth/callback"></textarea>
             <p class="mt-1 text-xs text-text-muted">{t("settings.api.client_redirects_help")}</p>
           </div>
         </div>
@@ -645,7 +646,15 @@
               {/if}
               <span class="block truncate font-mono text-xs text-text-muted">{key.redacted}</span>
               <span class="block text-xs text-text-muted">
-                {tn("settings.api.key_scopes", key.scopes.length)} ·
+                <!-- An OAuth consent that was not narrowed stores a rule, not a list
+                     (apikeys/scopes.py), and "1 permission" is the wrong sentence for it. -->
+                {#if key.scopes.includes("mcp:full")}
+                  {t("settings.api.key_scopes_full")}
+                {:else if key.scopes.includes("mcp:read")}
+                  {t("settings.api.key_scopes_read")}
+                {:else}
+                  {tn("settings.api.key_scopes", key.scopes.length)}
+                {/if} ·
                 {key.expires_at
                   ? t("settings.api.key_expires", {
                       // Stored as end-of-day UTC (the create action), so the UTC date part is

@@ -1214,6 +1214,17 @@ class LeaveService:
         row = await self._availability_or_404(entry_id)
         self._availability_user(row.user_id, write=True)
         values = data.model_dump(exclude_unset=True)
+        # An explicit ``null`` clears — for the fields that *can* be empty. A row without a day
+        # or a kind is not a row, and letting it through meant the NOT NULL answered instead of
+        # us: a 500 for a form that had lost its date, which is how a broken screen went unread.
+        for field in ("kind", "date"):
+            if field in values and values[field] is None:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={field: "errors.required"},
+                )
         # model_dump() stringifies Clock fields; the TIME columns need the time objects.
         for field in ("start_time", "end_time"):
             if field in values:

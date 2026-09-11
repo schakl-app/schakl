@@ -17,8 +17,8 @@ from app.db import async_session_maker, set_current_org
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 _VERIFIER = secrets.token_urlsafe(48)
-_CHALLENGE = base64.urlsafe_b64encode(hashlib.sha256(_VERIFIER.encode()).digest()).decode().rstrip(
-    "="
+_CHALLENGE = (
+    base64.urlsafe_b64encode(hashlib.sha256(_VERIFIER.encode()).digest()).decode().rstrip("=")
 )
 
 
@@ -111,8 +111,9 @@ async def test_unauthenticated_mcp_answers_401_with_the_challenge(client_for) ->
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
             headers=_MCP_HEADERS,
         )
-        assert "/.well-known/oauth-protected-resource/mcp/google-ads" in (
-            section.headers["www-authenticate"]
+        assert (
+            "/.well-known/oauth-protected-resource/mcp/google-ads"
+            in (section.headers["www-authenticate"])
         )
 
 
@@ -539,3 +540,148 @@ async def test_cors_covers_the_bearer_surfaces_and_never_the_cookie_ones(client_
         assert "access-control-allow-origin" not in plain.headers
         blocked = await c.options("/api/v1/companies", headers=preflight)
         assert "access-control-allow-origin" not in blocked.headers
+
+
+async def test_consent_names_every_permission_and_groups_it(client_for) -> None:
+    """Every offered scope carries the label the roles matrix prints, and a group heading.
+
+    The consent endpoint once read ``PermissionSpec.label_key`` — the *override* field, empty
+    on every spec — instead of ``i18n_key``, and drew a screen of bare checkboxes. A label is
+    pinned to the catalog file here because the only thing a raw key tells the person consenting
+    is that something went wrong.
+    """
+    import json
+    from pathlib import Path
+
+    catalog = json.loads((Path(__file__).resolve().parents[3] / "messages" / "en.json").read_text())
+    t = await make_tenant("oauth-labels")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        registered = await _register(c)
+
+        async def describe(scope: str) -> dict:
+            response = await c.get(
+                "/api/v1/oauth/consent",
+                params={
+                    "client_id": registered["client_id"],
+                    "redirect_uri": registered["redirect_uris"][0],
+                    "scope": scope,
+                },
+                headers=headers,
+            )
+            assert response.status_code == 200, response.text
+            return response.json()
+
+        described = await describe("mcp:full")
+        assert described["scopes"], "an owner is offered the whole catalog"
+        for scope in described["scopes"]:
+            base = scope["value"].split(":")[0]
+            assert scope["label_key"] == f"permissions.{base}"
+            assert scope["label_key"] in catalog, scope["label_key"]
+            assert f"permissions.group.{scope['group']}" in catalog, scope["group"]
+        # The module the whole report was about: shipped after the first connectors were
+        # consented, and offered by name.
+        assert "google_search_console.site.read" in {s["value"] for s in described["scopes"]}
+
+        # The coarse offer follows the request: a client asking for everything may be narrowed
+        # to reads; one asking for reads is never offered the writes; an explicit list gets none.
+        assert described["coarse"] == ["mcp:full", "mcp:read"]
+        assert (await describe("mcp:read"))["coarse"] == ["mcp:read"]
+        assert (await describe("companies.company.read"))["coarse"] == []
+
+
+async def test_a_coarse_consent_is_a_rule_read_on_every_request(client_for) -> None:
+    """``mcp:full`` / ``mcp:read`` are stored as the token and expanded per request.
+
+    The alternative — storing today's expansion — is what froze every connector consented in
+    August out of Search Console in September: a list cannot name a module that does not exist
+    yet. The read half is pinned too, because a rule that reads as "everything" must still stop
+    at the writes when the person said read only.
+    """
+    from tests.test_mcp_api import _rpc, mcp_running
+
+    t = await make_tenant("oauth-coarse")
+    headers = await auth_cookie(t.user)
+    async with mcp_running(), client_for(t.host) as c:
+        registered = await _register(c)
+
+        async def redeem(scopes: list[str]) -> dict:
+            code = await _consent(c, headers, registered, scopes=scopes)
+            exchanged = await c.post(
+                "/api/v1/oauth/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": registered["redirect_uris"][0],
+                    "code_verifier": _VERIFIER,
+                    "client_id": registered["client_id"],
+                },
+            )
+            assert exchanged.status_code == 200, exchanged.text
+            return exchanged.json()
+
+        full = await redeem(["mcp:full"])
+        # The token response says what was granted — the rule, not a list of 220 strings.
+        assert full["scope"] == "mcp:full"
+        auth = {"X-API-Key": full["access_token"]}
+        created = await c.post("/api/v1/companies", json={"name": "Coarse BV"}, headers=auth)
+        assert created.status_code == 201, created.text
+        # A module the connector was never told about by name, reachable through the rule.
+        listed = await _rpc(
+            c,
+            "tools/list",
+            auth={"Authorization": f"Bearer {full['access_token']}"},
+            url="/mcp/google-search-console",
+        )
+        assert listed["result"]["tools"], "the Search Console section answers a coarse key"
+        sites = await c.get("/api/v1/google-search-console/sites", headers=auth)
+        # 403 would be the frozen-list failure; anything else is the route's own answer to an
+        # org with no Google connection, which is not what this test is about.
+        assert sites.status_code != 403, sites.text
+
+        read = await redeem(["mcp:read"])
+        assert read["scope"] == "mcp:read"
+        auth = {"X-API-Key": read["access_token"]}
+        assert (await c.get("/api/v1/companies", headers=auth)).status_code == 200
+        refused = await c.post("/api/v1/companies", json={"name": "Nope BV"}, headers=auth)
+        assert refused.status_code == 403, refused.text
+
+        # The key list says it in words rather than counting one token as one permission.
+        keys = await c.get("/api/v1/api-keys", headers=headers)
+        assert keys.status_code == 200, keys.text
+        assert {tuple(k["scopes"]) for k in keys.json()} >= {("mcp:full",), ("mcp:read",)}
+
+
+async def test_a_coarse_scope_reaches_a_module_that_ships_later(monkeypatch) -> None:
+    """The property the whole design is for, stated without a database: grow the catalog and
+    a coarse key grows with it while an explicit list stays exactly what was ticked."""
+    from app.core.apikeys import scopes as scopes_mod
+    from app.core.permissions.permset import PermissionSet
+    from app.core.permissions.spec import PermissionSpec
+
+    before = scopes_mod.all_permissions()
+    owner = PermissionSet.of(["*"])
+    assert "later.thing.read" not in scopes_mod.effective_scopes(["mcp:full"], owner)
+
+    later = PermissionSpec("later.thing.read", group="later")
+    monkeypatch.setattr(scopes_mod, "all_permissions", lambda: [*before, later])
+    assert "later.thing.read" in scopes_mod.effective_scopes(["mcp:full"], owner)
+    assert "later.thing.read" in scopes_mod.effective_scopes(["mcp:read"], owner)
+    assert scopes_mod.effective_scopes(["companies.company.read"], owner) == [
+        "companies.company.read"
+    ]
+
+    # …and never past the person: a member holding one read gets that read and nothing else,
+    # whatever the rule says.
+    member = PermissionSet.of(["companies.company.read"])
+    assert scopes_mod.effective_scopes(["mcp:full"], member) == ["companies.company.read"]
+    # A coarse consent that would expand to nothing is refused as an empty grant.
+    from app.core.oauth.service import validate_consented_scopes
+    from app.errors import AppError
+
+    try:
+        validate_consented_scopes(["mcp:full"], PermissionSet.of([]))
+    except AppError as exc:
+        assert exc.message_key == "errors.oauth_scope_empty"
+    else:  # pragma: no cover
+        raise AssertionError("a consent that grants nothing must be refused")

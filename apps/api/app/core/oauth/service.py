@@ -31,6 +31,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.apikeys import keys as keygen
 from app.core.apikeys.models import PRINCIPAL_USER, ApiKey
+from app.core.apikeys.scopes import (  # noqa: F401 — COARSE_SCOPES is re-exported for the router
+    COARSE_SCOPES,
+    SCOPE_MCP_FULL,
+    SCOPE_MCP_READ,
+    expand_scopes,
+    is_coarse,
+)
 from app.core.oauth.models import OAuthClient, OAuthGrant
 from app.core.permissions.catalog import all_permissions
 from app.core.permissions.permset import PermissionSet
@@ -50,13 +57,9 @@ ACCESS_TTL = timedelta(hours=1)
 #: abandoned one lapses within a quarter.
 REFRESH_TTL = timedelta(days=90)
 
-#: Coarse scopes a client may ask for by name. A connector that has never met this instance
-#: cannot know that ``time.entry.write:own`` exists, and a request listing 300 permission
-#: strings is not one a person can read on a consent screen — so the request is allowed to be
-#: coarse and the *consent screen* is where it becomes exact.
-SCOPE_MCP_READ = "mcp:read"
-SCOPE_MCP_FULL = "mcp:full"
-COARSE_SCOPES = (SCOPE_MCP_READ, SCOPE_MCP_FULL)
+#: ``SCOPE_MCP_READ`` / ``SCOPE_MCP_FULL`` / ``COARSE_SCOPES`` live in ``apikeys/scopes.py`` —
+#: a key's scope vocabulary belongs to keys, because the request path reads it without ever
+#: touching OAuth. Re-exported here for the router and the tests that always imported them.
 
 #: Registration is unauthenticated, so it is capped per org. Far above any real client count and
 #: far below "a table somebody filled up overnight".
@@ -113,47 +116,20 @@ def _catalog() -> dict[str, bool]:
     return {spec.key: bool(spec.scopes) for spec in all_permissions()}
 
 
-def _is_read(key: str) -> bool:
-    return key.rsplit(".", 1)[-1] == "read"
+def offered_coarse_scopes(requested: Sequence[str]) -> list[str]:
+    """The coarse grants the consent screen may offer for this request, broadest first.
 
-
-def expand_scopes(requested: Sequence[str], holder: PermissionSet) -> list[str]:
-    """What the client asked for, resolved against the catalog and capped by the *holder*.
-
-    The cap is the whole safety property and it is applied twice on purpose: here, so a consent
-    screen never offers a person the ability to hand out something they do not have, and again
-    on every request the key later makes (``apikeys/auth.py``), so a permission removed
-    tomorrow is removed from the connector tomorrow. This one is the cosmetic half — it decides
-    what the screen shows. The one on the request path is the one that holds.
-
-    An unknown scope is *dropped* rather than fatal: a client sends the scopes it was built to
-    send, an instance runs the modules it runs, and refusing the whole authorization because a
-    connector asked for something this instance does not have would be a dead "Add connector"
-    button with no way for anyone to see why.
+    A client that asked for everything (or named nothing) may be given "everything I hold" or
+    "every read I hold"; one that asked for ``mcp:read`` may be given the reads and not more —
+    the person may narrow a request on the consent screen, never widen it. A client that named
+    explicit keys gets no coarse offer at all: it asked for a list, and a list is what it gets.
     """
-    scoped = _catalog()
     wanted = set(requested)
-    want_all = SCOPE_MCP_FULL in wanted or not wanted
-    want_read = SCOPE_MCP_READ in wanted
-
-    resolved: list[str] = []
-    for key, is_scoped in scoped.items():
-        coarse = want_all or (want_read and _is_read(key))
-        explicit = key in wanted or any(w.split(":")[0] == key for w in wanted if ":" in w)
-        if not (coarse or explicit):
-            continue
-        # A scoped permission is only ever stored suffixed (§15), and the broadest suffix the
-        # holder actually has is the honest answer: handing out `:any` to someone holding `:own`
-        # would be a silent escalation, and handing out `:own` to a holder of `:any` would
-        # quietly break a screen they can open.
-        if is_scoped:
-            suffix = next((s for s in ("any", "own") if holder.has(key, s)), None)
-            if suffix is None:
-                continue
-            resolved.append(f"{key}:{suffix}")
-        elif holder.has(key):
-            resolved.append(key)
-    return sorted(resolved)
+    if SCOPE_MCP_FULL in wanted or not wanted:
+        return [SCOPE_MCP_FULL, SCOPE_MCP_READ]
+    if SCOPE_MCP_READ in wanted:
+        return [SCOPE_MCP_READ]
+    return []
 
 
 def validate_consented_scopes(scopes: Sequence[str], holder: PermissionSet) -> list[str]:
@@ -167,6 +143,17 @@ def validate_consented_scopes(scopes: Sequence[str], holder: PermissionSet) -> l
     scoped = _catalog()
     allowed: list[str] = []
     for scope in scopes:
+        if is_coarse(scope):
+            # The record of "everything I may do" / "everything I may read", expanded against
+            # the live catalog on every request (``apikeys/scopes.py``). Stored as the rule and
+            # not as today's expansion, or a module shipped next month is one the connector can
+            # never reach. Refused for a holder it would expand to nothing for — a key that can
+            # do nothing is a consent that granted nothing, and `errors.oauth_scope_empty` is
+            # the sentence for that.
+            if not expand_scopes([scope], holder):
+                raise _invalid_request("errors.oauth_scope_empty")
+            allowed.append(scope)
+            continue
         base, sep, suffix = scope.partition(":")
         if base not in scoped or (suffix != "" and suffix not in SCOPES):
             raise _invalid_request("errors.oauth_scope_invalid")

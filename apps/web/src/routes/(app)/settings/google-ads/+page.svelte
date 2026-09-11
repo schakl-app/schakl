@@ -14,6 +14,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import { syncErrorText } from "$lib/integrations/google_ads/syncStatus";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
 
@@ -151,10 +152,23 @@
             </span>
             {#if account.status === "error" && account.last_error}
               <span class="mt-1 block break-words text-xs text-text">{account.last_error}</span>
-            {:else if account.last_verified_at}
+            {:else if account.last_sync_error}
+              <span class="mt-1 block break-words text-xs text-text">
+                {t("google_ads.panel.sync_failed")}
+                {syncErrorText(account.last_sync_error)}
+              </span>
+            {:else}
+              <!-- The nightly's stamp leads; the manual check's follows. Printing only the check
+                   read as "gecontroleerd 16 aug" over an account that synced this morning. -->
               <span class="mt-1 block text-xs text-text-muted">
-                {t("google_ads.panel.verified")}
-                {fmtDateTime(account.last_verified_at)}
+                {#if account.last_synced_at}
+                  {t("google_ads.panel.synced")} {fmtDateTime(account.last_synced_at)}
+                {:else}
+                  {t("google_ads.panel.never_synced")}
+                {/if}
+                {#if account.last_verified_at}
+                  · {t("google_ads.panel.verified")} {fmtDateTime(account.last_verified_at)}
+                {/if}
               </span>
             {/if}
           </div>

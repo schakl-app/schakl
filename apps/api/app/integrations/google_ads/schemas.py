@@ -62,6 +62,12 @@ class GoogleAdsAccountRead(BaseModel):
     #: Google's own sentence about the last failure, scrubbed of credentials. Not an i18n key —
     #: it is provider text, which is why it lives here and never in the error envelope (§9).
     last_error: str | None = None
+    #: What the nightly mirror last said when it failed — the sync's own column, kept apart from
+    #: ``last_error`` (a manual check's verdict) because different things write them at different
+    #: times. It was missing from the read, so a failed nightly was invisible on every screen and
+    #: the screens printed the check's stamp instead: "gecontroleerd 16 aug" over an account that
+    #: had synced that morning, read on the live instance as a sync that stopped in August.
+    last_sync_error: str | None = None
     last_verified_at: datetime | None = None
     last_synced_at: datetime | None = None
 

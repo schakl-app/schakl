@@ -411,6 +411,63 @@ async def test_a_no_outranks_a_yes_on_the_same_day(client_for) -> None:
         assert float(days[0]["hours"]) == 0.0
 
 
+async def test_an_extra_day_with_hours_states_the_day_s_hours(client_for) -> None:
+    """The hours on an extra day are that day's hours — on a day the week works too.
+
+    Found on a live tenant: a freelancer engaged for Fridays 09:30–17:30 wrote "extra Friday
+    10:00–14:00", and the day kept resolving to 09:30–17:30 because the window was unioned with
+    the roster. A window nobody wrote to mean nothing. Extending is still one row; and a
+    whole-day extra beside a windowed one keeps the usual day, since "the usual day" plus a
+    window can never be asking for less than the day.
+    """
+    t = await make_tenant("avail-stated")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "stated@example.com")
+        monday = _monday()
+        tuesday, wednesday, thursday = (monday + timedelta(days=n) for n in (1, 2, 3))
+        for body in (
+            # Shorter than the roster: the window is the day.
+            {"kind": "extra", "date": monday, "start_time": "10:00", "end_time": "14:00"},
+            # Longer than the roster: still the window (lunch still comes out).
+            {"kind": "extra", "date": tuesday, "start_time": "08:00", "end_time": "20:00"},
+            # One-sided: closed against the roster's own end, so 12:00–17:00.
+            {"kind": "extra", "date": wednesday, "start_time": "12:00"},
+            # A whole-day extra beside a windowed one: the usual day, plus the window.
+            {"kind": "extra", "date": thursday},
+            {"kind": "extra", "date": thursday, "start_time": "18:00", "end_time": "20:00"},
+        ):
+            res = await c.post(
+                "/api/v1/leave/availability",
+                json={"user_id": str(member.id), **body, "date": body["date"].isoformat()},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        days = (
+            await c.get(
+                "/api/v1/leave/availability/days",
+                params={
+                    "date_from": monday.isoformat(),
+                    "date_to": thursday.isoformat(),
+                    "user_id": str(member.id),
+                },
+                headers=headers,
+            )
+        ).json()
+        by_date = {d["date"]: d for d in days}
+
+        def win(day: date) -> list[tuple[str, str]]:
+            return [(w["start"], w["end"]) for w in by_date[day.isoformat()]["windows"]]
+
+        assert win(monday) == [("10:00", "12:30"), ("13:00", "14:00")]
+        assert float(by_date[monday.isoformat()]["hours"]) == 3.5
+        assert by_date[monday.isoformat()]["change"] == "changed"
+        assert win(tuesday) == [("08:00", "12:30"), ("13:00", "20:00")]
+        assert win(wednesday) == [("12:00", "12:30"), ("13:00", "17:00")]
+        assert win(thursday) == [("08:30", "12:30"), ("13:00", "17:00"), ("18:00", "20:00")]
+
+
 async def test_a_repeat_is_a_rule_not_a_row_per_occurrence(client_for) -> None:
     t = await make_tenant("avail-repeat")
     headers = await auth_cookie(t.user)
@@ -642,6 +699,15 @@ async def test_a_row_can_be_corrected_rather_than_retyped(client_for) -> None:
         )
         assert kept.status_code == 422
         assert "leave_availability_repeat_required" in kept.text
+
+        # A row has a day and a kind, or it is not a row: clearing either is refused with the
+        # field named, never left to the NOT NULL to answer as a 500.
+        for field in ("date", "kind"):
+            lost = await c.patch(
+                f"/api/v1/leave/availability/{entry_id}", json={field: None}, headers=my_headers
+            )
+            assert lost.status_code == 422, lost.text
+            assert lost.json()["error"]["fields"] == {field: "errors.required"}
 
         cleared = await c.patch(
             f"/api/v1/leave/availability/{entry_id}",

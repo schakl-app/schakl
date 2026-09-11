@@ -57,6 +57,15 @@
 
   const busy = new InFlight();
   const editing = $derived(entry !== null);
+  // The pickers attach their hidden inputs to the form *by id* (`form={formId}`), and the id used
+  // to be a literal — so wherever an edit modal opened over a create form (every host: the
+  // freelancer's own page, the roster's modal, the overview), both forms answered to
+  // `availability-form`, the browser attached the edit's date and times to the *first* one, and
+  // the PATCH left without a date. The API then 500'd on the NOT NULL, the screen read "er ging
+  // iets mis", and editing an extra day's hours was impossible on every screen that offered it.
+  // `$props.id()` is stable across SSR and hydration, which a counter is not.
+  const uid = $props.id();
+  const formId = `availability-form-${uid}`;
 
   type Tab = "extra" | "unavailable" | "move";
   // On an edit the tab *is* the row's kind, so the toggle above the fields is the same control
@@ -67,7 +76,14 @@
   // them per tab would throw away a date the user has already typed while deciding.
   let day = $state(entry?.date ?? defaultDate);
   let toDay = $state("");
+  // "Part of a day" is a toggle on the tabs where the whole day is the ordinary answer (a day
+  // off, a swap). On an extra day the hours *are* the statement — the API reads them as that
+  // day's working time, on a day the roster works and on one it does not — so the extra tab
+  // draws the two fields outright; a toggle hid the one thing the tab is for behind a link
+  // reading "Deel van een dag", and people wrote the whole day and then could not see why the
+  // agenda never changed.
   let partDay = $state(Boolean(entry?.start_time || entry?.end_time));
+  const timesShown = $derived(tab === "extra" || partDay);
   let startTime = $state(entry?.start_time ?? "");
   let endTime = $state(entry?.end_time ?? "");
   let repeatWeeks = $state(entry?.repeat_weeks ? String(entry.repeat_weeks) : "");
@@ -125,7 +141,7 @@
   </div>
 
   <form
-    id="availability-form"
+    id={formId}
     method="POST"
     {action}
     class="space-y-3"
@@ -157,7 +173,7 @@
         <MemberPicker
           id="a-person"
           name="user_id"
-          formId="availability-form"
+          {formId}
           bind:value={person}
           members={people}
           placeholder={t("leave.availability.person_placeholder")}
@@ -173,7 +189,7 @@
         <DateInput
           id="a-date"
           name={tab === "move" ? "from_date" : "date"}
-          formId="availability-form"
+          {formId}
           bind:value={day}
         />
       </div>
@@ -182,43 +198,44 @@
           <label for="a-to" class="mb-1 block text-xs text-text-muted">
             {t("leave.availability.to_day")}
           </label>
-          <DateInput id="a-to" name="to_date" formId="availability-form" bind:value={toDay} />
+          <DateInput id="a-to" name="to_date" {formId} bind:value={toDay} />
         </div>
       {/if}
     </div>
 
     <div>
-      <button
-        type="button"
-        class="text-xs {partDay ? 'text-brand' : 'text-text-muted hover:text-brand'}"
-        onclick={togglePartDay}
-      >
-        {partDay ? t("leave.form.whole_days") : t("leave.form.part_day")}
-      </button>
-      {#if partDay}
+      {#if tab === "extra"}
+        <p class="text-xs text-text-muted">{t("leave.availability.working_time")}</p>
+      {:else}
+        <button
+          type="button"
+          class="text-xs {partDay ? 'text-brand' : 'text-text-muted hover:text-brand'}"
+          onclick={togglePartDay}
+        >
+          {partDay ? t("leave.form.whole_days") : t("leave.form.part_day")}
+        </button>
+      {/if}
+      {#if timesShown}
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label for="a-start" class="mb-1 block text-xs text-text-muted">
               {t("leave.form.start_time")}
             </label>
-            <TimeInput
-              id="a-start"
-              name="start_time"
-              formId="availability-form"
-              bind:value={startTime}
-            />
+            <TimeInput id="a-start" name="start_time" {formId} bind:value={startTime} />
           </div>
           <div>
             <label for="a-end" class="mb-1 block text-xs text-text-muted">
               {t("leave.form.end_time")}
             </label>
-            <TimeInput id="a-end" name="end_time" formId="availability-form" bind:value={endTime} />
+            <TimeInput id="a-end" name="end_time" {formId} bind:value={endTime} />
           </div>
         </div>
         <p class="mt-1 text-xs text-text-muted">
           {tab === "move"
             ? t("leave.availability.move_times_hint")
-            : t("leave.availability.times_hint")}
+            : tab === "extra"
+              ? t("leave.availability.extra_times_hint")
+              : t("leave.availability.times_hint")}
         </p>
       {/if}
     </div>
@@ -244,12 +261,7 @@
           <label for="a-until" class="mb-1 block text-xs text-text-muted">
             {t("leave.availability.repeat_until")}
           </label>
-          <DateInput
-            id="a-until"
-            name="repeat_until"
-            formId="availability-form"
-            bind:value={repeatUntil}
-          />
+          <DateInput id="a-until" name="repeat_until" {formId} bind:value={repeatUntil} />
           <p class="mt-1 text-xs text-text-muted">{t("leave.availability.repeat_until_hint")}</p>
         </div>
       {/if}
