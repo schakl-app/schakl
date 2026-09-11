@@ -9,6 +9,13 @@
  * degrade to "nothing to save" rather than a 500. The API validates the vocabulary (event names,
  * digest cadences) itself and answers with the standard envelope, so this only shapes the JSON.
  *
+ * The field is **empty until the form has hydrated**: the server renders no payload at all, so a
+ * submit that lands before the JavaScript is attached — a slow connection, a stale chunk after a
+ * deploy, a click in the first second — posts `""`, and the action refuses it
+ * (`errors.form_not_ready`) instead of writing the server-rendered snapshot and reporting
+ * success over changes that were never sent. `parseMatrixPayload("")` is therefore `null` on
+ * purpose, and the action tells the two apart before calling it.
+ *
  * `.server.ts`: never bundled to the browser.
  */
 
@@ -66,57 +73,19 @@ export interface MatrixWrite {
   channels: MatrixChannelWrite[];
 }
 
-/**
- * What the screen renders if the API somehow answers with nothing. A matrix with no rows renders
- * an empty table, which is honest; a `null` general block would render nothing at all.
- * `due_soon_days` mirrors `notifications/defaults.py::DEFAULT_DUE_SOON_DAYS`.
- */
-export const EMPTY_MATRIX: {
-  events: never[];
-  general: {
-    due_soon_days: number;
-    quiet_hours_start: string | null;
-    quiet_hours_end: string | null;
-    source: string;
-  };
-  email: {
-    digest_time: string | null;
-    digest_weekday: number | null;
-    source: string;
-  };
-  push: {
-    digest_time: string | null;
-    digest_weekday: number | null;
-    source: string;
-  };
-  channels: never[];
-} = {
-  events: [],
-  general: {
-    due_soon_days: 3,
-    quiet_hours_start: null,
-    quiet_hours_end: null,
-    source: "default",
-  },
-  email: {
-    digest_time: null,
-    digest_weekday: null,
-    source: "default",
-  },
-  push: {
-    digest_time: null,
-    digest_weekday: null,
-    source: "default",
-  },
-  channels: [],
-};
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * "HH:MM" as the pickers post it, or the API's own "HH:MM:SS" — an in-app row re-posts the
+ * `digest_time` it was loaded with, and reading only the short form dropped every stored time
+ * on the first save. Normalised to "HH:MM"; the API accepts either.
+ */
 function asTime(value: unknown): string | null {
-  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(value);
+  return m ? m[1] : null;
 }
 
 export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite | null {

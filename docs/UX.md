@@ -2374,6 +2374,26 @@ contrast bug in dark mode rather than only an inconsistency.
   UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
   Interaction patterns: persistent surfaces pass `update({ reset: false })`, one-shot buttons
   and self-unmounting create forms may stay bare.
+- **A load that swallows an error into an empty default is a save that wipes.** Instellingen →
+  Meldingen answered a failed preferences read with `prefs.data ?? EMPTY_MATRIX`: the page rendered
+  a table with no rows, "0 hiervan zijn eigen instellingen" and every general value at its
+  default — which is exactly what "my preferences are gone" looks like — and because the matrix
+  form posts the scope's overrides **wholesale**, derived from what loaded, one press of Opslaan on
+  that page wrote "no overrides", deleted every row the person had (in-app, e-mail, browser *and*
+  their personal channel routing) and printed "Voorkeuren opgeslagen" above the result. A 502 from
+  the edge mid-redeploy is a response, not a throw, so the SSR outage page never caught it. Both
+  pages now `throw error(502, "settings.notifications.unavailable")` when either read fails; the
+  fallback constant is gone. The rule: a form that replaces a record wholesale may only ever be
+  rendered over the record it will replace — a default in a `??` is fine for a *display*, never for
+  the baseline of a write. Its sibling on the same form: **a field whose truth is computed in the
+  browser is empty until the browser has computed it.** The hidden `payload` was server-rendered
+  with the loaded snapshot, so a Save that landed before hydration (a slow connection, a stale
+  chunk after a deploy, a click in the first second) was a native POST of that snapshot: every
+  change made on the still-static page was dropped, and the reloaded page said it had saved. The
+  server now renders the field empty (`browser ? … : ""`) and the action refuses `""` with
+  `errors.form_not_ready`, so the un-hydrated submit is a visible refusal instead of a silent
+  no-op. And the ordinary one: the parser accepted `HH:MM` and the API answers `HH:MM:SS`, so an
+  in-app row's stored digest time became `null` on its first re-save; `asTime` reads both.
 - **A submit button with no in-flight state.** The contact-portal "Enable" gave zero feedback
   while its request ran (#242): on a slow connection it read as broken, and every extra click
   was another submit. The convention lives under Interaction patterns (Loading / in-flight

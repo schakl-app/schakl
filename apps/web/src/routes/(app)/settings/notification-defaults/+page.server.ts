@@ -1,10 +1,10 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { channelActions } from "$lib/modules/notifications/channels.server";
-import { EMPTY_MATRIX, parseMatrixPayload } from "$lib/modules/notifications/prefs.server";
+import { parseMatrixPayload } from "$lib/modules/notifications/prefs.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -21,10 +21,17 @@ export const load: PageServerLoad = async (event) => {
   const canManageChannels = can(event.locals.user, "notifications.channels.manage");
   const [prefs, channels] = await Promise.all([
     api.GET("/api/v1/notifications/preferences/defaults"),
-    canManageChannels ? api.GET("/api/v1/notifications/channels") : Promise.resolve({ data: null }),
+    canManageChannels
+      ? api.GET("/api/v1/notifications/channels")
+      : Promise.resolve({ data: null, error: undefined }),
   ]);
+  // Same rule as the personal page: a matrix that did not load is a page that refuses, because
+  // the form posts wholesale and a Save over nothing clears the org's every default and room.
+  if (prefs.error || !prefs.data || channels.error) {
+    throw error(502, "settings.notifications.unavailable");
+  }
   return {
-    matrix: prefs.data ?? EMPTY_MATRIX,
+    matrix: prefs.data,
     canManageChannels,
     /** The org's shared rooms. The API hands an admin every channel; only these are routed here. */
     channels: (channels.data ?? []).filter((c) => c.user_id == null),
@@ -34,7 +41,10 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
-    const body = parseMatrixPayload(form.get("payload"));
+    const raw = form.get("payload");
+    // Empty = the server-rendered field of a form that had not hydrated (`prefs.server.ts`).
+    if (raw === "") return fail(400, { error: "errors.form_not_ready" });
+    const body = parseMatrixPayload(raw);
     if (!body) return fail(400, { error: "errors.validation" });
 
     const { error } = await apiFor(event).PUT("/api/v1/notifications/preferences/defaults", {

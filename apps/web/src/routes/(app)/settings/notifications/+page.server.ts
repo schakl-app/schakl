@@ -1,10 +1,10 @@
-import { fail } from "@sveltejs/kit";
+import { error, fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { channelActions } from "$lib/modules/notifications/channels.server";
-import { EMPTY_MATRIX, parseMatrixPayload } from "$lib/modules/notifications/prefs.server";
+import { parseMatrixPayload } from "$lib/modules/notifications/prefs.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -24,13 +24,20 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/notifications/preferences"),
     canManageOwnChannels
       ? api.GET("/api/v1/notifications/channels")
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: undefined }),
   ]);
+  // A read that failed is a page that refuses, never an empty matrix. The form posts the scope's
+  // overrides wholesale, and it derives them from what loaded: rendered over nothing, one Save
+  // wrote "no overrides" and deleted every row the person had — with "Voorkeuren opgeslagen"
+  // above it. The same holds for the channel list, one column over: no columns posts no routes.
+  if (prefs.error || !prefs.data || channels.error) {
+    throw error(502, "settings.notifications.unavailable");
+  }
   // An admin's list also carries the shared rooms (the API scopes by capability, not by page),
   // so filter to mine: they are configured next door, and the matrix here has no column for them.
   const me = event.locals.user?.id ?? "";
   return {
-    matrix: prefs.data ?? EMPTY_MATRIX,
+    matrix: prefs.data,
     canManageOwnChannels,
     channels: (channels.data ?? []).filter((c) => c.user_id === me),
   };
@@ -39,7 +46,12 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
-    const body = parseMatrixPayload(form.get("payload"));
+    const raw = form.get("payload");
+    // The payload is computed in the browser; a submit that arrived before hydration carries
+    // the empty server-rendered field (`prefs.server.ts`). Refuse it, or the native POST drops
+    // every unsaved change and the page reports success.
+    if (raw === "") return fail(400, { error: "errors.form_not_ready" });
+    const body = parseMatrixPayload(raw);
     if (!body) return fail(400, { error: "errors.validation" });
 
     const { error } = await apiFor(event).PUT("/api/v1/notifications/preferences", { body });

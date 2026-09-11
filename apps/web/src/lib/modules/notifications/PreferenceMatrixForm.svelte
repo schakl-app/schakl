@@ -39,6 +39,7 @@
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";
 
+  import { browser } from "$app/environment";
   import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -303,65 +304,72 @@
   );
   const pushScheduleIsOverride = $derived(matrix.push.source === scope || pushScheduleChanged);
 
-  /** The body the action forwards on. Only the browser knows what "changed" means here. */
+  /**
+   * The body the action forwards on. Only the browser knows what "changed" means here — so the
+   * server renders the field **empty** and the action refuses an empty one. Before hydration a
+   * Save is a native POST of whatever this field holds; with the snapshot in it, that post
+   * dropped every edit made on the still-static page and came back reading "opgeslagen".
+   */
   const payload = $derived(
-    JSON.stringify({
-      events: rows.filter(inAppOverride).map((row) => ({
-        event_type: row.event_type,
-        enabled: row.enabled,
-        delay_minutes: Number(row.delay_minutes) || 0,
-        digest: row.digest,
-        digest_time: row.digest_time ?? null,
-        digest_weekday: row.digest_weekday ?? null,
-      })),
-      email_events: rows.filter(emailOverride).map((row) => ({
-        event_type: row.event_type,
-        enabled: row.email_enabled,
-        delay_minutes: Number(row.email_delay_minutes) || 0,
-        digest: row.email_digest,
-      })),
-      general: generalIsOverride
-        ? {
-            due_soon_days: Number(general.due_soon_days),
-            quiet_hours_start: hhmm(general.quiet_hours_start) || null,
-            quiet_hours_end: hhmm(general.quiet_hours_end) || null,
-          }
-        : null,
-      push_events: rows.filter(pushOverride).map((row) => ({
-        event_type: row.event_type,
-        enabled: row.push_enabled,
-        delay_minutes: Number(row.push_delay_minutes) || 0,
-        digest: row.push_digest,
-      })),
-      email: emailScheduleIsOverride
-        ? {
-            digest_time: hhmm(emailSchedule.digest_time) || null,
-            digest_weekday: emailSchedule.digest_weekday ?? null,
-          }
-        : null,
-      push: pushScheduleIsOverride
-        ? {
-            digest_time: hhmm(pushSchedule.digest_time) || null,
-            digest_weekday: pushSchedule.digest_weekday ?? null,
-          }
-        : null,
-      // Wholesale per channel, and only the events actually routed there: on a channel an
-      // absent row *is* "off", so writing the off ones would store 20 rows to say nothing.
-      // Every channel is always sent, or the ones left out would be cleared. A route whose
-      // in-app row is off is still kept — like the e-mail column, it holds its value and
-      // simply cannot fire until the bell is back on.
-      channels: channels.map((channel) => ({
-        channel_config_id: channel.id,
-        events: rows
-          .filter((row) => channelValue(channel, row.event_type) !== "off")
-          .map((row) => ({
+    !browser
+      ? ""
+      : JSON.stringify({
+          events: rows.filter(inAppOverride).map((row) => ({
             event_type: row.event_type,
-            enabled: true,
-            delay_minutes: 0,
-            digest: channelValue(channel, row.event_type),
+            enabled: row.enabled,
+            delay_minutes: Number(row.delay_minutes) || 0,
+            digest: row.digest,
+            digest_time: row.digest_time ?? null,
+            digest_weekday: row.digest_weekday ?? null,
           })),
-      })),
-    }),
+          email_events: rows.filter(emailOverride).map((row) => ({
+            event_type: row.event_type,
+            enabled: row.email_enabled,
+            delay_minutes: Number(row.email_delay_minutes) || 0,
+            digest: row.email_digest,
+          })),
+          general: generalIsOverride
+            ? {
+                due_soon_days: Number(general.due_soon_days),
+                quiet_hours_start: hhmm(general.quiet_hours_start) || null,
+                quiet_hours_end: hhmm(general.quiet_hours_end) || null,
+              }
+            : null,
+          push_events: rows.filter(pushOverride).map((row) => ({
+            event_type: row.event_type,
+            enabled: row.push_enabled,
+            delay_minutes: Number(row.push_delay_minutes) || 0,
+            digest: row.push_digest,
+          })),
+          email: emailScheduleIsOverride
+            ? {
+                digest_time: hhmm(emailSchedule.digest_time) || null,
+                digest_weekday: emailSchedule.digest_weekday ?? null,
+              }
+            : null,
+          push: pushScheduleIsOverride
+            ? {
+                digest_time: hhmm(pushSchedule.digest_time) || null,
+                digest_weekday: pushSchedule.digest_weekday ?? null,
+              }
+            : null,
+          // Wholesale per channel, and only the events actually routed there: on a channel an
+          // absent row *is* "off", so writing the off ones would store 20 rows to say nothing.
+          // Every channel is always sent, or the ones left out would be cleared. A route whose
+          // in-app row is off is still kept — like the e-mail column, it holds its value and
+          // simply cannot fire until the bell is back on.
+          channels: channels.map((channel) => ({
+            channel_config_id: channel.id,
+            events: rows
+              .filter((row) => channelValue(channel, row.event_type) !== "off")
+              .map((row) => ({
+                event_type: row.event_type,
+                enabled: true,
+                delay_minutes: 0,
+                digest: channelValue(channel, row.event_type),
+              })),
+          })),
+        }),
   );
 
   const overrideCount = $derived(
