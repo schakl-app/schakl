@@ -36,7 +36,7 @@
 
   import ContactChips from "./ContactChips.svelte";
   import TaskChips from "./TaskChips.svelte";
-  import { splitLinkOptions } from "./lookups";
+  import { splitLinkOptions, TASK_LOOKUP_QUERY, toTaskOption, type TaskOption } from "./lookups";
   import { isMailboxRow, type InteractionItem } from "./format";
   import { ContactRoster, initialContacts } from "./roster.svelte";
   import { initialTasks, missingTaskOptions } from "./taskroster";
@@ -69,17 +69,6 @@
   interface Option {
     value: string;
     label: string;
-  }
-  interface TaskOption extends Option {
-    project_id: string | null;
-    company_id: string | null;
-    /**
-     * Whose task it is — "sluit deze taak" is a task write, and `:own` means assignee. The
-     * whole roster, because `:own` is satisfied by *any* of them (`caller_may_write_task`),
-     * so a task shared by two people offers the close to both.
-     */
-    assignees: { user_id: string }[];
-    assignee_user_id: string | null;
   }
   interface ProjectOption extends Option {
     company_id: string | null;
@@ -143,6 +132,12 @@
   function onTaskPicked(id: string) {
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
+  }
+
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(tasks.map((task) => task.value));
+    tasks = [...tasks, ...rows.filter((row) => !known.has(row.value))];
   }
 
   /**
@@ -407,7 +402,7 @@
       const [companiesPage, projectsPage, tasksPage] = await Promise.all([
         get("/api/v1/companies?limit=200&count=false&sort=name"),
         get("/api/v1/projects?limit=200&count=false"),
-        get("/api/v1/tasks?limit=200&count=false&meta=false&sort=title"),
+        get(`/api/v1/tasks?${TASK_LOOKUP_QUERY}`),
       ]);
       companies = (companiesPage.items ?? []).map(
         (c: { id: string; name: string; status?: string | null }) => ({
@@ -424,25 +419,7 @@
           status: p.status ?? null,
         }),
       );
-      const fetched: TaskOption[] = (tasksPage.items ?? []).map(
-        (task: {
-          id: string;
-          title: string;
-          project_id?: string | null;
-          company_id?: string | null;
-          assignees?: { user_id: string }[] | null;
-          assignee_user_id?: string | null;
-          completed_at?: string | null;
-        }) => ({
-          value: task.id,
-          label: task.title,
-          project_id: task.project_id ?? null,
-          company_id: task.company_id ?? null,
-          assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
-          assignee_user_id: task.assignee_user_id ?? null,
-          completed_at: task.completed_at ?? null,
-        }),
-      );
+      const fetched: TaskOption[] = (tasksPage.items ?? []).map(toTaskOption);
       // The row's own chips stay labelled even outside the fetched 200 — the contact rule.
       tasks = [
         ...missingTaskOptions(storedTasks, fetched, (ref) => ({
@@ -523,6 +500,7 @@
             archivedLabel={t("tasks.picker.archived")}
             labels={taskLabels}
             onpick={onTaskPicked}
+            onseries={addSeriesRows}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;

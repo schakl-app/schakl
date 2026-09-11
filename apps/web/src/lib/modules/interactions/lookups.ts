@@ -1,4 +1,5 @@
 /** Shared client-side lookups for the interaction link pickers (#147, #183, #168-followup). */
+import { fmtPeriod } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
 import { splitLifecycle, type LifecycleSplit } from "$lib/core/picker";
 import { splitCompanyOptions } from "$lib/modules/companies/picker";
@@ -38,6 +39,73 @@ export interface TaskOption extends LinkOption {
    * so this is the one field that answers "is this over?" without fetching the status list.
    */
   completed_at?: string | null;
+  /** The deadline — what tells one occurrence of a repeating task from the next. */
+  due_date?: string | null;
+  /**
+   * `?collapse_series=true` (`TaskListItem.series_pending`): the future occurrences this row
+   * stands for, on the series' current one; `null` on every other row. A row carrying a number
+   * is the one the picker draws with a chevron.
+   */
+  series_pending?: number | null;
+  /**
+   * An occurrence reached by unfolding its series (`loadSeriesOptions`). The host keeps it in
+   * its list so the cascade can answer for it (which project, which client, whose) — but it is
+   * never offered as a row of its own: that is the fold the list asked the API for.
+   */
+  nested?: boolean;
+}
+
+/** The list row the task lookups read, mapped once for every caller. */
+export function toTaskOption(task: {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  company_id?: string | null;
+  assignees?: { user_id: string }[] | null;
+  assignee_user_id?: string | null;
+  completed_at?: string | null;
+  due_date?: string | null;
+  series_pending?: number | null;
+}): TaskOption {
+  return {
+    value: task.id,
+    label: task.title,
+    project_id: task.project_id ?? null,
+    company_id: task.company_id ?? null,
+    assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
+    assignee_user_id: task.assignee_user_id ?? null,
+    completed_at: task.completed_at ?? null,
+    due_date: task.due_date ?? null,
+    series_pending: task.series_pending ?? null,
+  };
+}
+
+/**
+ * The task lookup every picker here reads: two hundred rows, title order, no aggregates — and
+ * **folded**: a repeating task lays a year of occurrences out, and twelve "Nieuwsbrief" rows in
+ * a picker of two hundred are eleven rows the other tasks cannot be found past. The API answers
+ * the series' current occurrence with the rest counted onto it; `loadSeriesOptions` is how the
+ * picker reaches them when somebody means November's.
+ */
+export const TASK_LOOKUP_QUERY = "limit=200&count=false&meta=false&sort=title&collapse_series=true";
+
+/**
+ * The rest of a series, for the picker's unfold: every *unfinished* occurrence other than the
+ * one that stands for them, soonest first. Finished ones are not here because they were never
+ * folded — the lookup already lists them behind the search as finished tasks.
+ */
+export async function loadSeriesOptions(taskId: string): Promise<TaskOption[]> {
+  const response = await fetch(
+    `/api/v1/tasks?series_id=${taskId}&limit=200&count=false&meta=false&sort=due_date`,
+    { headers: { accept: "application/json" } },
+  );
+  if (!response.ok) return [];
+  const page = await response.json();
+  return (page.items ?? [])
+    .filter(
+      (row: { id: string; completed_at?: string | null }) => row.id !== taskId && !row.completed_at,
+    )
+    .map((row: Parameters<typeof toTaskOption>[0]) => ({ ...toTaskOption(row), nested: true }));
 }
 
 /**
@@ -68,7 +136,7 @@ export async function loadLinkLookups(
   const [companiesPage, projectsPage, tasksPage] = await Promise.all([
     get("/api/v1/companies?limit=200&count=false&sort=name"),
     get("/api/v1/projects?limit=200&count=false"),
-    get(`/api/v1/tasks?limit=200&count=false&meta=false&sort=title${taskScope}`),
+    get(`/api/v1/tasks?${TASK_LOOKUP_QUERY}${taskScope}`),
   ]);
   return {
     companies: (companiesPage.items ?? []).map(
@@ -86,25 +154,7 @@ export async function loadLinkLookups(
         status: p.status ?? null,
       }),
     ),
-    tasks: (tasksPage.items ?? []).map(
-      (task: {
-        id: string;
-        title: string;
-        project_id?: string | null;
-        company_id?: string | null;
-        assignees?: { user_id: string }[] | null;
-        assignee_user_id?: string | null;
-        completed_at?: string | null;
-      }) => ({
-        value: task.id,
-        label: task.title,
-        project_id: task.project_id ?? null,
-        company_id: task.company_id ?? null,
-        assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
-        assignee_user_id: task.assignee_user_id ?? null,
-        completed_at: task.completed_at ?? null,
-      }),
-    ),
+    tasks: (tasksPage.items ?? []).map(toTaskOption),
   };
 }
 
@@ -119,6 +169,11 @@ export async function loadLinkLookups(
  * Tasks are judged on `completed_at` rather than on a status key: which statuses mean finished
  * is the tenant's own vocabulary (#62), and the stamp is the answer the API has already applied
  * it to — so no second lookup is needed to draw a dropdown.
+ *
+ * A repeating task is one row here: its current occurrence, saying what it stands for ("↻ 21 okt
+ * · nog 11 gepland") and unfoldable to the rest (`Combobox.onexpand`). The occurrences a host
+ * has already unfolded (`nested`) are left out of both buckets — they are reached under their
+ * parent, never beside it, or the fold would undo itself the first time somebody opened one.
  */
 export function splitLinkOptions(
   {
@@ -147,13 +202,23 @@ export function splitLinkOptions(
       { selectedId: selected.projectId },
     ),
     tasks: splitLifecycle(
-      tasks.map((task) => ({
-        value: task.value,
-        label: task.label,
-        // One synthetic key, because the picker's question is binary and the row already answers
-        // it. Naming the *status* here would mean fetching the vocabulary to translate it.
-        status: task.completed_at ? "done" : "open",
-      })),
+      tasks
+        .filter((task) => !task.nested)
+        .map((task) => ({
+          value: task.value,
+          label: task.label,
+          // One synthetic key, because the picker's question is binary and the row already
+          // answers it. Naming the *status* here would mean fetching the vocabulary to
+          // translate it.
+          status: task.completed_at ? "done" : "open",
+          hint: task.series_pending
+            ? t("tasks.picker.series_hint", {
+                date: task.due_date ? fmtPeriod(task.due_date) : "",
+                count: task.series_pending,
+              })
+            : undefined,
+          expandable: Boolean(task.series_pending),
+        })),
       {
         retired: ["done"],
         quiet: ["open"],

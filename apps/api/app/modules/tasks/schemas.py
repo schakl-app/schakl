@@ -518,6 +518,16 @@ class TaskListItem(TaskRead):
     checklist_done: int = 0
     checklist_total: int = 0
     comment_count: int = 0
+    #: The root of the schedule-mode series this row belongs to — the row itself when it *is*
+    #: the root — or ``None`` off a series. What lets a board and a picker fold a year of
+    #: occurrences onto one row, and what ``?series_id=`` opens. Withheld from a portal login
+    #: with the rest of the repeat machinery (#449).
+    series_root_id: uuid.UUID | None = None
+    #: With ``?collapse_series=true``: how many unfinished future occurrences of its series this
+    #: row stands for — the rows the fold left out. Set on the series' **current** occurrence
+    #: only (its earliest unfinished one, ``0`` when nothing is folded behind it) and ``None``
+    #: on every other row, so a row that carries a number is the one to draw the series on.
+    series_pending: int | None = None
 
 
 class DashboardTaskGroup(BaseModel):

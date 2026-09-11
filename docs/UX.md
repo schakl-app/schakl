@@ -3204,3 +3204,39 @@ contrast bug in dark mode rather than only an inconsistency.
   over our own proxy renders where it can and falls through to its content where it cannot: one
   sentence and the download link, the same file offered on purpose instead of by accident. The
   height is a viewport share, because nothing inside a PDF viewer can be measured from outside.
+
+- **A repeating task is one row, and finishing a task is leaving it** (the series fold; the tasks
+  board, `TaskChips`, `Combobox`, the task card). The year a schedule-mode rule lays out (#335, the
+  recurrence audit) was drawn as twelve rows of "Nieuwsbrief" under *Later* and twelve options in
+  every task picker — eleven rows the other work could not be found past, in a picker capped at two
+  hundred. Three rules, and where each half lives is the point.
+
+  **The fold is the API's, the screen asks for it, and the endpoint's default stays the whole
+  list** (`?collapse_series=true`, CLAUDE.md §9): a series is drawn as its earliest unfinished
+  occurrence, the rest counted onto that one row (`series_pending`), and only the *future* folds —
+  an occurrence due today or already late is work to act on now, so it stays a row and the
+  dashboard's overdue count and the board agree to the task. The export, the pickers that need
+  every row and the MCP surface read the unfolded default. A row that stands for eleven more says
+  so (`SeriesMark`, "↻ +11") and unfolds them under itself (`DataTable.expansion`, `SeriesStrip`):
+  the rule, the dates as links, capped and counted, and *Hele reeks bekijken* — because a view the
+  reader can reach must be one they can link to, `?series=<root>` is that view, drawn unfolded with
+  its own pill. A mark with nothing behind it still says ↻: it is the only place a list says a task
+  repeats at all.
+
+  **In a picker the series nests under its current occurrence** (`PickerOption.expandable`,
+  `Combobox.onexpand`): one row, a hint saying what it stands for ("↻ 14 sep · nog 11 gepland"), a
+  chevron that unfolds the occurrences one level in, each labelled by the one thing that tells them
+  apart — its date — and a chip that names both ("Nieuwsbrief · 14 nov") once picked. The chevron
+  sits *beside* the option rather than inside it, because a button cannot nest in a button and
+  unfolding must not pick. The occurrences a host has unfolded join its option list as `nested`
+  rows, so the client/project cascade and the close-task offer can answer for a nested pick, and
+  `splitLinkOptions` keeps them out of the top-level buckets — or the fold would undo itself the
+  first time somebody opened one.
+
+  **Finishing a task returns to the board.** The card was the place to do the work; once it is
+  done, the reader's next question is "what's next", which the board answers and a finished card
+  does not. Every way of finishing — the *Alle to-do's afgevinkt* confirm, the status select in use
+  mode, an edit-mode save that lands on a finished status — goes to the detour's origin where there
+  is one (#408) and otherwise to `/tasks` on the slice the reader last had of it (`returnHref`:
+  their filters, their page). A refusal (the closing-moment gate, a failed hours entry) stays on
+  the card with the error on it.

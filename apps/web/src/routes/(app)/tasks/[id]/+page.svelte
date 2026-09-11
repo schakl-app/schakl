@@ -20,6 +20,7 @@
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { originOf, withOrigin } from "$lib/core/origin";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
@@ -571,6 +572,24 @@
   // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
   // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
   const origin = $derived(originOf(page.url));
+
+  /**
+   * Finishing a task is leaving it. The card was the place to *do* the work; once it is done
+   * there is nothing on it left to look at, and the reader's next question is "what's next",
+   * which the board answers and a finished card does not. So every way of finishing — the
+   * confirm below, the status select in use mode, an edit-mode save that lands on a finished
+   * status — returns to the detour's origin where there is one (#408), else to the board, on
+   * the slice the reader last had of it (`returnHref`: their filters, their page).
+   */
+  function leaveFinished(): void {
+    void goto(origin ?? returnHref("/tasks"), { invalidateAll: true });
+  }
+  /** Does this posted status finish the task — a move *into* a finished state from an open one? */
+  function finishes(status: FormDataEntryValue | null): boolean {
+    const target = statuses.find((s) => s.key === String(status ?? ""));
+    return Boolean(target?.is_terminal) && !isDone;
+  }
+
   function leaveEdit(): void {
     // …and the marker that opened the form is consumed with it (#402) — but only on the arm that
     // stays on this page. A detour's exit replaces this URL, and its `?edit=1` goes with it.
@@ -1311,7 +1330,19 @@
               {/each}
             </select>
           {:else}
-            <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
+            <form
+              method="POST"
+              action="?/update"
+              use:enhance={busy.wrap("status", ({ formData }) => {
+                // The one-click finish: a terminal status picked with nothing to offer in a
+                // prompt submits straight away, and lands on the board like every other finish.
+                const finishing = finishes(formData.get("status"));
+                return async ({ update, result }) => {
+                  if (finishing && result.type === "success") return leaveFinished();
+                  await update({ reset: false });
+                };
+              })}
+            >
               <select
                 id="status"
                 name="status"
@@ -2998,17 +3029,19 @@
           cancel();
           return;
         }
+        // Read before the request: `isDone` is recomputed off the reloaded task afterwards.
+        const finishing = finishes(formData.get("status"));
         return async ({ update, result }) => {
           applyTo = "";
           // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
           // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
           // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
-          // in service of.
+          // in service of. A save that finished the task leaves the same way (`leaveFinished`).
           const waiting = pendingSave;
           pendingSave = null;
-          if (result.type === "success" && !waiting && origin) {
+          if (result.type === "success" && !waiting && (origin || finishing)) {
             dueReason = "";
-            return void goto(origin, { invalidateAll: true });
+            return leaveFinished();
           }
           if (result.type === "success") {
             editMode = waiting !== null;
@@ -3201,10 +3234,13 @@
     <form
       method="POST"
       action="?/update"
-      use:enhance={busy.wrap("finish", () => ({ update }) => {
+      use:enhance={busy.wrap("finish", () => ({ update, result }) => {
         showFinishPrompt = false;
-        // One-shot: the dialog closes and the page reloads the finished task, so there is
-        // nothing left to keep. Stated rather than inherited (docs/UX.md, forms:check).
+        // Finished: the card's work is over, so the reader goes back to the board (or the
+        // detour's origin). A refusal — the closing-moment gate, a failed hours entry —
+        // reloads this page with the error on it. One-shot either way: nothing left to keep.
+        // Stated rather than inherited (docs/UX.md, forms:check).
+        if (result.type === "success") return leaveFinished();
         return update({ reset: true });
       })}
     >

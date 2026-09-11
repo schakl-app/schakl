@@ -4,12 +4,20 @@
    * is posted through a hidden input under `name`. Hand-rolled (like all UI here) so it can
    * match the app's Tailwind idiom exactly.
    */
+  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+
   import { t } from "$lib/core/i18n";
 
   interface Item {
     value: string;
     label: string;
     hint?: string;
+    /** Stands for several (`$lib/core/picker`): a chevron unfolds the rest under it. */
+    expandable?: boolean;
+  }
+  /** A row as drawn: a child sits one level in and is searched only through its parent. */
+  interface Row extends Item {
+    depth: 0 | 1;
   }
 
   let {
@@ -29,6 +37,7 @@
     searching = false,
     archived = [],
     archivedLabel,
+    onexpand,
   }: {
     items: Item[];
     name: string;
@@ -83,6 +92,18 @@
     archived?: Item[];
     /** Heading above the archived rows, e.g. "Afgerond". Core holds no module vocabulary. */
     archivedLabel?: string;
+    /**
+     * The rest of what an `expandable` option stands for, asked for the first time its chevron
+     * is pressed and kept for the life of the list.
+     *
+     * A repeating task lays a year of occurrences out, and a picker that lists all twelve beside
+     * every other task is a picker in which the *other* tasks cannot be found. So the host offers
+     * the current one as a row and the rest nest under it — still pickable, one chevron away,
+     * each labelled with what tells it apart (its date), and never ranked as a row of their own
+     * among the live options. Children are drawn only while their parent is; the search matches
+     * the parent's words, because the parent is the thing with a name.
+     */
+    onexpand?: (item: Item) => Promise<Item[]> | Item[];
   } = $props();
 
   let query = $state("");
@@ -126,8 +147,40 @@
     const q = query.trim().toLowerCase();
     return q ? rank(archived, q) : [];
   });
+  // Which expandable options are unfolded, and what each one unfolded to (`null` = loading).
+  // Keyed by value, so a re-render of `items` keeps the fold where the user left it.
+  let expanded = $state<string[]>([]);
+  let children = $state<Record<string, Item[] | null>>({});
+
+  async function toggleExpand(item: Item) {
+    if (expanded.includes(item.value)) {
+      expanded = expanded.filter((value) => value !== item.value);
+      return;
+    }
+    expanded = [...expanded, item.value];
+    if (!(item.value in children)) {
+      children = { ...children, [item.value]: null };
+      const rows = await (onexpand?.(item) ?? []);
+      children = { ...children, [item.value]: rows };
+    }
+  }
+
+  /** The live rows as drawn: each unfolded parent followed by its children, one level in. */
+  const liveRows = $derived.by(() => {
+    const out: Row[] = [];
+    for (const item of filtered) {
+      out.push({ ...item, depth: 0 });
+      if (item.expandable && expanded.includes(item.value)) {
+        for (const child of children[item.value] ?? []) out.push({ ...child, depth: 1 });
+      }
+    }
+    return out;
+  });
   /** One flat list, so the keyboard walks live and archived rows as one sequence. */
-  const options = $derived([...filtered, ...filteredArchived]);
+  const options = $derived<Row[]>([
+    ...liveRows,
+    ...filteredArchived.map((item) => ({ ...item, depth: 0 as const })),
+  ]);
   const canCreate = $derived(
     Boolean(oncreate) &&
       query.trim().length > 0 &&
@@ -203,6 +256,14 @@
       if (options[highlighted]) choose(options[highlighted]);
       else if (canCreate) startCreate();
       e.preventDefault();
+    } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      // Unfold / fold the highlighted row, the way a tree does; a row with nothing behind it
+      // keeps the keys for the caret, which is what they mean in a text field.
+      const row = options[highlighted];
+      if (row?.expandable && expanded.includes(row.value) === (e.key === "ArrowLeft")) {
+        void toggleExpand(row);
+        e.preventDefault();
+      }
     } else if (e.key === "Escape") {
       open = false;
       query = selectedLabel;
@@ -328,7 +389,7 @@
         </li>
       {/if}
       {#each options as item, i (item.value)}
-        {#if archivedLabel && i === filtered.length}
+        {#if archivedLabel && i === liveRows.length}
           <!-- The archived rows are a different kind of answer, so they are labelled as one
                rather than blending into the list above them. -->
           <li
@@ -337,16 +398,17 @@
             {archivedLabel}
           </li>
         {/if}
-        <li>
+        <li class="flex items-stretch">
           <button
             type="button"
             role="option"
             aria-selected={item.value === value}
-            class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface
+            class="min-w-0 flex-1 py-1.5 pr-3 text-left text-sm hover:bg-surface
+              {item.depth === 1 ? 'pl-8' : 'pl-3'}
               {i === highlighted ? 'bg-surface' : ''}
               {item.value === value
               ? 'font-medium text-brand'
-              : i >= filtered.length
+              : i >= liveRows.length
                 ? 'text-text-muted'
                 : 'text-text'}"
             onmousedown={(e) => {
@@ -357,7 +419,32 @@
             {item.label}
             {#if item.hint}<span class="ml-1 text-xs text-text-muted">{item.hint}</span>{/if}
           </button>
+          {#if item.expandable && onexpand}
+            <!-- Beside the option, never inside it: a button cannot nest in a button, and the
+                 chevron must be pressable without picking the row it unfolds. -->
+            <button
+              type="button"
+              tabindex="-1"
+              class="flex w-8 shrink-0 items-center justify-center text-text-muted hover:bg-surface hover:text-text"
+              aria-label={expanded.includes(item.value) ? t("common.collapse") : t("common.expand")}
+              aria-expanded={expanded.includes(item.value)}
+              data-testid="combobox-expand"
+              onmousedown={(e) => {
+                e.preventDefault();
+                void toggleExpand(item);
+              }}
+            >
+              {#if expanded.includes(item.value)}
+                <ChevronDown size={14} />
+              {:else}
+                <ChevronRight size={14} />
+              {/if}
+            </button>
+          {/if}
         </li>
+        {#if item.expandable && expanded.includes(item.value) && children[item.value] === null}
+          <li class="py-1 pl-8 text-xs text-text-muted">{t("common.loading")}</li>
+        {/if}
       {:else}
         {#if searching}
           <li class="px-3 py-1.5 text-sm text-text-muted">{t("common.loading")}</li>

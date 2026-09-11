@@ -42,6 +42,11 @@ export const load: PageServerLoad = async (event) => {
     // them. With the ✎ bulk edit beside it, this is how a whole backlog gets dated in one go.
     undated: q.get("undated") === "1" || undefined,
   };
+  // One repeating task's whole series — the root and every occurrence, finished or not — which
+  // is the view a folded row's "hele reeks bekijken" opens. Any member's id names it. Its own
+  // key rather than one of `filters`: the API calls it `series_id`, and it also *switches off*
+  // the fold below, since a series shown as one row of itself is not a view of anything.
+  const series = q.get("series") || undefined;
 
   // Opening /tasks with no assignee filter shows *your* tasks first, not the whole org's — the
   // person switcher defaults to yourself. `filters.assignee_user_id` stays the raw URL value (so
@@ -107,6 +112,12 @@ export const load: PageServerLoad = async (event) => {
         hours,
         ...filters,
         assignee_user_id: assigneeQuery,
+        // The board's own narrowing default (CLAUDE.md §9): a repeating task is one row — its
+        // current occurrence, carrying how many the year laid out behind it — and the row says
+        // so with a chip that unfolds them. The endpoint's default stays the whole list, for
+        // the export, the pickers and the MCP surface; the *screen* asks for the fold.
+        series_id: series,
+        collapse_series: !series,
       },
     },
   });
@@ -115,7 +126,7 @@ export const load: PageServerLoad = async (event) => {
     tasks: tasks?.items ?? [],
     total: tasks?.total ?? 0,
     paging,
-    filters,
+    filters: { ...filters, series },
     grouping,
     // The *explicit* sort only: the grouping's own default is not something the user picked, so
     // the column picker must not draw it as a sort in force and clicking a header must not have

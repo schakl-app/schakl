@@ -116,6 +116,23 @@ async def list_tasks(
             "#392), or only dated ones. Omitted returns both."
         ),
     ),
+    series_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Every task of one schedule-mode series — the root that holds the repeat rule and "
+            "each occurrence laid out from it, finished or not. Any member's id names the "
+            "series; a task that is not in one answers an empty page."
+        ),
+    ),
+    collapse_series: bool = Query(
+        False,
+        description=(
+            "Fold each schedule-mode series onto its current occurrence: an unfinished "
+            "occurrence due after today that is not the series' earliest unfinished one is "
+            "left out, and the row that stands for them carries `series_pending`. Off by "
+            "default — the export and the MCP surface read the whole list."
+        ),
+    ),
     sort: str | None = Query(
         None,
         description=(
@@ -152,6 +169,8 @@ async def list_tasks(
         due_to=due_to,
         q=q,
         undated=undated,
+        series_id=series_id,
+        collapse_series=collapse_series,
         sort=sort,
         with_meta=meta,
         hours=hours,

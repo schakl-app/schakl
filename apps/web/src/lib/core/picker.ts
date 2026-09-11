@@ -25,6 +25,12 @@ export interface PickerOption {
   value: string;
   label: string;
   hint?: string;
+  /**
+   * This option stands for several — the current occurrence of a repeating task, with the rest
+   * of its series behind it. `Combobox` draws a chevron and asks its `onexpand` for the rest;
+   * a picker without one draws the row as any other.
+   */
+  expandable?: boolean;
 }
 
 /** An option that knows its own lifecycle status. */
@@ -93,6 +99,7 @@ export function splitLifecycle(
     // rather than replacing it, and leads, because it is the thing being flagged.
     const hint = [named, option.hint].filter(Boolean).join(" · ") || undefined;
     const entry: PickerOption = { value: option.value, label: option.label, hint };
+    if (option.expandable) entry.expandable = true;
     (retiredSet.has(status) && !kept.has(option.value) ? gone : live).push(entry);
   }
   return { live, retired: gone };

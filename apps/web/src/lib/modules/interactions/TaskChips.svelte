@@ -17,9 +17,12 @@
    */
   import { X } from "@lucide/svelte";
 
+  import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import type { PickerOption } from "$lib/core/picker";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+
+  import { loadSeriesOptions, type TaskOption } from "./lookups";
 
   let {
     picked = $bindable([]),
@@ -33,6 +36,7 @@
     placeholder,
     onpick,
     oncreate,
+    onseries,
   }: {
     /** The picked ids, in chip order; the first is the lead. */
     picked?: string[];
@@ -52,9 +56,41 @@
     onpick?: (leadId: string) => void;
     /** Inline-create (docs/UX.md): the host owns the dialog, so it takes what was typed. */
     oncreate?: (query: string) => void;
+    /**
+     * A series was unfolded (`Combobox.onexpand`): here are its other occurrences, as the
+     * host's own option shape, so its cascade can answer for a nested pick — which project it
+     * belongs to, whose it is — without the host fetching anything of its own. The host keeps
+     * them `nested`, and `lookups.splitLinkOptions` keeps them out of the top-level rows.
+     */
+    onseries?: (rows: TaskOption[]) => void;
   } = $props();
 
   let comboValue = $state("");
+  // What an unfolded occurrence is called once it is a chip: the series' title with its date,
+  // because "21 nov" alone is a chip nobody can read back and the title alone is its parent's.
+  let seriesLabels = $state<Record<string, string>>({});
+
+  /** The rest of a series, for the picker to nest under its current occurrence. */
+  async function expandSeries(item: PickerOption): Promise<PickerOption[]> {
+    const rows = await loadSeriesOptions(item.value);
+    onseries?.(rows);
+    seriesLabels = {
+      ...seriesLabels,
+      ...Object.fromEntries(
+        rows.map((row) => [
+          row.value,
+          t("tasks.picker.series_occurrence", {
+            title: item.label,
+            date: row.due_date ? fmtPeriod(row.due_date) : "",
+          }),
+        ]),
+      ),
+    };
+    return rows.map((row) => ({
+      value: row.value,
+      label: row.due_date ? fmtPeriod(row.due_date) : row.label,
+    }));
+  }
 
   const candidates = $derived(items.filter((option) => !picked.includes(option.value)));
   const retired = $derived(archived.filter((option) => !picked.includes(option.value)));
@@ -63,6 +99,7 @@
     return (
       items.find((option) => option.value === taskId)?.label ??
       archived.find((option) => option.value === taskId)?.label ??
+      seriesLabels[taskId] ??
       labels[taskId] ??
       taskId
     );
@@ -142,5 +179,6 @@
     onselect={pick}
     keepOpenOnSelect
     {oncreate}
+    onexpand={expandSeries}
   />
 </div>

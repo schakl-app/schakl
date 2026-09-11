@@ -303,6 +303,12 @@
     else if (task?.company_id && showCompany) fCompany = task.company_id;
   }
 
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(linkTasks.map((task) => task.value));
+    linkTasks = [...linkTasks, ...rows.filter((row) => !known.has(row.value))];
+  }
+
   // --- close the picked task with this contact moment (#232, the approve dialog's #157
   // affordance on the plain create form) --------------------------------------------------- //
   interface StatusDef {
@@ -711,6 +717,7 @@
             archivedLabel={t("tasks.picker.archived")}
             labels={taskLabels}
             onpick={onTaskPicked}
+            onseries={addSeriesRows}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;

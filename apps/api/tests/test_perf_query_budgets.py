@@ -15,7 +15,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import FAR_FUTURE_DUE, add_membership, auth_cookie, default_company, make_tenant
+from tests.conftest import (
+    FAR_FUTURE_DUE,
+    add_membership,
+    auth_cookie,
+    default_company,
+    make_tenant,
+    org_today,
+)
 from tests.test_invoicing_api import _setup_org as _invoicing_setup_org
 
 
@@ -1473,3 +1480,57 @@ async def test_the_portal_login_register_costs_the_same_however_many_logins(
         assert len(four.matching("FROM contacts")) == 1
         assert len(four.matching("FROM company_contacts")) == 1
         assert len(four.matching("FROM companies")) == 1
+
+
+async def test_folding_a_series_costs_one_statement_whatever_the_page_holds(
+    client_for, count_queries
+) -> None:
+    """``?collapse_series=true`` is one ``NOT IN (…)`` on the page's statement plus one grouped
+    read for the numbers on the current rows — never a read per series, and never one per row.
+
+    The shape that is invisible in the JSON: a fold computed by asking each series for its
+    members would pass every functional test at one series and cost a statement per row at
+    thirty.
+    """
+    t = await make_tenant("perf-series-fold")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Seed the status vocabulary, or the first read below pays for it (see above).
+        assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
+
+        async def series(title: str) -> None:
+            res = await c.post(
+                "/api/v1/tasks",
+                json={
+                    "title": title,
+                    "due_date": (org_today() + timedelta(days=3)).isoformat(),
+                    "company_id": company,
+                    "recurrence": {"freq": "monthly", "interval": 1, "mode": "schedule"},
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        async def statements(query: str) -> int:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            return len(counter)
+
+        await series("S0")
+        await statements("")  # warm whatever a first read of a new row set pays for
+        plain_at_1 = await statements("")
+        folded_at_1 = await statements("collapse_series=true")
+        assert folded_at_1 == plain_at_1 + 1, (plain_at_1, folded_at_1)
+
+        for i in range(1, 6):
+            await series(f"S{i}")
+        # Six series, seventy-odd rows unfolded: the same two statements more than the fold-free
+        # read, and the folded page is six rows.
+        assert await statements("collapse_series=true") == await statements("") + 1
+        folded = (await c.get("/api/v1/tasks?collapse_series=true", headers=headers)).json()
+        assert folded["total"] == 6
+        assert sorted(row["series_pending"] for row in folded["items"]) == [11] * 6 or all(
+            row["series_pending"] in (11, 12) for row in folded["items"]
+        )
