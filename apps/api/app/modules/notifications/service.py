@@ -84,6 +84,8 @@ ENTITY_ID_KEY: dict[str, str] = {
     "task.due_soon": "task_id",
     "task.overdue": "task_id",
     "task.scheduled": "task_id",
+    "task.intake_created": "task_id",
+    "task.intake_parked": "task_intake_id",
     "project.assigned": "project_id",
     "project.status_changed": "project_id",
     "project.budget_threshold": "project_id",

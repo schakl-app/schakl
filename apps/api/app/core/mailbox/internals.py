@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.mailbox.intake import load_intake_addresses
 from app.core.mailbox.matching import ContactMatch
 from app.core.portal import external_user_ids
 
@@ -80,6 +81,10 @@ class Internals:
     #: the agency happens to file on its own company is still a client.
     external_user_ids: frozenset[uuid.UUID] = frozenset()
     external_emails: frozenset[str] = frozenset()
+    #: The addresses the org has designated as intake (``taak@bureau.nl`` → ``"tasks"``),
+    #: composed from every registered intake (:mod:`app.core.mailbox.intake`). Loaded here so
+    #: the feeds ask the question with what they already hold, once per poll.
+    intake_addresses: dict[str, str] = field(default_factory=dict)
 
     @property
     def ours(self) -> frozenset[str]:
@@ -132,6 +137,7 @@ async def load_internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
             if mailbox.syncing:
                 syncing.add(mailbox.user_id)
     syncing_user_ids = frozenset(syncing)
+    intake_addresses = await load_intake_addresses(session, org_id)
     if not member_emails:
         return Internals(
             member_emails=member_emails,
@@ -140,6 +146,7 @@ async def load_internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
             syncing_user_ids=syncing_user_ids,
             external_user_ids=frozenset(external),
             external_emails=external_emails,
+            intake_addresses=intake_addresses,
         )
     company_rows = await session.execute(
         text(
@@ -156,6 +163,7 @@ async def load_internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
         syncing_user_ids=syncing_user_ids,
         external_user_ids=frozenset(external),
         external_emails=external_emails,
+        intake_addresses=intake_addresses,
     )
 
 

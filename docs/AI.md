@@ -109,6 +109,24 @@ The pipeline is three steps:
    the model to issue any lookups in the same turn. `_PARSE_MAX_ROUNDS = 2`: one free round,
    then a forced `submit_time_entry`.
 3. **Ground the answer.** An id the model was never shown is dropped, never guessed.
+4. **Fill the blanks from the line itself** (`timehints.py`). "gisteren", "afgelopen vrijdag",
+   `14:00-16:30`, "2 uur", "90 min" have exactly one meaning in a time line and need no model,
+   so they are read locally and used wherever the model left a field null. The model's own
+   answer wins wherever it gave one — a hint fills a gap, it never overrules — and a shape with
+   two readings (`03-06`) is left alone rather than guessed, because a wrong span prefilled into
+   the form looks like an answer.
+
+> **Why the form used to come back empty.** Three faults, each of which turned a perfectly
+> readable line into *"Kon hier geen registratie uit afleiden"*, and none of them was the
+> model misunderstanding the words. The free round could answer in **prose** ("Ik heb de
+> registratie voor je ingevuld.") and the loop read "no tool call" as "done" — the forced round
+> never ran and the draft was all null; it now runs regardless. `max_tokens=1024` was sized for
+> a dozen short fields and did not count the **thinking**: on a reasoning model the ceiling is
+> `max_completion_tokens`, which the reasoning spends first, so the tool call was cut off
+> before it began (`_PARSE_MAX_TOKENS` is 4096, and a cut-off answer reports `truncated` so the
+> screen can say *that* rather than "nothing could be read"). And the prompt let a name that
+> matched nothing take the whole draft with it, so the description is now always filled when
+> the line describes any work — a name that did not match leaves its id null and nothing else.
 
 > **The one change that would silently sink this**: `_checked_uuid` validates against
 > `_seen_ids(tool_texts) | candidates.ids()`. Drop that union and *every* correctly chosen id
@@ -413,23 +431,79 @@ from that:
 * **Nothing is created when nothing was found.** A checklist answer with no items is a 422
   with its own key (`errors.ai_empty_answer`) rather than an empty list on the card.
 
+* **The model reads the whole card, and may change what a colleague could change by hand.**
+  `task_document` carries everything the detail page draws: the definition fields, the client
+  and the project *by name* (through the directory seam, `labels_for`, so only a visible row
+  answers), who is on it, its labels, the budget and its burn, the plan, the links and the
+  conversation (the last thirty comments, and a count of what was left out). Beside it rides a
+  `vocabulary` — the org's status keys, its labels and its active staff, from the dictation's
+  own shortlist (`candidates.gather`, the members/labels/statuses blocks only) — so "zet Femke
+  erbij", "label spoed", "start ermee" and "budget 2 uur" land as a roster change, a label set,
+  a status move and `allocated_minutes`, each grounded **per type** (#382's rule: a label id in
+  the colleagues list is dropped, not a colleague) and each applied through the service so the
+  roster can never be emptied and a status move meets its closing rules. The client and the
+  project are shown and deliberately *not* changeable here — a misheard name moving a task to
+  another client is the one mistake nobody would notice. The prompt names the description
+  explicitly ("omschrijving", "toelichting", "zet erbij dat…") and says what to write it from
+  when the task has none, because a prompt that only spoke of *keeping* notes answered
+  "schrijf een omschrijving" with nothing.
+* **The instruction may be spoken.** `POST /tasks/{id}/ai/transcribe` is the dictated task's
+  transcribe one record over, behind the task write this box already needs rather than the
+  create a new task needs, and the words land in the field for the reader to correct before
+  they are applied (#246's rule). It loads the task before a second of audio is billed —
+  `caller_may_write_task` answers "may this caller edit that id" without loading the row for
+  an `:any` holder, and nothing else here would.
+
 On the web the box is `TaskAIRevise` and the checklist button sits in the checklist section's
 header (or beside the box, when the task has no list yet). Both are drawn only for
 `aiEnabled(user, "task_assist") && canWriteTask(...)` — off means invisible, and a box that would
-answer 409 or 403 is never drawn. In the review slide-over the typed fields are saved *before*
-the instruction is sent, so the model reads what the reviewer sees, and the row that comes back
-is adopted whole.
+answer 409 or 403 is never drawn. The box is drawn in **both** of the card's modes: a fresh
+create lands in edit mode (#230), which is exactly when "beschrijf deze taak" is wanted, and
+the pencil used to be the one thing that hid it. While editing, the typed fields are saved
+first (`saveIfEditing`, the same save-then-act #335 gave Inplannen) so the model reads what the
+reader sees, and the description editor is remounted onto the reloaded row (`reviseKey`),
+because an editor holds its own text. In the review slide-over the typed fields are saved
+*before* the instruction is sent, and the row that comes back is adopted whole.
 
 ## Model choice
 
 `DEFAULT_MODELS` seeds the settings form; a per-feature override lives in the `features` JSONB.
-The parse asks for `max_tokens=1024` — a draft entry is a dozen short fields, and the 8192
-default is sized for a written report.
+The parse asks for `max_tokens=4096` — a draft entry is a dozen short fields, and the 8192
+default is sized for a written report; it was 1024 until a reasoning model's thinking, which the
+same ceiling counts, cut the tool call off before it began (see the quick-add section).
 
 A tenant who cares about quick-add latency should set a fast model for `time_assist`
 specifically and leave the org default alone. There is no reasoning-effort knob yet: `effort`
 400s on some models and the model field is free text, so it needs a retry-without-it fallback
 first.
+
+## A mail to the task address (`tasks/intake_ai.py`)
+
+The third posture, and the one that makes the other two legible. `email_assist` (#327) writes six
+fields because the words are an outsider's and a worker applies them unwatched; `task_assist`
+(#382) writes the whole form because the words are a colleague's and a person confirms. A mail to
+`taak@` is a colleague's words **and** nobody confirms — and half of it is usually somebody else's,
+forwarded underneath. So the vocabulary is the dictation's, with three bounds that make it safe to
+apply from a worker:
+
+1. **The sender's own words outrank the model, which outranks nothing.** Directives, the subject
+   and the forwarded block's addresses are decided first (`tasks/intake.py`); the model is asked
+   only for what is still blank (`already_decided` in the document) and `_fill_blanks` refuses a
+   value for a field that has one.
+2. **Every id is grounded per type**, in the shortlist `candidates.gather` built under the
+   *sender's* horizon: a misheard client comes back as *no client*, which parks the mail for the
+   sender, never as somebody else's client.
+3. **The forwarded half is data.** It travels under its own key, marked as written by an outsider,
+   with #327's stance; what the model may set from it is what a reader would (notes, steps, a
+   deadline the client named). Status and `visible_to_client` are not on the schema.
+
+Its own `AI_FEATURES` key (`task_intake`): an agency happy to have a dictated task drafted has not
+thereby agreed to a model reading everything forwarded to the task address. The model call holds
+the worker's connection (`_HeldContext` makes `release_db` a no-op — it commits, and the poll is
+inside a per-message savepoint), and a provider failure creates the task without the model rather
+than parking it behind an outage. The confirmation is the sender's own notification, naming the
+client, the assignee and the deadline and which of them the model chose — a wrong pick is visible
+within the minute, on the phone the mail was sent from.
 
 ## Adding a feature
 

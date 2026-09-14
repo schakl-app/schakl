@@ -264,7 +264,14 @@ table.data td.mark .dot {
 table.data tbody tr:last-child td { border-bottom: none; }
 table.data tr { break-inside: avoid; }
 table.data thead { display: table-header-group; }
-.url { color: var(--muted); font-size: 7pt; word-break: break-all; }
+/* A landing page breaks at a slash first (`context.fmt_url` puts a `<wbr>` after each one) and
+ * mid-token only where a single segment is wider than the column — `break-all` broke every
+ * path in the middle of a word whether it needed to or not. */
+.url { color: var(--muted); font-size: 7pt; word-break: normal; overflow-wrap: anywhere; }
+/* The span a section's own tiles are measured against, where it is not the document's — the
+ * rankings compare with last month while the cover says last year. Quiet, under the tiles,
+ * above the table: a percentage is a claim about two spans and both must be on the page. */
+.compared { color: var(--muted); font-size: 8pt; margin: -4px 0 8px; }
 
 /* A keyword group's own name, carried inside the table head so a group that runs over a page
  * break takes its theme with it (see the template). It used to be a `div` above the table,

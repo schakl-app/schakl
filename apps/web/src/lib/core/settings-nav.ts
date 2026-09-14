@@ -345,6 +345,17 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["settings.branding.write"],
   },
   {
+    // Instellingen → Taken: the e-mail intake address (taak@bureau.nl) and its defaults.
+    key: "tasks",
+    href: "/settings/tasks",
+    titleKey: "settings.tasks.title",
+    subtitleKey: "settings.tasks.subtitle",
+    keywordsKey: "settings.search.tasks",
+    group: "modules",
+    permissions: ["tasks.settings.manage"],
+    module: "tasks",
+  },
+  {
     // A catalog staff touch day-to-day lives on the working page (#229); this is the deep link.
     key: "task-templates",
     href: "/tasks/templates",

@@ -36,7 +36,7 @@
 
   import ContactChips from "./ContactChips.svelte";
   import TaskChips from "./TaskChips.svelte";
-  import { splitLinkOptions } from "./lookups";
+  import { splitLinkOptions, TASK_LOOKUP_QUERY, toTaskOption, type TaskOption } from "./lookups";
   import { isMailboxRow, type InteractionItem } from "./format";
   import { ContactRoster, initialContacts } from "./roster.svelte";
   import { initialTasks, missingTaskOptions } from "./taskroster";
@@ -70,17 +70,6 @@
     value: string;
     label: string;
   }
-  interface TaskOption extends Option {
-    project_id: string | null;
-    company_id: string | null;
-    /**
-     * Whose task it is — "sluit deze taak" is a task write, and `:own` means assignee. The
-     * whole roster, because `:own` is satisfied by *any* of them (`caller_may_write_task`),
-     * so a task shared by two people offers the close to both.
-     */
-    assignees: { user_id: string }[];
-    assignee_user_id: string | null;
-  }
   interface ProjectOption extends Option {
     company_id: string | null;
   }
@@ -99,8 +88,14 @@
   const storedTasks = initialTasks(interaction);
   let taskIds = $state<string[]>(storedTasks.map((task) => task.id));
   const taskId = $derived(taskIds[0] ?? "");
-  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
-    storedTasks.map((task) => [task.id, task.title]),
+  // Every title the dialog knows, not only the options the cascade currently offers: a chip
+  // picked before the client was, and then a client picked over it, must keep saying what it
+  // is rather than printing its id.
+  const taskLabels = $derived<Record<string, string | null | undefined>>(
+    Object.fromEntries([
+      ...storedTasks.map((task) => [task.id, task.title]),
+      ...tasks.map((task) => [task.value, task.label]),
+    ]),
   );
   // svelte-ignore state_referenced_locally — the dialog is keyed per row; props never swap here.
   const roster = new ContactRoster(initialContacts(interaction));
@@ -143,6 +138,16 @@
   function onTaskPicked(id: string) {
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
+    // A task filed straight under a client, with no project of its own, still fixes the client
+    // (`InteractionForm`'s rule) — and once it does, the client each option was naming is the
+    // one on the picker above it, so the names stop being drawn.
+    else if (task?.company_id) companyId = task.company_id;
+  }
+
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(tasks.map((task) => task.value));
+    tasks = [...tasks, ...rows.filter((row) => !known.has(row.value))];
   }
 
   /**
@@ -407,7 +412,7 @@
       const [companiesPage, projectsPage, tasksPage] = await Promise.all([
         get("/api/v1/companies?limit=200&count=false&sort=name"),
         get("/api/v1/projects?limit=200&count=false"),
-        get("/api/v1/tasks?limit=200&count=false&meta=false&sort=title"),
+        get(`/api/v1/tasks?${TASK_LOOKUP_QUERY}`),
       ]);
       companies = (companiesPage.items ?? []).map(
         (c: { id: string; name: string; status?: string | null }) => ({
@@ -424,25 +429,7 @@
           status: p.status ?? null,
         }),
       );
-      const fetched: TaskOption[] = (tasksPage.items ?? []).map(
-        (task: {
-          id: string;
-          title: string;
-          project_id?: string | null;
-          company_id?: string | null;
-          assignees?: { user_id: string }[] | null;
-          assignee_user_id?: string | null;
-          completed_at?: string | null;
-        }) => ({
-          value: task.id,
-          label: task.title,
-          project_id: task.project_id ?? null,
-          company_id: task.company_id ?? null,
-          assignees: (task.assignees ?? []).map((entry) => ({ user_id: entry.user_id })),
-          assignee_user_id: task.assignee_user_id ?? null,
-          completed_at: task.completed_at ?? null,
-        }),
-      );
+      const fetched: TaskOption[] = (tasksPage.items ?? []).map(toTaskOption);
       // The row's own chips stay labelled even outside the fetched 200 — the contact rule.
       tasks = [
         ...missingTaskOptions(storedTasks, fetched, (ref) => ({
@@ -523,6 +510,7 @@
             archivedLabel={t("tasks.picker.archived")}
             labels={taskLabels}
             onpick={onTaskPicked}
+            onseries={addSeriesRows}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;

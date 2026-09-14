@@ -516,6 +516,45 @@ the same `shape_section`, so the paragraph cannot describe a column the table dr
   washed the same colour is a badge nobody can see. Applied at the renderer, so every report
   already stored prints this way too.
 
+### A rank is compared with last month, and a column says when it was read
+
+Found on the first August report: the rankings tiles read *Gem. positie 7,0 ▼ −32,6%* and the
+model wrote "augustus 2025: 10,4" under them, because the section's `compare` was the SE Ranking
+totals over the report's own comparison window — a year back, which is the right default for
+traffic (#312: seasonality is an argument about *volume*) and the wrong one for a level. A term at
+3 that stood at 7 in July moved this month; where it stood a year ago says nothing about whether
+this month's work moved it. Three things changed, and each generalises.
+
+- **The rankings section compares with the month before, whatever the report compares with.**
+  `_gather` reads the SE Ranking totals a second time against `compare_window(…, PREVIOUS)` (one
+  more indexed read) and the section carries `compare_period`; a Search Console table's `begin`
+  is now the previous month's average rather than last year's. Because the cover's *vergeleken
+  met augustus 2025* no longer describes these tiles, the section **says so itself** — a
+  `compared` line under the strip, and `compared_with` on the model's copy, with the prompt told
+  that a section's own span outranks the report's. A percentage is a claim about two spans and
+  both must be on the page; a section that borrows the cover's sentence for a different
+  denominator is #312's fault one level down.
+- **A position column is headed with the day it was read on.** `Begin` / `Einde` said nothing
+  about *when*, and "1 aug" against "31 aug" is what a rank tracker actually measured. The section
+  carries `begin_span` / `end_span` and the renderer heads the column with `span_label`: a single
+  day prints as a day, a month (Search Console's average) as *juli 2026*, and a snapshot stored
+  before the spans existed keeps the words. The model's copy is labelled the same way
+  (*Begin periode (1 aug)*), so a sentence can say when and not merely that.
+- **A URL column breaks at a slash, not in the middle of a word.** `word-break: break-all` printed
+  `archery-​tag-in-zeeland` split wherever the column ran out; `fmt_url` drops the scheme and puts
+  a `<wbr>` after each `/`, the landing page gets as much width as the keyword, and the mid-word
+  break stays only as the fallback for a segment wider than the column.
+
+Its sibling on the channel table: **the goals a channel produced are a column now.** "Which
+channel brings the enquiries" is the question a client asks of that table, and the stored daily
+rows only ever carried sessions per channel. `_GA4_LIVE_KINDS` gained `channels`
+(`sessionDefaultChannelGroup` × `keyEvents`, both periods, gated on the client's key-events
+setting like the conversions section), folded onto the stored rows **by label** so the sessions
+the tiles and the chart are built from stay the warehoused figure; a live read that failed costs
+the column and never the table. It rides its own change key (`keyEvents_delta`, folded beside
+the number by `attach_changes` like `delta` is) because a second percentage on a row that already
+carries one cannot share the first's name.
+
 And two about what the numbers *said*:
 
 - **A total labelled as an average.** GA4 answers `userEngagementDuration` per row as a total,

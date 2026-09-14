@@ -55,6 +55,8 @@
     oncollapse,
     onsort,
     onresize,
+    expanded,
+    expansion,
   }: {
     rows: T[];
     /** The resolved, visible columns in display order. */
@@ -130,6 +132,17 @@
     oncollapse?: (keys: string[]) => void;
     onsort?: (sort: string | null) => void;
     onresize?: (widths: Record<string, number>) => void;
+    /**
+     * A row that stands for several — the current occurrence of a repeating task, with the rest
+     * of its series folded behind it — may unfold **under itself**: one full-width row, the
+     * page's own content, drawn right after it while `expanded(row)` says so. The grid only;
+     * the phone row is the page's snippet and draws its own unfolding inside it.
+     *
+     * A snippet rather than nested rows, because what is behind the row is not more rows of
+     * this table (it is not sorted, paged or selectable with them) — it is a note about one.
+     */
+    expanded?: (row: T) => boolean;
+    expansion?: Snippet<[T]>;
   } = $props();
 
   // --- selection -------------------------------------------------------------
@@ -663,6 +676,11 @@
       >
     {/if}
   </tr>
+  {#if expansion && expanded?.(row)}
+    <tr class="bg-surface/60">
+      <td colspan={columnCount} class="px-4 py-2">{@render expansion(row)}</td>
+    </tr>
+  {/if}
 {/snippet}
 
 {#snippet mobileItem(row: T)}

@@ -282,6 +282,10 @@ class TimeParseResult(BaseModel):
     entry_type_key: str | None = None
     billable: bool | None = None
     break_minutes: int | None = None
+    #: The model's answer hit its token ceiling before (or while) it submitted the draft. The
+    #: fields above still carry what the line itself states (``timehints``); the screen says
+    #: the rest may be missing rather than "nothing could be read".
+    truncated: bool = False
 
 
 class TimeReconstructRequest(BaseModel):

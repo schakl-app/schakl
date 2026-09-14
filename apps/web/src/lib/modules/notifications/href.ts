@@ -48,6 +48,9 @@ const HREF_FOR_ENTITY = {
       ? `/tasks/${item.entity_id}?comment=${comment}`
       : `/tasks/${item.entity_id}`;
   },
+  // A mail to the task address that could not become a task: its own row on the sender's
+  // inbox page, which unfolds and highlights it (`?open=`) — the render.py twin.
+  task_intake: (item) => `/tasks/inbox?open=${item.entity_id}`,
   project: (item) => `/projects/${item.entity_id}`,
   company: (item) => `/companies/${item.entity_id}`,
   // The event decides whose surface answers it: a request waiting on *you* opens the team

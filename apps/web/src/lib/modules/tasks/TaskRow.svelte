@@ -21,6 +21,7 @@
   import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import DueDate from "$lib/modules/tasks/DueDate.svelte";
+  import SeriesMark from "$lib/modules/tasks/SeriesMark.svelte";
   import { priorityRailClass } from "$lib/modules/tasks/priority";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
@@ -64,6 +65,9 @@
     // *project's* client, which is what decides whether the visibility marker warns.
     project_id?: string | null;
     visible_to_client?: boolean;
+    /** The series this row is the current occurrence of, with how many it folds (`SeriesMark`). */
+    series_root_id?: string | null;
+    series_pending?: number | null;
   }
 
   interface Member {
@@ -79,6 +83,8 @@
     members = [],
     statuses = [],
     today = orgToday(),
+    seriesOpen = false,
+    onseries,
   }: {
     task: TaskLike;
     toggleAction?: string;
@@ -86,6 +92,10 @@
     /** The org's configured statuses (issue #62). Empty falls back to open/done behaviour. */
     statuses?: TaskStatusDef[];
     today?: string;
+    /** The host is drawing this row's series unfolded beneath it (the board's phone row). */
+    seriesOpen?: boolean;
+    /** The ↻ chip was pressed: the host unfolds the series. Without it the chip only informs. */
+    onseries?: (task: TaskLike) => void;
   } = $props();
 
   // The current status's definition, when the caller supplied the vocabulary. "Finished" is its
@@ -182,6 +192,7 @@
         projectId={task.project_id}
         size={13}
       />
+      <SeriesMark {task} open={seriesOpen} onpress={onseries ? () => onseries(task) : undefined} />
       {#each task.labels ?? [] as label (label.id)}
         <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
           >{label.name}</span

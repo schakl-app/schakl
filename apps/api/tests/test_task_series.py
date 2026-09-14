@@ -259,3 +259,178 @@ async def test_preview_counts_the_year_for_a_schedule_rule(client_for) -> None:
             headers=headers,
         )
         assert on_completion.json()["year_count"] is None
+
+
+# --------------------------------------------------------------------------------------- #
+# Folding a series onto its current occurrence (the board, the pickers)
+# --------------------------------------------------------------------------------------- #
+async def _folded(c, headers, **params) -> list[dict]:
+    query = "&".join(
+        f"{k}={v}" for k, v in {"limit": 200, "collapse_series": "true", **params}.items()
+    )
+    res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+    assert res.status_code == 200, res.text
+    return res.json()["items"]
+
+
+async def test_a_folded_list_shows_a_series_once_and_says_how_many_it_hides(client_for) -> None:
+    """``?collapse_series=true`` draws one row per series — its earliest unfinished occurrence —
+    and stamps that row with the number of future occurrences it stands for. Unfolded stays the
+    endpoint's default, because the export and the MCP surface read the same list."""
+    t = await make_tenant("series-fold")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        root = await _make_root(c, headers)
+        ahead = await _occurrences(c, headers, root["id"])
+        loose = (
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "title": "Losse taak",
+                    "due_date": (org_today() + timedelta(days=400)).isoformat(),
+                    "company_id": root["company_id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Unfolded: every occurrence is a row, and each one names its series.
+        every = await _tasks(c, headers)
+        assert len(every) == 1 + len(ahead) + 1
+        by_id = {row["id"]: row for row in every}
+        assert {row["series_root_id"] for row in every if row["id"] != loose["id"]} == {root["id"]}
+        assert by_id[loose["id"]]["series_root_id"] is None
+        assert all(row["series_pending"] is None for row in every)  # nothing folded, no count
+
+        # Folded: the root is the current occurrence (the earliest unfinished), the year behind
+        # it is one number on that row, and the loose task is untouched.
+        rows = await _folded(c, headers)
+        assert {row["id"] for row in rows} == {root["id"], loose["id"]}
+        current = next(row for row in rows if row["id"] == root["id"])
+        assert current["series_pending"] == len(ahead)
+        assert current["series_root_id"] == root["id"]
+        assert next(row for row in rows if row["id"] == loose["id"])["series_pending"] is None
+
+        # Finishing the current one hands the fold to the next: it is drawn, and it counts one
+        # fewer. The finished root stays a row — a record of work done is never folded away.
+        done = await c.patch(
+            f"/api/v1/tasks/{root['id']}", json={"status": "done"}, headers=headers
+        )
+        assert done.status_code == 200, done.text
+        rows = await _folded(c, headers)
+        assert {row["id"] for row in rows} == {root["id"], ahead[0]["id"], loose["id"]}
+        current = next(row for row in rows if row["id"] == ahead[0]["id"])
+        assert current["series_pending"] == len(ahead) - 1
+        assert next(row for row in rows if row["id"] == root["id"])["series_pending"] is None
+
+        # The fold narrows the page, so the total follows it.
+        res = await c.get("/api/v1/tasks?collapse_series=true&limit=1", headers=headers)
+        assert res.json()["total"] == 3
+
+
+async def test_an_overdue_occurrence_is_never_folded(client_for) -> None:
+    """Only the *future* folds: an occurrence due today or already late is work to act on, so
+    every one of them stays a row and the dashboard's overdue count and the board agree."""
+    t = await make_tenant("series-fold-overdue")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # A series nobody kept up with: the root is forty days late, and one laid-out occurrence
+        # was pulled forward into last week (the layout itself never writes into the past).
+        root = await _make_root(c, headers, due_date=(org_today() - timedelta(days=40)).isoformat())
+        ahead = await _occurrences(c, headers, root["id"])
+        late = ahead[0]
+        moved = await c.patch(
+            f"/api/v1/tasks/{late['id']}",
+            json={"due_date": (org_today() - timedelta(days=5)).isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        future = ahead[1:]
+        assert future, "the fixture should straddle today"
+
+        rows = await _folded(c, headers)
+        assert {row["id"] for row in rows} == {root["id"], late["id"]}
+        # The number rides the current occurrence — the oldest open one — and nothing else.
+        assert next(row for row in rows if row["id"] == root["id"])["series_pending"] == len(future)
+        shown_late = next(row for row in rows if row["id"] == late["id"])
+        assert shown_late["series_pending"] is None
+        assert shown_late["series_root_id"] == root["id"]
+
+        # Filters compose with the fold: the overdue chip still lists both late rows…
+        overdue = await _folded(c, headers, due="overdue")
+        assert {row["id"] for row in overdue} == {root["id"], late["id"]}
+        # …and "later" is the fold's whole point: nothing where there used to be eleven rows.
+        assert await _folded(c, headers, due="later") == []
+
+
+async def test_series_id_answers_the_whole_series_from_any_member(client_for) -> None:
+    t = await make_tenant("series-by-id")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        root = await _make_root(c, headers)
+        ahead = await _occurrences(c, headers, root["id"])
+        other = await _make_root(c, headers, title="Andere reeks")
+        whole = {root["id"], *(row["id"] for row in ahead)}
+
+        async def series(task_id: str) -> list[dict]:
+            res = await c.get(
+                f"/api/v1/tasks?series_id={task_id}&limit=200&sort=due_date", headers=headers
+            )
+            assert res.status_code == 200, res.text
+            return res.json()["items"]
+
+        by_root = await series(root["id"])
+        assert {row["id"] for row in by_root} == whole
+        assert by_root[0]["id"] == root["id"]  # due order: the root is the first occurrence
+        # An occurrence's id names the same series — a caller holding one row need not know
+        # whether it is the root.
+        assert {row["id"] for row in await series(ahead[4]["id"])} == whole
+        # A finished occurrence is still in its series.
+        await c.patch(f"/api/v1/tasks/{ahead[0]['id']}", json={"status": "done"}, headers=headers)
+        assert {row["id"] for row in await series(root["id"])} == whole
+        # Another series is another answer, and an id that is nothing is an empty page.
+        assert other["id"] in {row["id"] for row in await series(other["id"])}
+        assert not whole & {row["id"] for row in await series(other["id"])}
+        assert await series(str(uuid.uuid4())) == []
+
+
+async def test_a_portal_login_reads_folded_rows_without_the_series(client_for) -> None:
+    """A client's list folds too — twelve "Nieuwsbrief" rows are noise on any screen — but the
+    series fields stay off their rows with the rest of the repeat machinery (#449)."""
+    from sqlalchemy import select as sa_select
+
+    from app.core.auth.models import User
+
+    t = await make_tenant("series-portal")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Piet",
+                    "last_name": "Klant",
+                    "email": "piet-series@example.com",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        root = await _make_root(c, headers, company_id=company["id"], visible_to_client=True)
+        ahead = await _occurrences(c, headers, root["id"])
+        assert ahead and all(row["visible_to_client"] for row in ahead)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                sa_select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        rows = await _folded(c, portal_headers)
+        assert [row["id"] for row in rows] == [root["id"]]
+        assert rows[0]["series_root_id"] is None
+        assert rows[0]["series_pending"] is None
+        assert rows[0]["recurrence"] is None

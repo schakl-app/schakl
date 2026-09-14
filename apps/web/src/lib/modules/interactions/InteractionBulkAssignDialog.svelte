@@ -114,6 +114,12 @@
     if (task?.project_id) onProjectPicked(task.project_id);
   }
 
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(tasks.map((task) => task.value));
+    tasks = [...tasks, ...rows.filter((row) => !known.has(row.value))];
+  }
+
   // The contact roster follows the picked client, like the move dialog's. There is no prefilled
   // contact to preserve here — the dialog starts blank — so a client change simply drops a pick
   // the new client does not know.
@@ -341,6 +347,7 @@
           labels={taskLabels}
           placeholder={t("interactions.bulk.unchanged")}
           onpick={onTaskPicked}
+          onseries={addSeriesRows}
           oncreate={canCreateTask
             ? (query) => {
                 taskDraft = query;

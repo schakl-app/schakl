@@ -12,8 +12,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.ai.schemas import TaskTranscribeRequest, TimeTranscribeResult
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.tasks.intake import TaskIntakeService
 from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
@@ -48,11 +50,16 @@ from app.modules.tasks.schemas import (
     TaskChecklistGenerateRequest,
     TaskCreate,
     TaskDetail,
+    TaskIntakeComplete,
+    TaskIntakeRead,
+    TaskIntakeSummary,
     TaskLabelsSet,
     TaskListItem,
     TaskRead,
     TaskReviseRequest,
     TaskReviseResult,
+    TaskSettingsRead,
+    TaskSettingsUpdate,
     TaskUpdate,
     TemplateApply,
     TemplateCreate,
@@ -110,6 +117,23 @@ async def list_tasks(
             "#392), or only dated ones. Omitted returns both."
         ),
     ),
+    series_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Every task of one schedule-mode series — the root that holds the repeat rule and "
+            "each occurrence laid out from it, finished or not. Any member's id names the "
+            "series; a task that is not in one answers an empty page."
+        ),
+    ),
+    collapse_series: bool = Query(
+        False,
+        description=(
+            "Fold each schedule-mode series onto its current occurrence: an unfinished "
+            "occurrence due after today that is not the series' earliest unfinished one is "
+            "left out, and the row that stands for them carries `series_pending`. Off by "
+            "default — the export and the MCP surface read the whole list."
+        ),
+    ),
     sort: str | None = Query(
         None,
         description=(
@@ -146,6 +170,8 @@ async def list_tasks(
         due_to=due_to,
         q=q,
         undated=undated,
+        series_id=series_id,
+        collapse_series=collapse_series,
         sort=sort,
         with_meta=meta,
         hours=hours,
@@ -195,6 +221,82 @@ async def my_open_tasks(
 ) -> list[TaskListItem]:
     """Open/in-progress tasks assigned to the current user (My Day)."""
     return await TaskService(ctx).my_open(limit=limit)
+
+
+# --------------------------------------------------------------------------- #
+# Org settings + the e-mail intake (literal paths, before ``/{task_id}``)
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/settings",
+    response_model=TaskSettingsRead,
+    dependencies=[require_permission("tasks.settings.manage")],
+)
+async def get_settings(ctx: RequestContext = Depends(require_context)) -> TaskSettingsRead:
+    """The org's tasks settings: the e-mail intake address. No saved row means the defaults."""
+    return await TaskIntakeService(ctx).settings()
+
+
+@router.put(
+    "/settings",
+    response_model=TaskSettingsRead,
+    dependencies=[require_permission("tasks.settings.manage")],
+)
+async def update_settings(
+    payload: TaskSettingsUpdate, ctx: RequestContext = Depends(require_context)
+) -> TaskSettingsRead:
+    return await TaskIntakeService(ctx).update_settings(payload)
+
+
+@router.get(
+    "/intake",
+    response_model=list[TaskIntakeRead],
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def list_intake(
+    status: str | None = Query(None, max_length=20),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: RequestContext = Depends(require_context),
+) -> list[TaskIntakeRead]:
+    """The caller's own mails to the task address — parked ones first in the UI, recent ones
+    for the record. Never another sender's: a mail is its sender's until it is a task."""
+    return await TaskIntakeService(ctx).list_mine(status=status, limit=limit)
+
+
+@router.get(
+    "/intake/summary",
+    response_model=TaskIntakeSummary,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def intake_summary(ctx: RequestContext = Depends(require_context)) -> TaskIntakeSummary:
+    """How many of the caller's mails wait for a client — the strip on the board."""
+    return await TaskIntakeService(ctx).summary()
+
+
+@router.post(
+    "/intake/{intake_id}/create",
+    response_model=TaskRead,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def complete_intake(
+    intake_id: uuid.UUID,
+    payload: TaskIntakeComplete,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskRead:
+    """Finish a parked mail by hand: name the client, and the task is created as the caller."""
+    task = await TaskIntakeService(ctx).complete(intake_id, payload)
+    return TaskRead.model_validate(task)
+
+
+@router.delete(
+    "/intake/{intake_id}",
+    status_code=204,
+    dependencies=[require_permission("tasks.task.create")],
+)
+async def discard_intake(
+    intake_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> None:
+    """Throw a parked mail away. The receipt stays, so the same mail cannot come back."""
+    await TaskIntakeService(ctx).discard(intake_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -545,6 +647,27 @@ async def generate_checklist_with_ai(
     from app.modules.tasks.assist import generate_checklist
 
     return await generate_checklist(ctx, task_id, payload)
+
+
+@router.post(
+    "/{task_id}/ai/transcribe",
+    response_model=TimeTranscribeResult,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def transcribe_revise_instruction(
+    task_id: uuid.UUID,
+    payload: TaskTranscribeRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TimeTranscribeResult:
+    """Speech to text for the revise box: an instruction spoken instead of typed.
+
+    The words come back to be read and corrected before they are applied — nothing is written
+    here. The route is the task write it serves (§15); the service asks ``ai.use`` and the
+    ``:own`` rule, exactly as the revise does.
+    """
+    from app.modules.tasks.assist import transcribe_instruction
+
+    return await transcribe_instruction(ctx, task_id, payload)
 
 
 @router.patch(

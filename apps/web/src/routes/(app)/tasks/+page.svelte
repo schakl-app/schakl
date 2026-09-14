@@ -45,6 +45,8 @@
   import { TASK_GROUPINGS } from "$lib/modules/tasks/grouping";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import { priorityRailClass } from "$lib/modules/tasks/priority";
+  import SeriesMark from "$lib/modules/tasks/SeriesMark.svelte";
+  import SeriesStrip from "$lib/modules/tasks/SeriesStrip.svelte";
   import {
     defaultStatusKey,
     statusGroups,
@@ -89,6 +91,26 @@
     canCreate && aiEnabled(page.data.user, "task_assist") && aiEnabled(page.data.user, "speech"),
   );
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
+
+  // --- repeating tasks, folded (the series audit) ---------------------------------------- #
+  // The load asks the API to fold each series onto its current occurrence, so a monthly job is
+  // one row and not twelve. The row says so (`SeriesMark`, "↻ +11") and pressing it unfolds the
+  // rest right under the row (`SeriesStrip`) — dated links, capped, and a way to the whole
+  // series as its own view (`?series=`). Which rows are unfolded is this visit's, never saved:
+  // it is a glance, not a layout.
+  // A row is open only while it has something folded behind it: the same row drawn on the
+  // whole-series view (`?series=`) carries no count, so a fold left open on the board does
+  // not follow it there as an empty strip.
+  let openSeries = $state<string[]>([]);
+  const isSeriesOpen = (task: Task) => Boolean(task.series_pending) && openSeries.includes(task.id);
+  function toggleSeries(task: Task) {
+    openSeries = openSeries.includes(task.id)
+      ? openSeries.filter((id) => id !== task.id)
+      : [...openSeries, task.id];
+  }
+  // `?series=` shows one series whole, and the chip that says so is labelled with its title —
+  // every row of a series carries the same one, so the first row on the page names it.
+  const seriesTitle = $derived(data.filters.series ? (data.tasks[0]?.title ?? "") : "");
 
   // The four urgency buckets the dashboard tile and the board draw their sections from
   // (`$lib/modules/tasks/due`) — a partition, so picking one narrows to exactly the rows that
@@ -361,6 +383,20 @@
       hidden: isPortal,
       options: [{ value: "1", label: t("tasks.filter.undated") }],
     },
+    // One repeating task's whole series (`?series=<root>`), reached from a folded row's strip.
+    // Only drawn while it narrows the list: it is a view somebody arrived at, not a choice
+    // offered on the bar, and the "wissen" it joins is what takes the reader back.
+    {
+      kind: "pills",
+      key: "series",
+      hidden: !data.filters.series,
+      options: [
+        {
+          value: data.filters.series ?? "",
+          label: t("tasks.series.filter", { title: seriesTitle }),
+        },
+      ],
+    },
     {
       kind: "pills",
       key: "label_id",
@@ -560,7 +596,14 @@
       companyId={task.company_id}
       projectId={task.project_id}
     />
+    <SeriesMark {task} open={isSeriesOpen(task)} onpress={() => toggleSeries(task)} />
   </div>
+{/snippet}
+
+<!-- What a folded series row stands for, unfolded under it (the grid); the phone row draws the
+     same strip inside itself below. -->
+{#snippet seriesExpansion(task: Task)}
+  <SeriesStrip taskId={task.id} seriesId={task.series_root_id ?? task.id} {today} />
 {/snippet}
 
 {#snippet labelsCell(task: Task)}
@@ -703,7 +746,19 @@
 {#snippet mobileRow(task: Task)}
   <div class="flex items-center">
     <div class="min-w-0 flex-1">
-      <TaskRow {task} members={data.members} statuses={data.statuses} {today} />
+      <TaskRow
+        {task}
+        members={data.members}
+        statuses={data.statuses}
+        {today}
+        seriesOpen={isSeriesOpen(task)}
+        onseries={() => toggleSeries(task)}
+      />
+      {#if isSeriesOpen(task)}
+        <div class="relative z-10 pb-2.5 pl-3.5 pr-4">
+          {@render seriesExpansion(task)}
+        </div>
+      {/if}
     </div>
     {#if canDelete}
       {@render rowActions(task)}
@@ -734,6 +789,8 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
+  expanded={isSeriesOpen}
+  expansion={seriesExpansion}
   {selecting}
   bind:selected={bulkSelected}
   oncollapse={table.onCollapse}

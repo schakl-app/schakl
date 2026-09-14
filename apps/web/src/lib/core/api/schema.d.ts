@@ -12659,6 +12659,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Intake
+         * @description The caller's own mails to the task address — parked ones first in the UI, recent ones
+         *     for the record. Never another sender's: a mail is its sender's until it is a task.
+         */
+        get: operations["list_intake_api_v1_tasks_intake_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/intake/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Intake Summary
+         * @description How many of the caller's mails wait for a client — the strip on the board.
+         */
+        get: operations["intake_summary_api_v1_tasks_intake_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/intake/{intake_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard Intake
+         * @description Throw a parked mail away. The receipt stays, so the same mail cannot come back.
+         */
+        delete: operations["discard_intake_api_v1_tasks_intake__intake_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/intake/{intake_id}/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Intake
+         * @description Finish a parked mail by hand: name the client, and the task is created as the caller.
+         */
+        post: operations["complete_intake_api_v1_tasks_intake__intake_id__create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/labels": {
         parameters: {
             query?: never;
@@ -12842,6 +12923,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's tasks settings: the e-mail intake address. No saved row means the defaults.
+         */
+        get: operations["get_settings_api_v1_tasks_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_tasks_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/statuses": {
         parameters: {
             query?: never;
@@ -13018,6 +13120,30 @@ export interface paths {
          *     ``:own`` rule before a token is spent (``tasks/assist.py``).
          */
         post: operations["revise_task_with_ai_api_v1_tasks__task_id__ai_revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/ai/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe Revise Instruction
+         * @description Speech to text for the revise box: an instruction spoken instead of typed.
+         *
+         *     The words come back to be read and corrected before they are applied — nothing is written
+         *     here. The route is the task write it serves (§15); the service asks ``ai.use`` and the
+         *     ``:own`` rule, exactly as the revise does.
+         */
+        post: operations["transcribe_revise_instruction_api_v1_tasks__task_id__ai_transcribe_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -32777,6 +32903,78 @@ export interface components {
             url: string;
         };
         /**
+         * TaskIntakeComplete
+         * @description Finish a parked mail by hand: the client it was missing, and anything the sender wants
+         *     to correct while they are here. Everything else comes off the row.
+         */
+        TaskIntakeComplete: {
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** TaskIntakeRead */
+        TaskIntakeRead: {
+            /** Body Markdown */
+            body_markdown?: string | null;
+            /** Body Text */
+            body_text?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Hints */
+            hints?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /** Sender Email */
+            sender_email: string;
+            /** Sender Name */
+            sender_name?: string | null;
+            /** Sender User Id */
+            sender_user_id?: string | null;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * TaskIntakeSummary
+         * @description The strip on the board: how many of *my* mails are waiting for a client.
+         */
+        TaskIntakeSummary: {
+            /**
+             * Needs Client
+             * @default 0
+             */
+            needs_client: number;
+        };
+        /**
          * TaskLabelsSet
          * @description PUT semantics: the task's label set becomes exactly these ids.
          */
@@ -32863,6 +33061,10 @@ export interface components {
              * @default false
              */
             requires_interaction: boolean;
+            /** Series Pending */
+            series_pending?: number | null;
+            /** Series Root Id */
+            series_root_id?: string | null;
             /** Status */
             status: string;
             /** Title */
@@ -33129,6 +33331,34 @@ export interface components {
              * @default 0
              */
             upcoming_total: number;
+        };
+        /** TaskSettingsRead */
+        TaskSettingsRead: {
+            /** Intake Address */
+            intake_address?: string | null;
+            /**
+             * Intake Default Due Days
+             * @default 1
+             */
+            intake_default_due_days: number;
+            /** Intake Last Received At */
+            intake_last_received_at?: string | null;
+            /**
+             * Intake Received Count
+             * @default 0
+             */
+            intake_received_count: number;
+        };
+        /**
+         * TaskSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written. An explicit
+         *     ``null`` intake address switches the intake off (§18's pair).
+         */
+        TaskSettingsUpdate: {
+            /** Intake Address */
+            intake_address?: string | null;
+            /** Intake Default Due Days */
+            intake_default_due_days?: number | null;
         };
         /**
          * TaskTranscribeRequest
@@ -34095,6 +34325,11 @@ export interface components {
             start?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** TimeReconstructRequest */
         TimeReconstructRequest: {
@@ -61290,6 +61525,10 @@ export interface operations {
                 q?: string | null;
                 /** @description Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. */
                 undated?: boolean | null;
+                /** @description Every task of one schedule-mode series — the root that holds the repeat rule and each occurrence laid out from it, finished or not. Any member's id names the series; a task that is not in one answers an empty page. */
+                series_id?: string | null;
+                /** @description Fold each schedule-mode series onto its current occurrence: an unfinished occurrence due after today that is not the series' earliest unfinished one is left out, and the row that stands for them carries `series_pending`. Off by default — the export and the MCP surface read the whole list. */
+                collapse_series?: boolean;
                 /** @description due | title | due_date | priority | status | assignee | …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. */
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
@@ -61524,6 +61763,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardMineSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intake_api_v1_tasks_intake_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIntakeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    intake_summary_api_v1_tasks_intake_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskIntakeSummary"];
+                };
+            };
+        };
+    };
+    discard_intake_api_v1_tasks_intake__intake_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_intake_api_v1_tasks_intake__intake_id__create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIntakeComplete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRead"];
                 };
             };
             /** @description Validation Error */
@@ -61969,6 +62324,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_tasks_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_tasks_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -62465,6 +62873,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskReviseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_revise_instruction_api_v1_tasks__task_id__ai_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */

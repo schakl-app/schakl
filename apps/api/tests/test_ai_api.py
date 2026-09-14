@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import uuid
 from collections.abc import AsyncIterator
+from datetime import timedelta
 
 import pytest
 from pwdlib import PasswordHash
@@ -25,7 +26,7 @@ from app.core.permissions.permset import PermissionSet
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 from app.modules.companies.models import Company
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
 
 _password_hash = PasswordHash.recommended()
 
@@ -995,3 +996,92 @@ async def test_connection_test_reports_network_failure_readably(
         result = response.json()
         assert result["ok"] is False
         assert "dns boom" in result["error"]
+
+
+def _fake_rounds(rounds: list[list[AIEvent]]):
+    """A provider whose answer differs per call — the parse loop is two rounds."""
+    calls: list[dict] = []
+
+    async def fake(config, **kwargs) -> AsyncIterator[AIEvent]:  # noqa: ANN001, ANN003
+        calls.append(kwargs)
+        for event in rounds[min(len(calls) - 1, len(rounds) - 1)]:
+            yield event
+
+    fake.calls = calls  # type: ignore[attr-defined]
+    return fake
+
+
+async def test_time_parse_survives_a_free_round_that_answered_in_prose(
+    client_for, monkeypatch
+) -> None:
+    """The free round used to end the loop with nothing submitted when the model answered in
+    words instead of a tool call — the commonest way a good line came back as "kon hier geen
+    registratie uit afleiden". The forced round runs regardless now."""
+    t = await make_tenant("ai-parse-prose")
+    headers = await auth_cookie(t.user)
+    fake = _fake_rounds(
+        [
+            [
+                AIEvent(kind="text", text="Ik heb de registratie voor je ingevuld."),
+                AIEvent(kind="done", stop_reason="end_turn", tokens_in=3, tokens_out=3),
+            ],
+            _submit(start="14:00", end="16:30", description="homepage overleg"),
+        ]
+    )
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", fake)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "gisteren 14:00-16:30 homepage overleg"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["start"] == "14:00" and body["end"] == "16:30"
+        assert body["description"] == "homepage overleg"
+        assert body["truncated"] is False
+    assert len(fake.calls) == 2
+    assert fake.calls[1]["force_tool"] == "submit_time_entry"
+
+
+async def test_time_parse_fills_the_unambiguous_parts_when_the_model_did_not(
+    client_for, monkeypatch
+) -> None:
+    """A cut-off answer (a reasoning model that spent its ceiling before the tool call) still
+    fills the form with what the line itself states: the day, the span, the duration. And the
+    screen is told the answer was cut off rather than that nothing could be read."""
+    t = await make_tenant("ai-parse-hints")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream([AIEvent(kind="done", stop_reason="length", tokens_in=3, tokens_out=3)]),
+    )
+    today = org_today()
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "gisteren 14:00-16:30 website Jansen", "today": today.isoformat()},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["date"] == (today - timedelta(days=1)).isoformat()
+        assert body["start"] == "14:00" and body["end"] == "16:30"
+        assert body["truncated"] is True
+
+        # The model's own answer wins wherever it gave one; a hint only fills a blank.
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(_submit(date="2026-07-10", duration_minutes=45)),
+        )
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "gisteren 2 uur Jansen", "today": today.isoformat()},
+            headers=headers,
+        )
+        body = parsed.json()
+        assert body["date"] == "2026-07-10"
+        assert body["duration_minutes"] == 45
+        assert body["truncated"] is False

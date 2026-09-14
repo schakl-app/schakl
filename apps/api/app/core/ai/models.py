@@ -46,6 +46,10 @@ AI_FEATURES: tuple[str, ...] = (
     "task_assist",
     "reporting",
     "email_assist",
+    # A mail to the task address into a task's fields (tasks/intake_ai.py). Its own key: the
+    # dictation (#382) is a colleague's own words with a person confirming; this is applied
+    # unwatched and half the mail is usually forwarded from a client.
+    "task_intake",
 )
 
 #: The features that consume a microphone. ``speech`` stays a capability rather than a toggle

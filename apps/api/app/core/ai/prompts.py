@@ -183,7 +183,16 @@ def time_parse_system(
         "Never invent a key and never translate one."
     )
     parts.append(
-        "Call submit_time_entry exactly once with your best draft. Whatever you could not "
+        "description: what was worked on, in the user's own words with the time, date and "
+        "any matched names left out — always filled when the line describes any work at "
+        "all. A client or project name that matched nothing still belongs in the "
+        "description, so the user sees what was understood; a name that did not match "
+        "leaves only its id field null, never the whole draft."
+    )
+    parts.append(
+        "Call submit_time_entry exactly once with your best draft, even when the line is "
+        "vague or incomplete — a partial draft the user can finish is the answer, and prose "
+        "is never one. Never ask a question instead of submitting. Whatever you could not "
         "determine stays null."
     )
     parts.append(_INJECTION_STANCE)

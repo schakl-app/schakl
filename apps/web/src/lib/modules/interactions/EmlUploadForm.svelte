@@ -221,6 +221,12 @@
     if (task?.project_id) onProjectPicked(task.project_id);
   }
 
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(tasks.map((task) => task.value));
+    tasks = [...tasks, ...rows.filter((row) => !known.has(row.value))];
+  }
+
   /**
    * The roster follows the upload's **effective** client, exactly as the manual form's does —
    * the host's pinned client, the one picked below, or the one backfilled from a project or
@@ -759,6 +765,7 @@
             archivedLabel={t("tasks.picker.archived")}
             labels={taskLabels}
             onpick={onTaskPicked}
+            onseries={addSeriesRows}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;

@@ -32,12 +32,13 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.periods import ComparePeriod, compare_window
 from app.core.tenancy import RequestContext
 from app.integrations.google import client as google_client
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
@@ -72,8 +73,19 @@ from app.registry import AUDIENCE_BOTH, AUDIENCE_INTERNAL, ReportSectionSpec, Re
 
 logger = logging.getLogger("schakl.marketing")
 
-#: The GA4 splits a client report breaks out, and the section each one feeds.
-_GA4_LIVE_KINDS = ("organic_sources", "social_sources", "referral_sources", "key_events")
+#: The GA4 splits a client report breaks out, and the section each one feeds. ``channels`` is
+#: the odd one out: its *sessions* are warehoused per day and the table is built from those, but
+#: the goals a channel produced never were, so the channel table's DOELEN column is a live read
+#: folded in by label (:func:`_traffic_channels`).
+_GA4_LIVE_KINDS = (
+    "channels",
+    "organic_sources",
+    "social_sources",
+    "referral_sources",
+    "key_events",
+)
+#: The kinds that only matter when the client's dashboard shows key events at all (#192).
+_GOAL_KINDS = ("channels", "key_events")
 
 #: A report table is a page of a PDF, not a database. Past this a table stops being readable
 #: and starts being a data dump — and the overflow is *reported* (§17: a cap that truncates
@@ -119,6 +131,17 @@ class GatheredMarketing:
     #: catalog and the run itself cannot disagree about what will happen.
     keyword_source: RankingSource | None = None
     ranking_settings: RankingSettings = field(default_factory=RankingSettings)
+    #: The span each position column of the keyword table was measured over, keyed ``begin``
+    #: / ``end``. A rank tracker reads a *day* at each end of the month (``1 aug`` against
+    #: ``31 aug``); Search Console can only average over a span, so its ``begin`` is the whole
+    #: previous month. Carried so the document heads the column with the date it is about
+    #: rather than the word "Begin", which said nothing about *when*.
+    keyword_spans: dict[str, tuple[date, date]] = field(default_factory=dict)
+    #: The rankings tiles' comparison: the SE Ranking totals over the **month before**, and the
+    #: span they cover. A position is compared with last month whatever the report's own
+    #: comparison is set to (see :func:`_rankings`).
+    rankings_compare: dict[str, Any] | None = None
+    rankings_compare_period: tuple[date, date] | None = None
     #: One row per tracked search engine, where SE Ranking is this client's position source
     #: (#381). Empty means the "Zoekmachines" section falls back to GA4's organic split, which
     #: is the answer for a client with no rank tracker and was the only answer before.
@@ -222,6 +245,29 @@ async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketin
 
     for part in [part for parts in out.parts.values() for part in parts]:
         out.stored[part.key] = await _stored(ctx, part, window)
+    # Positions are compared with the month before, whatever the report compares its traffic
+    # with. Seasonality is the argument for the year-earlier default (#312) and it is an
+    # argument about *volume*: a campsite's July sessions have nothing to say to its June. A
+    # rank is not seasonal — a term at 3 in August that stood at 7 in July moved, and the client
+    # wants to know that a year-old snapshot cannot tell them. So the SE Ranking totals are read
+    # a second time against the previous month; one more indexed read, and the section says in
+    # words which month it compared with (``compare_period``), because the document's own
+    # "vergeleken met augustus 2025" line no longer describes these tiles.
+    out.rankings_compare_period = compare_window(
+        window.start, window.end, ComparePeriod.PREVIOUS
+    )
+    seranking_parts = out.of(MarketingSource.SERANKING.value)
+    if seranking_parts:
+        previous = await _stored(
+            ctx,
+            seranking_parts[0],
+            replace(
+                window,
+                compare_start=out.rankings_compare_period[0],
+                compare_end=out.rankings_compare_period[1],
+            ),
+        )
+        out.rankings_compare = previous["compare"]
     for link in out.links:
         if link.last_synced_at is None:
             out.notes.append(
@@ -392,7 +438,7 @@ async def _ga4_part(
                 ctx.release_db(),
             ):
                 for kind in _GA4_LIVE_KINDS:
-                    if kind == "key_events" and not out.show_conversions:
+                    if kind in _GOAL_KINDS and not out.show_conversions:
                         continue
                     current = await adapter.drilldown(
                         gclient, link.external_id, kind, window.start, window.end,
@@ -512,6 +558,13 @@ async def _gather_seranking(
                         ),
                         default=[],
                     )
+                    # A rank tracker checks every day, so a row's ``begin`` is the rank on the
+                    # first day of the period and its ``end`` the rank on the last: the column
+                    # is headed with that day.
+                    out.keyword_spans = {
+                        "begin": (window.start, window.start),
+                        "end": (window.end, window.end),
+                    }
                     out.engines = await _seranking_part(
                         out,
                         "engines",
@@ -579,6 +632,14 @@ async def _gather_gsc_keywords(
         return
     adapter = source_for(MarketingSource.GSC.value)
     settings = out.ranking_settings
+    # Search Console cannot read a single day's rank for a low-volume term (two samples and a
+    # coin toss), so its ``begin`` is the average over the **previous month** and its ``end``
+    # the average over this one — the same "last month" a rank tracker's tiles compare with,
+    # and never the report's own comparison window, which defaults to a year back.
+    previous = out.rankings_compare_period or compare_window(
+        window.start, window.end, ComparePeriod.PREVIOUS
+    )
+    out.keyword_spans = {"begin": previous, "end": (window.start, window.end)}
     # One keyword table per property, concatenated and re-sorted — the rankings section groups
     # by theme rather than by property, and a client's terms are their terms whichever of their
     # sites answers for them. Which is also why this one section does not split: two tables of
@@ -605,8 +666,8 @@ async def _gather_gsc_keywords(
                         link.external_id,
                         window.start,
                         window.end,
-                        window.compare_start,
-                        window.compare_end,
+                        previous[0],
+                        previous[1],
                         limit=settings.limit,
                         min_impressions=settings.min_impressions,
                         max_position=settings.max_position,
@@ -702,8 +763,31 @@ async def _traffic_channels(
                 stored["channels"].items(), key=lambda pair: pair[1], reverse=True
             )
         ]
+        columns = ["sessions", "compare_sessions", "delta", "share"]
+        # The goals each channel produced — the question a client actually asks of a channel
+        # table ("which channel brings the enquiries?") and the one column it never had. GA4
+        # answers it live (``channels`` × ``keyEvents``); the stored rows only ever carried
+        # sessions. Folded in **by label** onto the stored rows rather than replacing them: the
+        # sessions the tiles and the chart are built from stay the warehoused figure, and a
+        # live read that failed costs the column, never the table.
+        goals = (data.live.get(part.key) or {}).get("channels")
+        if goals and goals.get("rows"):
+            current = {str(row.get("label")): row for row in goals["rows"]}
+            previous = {str(row.get("label")): row for row in goals.get("compare_rows") or []}
+            has_compare = bool(previous)
+            for row in rows:
+                now = float((current.get(row["label"]) or {}).get("keyEvents") or 0)
+                before = (previous.get(row["label"]) or {}).get("keyEvents")
+                row["keyEvents"] = round(now, 0)
+                row["compare_keyEvents"] = (
+                    round(float(before or 0), 0) if has_compare else None
+                )
+                row["keyEvents_delta"] = (
+                    _delta(now, float(before or 0)) if has_compare else None
+                )
+            columns += ["keyEvents", "keyEvents_delta"]
         return {
-            "columns": ["sessions", "compare_sessions", "delta", "share"],
+            "columns": columns,
             "rows": rows,
             "totals": stored["totals"],
             "currency": stored.get("currency"),
@@ -979,16 +1063,32 @@ async def _rankings(ctx: RequestContext, window: ReportWindow) -> dict[str, Any]
     totals = dict(stored.get("totals") or {})
     if not totals:
         totals = _position_summary(rows)
+    spans = data.keyword_spans
+    compare_period = data.rankings_compare_period
     return {
         "kind": "rankings",
         "columns": ["begin", "end", "change"],
         "rows": rows,
         "groups": grouped,
         "totals": totals,
-        "compare": stored.get("compare"),
+        # The tiles are measured against the **month before**, never the report's own
+        # comparison window (see ``_gather``): a rank is a level, and last year's level says
+        # nothing about whether this month's work moved it.
+        "compare": data.rankings_compare,
+        "compare_period": _span(compare_period) if data.rankings_compare else None,
+        # What each position column is *about* — a day for a rank tracker, a month for Search
+        # Console — so the document can head it "1 aug" rather than "Begin".
+        "begin_span": _span(spans.get("begin")),
+        "end_span": _span(spans.get("end")),
         "chart": None,
         "notes": data.notes,
     }
+
+
+def _span(period: tuple[date, date] | None) -> dict[str, str] | None:
+    if period is None:
+        return None
+    return {"start": period[0].isoformat(), "end": period[1].isoformat()}
 
 
 def _first_part_key(data: GatheredMarketing, source: str) -> str:

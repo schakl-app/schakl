@@ -1726,6 +1726,14 @@ contrast bug in dark mode rather than only an inconsistency.
   saved still appears (fallback to its declared position), so a pref can never make new
   functionality invisible. Icons from lucide; collapsible to an icon rail; on mobile it is a
   drawer behind the hamburger — the saved order carries over unchanged.
+- **Taken → E-mailinbox is not a permanent tab.** A mail to the org's task address (Instellingen
+  → Taken) that could not become a task on its own waits on `/tasks/inbox` for its sender; the
+  tab is drawn with the count and only while something waits, or while you are on it — a queue
+  that is empty most days is the one people stop reading (the Timeon lesson). `Taak aanmaken`
+  opens the ordinary quick-create dialog over the parked mail, prefilled, posting to the mail's
+  own create action so the words, steps, links and attachments travel with the task; the client
+  is the one thing it asks for, because it is the one thing the mail could not say. The
+  notification that sent you here opens *that* row (`?open=`) and highlights it.
 - **Agenda is a core surface like the dashboard**: the month view composes event feeds that
   modules contribute via the registry (`calendarSources`) — today the team's approved/pending
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
@@ -2280,8 +2288,15 @@ contrast bug in dark mode rather than only an inconsistency.
   for"), had no strip for a screenshot, and threw away a corrected title the moment the reader
   followed the link to the full card. Four things changed, and the last is the rule. The
   checklist is edited in place (`TaskChecklistEditor`: tick, add, click a step to rename it,
-  remove, a new list) over the task's own endpoints, because the four pages the dialog is drawn
-  on own no action that knows the task. Screenshots and files land on the card's own strip
+  click its explanation to change it — or add one, the detail a reviewer most wants to write
+  down being *why* a step is there, read off the e-mail beside them — remove, a new list, and
+  the list's own description) over the task's own endpoints, because the four pages the dialog
+  is drawn on own no action that knows the task. The card's use mode got the same affordance
+  in the same pass: a step's toelichting is the part of a plan that changes while the work is
+  being done, and editing it used to cost ⋯ → Bewerken, the pencil on the step and a save at
+  the foot of the page — three gestures for one sentence. Clicking the rendered note opens its
+  editor in place (the `InlineText` shape, #455), an empty one is a small "toelichting"
+  affordance drawn on hover of the row, and the same forms serve both modes. Screenshots and files land on the card's own strip
   (`FileAttachments` in `direct` mode, Ctrl+V anywhere while the dialog is open — listening in
   the capture phase so a host page's own strip does not take the paste first). The box under
   the notes changes the task in words (`TaskAIRevise`, docs/AI.md), the same box the card has.
@@ -2366,6 +2381,26 @@ contrast bug in dark mode rather than only an inconsistency.
   UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
   Interaction patterns: persistent surfaces pass `update({ reset: false })`, one-shot buttons
   and self-unmounting create forms may stay bare.
+- **A load that swallows an error into an empty default is a save that wipes.** Instellingen →
+  Meldingen answered a failed preferences read with `prefs.data ?? EMPTY_MATRIX`: the page rendered
+  a table with no rows, "0 hiervan zijn eigen instellingen" and every general value at its
+  default — which is exactly what "my preferences are gone" looks like — and because the matrix
+  form posts the scope's overrides **wholesale**, derived from what loaded, one press of Opslaan on
+  that page wrote "no overrides", deleted every row the person had (in-app, e-mail, browser *and*
+  their personal channel routing) and printed "Voorkeuren opgeslagen" above the result. A 502 from
+  the edge mid-redeploy is a response, not a throw, so the SSR outage page never caught it. Both
+  pages now `throw error(502, "settings.notifications.unavailable")` when either read fails; the
+  fallback constant is gone. The rule: a form that replaces a record wholesale may only ever be
+  rendered over the record it will replace — a default in a `??` is fine for a *display*, never for
+  the baseline of a write. Its sibling on the same form: **a field whose truth is computed in the
+  browser is empty until the browser has computed it.** The hidden `payload` was server-rendered
+  with the loaded snapshot, so a Save that landed before hydration (a slow connection, a stale
+  chunk after a deploy, a click in the first second) was a native POST of that snapshot: every
+  change made on the still-static page was dropped, and the reloaded page said it had saved. The
+  server now renders the field empty (`browser ? … : ""`) and the action refuses `""` with
+  `errors.form_not_ready`, so the un-hydrated submit is a visible refusal instead of a silent
+  no-op. And the ordinary one: the parser accepted `HH:MM` and the API answers `HH:MM:SS`, so an
+  in-app row's stored digest time became `null` on its first re-save; `asTime` reads both.
 - **A submit button with no in-flight state.** The contact-portal "Enable" gave zero feedback
   while its request ran (#242): on a slow connection it read as broken, and every extra click
   was another submit. The convention lives under Interaction patterns (Loading / in-flight
@@ -3176,3 +3211,39 @@ contrast bug in dark mode rather than only an inconsistency.
   over our own proxy renders where it can and falls through to its content where it cannot: one
   sentence and the download link, the same file offered on purpose instead of by accident. The
   height is a viewport share, because nothing inside a PDF viewer can be measured from outside.
+
+- **A repeating task is one row, and finishing a task is leaving it** (the series fold; the tasks
+  board, `TaskChips`, `Combobox`, the task card). The year a schedule-mode rule lays out (#335, the
+  recurrence audit) was drawn as twelve rows of "Nieuwsbrief" under *Later* and twelve options in
+  every task picker — eleven rows the other work could not be found past, in a picker capped at two
+  hundred. Three rules, and where each half lives is the point.
+
+  **The fold is the API's, the screen asks for it, and the endpoint's default stays the whole
+  list** (`?collapse_series=true`, CLAUDE.md §9): a series is drawn as its earliest unfinished
+  occurrence, the rest counted onto that one row (`series_pending`), and only the *future* folds —
+  an occurrence due today or already late is work to act on now, so it stays a row and the
+  dashboard's overdue count and the board agree to the task. The export, the pickers that need
+  every row and the MCP surface read the unfolded default. A row that stands for eleven more says
+  so (`SeriesMark`, "↻ +11") and unfolds them under itself (`DataTable.expansion`, `SeriesStrip`):
+  the rule, the dates as links, capped and counted, and *Hele reeks bekijken* — because a view the
+  reader can reach must be one they can link to, `?series=<root>` is that view, drawn unfolded with
+  its own pill. A mark with nothing behind it still says ↻: it is the only place a list says a task
+  repeats at all.
+
+  **In a picker the series nests under its current occurrence** (`PickerOption.expandable`,
+  `Combobox.onexpand`): one row, a hint saying what it stands for ("↻ 14 sep · nog 11 gepland"), a
+  chevron that unfolds the occurrences one level in, each labelled by the one thing that tells them
+  apart — its date — and a chip that names both ("Nieuwsbrief · 14 nov") once picked. The chevron
+  sits *beside* the option rather than inside it, because a button cannot nest in a button and
+  unfolding must not pick. The occurrences a host has unfolded join its option list as `nested`
+  rows, so the client/project cascade and the close-task offer can answer for a nested pick, and
+  `splitLinkOptions` keeps them out of the top-level buckets — or the fold would undo itself the
+  first time somebody opened one.
+
+  **Finishing a task returns to the board.** The card was the place to do the work; once it is
+  done, the reader's next question is "what's next", which the board answers and a finished card
+  does not. Every way of finishing — the *Alle to-do's afgevinkt* confirm, the status select in use
+  mode, an edit-mode save that lands on a finished status — goes to the detour's origin where there
+  is one (#408) and otherwise to `/tasks` on the slice the reader last had of it (`returnHref`:
+  their filters, their page). A refusal (the closing-moment gate, a failed hours entry) stays on
+  the card with the error on it.

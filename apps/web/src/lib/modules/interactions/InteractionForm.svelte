@@ -150,9 +150,6 @@
   const storedTasks = initialTasks(interaction);
   let fTasks = $state<string[]>(storedTasks.map((task) => task.id));
   const fTask = $derived(fTasks[0] ?? "");
-  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
-    storedTasks.map((task) => [task.id, task.title]),
-  );
   /**
    * Which link a kind leads with (#263). A phone call or a meeting is primarily *with a
    * person*; a note is primarily *about work*. So the contact picker is up front for every
@@ -173,6 +170,14 @@
   let linkCompanies = $state<LinkOption[]>([]);
   let linkProjects = $state<ProjectOption[]>([]);
   let linkTasks = $state<TaskOption[]>([]);
+  // Every title the form knows, not only the options the cascade currently offers, so a chip
+  // picked before the client was keeps its title when a client is picked over it.
+  const taskLabels = $derived<Record<string, string | null | undefined>>(
+    Object.fromEntries([
+      ...storedTasks.map((task) => [task.id, task.title]),
+      ...linkTasks.map((task) => [task.value, task.label]),
+    ]),
+  );
   let lookupsLoaded = false;
   $effect(() => {
     // Nothing is fetched until the block is actually open (docs/PERFORMANCE.md): a logged call
@@ -301,6 +306,12 @@
     if (task?.project_id) onProjectPicked(task.project_id);
     // A task filed straight under a client, with no project of its own, still fixes the client.
     else if (task?.company_id && showCompany) fCompany = task.company_id;
+  }
+
+  /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */
+  function addSeriesRows(rows: TaskOption[]) {
+    const known = new Set(linkTasks.map((task) => task.value));
+    linkTasks = [...linkTasks, ...rows.filter((row) => !known.has(row.value))];
   }
 
   // --- close the picked task with this contact moment (#232, the approve dialog's #157
@@ -711,6 +722,7 @@
             archivedLabel={t("tasks.picker.archived")}
             labels={taskLabels}
             onpick={onTaskPicked}
+            onseries={addSeriesRows}
             oncreate={canCreateTask
               ? (query) => {
                   taskDraft = query;

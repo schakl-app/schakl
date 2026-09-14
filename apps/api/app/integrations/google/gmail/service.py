@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
 from app.core.htmlmd import referenced_cids, rewrite_cid_images
+from app.core.mailbox.intake import intake_target, merge_links, without_intake
 from app.core.mailbox.internals import (
     Internals,
     Mailbox,
@@ -297,16 +298,25 @@ async def classify(
     participants = matching.parse_participants(headers)
     if not participants:
         return Decision(reason=SkipReason.NO_PARTICIPANTS)
+    # The org's task address among the recipients (app/core/mailbox/intake.py): decided first
+    # and carried on the decision whatever the timeline half concludes, with the address taken
+    # out of the participant list so the gates below read the mail as if it had never been on
+    # it — a mail to ``taak@`` alone is colleague-only chatter for the timeline and a task for
+    # the intake; a client thread with ``taak@`` in Cc is both.
+    intake = intake_target(participants, internals.intake_addresses)
+    if intake is not None:
+        participants = without_intake(participants, internals.intake_addresses)
     if _defer_to_owner_mailbox(connection, label_ids, participants, internals):
         owner = matching.intended_owner(participants, internals.owner_by_email.keys())
         return Decision(
             reason=SkipReason.DEFERRED_TO_OWNER,
             detail={"owner": owner or ""},
+            intake=intake,
         )
 
     internal = matching.internal_only(participants, internals.ours)
     if internal and not settings_row.gmail_log_internal:
-        return Decision(reason=SkipReason.INTERNAL_ONLY)
+        return Decision(reason=SkipReason.INTERNAL_ONLY, intake=intake)
     # The two-query lookup, memoised on the address set: one conversation is the same handful
     # of people over and over, so this collapses fifty pairs of queries into one or two.
     addresses = tuple(sorted({p["email"] for p in participants}))
@@ -324,7 +334,7 @@ async def classify(
         # notification addressed to a colleague straight through: it matched the colleague,
         # and the row landed in their review queue filed on the agency's own company.
         # ``gmail_log_internal`` remains the only door for a message with nobody outside on it.
-        return Decision(reason=SkipReason.NO_EXTERNAL_MATCH)
+        return Decision(reason=SkipReason.NO_EXTERNAL_MATCH, intake=intake)
 
     if not thread_id:
         inherited = None
@@ -349,7 +359,7 @@ async def classify(
         # auto-file it under: it always waits for its owner, whatever the approval mode.
         # Once approved onto a client/project, thread follow-ups inherit as usual.
         pending = True
-    return Decision(mappings=mappings, pending=pending)
+    return Decision(mappings=mappings, pending=pending, intake=intake)
 
 
 async def _ingest_message(
@@ -391,6 +401,9 @@ async def _ingest_message(
     decision = await classify(
         session, org, connection, settings_row, message, excluded_label_id, internals
     )
+    outcome = None
+    if decision.intake is not None:
+        outcome = await _run_intake(ctx, client, message, decision.intake, internals)
     if not decision.logs:
         await _record_skip(session, org, connection, message, decision.reason, decision.detail)
         logger.debug(
@@ -400,14 +413,14 @@ async def _ingest_message(
             org.id,
             decision.reason,
         )
-        return 0
+        return 1 if outcome is not None and outcome.status == "created" else 0
 
     label_ids = message.get("labelIds") or []
     thread_id = message.get("threadId")
     headers = matching.headers_map(message)
     rfc822_id = (headers.get("Message-ID") or "").strip()[:512] or None
     participants = matching.parse_participants(headers)
-    mappings, pending = decision.mappings, decision.pending
+    mappings, pending = merge_links(decision.mappings, outcome), decision.pending
 
     internal_date = message.get("internalDate")
     occurred_at = (
@@ -448,6 +461,90 @@ async def _ingest_message(
         # already in worker context, no user is waiting.
         await _fetch_body_with(client, ctx, row.id, message_id, row.owner_user_id)
     return 1
+
+
+async def _run_intake(
+    ctx: SystemContext, client, message: dict, intake, internals: Internals
+):  # noqa: ANN001, ANN201
+    """Fetch the whole message and hand it to whoever owns the intake address.
+
+    The body and every part with bytes are read *now* — unlike a pending contact moment, whose
+    body waits for approval — because the record the handler makes is the point of the mail,
+    and it is made in this same poll. In its own savepoint: a handler that raises must not take
+    the timeline half of the same message with it, and it is named in the log rather than
+    dropped.
+    """
+    from app.core.mailbox.intake import IntakeAttachment, IntakeMessage, dispatch
+
+    message_id = str(message.get("id") or "")
+    response = await client.get(f"{GMAIL_API}/messages/{message_id}", params={"format": "full"})
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    full = response.json()
+    payload = full.get("payload") or {}
+    headers = matching.headers_map(full if full.get("payload") else message)
+    participants = matching.parse_participants(headers)
+    sender = matching.sender_of(participants)
+    if sender is None:
+        return None
+    body_text = matching.extract_text(payload)
+    body_markdown = matching.extract_markdown(payload)
+    inline_cids = referenced_cids(body_markdown)
+    attachments: list[IntakeAttachment] = []
+    for part in matching.attachment_parts(payload):
+        attachment_id = (part.get("body") or {}).get("attachmentId")
+        content_id = matching.part_content_id(part)
+        inline = content_id in inline_cids if content_id else False
+        if not inline and not part.get("filename"):
+            continue
+        bytes_response = await client.get(
+            f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}"
+        )
+        if bytes_response.status_code >= 400:
+            logger.warning("gmail intake attachment fetch failed for %s", message_id)
+            continue
+        attachments.append(
+            IntakeAttachment(
+                filename=str(part.get("filename") or content_id or "bijlage"),
+                content_type=str(part.get("mimeType") or "application/octet-stream"),
+                data=base64.urlsafe_b64decode(bytes_response.json().get("data") or ""),
+                content_id=content_id if inline else None,
+            )
+        )
+    internal_date = full.get("internalDate") or message.get("internalDate")
+    sender_name = next((p.get("name") for p in participants if p.get("email") == sender), None)
+    intake_message = IntakeMessage(
+        address=intake,
+        source="gmail",
+        sender_email=sender,
+        sender_name=sender_name,
+        sender_user_id=internals.owner_by_email.get(sender),
+        subject=headers.get("Subject") or None,
+        body_text=body_text,
+        body_markdown=body_markdown,
+        participants=participants,
+        attachments=attachments,
+        rfc822_message_id=(headers.get("Message-ID") or "").strip()[:512] or None,
+        provider_message_id=message_id,
+        provider_thread_id=full.get("threadId") or message.get("threadId"),
+        occurred_at=(
+            datetime.fromtimestamp(int(internal_date) / 1000, tz=UTC)
+            if internal_date
+            else datetime.now(UTC)
+        ),
+        deep_link=deep_link(message_id),
+        internals=internals,
+    )
+    try:
+        async with ctx.session.begin_nested():
+            return await dispatch(ctx, intake_message)
+    except Exception:  # noqa: BLE001 — named, never dropped; the timeline half still runs
+        logger.warning(
+            "intake handler failed for gmail message %s (org %s)", message_id, ctx.org.id,
+            exc_info=True,
+        )
+        return None
 
 
 async def _notify_pending(

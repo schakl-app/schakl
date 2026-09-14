@@ -12,11 +12,13 @@ from arq import cron
 from app.core.activity import register_auditable
 from app.core.busy import register_busy_provider
 from app.core.events import subscribe
+from app.core.mailbox.intake import register_intake
 from app.core.trash import register_trash_dependent
 from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.bulk import TASK_BULK
 from app.modules.tasks.emails import TASK_EMAIL_KINDS, tasks_send_contact_assigned
 from app.modules.tasks.impex import TASK_IMPEX
+from app.modules.tasks.intake import INTAKE_KEY, handle_intake_message, intake_addresses_for_org
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
 from app.modules.tasks.permissions import TASK_PERMISSIONS
@@ -86,3 +88,8 @@ subscribe("subscription.activated", on_subscription_activated)
 subscribe("file.attached", on_file_event)
 subscribe("file.removed", on_file_event)
 subscribe("file.visibility_changed", on_file_event)
+
+# A task arrives by e-mail (``taak@bureau.nl``): the connected-mailbox feeds recognise the org's
+# intake address through core's registry and hand the message here — the feeds never import
+# this module, and this module never learns which mailbox it came from (CLAUDE.md §6).
+register_intake(INTAKE_KEY, addresses=intake_addresses_for_org, handler=handle_intake_message)

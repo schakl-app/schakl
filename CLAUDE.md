@@ -681,6 +681,22 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   The host column is told it is one and paid for out of the same width budget, the rows and the
   model's copy are untouched, and the rankings cell lost its wash — a coloured badge on a cell
   washed the same colour is a badge nobody can see. At the renderer, so stored reports print it too.
+- **A rank is compared with last month, and a column says when it was read** (`docs/REPORTING.md`).
+  The first August report printed *Gem. positie 7,0 ▼ −32,6%* against **August 2025**, because the
+  rankings tiles borrowed the report's own comparison window — right for traffic, where
+  seasonality is the argument (#312), and wrong for a level: where a term stood a year ago says
+  nothing about whether this month's work moved it. So `marketing.rankings` reads the SE Ranking
+  totals a second time against `compare_window(…, PREVIOUS)` and a Search Console table's `begin`
+  is the previous month's average; and because the cover's *vergeleken met augustus 2025* no
+  longer describes those tiles, the section **states its own span** (`compare_period`, drawn
+  under the strip and handed to the model as `compared_with`) — a percentage is a claim about two
+  spans and both must be on the page. Its siblings: the position columns are headed with the day
+  each rank was read on (`begin_span`/`end_span` → *1 aug* / *31 aug*; a month for Search
+  Console; the words only for a snapshot stored before the spans existed), a landing page breaks
+  at a slash rather than mid-word (`fmt_url`), and the channel table carries the **goals** each
+  channel produced (a live `channels` × `keyEvents` read folded onto the stored rows by label,
+  with its own `keyEvents_delta` key because a second percentage on a row cannot share the
+  first's name; a failed read costs the column, never the table).
 - **A level is not a total, and one client may have two websites** (#381, `docs/REPORTING.md`).
   Five faults on one real July report, and only three of them were on the warnings strip the
   agency reads; the two worse ones were on the client's page and named nothing. **A metric whose
@@ -978,6 +994,35 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   project has exactly one. The column stays nullable for a release (expand/contract), and
   `tests/conftest.default_company` is the suite's stand-in client, created lazily per host so a
   test that never makes a task never gains a company row.
+- **A task arrives by e-mail, and the sender is the actor** (`taak@bureau.nl`,
+  `app/core/mailbox/intake.py`, `app/modules/tasks/intake.py`, `docs/AI.md`). An employee mails
+  the org's task address — a note, a forwarded client mail, a photo — and a task lands on their
+  board. No new transport: both connected-mailbox feeds already process a colleague's *sent*
+  mail, so the sender's own mailbox is the copy whose authorship the provider vouches for, and
+  a `From` that resolves to nobody in `Internals.owner_by_email` is refused before a row exists.
+  Five rules. **The address is a registry, not a feed's knowledge**: core holds the seam (an
+  address provider and a handler per intake kind; `tasks` registers the first), the feeds ask
+  `intake_target` *before* the chatter and match gates and strip the address out of the
+  participant list, so a mail to `taak@` alone is chatter for the timeline and a task for the
+  intake, and a client thread with `taak@` in Cc is **both** — the contact moment lands filed
+  onto the task the same mail made (`merge_links`). **One mail is one act, decided by the
+  database**: the receipt row's partial unique index on the RFC-822 id makes the second copy a
+  no-op whichever mailbox polls first, and the loser answers with the winner's links. **The
+  sender's words outrank everything**: `[Klant]` in the subject, directive lines (`klant:`,
+  `voor:`, `deadline:`, `project:`, `labels:`, `prioriteit:`), then the forwarded block's people
+  through the feeds' own contact match and ranking (#305), then — with `task_intake` on — the
+  model, which fills only what is still blank, grounded per type under the sender's own horizon
+  (`app/core/principal.member_context`: the permissions and company groups a request from them
+  would have run with, so a `tasks.task.create` they lack refuses here too). **A missing client
+  parks; a missing deadline defaults** (#391/#392 one door over: today + the org's setting, the
+  owner's call at one day) — the parked mail keeps its words and attachments under Taken →
+  E-mailinbox, a tab drawn only while something waits, and finishing it is the ordinary
+  `TaskService.create` as the person. And **the confirmation is a notification the sender can
+  act on**: client, assignee and deadline in the sentence, which of them the model chose, through
+  their own preferences — `task.assigned` is excluded for the sender's own mail, or one mail is
+  two bells. Deliberately not a Redis bucket, not an inbound webhook and not a per-tenant SMTP
+  listener: the address must merely exist (an alias or group), and a second delivery path would
+  be a second answer to "who wrote this".
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

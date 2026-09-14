@@ -146,6 +146,26 @@ def _is_schedule(rule: dict | None) -> bool:
     return bool(rule) and rule.get("mode") == RecurrenceMode.SCHEDULE.value
 
 
+# A schedule-mode series, in SQL: its root (the task holding a ``schedule`` rule) and every
+# occurrence laid out from it (``recurrence_source_id`` set). An after-completion chain is
+# **not** one — it has one carrier at a time by construction, so there is never anything to
+# fold. Both expressions read columns only; neither costs a join. The ``coalesce`` is
+# load-bearing: ``NULL ->> 'mode'`` is NULL, ``false OR NULL`` is NULL, and a ``NOT`` over that
+# drops every task that has no rule at all — which is most of them.
+_SERIES_MEMBER = or_(
+    Task.recurrence_source_id.is_not(None),
+    func.coalesce(Task.recurrence["mode"].astext, "") == RecurrenceMode.SCHEDULE.value,
+)
+_SERIES_ROOT = func.coalesce(Task.recurrence_source_id, Task.id)
+
+
+def _series_root_of(task: Task) -> uuid.UUID | None:
+    """The series a task belongs to, or ``None`` — the Python twin of :data:`_SERIES_ROOT`."""
+    if task.recurrence_source_id is not None:
+        return task.recurrence_source_id
+    return task.id if _is_schedule(task.recurrence) else None
+
+
 def _rank(column: Any, order: Sequence[str]) -> Any:
     """Order a small closed vocabulary by *meaning*, not by spelling.
 
@@ -423,6 +443,9 @@ class TaskService:
                 item.allocated_minutes = None
                 item.recurrence = None
                 item.recurrence_next_run = None
+        else:
+            for item, task in zip(items, tasks, strict=True):
+                item.series_root_id = _series_root_of(task)
         task_ids = [t.id for t in tasks]
         if not task_ids:
             return items
@@ -564,12 +587,27 @@ class TaskService:
         due_to: date | None = None,
         q: str | None = None,
         undated: bool | None = None,
+        series_id: uuid.UUID | None = None,
+        collapse_series: bool = False,
         sort: str | None = None,
         with_meta: bool = True,
         hours: bool = False,
         count: bool = True,
     ) -> tuple[list[TaskListItem], int]:
         stmt = self.repo.scoped_select()
+        # One series, whole — the root and every occurrence, finished or not: the view a folded
+        # board row opens, and an agent's "what else is in this series". Any member names it,
+        # the root's id or an occurrence's, so a caller holding one row need not know which it
+        # is. A row the caller may not read resolves to nothing, through the same repository
+        # every other read here uses, so the horizon and the portal rule hold on the lookup too.
+        if series_id is not None:
+            member = await self.repo.get(series_id)
+            root_id = _series_root_of(member) if member is not None else None
+            stmt = stmt.where(
+                or_(Task.id == root_id, Task.recurrence_source_id == root_id)
+                if root_id is not None
+                else sql_false()
+            )
         if q:
             stmt = stmt.where(Task.title.ilike(f"%{q.strip()}%"))
         # "The ones with no deadline" (#392) — the way out for the rows an instance carries
@@ -663,6 +701,12 @@ class TaskService:
             stmt = stmt.where(Task.due_date >= due_from)
         if due_to is not None:
             stmt = stmt.where(Task.due_date <= due_to)
+        # Fold each schedule-mode series onto its current occurrence. Off by default, like every
+        # other narrowing here (CLAUDE.md §9): the export and the generated MCP surface read the
+        # whole list, and the *screen* asks for the fold and says so with a chip.
+        terminal = terminal_keys(statuses)
+        if collapse_series:
+            stmt = stmt.where(~self._series_folded(terminal, today))
 
         total = 0
         if count:
@@ -693,9 +737,92 @@ class TaskService:
             if with_meta
             else [TaskListItem.model_validate(t) for t in tasks]
         )
+        if not self.ctx.is_portal:
+            # ``_list_items`` sets this for a card; a ``meta=false`` lookup (the pickers) needs
+            # it too, and it is two columns already on the row — no query.
+            for item, task in zip(items, tasks, strict=True):
+                item.series_root_id = _series_root_of(task)
+            if collapse_series:
+                await self._attach_series_pending(items, terminal, today)
         if hours:
             await self._attach_hours(items)
         return items, total
+
+    def _unfinished(self, terminal: Sequence[str]) -> Any:
+        """Not in a finished status — the tenant's own vocabulary (#62), never a literal."""
+        return Task.status.not_in(terminal) if terminal else sql_text("true")
+
+    def _series_folded(self, terminal: Sequence[str], today: date) -> Any:
+        """The rows a folded list leaves out: an unfinished occurrence due **after today** that
+        is not its series' *current* one (the earliest unfinished member).
+
+        Two halves, each deliberate. Only the **future** folds: an occurrence that is due today
+        or already late is work to act on now, so every one of them stays a row and the
+        dashboard's ``?due=overdue`` count and the board agree to the task. And the current one
+        is the earliest *unfinished* member rather than the one nearest today, so a series
+        nobody has kept up with shows its oldest open occurrence and folds the rest behind it —
+        the same row the after-completion chain would have as its carrier.
+
+        A member with no deadline at all (a root saved before the date became required, #392)
+        never folds: ``NULL > today`` is neither true nor false and ``NOT NULL`` would drop the
+        row, so the null is refused explicitly.
+        """
+        unfinished = self._unfinished(terminal)
+        # DISTINCT ON the root, ordered soonest-first, picks one id per series. Through the
+        # caller's own repository, so a company horizon scopes the fold the way it scopes the
+        # list; ``correlate(None)`` because both statements read ``tasks`` and SQLAlchemy would
+        # otherwise correlate the inner one away to an empty FROM.
+        current = (
+            self.repo.scoped_select()
+            .with_only_columns(Task.id)
+            .where(_SERIES_MEMBER, unfinished)
+            .distinct(_SERIES_ROOT)
+            .order_by(_SERIES_ROOT, Task.due_date.asc().nulls_last(), Task.created_at.asc())
+            .correlate(None)
+        )
+        return and_(
+            _SERIES_MEMBER,
+            unfinished,
+            Task.due_date.is_not(None),
+            Task.due_date > today,
+            Task.id.not_in(current),
+        )
+
+    async def _attach_series_pending(
+        self, items: list[TaskListItem], terminal: Sequence[str], today: date
+    ) -> None:
+        """Stamp each series' current row with how many occurrences the fold left out.
+
+        One statement over the unfinished members of every series on the page, never one per
+        row (docs/PERFORMANCE.md, pinned by ``test_perf_query_budgets``): the first member per
+        root in due order *is* the current one — the same ordering ``_series_folded`` picks by,
+        so the two cannot disagree about which row carries the number — and every member after
+        it that is due past today is one the list did not draw. A page with no series on it
+        costs nothing.
+        """
+        roots = {item.series_root_id for item in items if item.series_root_id is not None}
+        if not roots:
+            return
+        rows = (
+            await self.ctx.session.execute(
+                self.repo.scoped_select()
+                .with_only_columns(_SERIES_ROOT.label("root"), Task.id, Task.due_date)
+                .where(_SERIES_MEMBER, self._unfinished(terminal), _SERIES_ROOT.in_(roots))
+                .order_by(_SERIES_ROOT, Task.due_date.asc().nulls_last(), Task.created_at.asc())
+            )
+        ).all()
+        current: dict[uuid.UUID, uuid.UUID] = {}
+        pending: dict[uuid.UUID, int] = {}
+        for root, task_id, due in rows:
+            if root not in current:
+                current[root] = task_id
+                pending[root] = 0
+            elif due is not None and due > today:
+                pending[root] += 1
+        for item in items:
+            root = item.series_root_id
+            if root is not None and current.get(root) == item.id:
+                item.series_pending = pending[root]
 
     async def _portal_contact_id(self) -> uuid.UUID | None:
         """The contact behind a client-portal session, or ``None`` (#450/#453).

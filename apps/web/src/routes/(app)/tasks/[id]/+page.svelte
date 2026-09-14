@@ -20,6 +20,7 @@
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { originOf, withOrigin } from "$lib/core/origin";
+  import { returnHref } from "$lib/core/screen-position.svelte";
   import { pageTitle } from "$lib/core/title";
   import { orgToday } from "$lib/core/today";
   import { can } from "$lib/core/permissions";
@@ -571,6 +572,24 @@
   // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
   // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
   const origin = $derived(originOf(page.url));
+
+  /**
+   * Finishing a task is leaving it. The card was the place to *do* the work; once it is done
+   * there is nothing on it left to look at, and the reader's next question is "what's next",
+   * which the board answers and a finished card does not. So every way of finishing — the
+   * confirm below, the status select in use mode, an edit-mode save that lands on a finished
+   * status — returns to the detour's origin where there is one (#408), else to the board, on
+   * the slice the reader last had of it (`returnHref`: their filters, their page).
+   */
+  function leaveFinished(): void {
+    void goto(origin ?? returnHref("/tasks"), { invalidateAll: true });
+  }
+  /** Does this posted status finish the task — a move *into* a finished state from an open one? */
+  function finishes(status: FormDataEntryValue | null): boolean {
+    const target = statuses.find((s) => s.key === String(status ?? ""));
+    return Boolean(target?.is_terminal) && !isDone;
+  }
+
   function leaveEdit(): void {
     // …and the marker that opened the form is consumed with it (#402) — but only on the arm that
     // stays on this page. A detour's exit replaces this URL, and its `?edit=1` goes with it.
@@ -614,7 +633,20 @@
     if (created?.slot === "company") onCompanyPicked(created.id);
     if (created?.slot === "project") onProjectPicked(created.id);
   });
+  // The AI box (`TaskAIRevise`) rewrote the row: reload it, and remount the edit-mode
+  // description editor onto the new text (it holds its own state and would keep the old one).
+  let reviseKey = $state(0);
+  async function onRevised(): Promise<void> {
+    await invalidateAll();
+    reviseKey += 1;
+  }
+
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
+  // Reachable from **use mode** too: a step's explanation is the part of a plan that changes
+  // while the work is being done ("let op: de klant wil het in het blauw"), and it used to
+  // cost ⋯ → Bewerken, the pencil on the step and a save at the foot of the page. In use
+  // mode the rendered text opens its editor (the InlineText shape, #455) and an empty one is
+  // a small "toelichting" affordance; the same forms serve both modes.
   let editingChecklistId = $state<string | null>(null);
   let editingItemId = $state<string | null>(null);
   // A step's title, and a list's, edited in place in *use* mode: click the words, type, Enter
@@ -1059,6 +1091,9 @@
         to: String(a.payload.to ?? ""),
       });
     }
+    if (a.action === "created" && a.payload.via === "email") {
+      return t("tasks.activity.created_from_email");
+    }
     if (a.action === "ai_revised") {
       return t("tasks.activity.ai_revised", { summary: String(a.payload.summary ?? "") });
     }
@@ -1308,7 +1343,19 @@
               {/each}
             </select>
           {:else}
-            <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
+            <form
+              method="POST"
+              action="?/update"
+              use:enhance={busy.wrap("status", ({ formData }) => {
+                // The one-click finish: a terminal status picked with nothing to offer in a
+                // prompt submits straight away, and lands on the board like every other finish.
+                const finishing = finishes(formData.get("status"));
+                return async ({ update, result }) => {
+                  if (finishing && result.type === "success") return leaveFinished();
+                  await update({ reset: false });
+                };
+              })}
+            >
               <select
                 id="status"
                 name="status"
@@ -2186,14 +2233,18 @@
         {t("tasks.field.description")}
       </h3>
       {#if editMode}
-        <RichTextEditor
-          name="description"
-          form="task-edit"
-          rows={4}
-          value={task.description ?? ""}
-          scope={candidateScope}
-          upload={{ entityType: "task", entityId: task.id }}
-        />
+        <!-- Keyed on the last AI revision: the editor holds its own text, so a description the
+             box just rewrote would otherwise stay the old one under the reader's cursor. -->
+        {#key reviseKey}
+          <RichTextEditor
+            name="description"
+            form="task-edit"
+            rows={4}
+            value={task.description ?? ""}
+            scope={candidateScope}
+            upload={{ entityType: "task", entityId: task.id }}
+          />
+        {/key}
       {:else}
         <!-- Edited in place (#455): the one field people change ten times a day should not cost
              ⋯ → Bewerken and a save at the foot of the page. Posts `description` alone to
@@ -2208,38 +2259,43 @@
           upload={{ entityType: "task", entityId: task.id }}
           id="task-description-inline"
         />
-        {#if aiAvailable}
-          <!-- Change the task in words (`tasks/assist.py`): one instruction, applied as the
-               viewer, every change on the trail. The page reloads its data afterwards, the
-               way any other write here does. When the task has no checklist yet, the second
-               button writes one from the notes — it lives here because the checklist section
-               is not drawn until there is one (an empty card is the clutter use mode avoids). -->
-          <div class="mt-4">
-            <TaskAIRevise taskId={task.id} onapplied={() => invalidateAll()} />
-            {#if (task.checklists ?? []).length === 0}
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="secondary"
-                  loading={generatingChecklist}
-                  onclick={generateChecklist}
-                  title={t("tasks.ai.checklist_generate_hint")}
+      {/if}
+      {#if aiAvailable}
+        <!-- Change the task in words (`tasks/assist.py`): one instruction, applied as the
+             viewer, every change on the trail. The page reloads its data afterwards, the
+             way any other write here does. In **both** modes: a fresh create lands here in
+             edit mode (#230), which is exactly when "beschrijf deze taak" is wanted, and the
+             box used to be the one thing the pencil hid. While editing, the typed fields are
+             saved first (`saveIfEditing`, #335 F7's save-then-act) so the model reads what
+             the reader sees, and edit mode stays open over the reloaded row. When the task
+             has no checklist yet, the second button writes one from the notes — it lives
+             here because the checklist section is not drawn until there is one (an empty
+             card is the clutter use mode avoids). -->
+        <div class="mt-4">
+          <TaskAIRevise taskId={task.id} before={saveIfEditing} onapplied={onRevised} />
+          {#if (task.checklists ?? []).length === 0}
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                loading={generatingChecklist}
+                onclick={generateChecklist}
+                title={t("tasks.ai.checklist_generate_hint")}
+              >
+                <Sparkles size={12} class="text-brand" aria-hidden="true" />
+                {generatingChecklist
+                  ? t("tasks.ai.checklist_busy")
+                  : t("tasks.ai.checklist_generate")}
+              </Button>
+              {#if generateError}
+                <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                  >{t(generateError)}</span
                 >
-                  <Sparkles size={12} class="text-brand" aria-hidden="true" />
-                  {generatingChecklist
-                    ? t("tasks.ai.checklist_busy")
-                    : t("tasks.ai.checklist_generate")}
-                </Button>
-                {#if generateError}
-                  <span class="text-xs text-red-600 dark:text-red-400" role="alert"
-                    >{t(generateError)}</span
-                  >
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/if}
+              {/if}
+            </div>
+          {/if}
+        </div>
       {/if}
     </section>
   {/snippet}
@@ -2447,7 +2503,13 @@
                   class="mb-2 space-y-2"
                 >
                   <input type="hidden" name="checklist_id" value={checklist.id} />
-                  <input name="title" value={checklist.title} required class={inputClass} />
+                  {#if editMode}
+                    <input name="title" value={checklist.title} required class={inputClass} />
+                  {:else}
+                    <!-- Use mode renames by clicking the title above; this form is the
+                         description alone, and posts the title it already has. -->
+                    <input type="hidden" name="title" value={checklist.title} />
+                  {/if}
                   <RichTextEditor
                     name="description"
                     rows={2}
@@ -2464,6 +2526,32 @@
                     >
                   </div>
                 </form>
+              {:else if canEditTask && !editMode}
+                {#if checklist.description}
+                  <div
+                    role="button"
+                    tabindex="0"
+                    class="group -mx-1 mb-2 cursor-text rounded px-1 hover:bg-surface"
+                    title={t("tasks.checklist.description_edit_hint")}
+                    onclick={() => (editingChecklistId = checklist.id)}
+                    onkeydown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        editingChecklistId = checklist.id;
+                      }
+                    }}
+                  >
+                    <Markdown value={checklist.description} />
+                  </div>
+                {:else}
+                  <button
+                    type="button"
+                    class="mb-2 text-xs text-text-muted hover:text-brand"
+                    onclick={() => (editingChecklistId = checklist.id)}
+                  >
+                    ＋ {t("tasks.checklist.description_add")}
+                  </button>
+                {/if}
               {:else if checklist.description}
                 <div class="mb-2"><Markdown value={checklist.description} /></div>
               {/if}
@@ -2656,7 +2744,11 @@
                       >
                         <input type="hidden" name="checklist_id" value={checklist.id} />
                         <input type="hidden" name="item_id" value={item.id} />
-                        <input name="title" value={item.title} required class={inputClass} />
+                        {#if editMode}
+                          <input name="title" value={item.title} required class={inputClass} />
+                        {:else}
+                          <input type="hidden" name="title" value={item.title} />
+                        {/if}
                         <RichTextEditor
                           name="description"
                           rows={2}
@@ -2674,6 +2766,34 @@
                           >
                         </div>
                       </form>
+                    {:else if canEditTask && !editMode}
+                      {#if item.description}
+                        <div
+                          role="button"
+                          tabindex="0"
+                          class="mt-0.5 ml-6 cursor-text rounded px-1 hover:bg-surface"
+                          title={t("tasks.checklist.description_edit_hint")}
+                          onclick={() => (editingItemId = item.id)}
+                          onkeydown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              editingItemId = item.id;
+                            }
+                          }}
+                        >
+                          <Markdown value={item.description} />
+                        </div>
+                      {:else}
+                        <!-- Only on hover/focus of the row: forty steps each wearing a
+                             "toelichting" line would be the noise use mode exists to avoid. -->
+                        <button
+                          type="button"
+                          class="ml-6 text-xs text-text-muted opacity-0 transition-opacity hover:text-brand focus:opacity-100 group-hover:opacity-100"
+                          onclick={() => (editingItemId = item.id)}
+                        >
+                          ＋ {t("tasks.checklist.description_add")}
+                        </button>
+                      {/if}
                     {:else if item.description}
                       <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
                     {/if}
@@ -2995,17 +3115,19 @@
           cancel();
           return;
         }
+        // Read before the request: `isDone` is recomputed off the reloaded task afterwards.
+        const finishing = finishes(formData.get("status"));
         return async ({ update, result }) => {
           applyTo = "";
           // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
           // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
           // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
-          // in service of.
+          // in service of. A save that finished the task leaves the same way (`leaveFinished`).
           const waiting = pendingSave;
           pendingSave = null;
-          if (result.type === "success" && !waiting && origin) {
+          if (result.type === "success" && !waiting && (origin || finishing)) {
             dueReason = "";
-            return void goto(origin, { invalidateAll: true });
+            return leaveFinished();
           }
           if (result.type === "success") {
             editMode = waiting !== null;
@@ -3017,7 +3139,10 @@
             if (!editMode) clearEditIntent();
           }
           dueReason = "";
-          await update();
+          // Never reset: a save that keeps edit mode open (Inplannen, the AI box) would
+          // otherwise blank every display-only input associated with this form — the
+          // date's dd-mm-jjjj text went empty over a hidden value that was still right.
+          await update({ reset: false });
           waiting?.(result.type === "success");
         };
       })}
@@ -3198,10 +3323,13 @@
     <form
       method="POST"
       action="?/update"
-      use:enhance={busy.wrap("finish", () => ({ update }) => {
+      use:enhance={busy.wrap("finish", () => ({ update, result }) => {
         showFinishPrompt = false;
-        // One-shot: the dialog closes and the page reloads the finished task, so there is
-        // nothing left to keep. Stated rather than inherited (docs/UX.md, forms:check).
+        // Finished: the card's work is over, so the reader goes back to the board (or the
+        // detour's origin). A refusal — the closing-moment gate, a failed hours entry —
+        // reloads this page with the error on it. One-shot either way: nothing left to keep.
+        // Stated rather than inherited (docs/UX.md, forms:check).
+        if (result.type === "success") return leaveFinished();
         return update({ reset: true });
       })}
     >

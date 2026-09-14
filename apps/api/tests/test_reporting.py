@@ -1554,7 +1554,10 @@ def test_no_two_columns_of_one_section_share_a_label() -> None:
     from app.modules.reporting.render.context import metric_label
 
     shapes = {
-        "channels": (["sessions", "compare_sessions", "delta", "share"], ["label"]),
+        "channels": (
+            ["sessions", "compare_sessions", "delta", "share", "keyEvents", "keyEvents_delta"],
+            ["label"],
+        ),
         "split": (
             ["sessions", "newUsers", "totalUsers", "screenPageViews", "avg_engagement_time",
              "engagementRate", "keyEvents", "compare_sessions", "delta"],

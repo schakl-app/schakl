@@ -105,6 +105,11 @@ class Decision:
     #: travels into a stored row for two of the reasons, and a skip log that carries content
     #: is the log of every email you receive that this design exists to refuse.
     detail: dict[str, str] = field(default_factory=dict)
+    #: The intake address the message was sent to (:mod:`app.core.mailbox.intake`), when it
+    #: was sent to one. Orthogonal to ``reason``: a mail from a colleague to ``taak@`` alone is
+    #: still colleague-only chatter for the *timeline* and declines there, while its intake
+    #: half proceeds — and a client thread with ``taak@`` in Cc does both.
+    intake: Any = None
 
     @property
     def logs(self) -> bool:
