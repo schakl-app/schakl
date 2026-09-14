@@ -2,6 +2,88 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.47.0 — 2026-09-14
+
+A task can now arrive by e-mail: an employee mails the org's task address — a note, a forwarded
+client mail, a photo — and it lands on their board, with the client, assignee and deadline filled
+from what the mail says. A repeating task is one row on the board and in every picker instead of
+twelve. The AI box on a task reads the whole card and works in edit mode, and the time quick-add
+stops answering "kon geen registratie afleiden" to lines it could read. Monthly reports compare
+rankings with last month instead of last year. And notification preferences can no longer be
+wiped by saving a page that failed to load.
+
+One migration, `d5e1f7a2c9b4` (`tasks_add_intake`, revises `c4d8e2f6a1b3`): two new tables,
+expand-only and rollback-safe. One new permission key, `tasks.settings.manage` (admin by default,
+granted to existing orgs by the startup reconciler). One new AI feature key, `task_intake`. New
+endpoints: `GET`/`PUT /tasks/settings`, `GET /tasks/intake`, `GET /tasks/intake/summary`,
+`POST /tasks/intake/{id}/create`, `DELETE /tasks/intake/{id}` and
+`POST /tasks/{id}/ai/transcribe`. `GET /tasks` accepts `collapse_series` and `series_id` (both off
+by default). No new environment variables. The public API reference and the typed client are
+regenerated.
+
+### Tasks
+
+- **A task arrives by e-mail.** Set an address in Instellingen → Taken (an alias or group on a
+  connected Gmail or Outlook mailbox; no new mail server). A mail to it becomes a task on the
+  sender's board, created as the sender and refused wherever they would be refused. What the
+  sender wrote comes first: `[Klant]` in the subject and the lines `klant:`, `voor:`, `deadline:`,
+  `project:`, `labels:` and `prioriteit:`. Next come the people in a forwarded client mail. With
+  `task_intake` on, the model then fills only what is still blank. A mail with no identifiable
+  client waits under Taken → E-mailinbox (a tab shown only while something waits). A missing
+  deadline defaults to today plus the org's setting. A client thread with the address in Cc logs
+  the contact moment and files it onto the task, and the same mail arriving in two mailboxes makes
+  one task. The sender gets a notification naming what was filled in and by whom.
+- **A repeating task is one row.** The board folds each series onto its next unfinished occurrence
+  with a "↻ +11" mark that unfolds the rest; an occurrence due today or overdue stays its own row.
+  Task pickers show the series once, with a chevron to pick a specific date. "Hele reeks bekijken"
+  opens the whole series as its own view.
+- **Finishing a task returns to the board.** Whether you finish from the prompt, the status select
+  or an edit save, you land back where you came from, or on `/tasks` as you left it.
+- **The AI box reads the whole card and works in edit mode.** It is drawn on a freshly created
+  task too (typed fields are saved first). The model now sees the client, project, roster, labels,
+  status, budget, plan, links and conversation, so "zet Femke erbij", "label spoed" and "budget
+  2 uur" land as real edits. It writes a description onto a task that has none. The instruction can
+  be dictated.
+- **A step's note is edited where it is read.** Click it in use mode or in the review slide-over.
+- **Link pickers say whose task it is.** While no client is picked, each task option carries its
+  client as a searchable hint, so four clients' "Maandrapportage nakijken" are no longer four
+  identical rows. Picking a task filed straight under a client now fixes the client in the review
+  dialog.
+
+### Time
+
+- **The quick-add fills what the line says.** A model that answered in prose, or ran out of its
+  token budget while reasoning, used to return an empty draft. The forced round now always runs,
+  the budget is 4096, and a cut-off answer says so. Unambiguous parts of the line ("gisteren",
+  "afgelopen vrijdag", 14:00-16:30, "2 uur", "90 min") are read locally to fill what the model
+  left blank.
+
+### Reporting
+
+- **Rankings compare with last month.** The rankings tiles were compared with the same month last
+  year, which suits traffic and not a position. The section now reads the previous month and states
+  its own span under the tiles.
+- Position columns are headed with the day each rank was read ("1 aug" / "31 aug"). The landing
+  page column is wider and breaks at a slash. The channel table gains a goals column with its own
+  change badge.
+
+### Notifications
+
+- **A failed preferences read no longer wipes your preferences.** When the read failed (for
+  example a 502 during a redeploy), the page showed an empty matrix, and one press of Opslaan
+  deleted every override. The page now refuses to render in that case. A Save pressed before the
+  page finished loading is refused rather than posting the stale snapshot. A stored digest time
+  survives a re-save.
+
+### Upgrade notes
+
+- The migration runs unattended on start-up and only adds tables. Nothing changes until an admin
+  sets a task address in Instellingen → Taken.
+- The e-mail intake needs a connected Gmail or Outlook mailbox for the senders. The model half needs
+  the `task_intake` AI feature switched on.
+- `tasks.settings.manage` goes to the admin role; grant it to other roles to let them configure the
+  intake address.
+
 ## v0.46.1 — 2026-09-11
 
 Three fixes, each found on a live instance. A connector that consented before a module shipped
