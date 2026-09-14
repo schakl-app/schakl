@@ -88,8 +88,14 @@
   const storedTasks = initialTasks(interaction);
   let taskIds = $state<string[]>(storedTasks.map((task) => task.id));
   const taskId = $derived(taskIds[0] ?? "");
-  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
-    storedTasks.map((task) => [task.id, task.title]),
+  // Every title the dialog knows, not only the options the cascade currently offers: a chip
+  // picked before the client was, and then a client picked over it, must keep saying what it
+  // is rather than printing its id.
+  const taskLabels = $derived<Record<string, string | null | undefined>>(
+    Object.fromEntries([
+      ...storedTasks.map((task) => [task.id, task.title]),
+      ...tasks.map((task) => [task.value, task.label]),
+    ]),
   );
   // svelte-ignore state_referenced_locally — the dialog is keyed per row; props never swap here.
   const roster = new ContactRoster(initialContacts(interaction));
@@ -132,6 +138,10 @@
   function onTaskPicked(id: string) {
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
+    // A task filed straight under a client, with no project of its own, still fixes the client
+    // (`InteractionForm`'s rule) — and once it does, the client each option was naming is the
+    // one on the picker above it, so the names stop being drawn.
+    else if (task?.company_id) companyId = task.company_id;
   }
 
   /** A series was unfolded: its occurrences join the list (nested), so the cascade knows them. */

@@ -5,6 +5,8 @@ import { splitLifecycle, type LifecycleSplit } from "$lib/core/picker";
 import { splitCompanyOptions } from "$lib/modules/companies/picker";
 import { splitProjectOptions } from "$lib/modules/projects/picker";
 
+import { taskClientName } from "./taskclient";
+
 export interface LinkOption {
   value: string;
   label: string;
@@ -187,6 +189,10 @@ export function splitLinkOptions(
   projects: LifecycleSplit;
   tasks: LifecycleSplit;
 } {
+  // While no client is picked the task list spans every client, so each task says whose it is
+  // — its own client, or its project's (`taskclient.ts`). Once a client is picked the list is
+  // that client's, and the name would be the same word on every row.
+  const clientOf = selected.companyId ? () => undefined : taskClientName({ companies, projects });
   return {
     companies: splitCompanyOptions(
       companies.map((c) => ({ id: c.value, name: c.label, status: c.status })),
@@ -211,12 +217,19 @@ export function splitLinkOptions(
           // answers it. Naming the *status* here would mean fetching the vocabulary to
           // translate it.
           status: task.completed_at ? "done" : "open",
-          hint: task.series_pending
-            ? t("tasks.picker.series_hint", {
-                date: task.due_date ? fmtPeriod(task.due_date) : "",
-                count: task.series_pending,
-              })
-            : undefined,
+          // Whose it is (while no client is picked), then what a series row stands for.
+          hint:
+            [
+              clientOf(task),
+              task.series_pending
+                ? t("tasks.picker.series_hint", {
+                    date: task.due_date ? fmtPeriod(task.due_date) : "",
+                    count: task.series_pending,
+                  })
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined,
           expandable: Boolean(task.series_pending),
         })),
       {

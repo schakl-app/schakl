@@ -150,9 +150,6 @@
   const storedTasks = initialTasks(interaction);
   let fTasks = $state<string[]>(storedTasks.map((task) => task.id));
   const fTask = $derived(fTasks[0] ?? "");
-  const taskLabels: Record<string, string | null | undefined> = Object.fromEntries(
-    storedTasks.map((task) => [task.id, task.title]),
-  );
   /**
    * Which link a kind leads with (#263). A phone call or a meeting is primarily *with a
    * person*; a note is primarily *about work*. So the contact picker is up front for every
@@ -173,6 +170,14 @@
   let linkCompanies = $state<LinkOption[]>([]);
   let linkProjects = $state<ProjectOption[]>([]);
   let linkTasks = $state<TaskOption[]>([]);
+  // Every title the form knows, not only the options the cascade currently offers, so a chip
+  // picked before the client was keeps its title when a client is picked over it.
+  const taskLabels = $derived<Record<string, string | null | undefined>>(
+    Object.fromEntries([
+      ...storedTasks.map((task) => [task.id, task.title]),
+      ...linkTasks.map((task) => [task.value, task.label]),
+    ]),
+  );
   let lookupsLoaded = false;
   $effect(() => {
     // Nothing is fetched until the block is actually open (docs/PERFORMANCE.md): a logged call
