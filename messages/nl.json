@@ -2715,6 +2715,7 @@
   "permissions.tasks.checklist_template.write": "Checklistsjablonen beheren",
   "permissions.tasks.template.write": "Taaksjablonen beheren",
   "permissions.tasks.template.apply": "Taaksjabloon toepassen op een klant",
+  "permissions.tasks.settings.manage": "Taakinstellingen en het e-mailadres voor taken beheren",
   "permissions.time.entry.read": "Urenregels bekijken",
   "permissions.time.entry.write": "Uren schrijven en bewerken",
   "permissions.time.entry.approve": "Uren goedkeuren",

@@ -2715,6 +2715,7 @@
   "permissions.tasks.checklist_template.write": "Manage checklist templates",
   "permissions.tasks.template.write": "Manage task templates",
   "permissions.tasks.template.apply": "Apply a task template to a client",
+  "permissions.tasks.settings.manage": "Manage task settings and the e-mail intake address",
   "permissions.time.entry.read": "View time entries",
   "permissions.time.entry.write": "Log and edit time",
   "permissions.time.entry.approve": "Approve hours",
