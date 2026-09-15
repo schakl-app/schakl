@@ -23866,7 +23866,7 @@ export interface components {
          * InteractionSource
          * @enum {string}
          */
-        InteractionSource: "manual" | "gmail" | "outlook" | "upload";
+        InteractionSource: "manual" | "gmail" | "outlook" | "upload" | "forwarded";
         /**
          * InteractionStatus
          * @enum {string}

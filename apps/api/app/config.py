@@ -100,11 +100,12 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
             "image/x-icon", "image/vnd.microsoft.icon",
-            "application/pdf", "text/plain", "text/csv",
+            "application/pdf", "text/plain", "text/csv", "text/markdown",
             "application/zip",
-            "application/msword", "application/vnd.ms-excel",
+            "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         ]
     )
 

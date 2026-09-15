@@ -306,6 +306,8 @@ async def classify(
     intake = intake_target(participants, internals.intake_addresses)
     if intake is not None:
         participants = without_intake(participants, internals.intake_addresses)
+        if not any(p.get("role") in ("to", "cc") for p in participants):
+            return Decision(reason=SkipReason.INTAKE_ONLY, intake=intake)
     if _defer_to_owner_mailbox(connection, label_ids, participants, internals):
         owner = matching.intended_owner(participants, internals.owner_by_email.keys())
         return Decision(

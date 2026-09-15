@@ -225,7 +225,7 @@ export function contactChips(
 }
 
 export function isMailRow(item: Pick<InteractionItem, "source">): boolean {
-  return isMailboxRow(item) || item.source === "upload";
+  return isMailboxRow(item) || item.source === "upload" || item.source === "forwarded";
 }
 
 /** The sources with a connected mailbox behind them — the API's `MAILBOX_SOURCES`. */

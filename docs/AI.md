@@ -497,6 +497,19 @@ apply from a worker:
    with #327's stance; what the model may set from it is what a reader would (notes, steps, a
    deadline the client named). Status and `visible_to_client` are not on the schema.
 
+Two things the first live mail taught, both about what the model is *given* rather than what it
+may write. **The calendar is ours to state**: "deadline as vrijdag" on a Monday came back as the
+Thursday, because the prompt said `Today is 2026-09-14` and left the weekday to the model. The
+prompt now carries `calendar_line` — today with its weekday, the org-local time of arrival, and the
+next fourteen days as `Fri 2026-09-18` pairs — and a deadline phrase inside the running text is read
+deterministically first (`intake.due_phrase`), so the model only ever sees a weekday it has already
+been told the date of. **The forwarded half is a document, not the notes**: it travels to the model
+under `forwarded` for context and grounding, but the task's description carries only the
+colleague's own words (sign-off cut) plus the model's summary; the forwarded message itself is filed
+on the task as an e-mail contact moment (`InteractionSource.FORWARDED`), or the row a connected
+mailbox already logged for it is filed there instead. And what the colleague tells the *application*
+to do — attach the file, use the mail for context — is named in the prompt as not being a step.
+
 Its own `AI_FEATURES` key (`task_intake`): an agency happy to have a dictated task drafted has not
 thereby agreed to a model reading everything forwarded to the task address. The model call holds
 the worker's connection (`_HeldContext` makes `release_db` a no-op — it commits, and the poll is

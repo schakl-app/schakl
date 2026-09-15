@@ -1023,6 +1023,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   two bells. Deliberately not a Redis bucket, not an inbound webhook and not a per-tenant SMTP
   listener: the address must merely exist (an alias or group), and a second delivery path would
   be a second answer to "who wrote this".
+- **The first live mail to the task address found four faults, and the parser owned none of
+  them alone** (`tasks/intake.py`, `docs/AI.md`). *"deadline as vrijdag"* sent on a Monday landed
+  on the Thursday: the directive parser read only `deadline:` lines, so the weekday went to the
+  model, which was told *today is 2026-09-14* and left to work out that this was a Monday. Weekday
+  arithmetic is ours (§8), so the prompt states today **with its weekday**, the org-local time and
+  the next fourteen days by name (`intake_ai.calendar_line`), and a deadline phrase in running
+  text (`due_phrase`: *"deadline a.s. vrijdag"*, *"uiterlijk 1 oktober"*) is read deterministically
+  before the model is asked at all. The mail *to* `taak@` became a pending contact moment in the
+  sender's own review queue, because with internal logging on a colleague-only mail is logged —
+  but a mail whose only recipient is the intake address is an instruction to the system, never a
+  conversation, so both feeds skip its timeline half (`SkipReason.INTAKE_ONLY`); a client thread
+  with the address in Cc keeps its other recipients and stays both. The forwarded client mail was
+  pasted into the task's notes, signature and all: **what was forwarded is a contact moment, not
+  notes.** The forward's header block (From/Date/Subject/To in the mail client's language, read
+  through the markdown converter's escapes) becomes an e-mail interaction filed on the task —
+  `InteractionSource.FORWARDED`, the `.eml` upload's shape: logged at birth, owned by the
+  forwarding colleague, under the original sender's name and date — and where a connected mailbox
+  had already logged that very message, the existing row is filed onto the task instead of a copy
+  being made (`interactions.system.file_on_task`); a quoted reply is left alone, being the thread's
+  previous turn, which the mailbox logs itself. The colleague's own words lose their sign-off
+  (`strip_signature`) and become the notes. And the `.md` spec the mail said to attach was dropped
+  without a word: a mail client labels what it does not recognise `application/octet-stream`, so
+  the type is re-read off the file name before the storage allow-list is asked, and a part still
+  refused is named on the receipt *and* in the task's own notes (`tasks.intake.attachment_skipped`)
+  — a loss with nothing taking its place is stated where the person will look. The confirmation
+  notification was never broken; it was the tenth row under nine that shared its timestamp.
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

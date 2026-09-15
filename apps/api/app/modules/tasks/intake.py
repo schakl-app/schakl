@@ -14,13 +14,23 @@ turns it into a task, or parks it for its sender. The rules, in the order they r
    and the task is refused where they would have been refused: no ``tasks.task.create``, a
    client outside their company horizon (#285), a portal login.
 4. **The sender's words outrank everything.** A directive line (``klant:``, ``voor:``,
-   ``deadline:``, ``project:``, ``labels:``, ``prioriteit:``) or a ``[Klant]`` in the subject
-   decides its field. Then the addresses in the forwarded block, resolved through the same
-   contact match and ranking the feeds use (#305), name the client when they name exactly one.
-   Then the model (``intake_ai``) fills what is still blank — never what is not.
+   ``deadline:``, ``project:``, ``labels:``, ``prioriteit:``), a deadline phrase inside the
+   running text (*"deadline a.s. vrijdag"*, *"uiterlijk 1 oktober"*) or a ``[Klant]`` in the
+   subject decides its field. Then the addresses in the forwarded block, resolved through the
+   same contact match and ranking the feeds use (#305), name the client when they name exactly
+   one. Then the model (``intake_ai``) fills what is still blank — never what is not.
 5. **A missing client parks; a missing deadline defaults.** #391/#392 one door over: a
    deadline has an honest default (today + the org's setting), a client does not, so the mail
    waits in ``/tasks/inbox`` for the person who sent it, with everything it carried.
+6. **What was forwarded is a contact moment, not notes.** The colleague's own words (their
+   signature cut off) are the task's description; the mail they forwarded underneath becomes an
+   e-mail interaction filed on the task — the message the original sender wrote, under their
+   name and their date, exactly as an uploaded ``.eml`` lands (#262). Where the timeline already
+   holds that message (the client's mail arrived in a connected mailbox), the existing row is
+   filed onto the task instead of a copy being made. And the mail *to* the task address is
+   itself never a contact moment: the feeds skip its timeline half (``SkipReason.INTAKE_ONLY``)
+   when the address was its only recipient, because an instruction to the system is not a
+   conversation with a client.
 
 The sender hears the outcome through the ordinary notification system — bell, mail, digest,
 by their own preferences — with the client, the assignee and the deadline in the sentence, and
@@ -30,11 +40,14 @@ a note of which of them the model chose.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from email.utils import getaddresses, parsedate_to_datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -42,14 +55,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import EmitContext, emit
 from app.core.mailbox.intake import IntakeAddress, IntakeMessage, IntakeOutcome
-from app.core.mailbox.internals import match_contacts
+from app.core.mailbox.internals import load_internals, match_contacts
 from app.core.mailbox.matching import participants_from_addresses, resolve_mappings
 from app.core.members import staff_select
 from app.core.principal import member_context
 from app.core.storage import system as storage_system
 from app.core.storage.models import StoredFile
 from app.core.tenancy import RequestContext
-from app.core.timezone import org_today
+from app.core.timezone import org_today, org_zoneinfo
 from app.errors import AppError
 from app.modules.tasks import intake_ai
 from app.modules.tasks.intake_ai import IntakePlan
@@ -146,6 +159,70 @@ _FORWARD_MARKERS = (
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
+#: A deadline stated inside the running text rather than on a directive line: "deadline a.s.
+#: vrijdag", "uiterlijk 1 oktober", "moet voor woensdag af". The keyword decides that a date
+#: follows; whether the words after it *are* a date is :func:`parse_due`'s call, so "voor Stan"
+#: and "voor project X" name nothing.
+_DUE_PHRASE_RE = re.compile(
+    r"\b(?:deadline|uiterlijk|due|before|by|klaar|af|gereed|opleveren|voor)\b"
+    # A lookahead, so a keyword whose words name no date ("voor Stan met deadline …") does
+    # not swallow the next keyword along with them.
+    r"(?=\s*(?:is|op|on|:|=|voor|before|by)?\s*([^\n.,;!?()]{1,40}))",
+    re.I,
+)
+#: The words a person puts in front of a day that mean "the coming one".
+_DUE_PREFIX_RE = re.compile(
+    r"^(?:op|on|voor|before|by|a\.?s\.?|aanstaande|aankomende|komende|eerstvolgende|"
+    r"coming|this|deze|dit)\s+"
+)
+_DUE_SUFFIX_RE = re.compile(r"\s+(?:a\.?s\.?|aanstaande|aankomende|komende)$")
+_MONTHS = {
+    "jan": 1, "januari": 1, "january": 1,
+    "feb": 2, "februari": 2, "february": 2,
+    "mrt": 3, "mar": 3, "maart": 3, "march": 3, "märz": 3,
+    "apr": 4, "april": 4,
+    "mei": 5, "may": 5, "mai": 5,
+    "jun": 6, "juni": 6, "june": 6,
+    "jul": 7, "juli": 7, "july": 7,
+    "aug": 8, "augustus": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "okt": 10, "oct": 10, "oktober": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12, "dez": 12, "dezember": 12,
+}  # fmt: skip
+#: A fixed Monday for asking "is this a date at all?" — every branch of :func:`parse_due`
+#: answers relative to *some* today, so the answer's existence does not depend on which.
+_DUE_PROBE = date(2026, 1, 5)
+
+#: A sign-off line: everything from it to the end of the colleague's own part is their
+#: signature, which is not part of the task.
+_SIGNOFF_RE = re.compile(
+    r"^\s*(?:--|(?:met\s+)?(?:vriendelijke|hartelijke|warme)\s+groet(?:en)?|groet(?:en|jes)?|"
+    r"mvg|gr\.?|(?:kind|best|warm)\s+regards|regards|cheers|thanks|thank\s+you|bedankt|"
+    r"alvast\s+bedankt|met\s+dank)\s*[,.!]?\s*$",
+    re.I,
+)
+
+#: The header lines a mail client writes above a forwarded message, in the three languages the
+#: connected mailboxes answer in.
+_FORWARD_HEADER_RE = re.compile(
+    r"^\s*(?P<key>from|van|de|date|datum|sent|verzonden|gesendet|subject|onderwerp|betreff|"
+    r"to|aan|an|cc|kopie)\s*:\s*(?P<value>.*?)\s*$",
+    re.I,
+)
+_FORWARD_HEADER_KEYS = {
+    "from": "from", "van": "from", "de": "from",
+    "date": "date", "datum": "date", "sent": "date", "verzonden": "date", "gesendet": "date",
+    "subject": "subject", "onderwerp": "subject", "betreff": "subject",
+    "to": "to", "aan": "to", "an": "to",
+    "cc": "cc", "kopie": "cc",
+}  # fmt: skip
+_QUOTE_HEADER_RE = re.compile(r"^\s*>?\s*(on|op)\s.+\b(wrote|schreef)\b.*:\s*$", re.I)
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_FORWARD_DATE_RE = re.compile(
+    r"(\d{1,2})[ \-/.]+([a-zäé]+)\.?[ \-/.]+(\d{4})(?:\D{1,12}(\d{1,2}):(\d{2}))?", re.I
+)
+
 _WEEKDAYS = {
     "maandag": 0, "monday": 0, "ma": 0, "mon": 0,
     "dinsdag": 1, "tuesday": 1, "di": 1, "tue": 1,
@@ -178,14 +255,193 @@ class IntakeDraft:
     project_hint: str | None = None
     label_hints: list[str] = field(default_factory=list)
     priority: str | None = None
-    #: The colleague's own words, directives removed.
+    #: The colleague's own words, directives and signature removed — the task's description.
     own_text: str = ""
-    #: What they forwarded or quoted — somebody else's words.
+    #: What they forwarded or quoted — somebody else's words, header block included.
     forwarded_text: str = ""
-    #: The whole body, directives removed — what the task's description carries.
+    #: The whole body, directives removed — the evidence a model's links are grounded in.
     body: str = ""
     #: Addresses found in the forwarded part, lower-cased, in order of appearance.
     addresses: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ForwardedMail:
+    """The message underneath a forward, as its own headers describe it."""
+
+    from_name: str | None = None
+    from_email: str | None = None
+    to: list[tuple[str | None, str]] = field(default_factory=list)
+    cc: list[tuple[str | None, str]] = field(default_factory=list)
+    subject: str | None = None
+    #: The ``Date:`` / ``Sent:`` header, or ``None`` when the client wrote none we can read.
+    sent_at: datetime | None = None
+    #: The forwarded words with the marker and the header block taken off.
+    body: str = ""
+    #: A quoted reply ("Op … schreef Klant:") rather than a forward: the message underneath is
+    #: the previous turn of the *same thread*, which the connected mailbox logs itself, so
+    #: filing it again would put one e-mail on the timeline twice.
+    quoted: bool = False
+
+
+def _is_forward_marker(line: str) -> bool:
+    plain = _plain(line)
+    return any(marker.match(plain) for marker in _FORWARD_MARKERS[:2]) or bool(
+        re.match(r"^\s*begin forwarded message", plain, re.I)
+    )
+
+
+def _plain(line: str) -> str:
+    """A markdown line as the plain words it carries: links to their text, emphasis and the
+    converter's escapes removed — so ``From: **Luka** <[l@x.nl](mailto:l@x.nl)\\>`` parses."""
+    return _MD_LINK_RE.sub(r"\1", line).replace("**", "").replace("\\", "").strip()
+
+
+def _addresses_in(value: str) -> list[tuple[str | None, str]]:
+    found: list[tuple[str | None, str]] = []
+    # "Klant Naam <k@x.nl>" pairs first: a quote line ("Op … schreef Klant <k@x.nl>:") is not
+    # an address header, and ``getaddresses`` reads its prose as part of the name.
+    for name, address in re.findall(r"([^<>,;:]*?)\s*<([^<>\s]+@[^<>\s]+)>", value):
+        address = address.strip().lower()
+        if _EMAIL_RE.fullmatch(address) and address not in {a for _, a in found}:
+            name = re.sub(r"^.*\b(?:schreef|wrote)\b\s*", "", name.strip(), flags=re.I)
+            found.append((name.strip(" ,\"'") or None, address))
+    for name, address in getaddresses([value]):
+        address = address.strip().lower()
+        if _EMAIL_RE.fullmatch(address) and address not in {a for _, a in found}:
+            found.append((name.strip() or None, address))
+    if not found:
+        for address in _EMAIL_RE.findall(value):
+            if address.lower() not in {a for _, a in found}:
+                found.append((None, address.lower()))
+    return found
+
+
+def parse_forward_date(value: str | None, *, zone: ZoneInfo) -> datetime | None:
+    """A ``Date:`` line as mail clients write it — RFC 2822, or Gmail's "Fri, 11 Sept 2026 at
+    10:35", or Outlook's "vrijdag 11 september 2026 10:35". A naive time is the org's wall
+    clock. ``None`` for anything unreadable: the forward's own timestamp is the honest fallback."""
+    if not value:
+        return None
+    raw = re.sub(r"\b(at|om|um|u)\b", " ", value.strip(), flags=re.I)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    try:
+        parsed = parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError):
+        parsed = None
+    if parsed is not None:
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=zone)
+    match = _FORWARD_DATE_RE.search(raw)
+    if not match:
+        return None
+    month = _MONTHS.get(match.group(2).lower())
+    if month is None:
+        return None
+    try:
+        return datetime(
+            int(match.group(3)),
+            month,
+            int(match.group(1)),
+            int(match.group(4) or 0),
+            int(match.group(5) or 0),
+            tzinfo=zone,
+        )
+    except ValueError:
+        return None
+
+
+def parse_forwarded(text: str, *, zone: ZoneInfo) -> ForwardedMail | None:
+    """The forwarded block's own headers, and its body without them.
+
+    Two shapes. A *forward* opens with a marker line and a header block (``From:``/``Date:``/
+    ``Subject:``/``To:``, in the mail client's language); a *quoted reply* opens with one line
+    ("Op 1 sep schreef Klant <k@x.nl>:") that names the sender and nothing else. Both stop
+    being headers at the first line that is neither, and the body is everything after.
+    """
+    lines = text.splitlines()
+    if not lines:
+        return None
+    mail = ForwardedMail()
+    index = 0
+    # Marker lines: "---------- Forwarded message ---------", "-----Original Message-----".
+    while index < len(lines) and _is_forward_marker(lines[index]):
+        index += 1
+    read_any = False
+    while index < len(lines):
+        plain = _plain(lines[index])
+        if not plain:
+            if read_any:
+                # A blank line after the header block ends it; one before it is layout.
+                probe = index + 1
+                while probe < len(lines) and not _plain(lines[probe]):
+                    probe += 1
+                if probe < len(lines) and _FORWARD_HEADER_RE.match(_plain(lines[probe])):
+                    index = probe
+                    continue
+                index += 1
+                break
+            index += 1
+            continue
+        quote = _QUOTE_HEADER_RE.match(plain)
+        if quote and not read_any:
+            people = _addresses_in(plain)
+            if people:
+                mail.from_name, mail.from_email = people[0]
+            mail.sent_at = parse_forward_date(plain.split("<", 1)[0], zone=zone)
+            mail.quoted = True
+            index += 1
+            read_any = True
+            break
+        header = _FORWARD_HEADER_RE.match(plain)
+        if header is None:
+            break
+        key = _FORWARD_HEADER_KEYS[header.group("key").lower()]
+        value = header.group("value")
+        read_any = True
+        if key == "from":
+            people = _addresses_in(value)
+            if people:
+                mail.from_name, mail.from_email = people[0]
+            elif value:
+                mail.from_name = value[:255]
+        elif key == "to":
+            mail.to = _addresses_in(value)
+        elif key == "cc":
+            mail.cc = _addresses_in(value)
+        elif key == "subject":
+            mail.subject = value[:500] or None
+        elif key == "date":
+            mail.sent_at = parse_forward_date(value, zone=zone)
+        index += 1
+    if not read_any:
+        return None
+    body_lines = lines[index:]
+    # A quoted reply carries its ``>`` on every line; the words are what is kept.
+    if all(not ln.strip() or ln.lstrip().startswith(">") for ln in body_lines):
+        body_lines = [re.sub(r"^\s*>\s?", "", ln) for ln in body_lines]
+    mail.body = "\n".join(body_lines).strip()
+    return mail
+
+
+def strip_signature(own: str) -> str:
+    """The colleague's part without their signature: from the first sign-off line onward."""
+    lines = own.splitlines()
+    for index, line in enumerate(lines):
+        if index and _SIGNOFF_RE.match(_plain(line)):
+            return "\n".join(lines[:index]).strip()
+    return own.strip()
+
+
+def due_phrase(text: str) -> str | None:
+    """The deadline the running text states, as the words after its keyword — the longest
+    window of up to four words that :func:`parse_due` recognises — or ``None``."""
+    for match in _DUE_PHRASE_RE.finditer(text):
+        words = _plain(match.group(1)).split()
+        for size in range(min(4, len(words)), 0, -1):
+            candidate = " ".join(words[:size])
+            if parse_due(candidate, today=_DUE_PROBE) is not None:
+                return candidate
+    return None
 
 
 def clean_subject(subject: str | None) -> tuple[str, str | None]:
@@ -206,7 +462,9 @@ def split_forward(body: str) -> tuple[str, str]:
     """``(own, forwarded)`` at the first line that reads as a forward or quote header."""
     lines = body.splitlines()
     for index, line in enumerate(lines):
-        if any(marker.match(line) for marker in _FORWARD_MARKERS):
+        # Read through the markdown converter's escapes: Gmail's dashed marker arrives as
+        # ``\---------- Forwarded message ---------`` in the HTML-derived body.
+        if any(marker.match(_plain(line)) for marker in _FORWARD_MARKERS):
             return "\n".join(lines[:index]).strip(), "\n".join(lines[index:]).strip()
     return body.strip(), ""
 
@@ -230,11 +488,12 @@ def parse_intake(subject: str | None, body: str | None) -> IntakeDraft:
     title, client_hint = clean_subject(subject)
     own, forwarded = split_forward(body or "")
     directives, own_clean = _read_directives(own)
+    own_clean = strip_signature(own_clean)
     draft = IntakeDraft(
         title=title or "",
         client_hint=directives.get("client") or client_hint,
         assignee_hint=directives.get("assignee"),
-        due_hint=directives.get("due"),
+        due_hint=directives.get("due") or due_phrase(own_clean),
         project_hint=directives.get("project"),
         label_hints=[
             part.strip()
@@ -259,11 +518,27 @@ def parse_due(value: str | None, *, today: date) -> date | None:
     if not value:
         return None
     raw = value.strip().lower().rstrip(".")
+    raw = _DUE_SUFFIX_RE.sub("", _DUE_PREFIX_RE.sub("", raw)).strip()
     for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%m-%y", "%d/%m/%y"):
         try:
             return datetime.strptime(raw[:10], fmt).date()
         except ValueError:
             continue
+    # "1 oktober", "1 okt 2026", "1 october": this year's, or next year's once it has passed.
+    match = re.fullmatch(r"(\d{1,2})\s+([a-zäé]+)\.?(?:\s+(\d{4}))?", raw)
+    if match and match.group(2) in _MONTHS:
+        day, month = int(match.group(1)), _MONTHS[match.group(2)]
+        year = int(match.group(3)) if match.group(3) else today.year
+        try:
+            candidate = date(year, month, day)
+        except ValueError:
+            return None
+        if match.group(3) is None and candidate < today:
+            try:
+                candidate = date(year + 1, month, day)
+            except ValueError:
+                return None
+        return candidate
     match = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})", raw)
     if match:
         day, month = int(match.group(1)), int(match.group(2))
@@ -576,11 +851,32 @@ async def handle_intake_message(ctx: EmitContext, message: IntakeMessage) -> Int
         extra_payload={"_exclude": [message.sender_user_id]},
     )
     await _apply_plan_extras(ctx, task.id, plan, resolved, today=today, intake_id=row.id)
-    inline = await _store_attachments(ctx, message, "task", task.id, None)
+    # 6. What was forwarded is a contact moment on the task, not notes in it.
+    interaction_id = await file_forwarded_mail(
+        ctx,
+        task=task,
+        sender_user_id=message.sender_user_id,
+        sender_name=message.sender_name,
+        sender_email=message.sender_email,
+        body_text=message.body_text,
+        body_markdown=message.body_markdown,
+        received_at=message.occurred_at,
+        internals=message.internals,
+    )
+    if interaction_id is None and draft.forwarded_text:
+        # Nothing readable to file it under (no sender in the block): the words stay with
+        # the task rather than being lost.
+        task.description = _description(draft, plan, forwarded=draft.forwarded_text)
+    inline, skipped = await _store_attachments(ctx, message, "task", task.id, None)
     if inline and task.description:
         from app.core.htmlmd import rewrite_cid_images
 
         task.description = rewrite_cid_images(task.description, inline)
+    if skipped:
+        row.hints = {**(row.hints or {}), "skipped_attachments": skipped}
+        task.description = await _with_skipped_note(ctx, task.description, skipped)
+    if interaction_id is not None:
+        row.hints = {**(row.hints or {}), "interaction_id": str(interaction_id)}
     await _settle(row, TaskIntakeStatus.CREATED, task_id=task.id)
     await session.flush()
     await _notify_created(ctx, row, task, resolved, due)
@@ -590,6 +886,135 @@ async def handle_intake_message(ctx: EmitContext, message: IntakeMessage) -> Int
         entity_id=task.id,
         links={"task_id": task.id, "company_id": task.company_id},
     )
+
+
+async def file_forwarded_mail(
+    ctx: EmitContext,
+    *,
+    task: Task,
+    sender_user_id: uuid.UUID,
+    sender_name: str | None,
+    sender_email: str,
+    body_text: str | None,
+    body_markdown: str | None,
+    received_at: datetime,
+    internals: Any = None,
+) -> uuid.UUID | None:
+    """The message underneath the forward, filed on the task as an e-mail contact moment.
+
+    Its headers are read from the plain-text body (the markdown one wraps every address in a
+    link) and its words from the markdown one, so the row renders as the mail did. The sender
+    of the *forward* owns the row — forwarding it was the decision to log it — and it carries
+    the original sender's name and date. Where a connected mailbox already logged (or parked)
+    that very message, that row is filed onto the task instead: one e-mail is one place on
+    the timeline, whichever way it arrived. ``None`` when the block names no sender, or is a
+    quoted reply (the previous turn of a thread the mailbox feed logs itself) — the caller then
+    keeps the words with the task.
+    """
+    _, forwarded_text = split_forward(body_text or "")
+    _, forwarded_markdown = split_forward(body_markdown or "")
+    if not forwarded_text and not forwarded_markdown:
+        return None
+    zone = await org_zoneinfo(ctx.session, ctx.org.id)
+    from_text = parse_forwarded(forwarded_text, zone=zone) if forwarded_text else None
+    from_markdown = parse_forwarded(forwarded_markdown, zone=zone) if forwarded_markdown else None
+    head = from_text if from_text and from_text.from_email else from_markdown
+    if head is None or not head.from_email or head.quoted:
+        return None
+    if internals is None:
+        internals = await load_internals(ctx.session, ctx.org.id)
+    # The published surface of the interactions module (§6) — imported here because the
+    # interactions package imports this module's package at registration time.
+    from app.modules.interactions import system as interactions_system
+
+    sent_at = head.sent_at or received_at
+    subject = head.subject or None
+    existing = await _already_logged(
+        interactions_system,
+        ctx,
+        head=head,
+        sent_at=sent_at,
+        subject=subject,
+        sender_email=sender_email,
+        sender_user_id=sender_user_id,
+    )
+    if existing is not None:
+        await interactions_system.file_on_task(
+            ctx,
+            existing,
+            task_id=task.id,
+            company_id=task.company_id,
+            project_id=task.project_id,
+        )
+        return existing.id
+    participants = participants_from_addresses(
+        sender=(head.from_name, head.from_email), to=head.to, cc=head.cc
+    )
+    matches = await match_contacts(ctx.session, ctx.org.id, participants, internals)
+    ranked = resolve_mappings(matches, internal_company_ids=internals.company_ids)
+    contact_id = (
+        ranked.get("contact_id") if ranked.get("company_id") in (None, task.company_id) else None
+    )
+    body_md = from_markdown.body if from_markdown else None
+    body_plain = from_text.body if from_text else (head.body or None)
+    row = await interactions_system.record_forwarded_email(
+        ctx,
+        owner_user_id=sender_user_id,
+        owner_name=sender_name or sender_email,
+        occurred_at=sent_at,
+        subject=subject,
+        snippet=_snippet(body_plain or body_md),
+        direction=("outbound" if head.from_email in internals.ours else "inbound"),
+        participants=participants,
+        body_text=body_plain,
+        # Our markdown, converted from the message's own HTML — and half of it is an
+        # outsider's, so our own mention markup must not survive the forward (#327).
+        body_markdown=_untrusted_markdown(body_md, limit=MAX_DESCRIPTION_CHARS),
+        mappings={
+            "company_id": task.company_id,
+            "project_id": task.project_id,
+            "task_id": task.id,
+            "contact_id": contact_id,
+        },
+    )
+    return row.id
+
+
+async def _already_logged(
+    interactions_system,  # noqa: ANN001 — the module, handed in to keep the import in one place
+    ctx: EmitContext,
+    *,
+    head: ForwardedMail,
+    sent_at: datetime,
+    subject: str | None,
+    sender_email: str,
+    sender_user_id: uuid.UUID,
+):  # noqa: ANN202
+    """The timeline row that already *is* this message, if the org holds one: same sender,
+    same subject (prefixes aside), within half an hour of the same instant — and a row the
+    forwarding colleague was on, because a pending row is private to its mailbox and the
+    people it was addressed to (docs/GOOGLE.md §6), and a forward must not widen that."""
+    if head.sent_at is None:
+        return None
+    wanted = clean_subject(subject)[0].lower()
+    for row in await interactions_system.find_email(
+        ctx, from_email=head.from_email or "", around=sent_at
+    ):
+        if clean_subject(row.subject)[0].lower() != wanted:
+            continue
+        on_it = row.owner_user_id == sender_user_id or any(
+            (p.get("email") or "").lower() == sender_email.lower() for p in (row.participants or [])
+        )
+        if on_it:
+            return row
+    return None
+
+
+def _snippet(text: str | None) -> str | None:
+    if not text:
+        return None
+    collapsed = re.sub(r"\s+", " ", _plain(text.replace("\n", " "))).strip()
+    return collapsed[:200] or None
 
 
 async def _existing_receipt(
@@ -699,8 +1124,14 @@ async def _model_plan(
     search_text = " ".join(
         part for part in (draft.title, draft.own_text[:2000], draft.client_hint or "") if part
     )
+    zone = await org_zoneinfo(actor.session, actor.org.id)
     return await intake_ai.plan_intake(
-        actor, document=document, search_text=search_text, body=draft.body, today=today
+        actor,
+        document=document,
+        search_text=search_text,
+        body=draft.body,
+        today=today,
+        now=message.occurred_at.astimezone(zone),
     )
 
 
@@ -787,24 +1218,50 @@ async def _title(ctx: EmitContext, draft: IntakeDraft, plan: IntakePlan | None) 
         return draft.title
     if plan and plan.title:
         return plan.title
-    from app.core.models import OrgSettings
     from app.i18n import translate
+
+    return translate("tasks.intake.untitled", await _org_locale(ctx))[:512]
+
+
+async def _org_locale(ctx: EmitContext) -> str:
+    from app.core.models import OrgSettings
 
     locale = await ctx.session.scalar(
         select(OrgSettings.default_locale).where(OrgSettings.org_id == ctx.org.id)
     )
-    return translate("tasks.intake.untitled", locale or "nl")[:512]
+    return locale or "nl"
 
 
-def _description(draft: IntakeDraft, plan: IntakePlan | None) -> str | None:
-    """The mail's words as the task's notes: the model's short summary first, then what the
-    colleague wrote, then what they forwarded. Everything through the untrusted strip — half of
-    it is an outsider's, and our own mention markup must not survive a forward (#327)."""
+async def _with_skipped_note(
+    ctx: EmitContext, description: str | None, skipped: list[str]
+) -> str | None:
+    """The task's notes with one line per attachment that could not be kept, in the org's own
+    language. The colleague wrote "voeg de bijlage toe" and the file is not on the task: a loss
+    with nothing taking its place is stated where they will look, never discovered."""
+    if not skipped:
+        return description
+    from app.i18n import translate
+
+    locale = await _org_locale(ctx)
+    lines = [translate("tasks.intake.attachment_skipped", locale, name=name) for name in skipped]
+    note = "\n".join(f"_{line}_" for line in lines)
+    return f"{description}\n\n{note}" if description else note
+
+
+def _description(
+    draft: IntakeDraft, plan: IntakePlan | None, *, forwarded: str | None = None
+) -> str | None:
+    """The task's notes: the model's short summary first, then what the colleague wrote
+    (signature already cut). What they forwarded is a contact moment on the task, not notes —
+    it is appended here only when it could not be filed (``forwarded``). Everything through
+    the untrusted strip: our own mention markup must not survive a forward (#327)."""
     parts: list[str] = []
     if plan and plan.summary:
         parts.append(plan.summary)
-    if draft.body:
-        parts.append(draft.body)
+    if draft.own_text:
+        parts.append(draft.own_text)
+    if forwarded:
+        parts.append(forwarded)
     joined = "\n\n---\n\n".join(p for p in parts if p)
     return _untrusted_markdown(joined, limit=MAX_DESCRIPTION_CHARS)
 
@@ -848,20 +1305,27 @@ async def _store_attachments(
     entity_type: str,
     entity_id: uuid.UUID,
     row: TaskIntakeMessage | None,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], list[str]]:
     """Every part with bytes onto the host; inline parts keep their ``content_id`` so the body's
-    ``cid:`` markers resolve. Returns ``{content id: file id}`` and, for a parked row, rewrites
-    its own body in place."""
+    ``cid:`` markers resolve. Returns ``({content id: file id}, [skipped file names])`` and,
+    for a parked row, rewrites its own body in place and records what it could not keep.
+
+    A mail client labels what it does not recognise ``application/octet-stream`` — a ``.md``
+    spec, a ``.pptx`` — so the type is re-read off the file name before the storage core's
+    allow-list is asked; a part it still refuses is *named*, never silently dropped, because
+    the colleague wrote "voeg de bijlage toe" and nothing else on the task would say why not.
+    """
     if not message.attachments:
-        return {}
+        return {}, []
     if await storage_system.entity_has_files(ctx, entity_type, entity_id):
-        return {}
+        return {}, []
     resolved: dict[str, str] = {}
+    skipped: list[str] = []
     for part in message.attachments:
         stored = await storage_system.store_system_file(
             ctx,
             filename=part.filename,
-            content_type=part.content_type,
+            content_type=_attachment_type(part.filename, part.content_type),
             data=part.data,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -870,13 +1334,30 @@ async def _store_attachments(
         )
         if stored is None:
             logger.info("task intake: attachment skipped (type/size): %s", part.filename)
+            skipped.append(part.filename[:255])
         elif part.content_id:
             resolved[part.content_id] = str(stored.id)
-    if resolved and row is not None and row.body_markdown:
-        from app.core.htmlmd import rewrite_cid_images
+    if row is not None:
+        if resolved and row.body_markdown:
+            from app.core.htmlmd import rewrite_cid_images
 
-        row.body_markdown = rewrite_cid_images(row.body_markdown, resolved)
-    return resolved
+            row.body_markdown = rewrite_cid_images(row.body_markdown, resolved)
+        if skipped:
+            row.hints = {**(row.hints or {}), "skipped_attachments": skipped}
+    return resolved, skipped
+
+
+def _attachment_type(filename: str, declared: str) -> str:
+    """The declared type, unless it is the "no idea" type and the file name knows better."""
+    from app.config import settings
+
+    declared = (declared or "").split(";")[0].strip().lower()
+    if declared and declared != "application/octet-stream":
+        return declared
+    guessed, _ = mimetypes.guess_type(filename or "")
+    if guessed and guessed in settings.upload_allowed_types:
+        return guessed
+    return declared or "application/octet-stream"
 
 
 async def _notify_created(
@@ -1040,6 +1521,23 @@ class TaskIntakeService:
         if plan and plan.links:
             body["links"] = [{"url": u, "title": t} for u, t in plan.links]
         task = await TaskService(self.ctx).create(TaskCreate(**body))
+        interaction_id = await file_forwarded_mail(
+            self.ctx,
+            task=task,
+            sender_user_id=row.sender_user_id,
+            sender_name=row.sender_name,
+            sender_email=row.sender_email,
+            body_text=row.body_text,
+            body_markdown=row.body_markdown,
+            received_at=row.received_at,
+        )
+        if interaction_id is None and draft.forwarded_text:
+            task.description = _description(draft, plan, forwarded=draft.forwarded_text)
+        elif interaction_id is not None:
+            row.hints = {**hints, "interaction_id": str(interaction_id)}
+        skipped = [str(name) for name in hints.get("skipped_attachments") or []]
+        if skipped:
+            task.description = await _with_skipped_note(self.ctx, task.description, skipped)
         await self._rehome_files(row.id, task.id)
         await _settle(row, TaskIntakeStatus.CREATED, task_id=task.id)
         await self.ctx.session.flush()
