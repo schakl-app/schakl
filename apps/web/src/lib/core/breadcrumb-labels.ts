@@ -96,6 +96,8 @@ export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
   companies: {
     // This client's own reporting profile, not the org-wide Instellingen screen of the same name.
     reporting: "reporting.profile.title",
+    // …and the client's measurement profile under its Marketing tab (docs/MARKETING.md).
+    profile: "marketing.leads.profile.title",
   },
   marketing: {
     "google-ads": "nav.google_ads",

@@ -1,10 +1,12 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
+import { apiErrorKey, streamed } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
+import { filtersFromUrl } from "$lib/modules/marketing/leads/url";
+import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -19,6 +21,7 @@ export const load: PageServerLoad = async (event) => {
   const range = event.url.searchParams.get("range") ?? "30d";
   // Website filter: "" = everything, "client" = client-level links only, else a website id.
   const website = event.url.searchParams.get("website") || "";
+  const filters = filtersFromUrl(event.url);
 
   // Both fire before either is awaited (docs/PERFORMANCE.md): the metrics call is keyed by the
   // id in the URL, not by anything the company row says, so awaiting the entity in front of it
@@ -27,11 +30,23 @@ export const load: PageServerLoad = async (event) => {
   const metricsP = api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
     params: { path: { company_id }, query: { period: range } },
   });
+  const leadsP = streamed<LeadsDashboard>(
+    api.GET("/api/v1/marketing/companies/{company_id}/leads", {
+      params: {
+        path: { company_id },
+        query: { period: range, f: Object.entries(filters).flatMap(([d, vs]) => vs.map((v) => `${d}:${v}`)) },
+      },
+    }),
+  );
   const company = await companyP;
   if (!company.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     company: company.data,
+    // The leads dashboard (docs/MARKETING.md), streamed like the metrics — its cold read is
+    // Google's latency, and the shell must not wait for it.
+    leads: leadsP,
+    filters,
     // Streamed, not awaited: the period tabs, the picker and the page heading are the shell the
     // user came to interact with, and they need none of this. The metrics read folds two bounded
     // windows of daily rows across every linked source (#312) — the one slow thing on the page.

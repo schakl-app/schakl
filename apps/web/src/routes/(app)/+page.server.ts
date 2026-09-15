@@ -100,19 +100,32 @@ export const load: PageServerLoad = async (event) => {
     // resolves, so a slow marketing/finance digest cannot hold back the board shell or peers.
     const widgetData: Record<string, Promise<unknown>> = {};
     if (layout.widgetKeys.includes("marketing.portal")) {
-      widgetData["marketing.portal"] = (
+      // The client's leads dashboard rides the same tile (docs/MARKETING.md), narrowed by the
+      // `?f=` filters the tile's own chips write into this URL.
+      const filters = event.url.searchParams.getAll("f");
+      const leadsP = selected
+        ? api
+            .GET("/api/v1/marketing/companies/{company_id}/leads", {
+              params: { path: { company_id: selected }, query: { f: filters } },
+            })
+            .then((r) => r.data ?? null)
+            .catch(() => null)
+        : Promise.resolve(null);
+      widgetData["marketing.portal"] = Promise.all([
         selected
           ? api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
               params: { path: { company_id: selected }, query: { range_days: 30 } },
             })
-          : Promise.resolve(null)
-      )
-        .then((metricsRes) => ({
+          : Promise.resolve(null),
+        leadsP,
+      ])
+        .then(([metricsRes, leads]) => ({
           companyId: selected,
           website,
           metrics: metricsRes?.data ?? null,
+          leads,
         }))
-        .catch(() => ({ companyId: selected, website, metrics: null }));
+        .catch(() => ({ companyId: selected, website, metrics: null, leads: null }));
     }
     // Every tile reads the company the switcher selected — the marketing tile always did,
     // and the rest read the whole horizon, so a contact linked to two clients saw one

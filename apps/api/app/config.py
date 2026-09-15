@@ -224,6 +224,14 @@ class Settings(BaseSettings):
     # a setting, not only a constant: an install that outlives a release can bump it from the
     # compose file the day Google mails the sunset reminder, without waiting for us.
     google_ads_api_version: str = "v25"
+    # The hosts the Google Ads and Analytics reads go to. Settings for the same reason the
+    # Microsoft pair below are: a test stack points them at a fake without a code change, and
+    # nothing else in the product is allowed to spell them. The Analytics pair is read by the
+    # marketing module's leads dashboard; the older adapters keep their constants until they
+    # are moved over the same way.
+    google_ads_api_host: str = "https://googleads.googleapis.com"
+    google_analytics_admin_base_url: str = "https://analyticsadmin.googleapis.com/v1beta"
+    google_analytics_data_base_url: str = "https://analyticsdata.googleapis.com/v1beta"
 
     # --- Microsoft 365 OAuth (docs/MICROSOFT.md) ---
     # The instance-wide fallback for an Entra app registration, exactly as the Google pair above:

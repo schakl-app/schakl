@@ -1874,6 +1874,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   *default* stays a portal substitution; and the mention picker offers active colleagues only —
   `/members/lookup` returns a departed account flagged so a record keeps its author's name, and an
   `@` on a new comment was the one member picker that never split them out.
+- **A report built by hand per client is a vocabulary problem, not a dashboard problem**
+  (`app/modules/marketing/leads/`, `docs/MARKETING.md`). The agency built one Looker Studio
+  report per client — five pages of the same fourteen questions asked in that client's event
+  names — and the brief asked for the same as a module without a canvas. What differed per
+  client was never the dashboard: it was *which event is a request*, *which parameter carries
+  the service* and *what `internationaal-transport` is called*. So the **measurement profile**
+  (`marketing_company_settings.lead_profile`) is data — seven functional roles mapped to a
+  client's GA4 events by exact/prefix/contains/regex matchers, the dimensions the dashboard may
+  group by with a label per value, the quote form types, the Ads conversion action → service
+  map, the measurement breakpoints — and the **widget catalog** is code: a fixed list of
+  questions, each declaring what it needs and answered in one of eight shapes. Five rules
+  generalise. **A widget the profile cannot answer is withheld and named, never drawn as zero**
+  — "no funnel" and "100 % dropout" are different sentences, and `unavailable` is the editor's
+  hint for what a missing role would unlock. **A period can be a free span** (`2026-08-29..
+  2026-09-03`, `core/periods.py`) because a breakpoint is neither a month nor a trailing window,
+  and a token rides every URL, MCP tool and report that already takes one instead of a second
+  parameter pair. **The cache holds the provider's raw answers keyed on the exact requests
+  sent**, so a relabel shows at once and a changed role re-fetches. **GA4 events and Ads costs
+  are never joined on a date** — every widget names the one report it read (the Looker lesson:
+  a join on the one shared column multiplies rows the moment a second dimension appears), and a
+  ratio the API did not send is `null`, never `0`. And **honesty rides the payload**: sampled and
+  thresholded answers, the `(not set)` share per dimension, a silent zero (traffic and no
+  request for a week), a profile dimension the property never registered, and the fixed note
+  with every breakpoint — each a sentence beside the numbers, never a footnote. Cross-filtering
+  is the URL (`?f=service:x`), the second client (APEX) is configuration only and a test says so,
+  and the report reuses the same service as a `marketing.leads` section.
 - **A second provider is what tells you which rules were the vendor's** (`microsoft`,
   `docs/MICROSOFT.md`). Microsoft 365 answers the Google integration's three data problems a
   second time — Outlook calendar, OneDrive, Outlook mail — on the same seams (the calendar

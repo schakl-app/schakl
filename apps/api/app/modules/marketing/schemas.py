@@ -466,6 +466,10 @@ class CompanySettingsUpdate(BaseModel):
     rankings: RankingSettingsWrite | None = None
     #: How this client's report handles their several websites (#381). Same rule again.
     report: ReportSplitSettingsWrite | None = None
+    #: The client's measurement profile for the leads dashboard (docs/MARKETING.md). The same
+    #: absent/``null`` rule: an explicit ``null`` removes the profile, and with it the dashboard.
+    #: Validated by ``leads.profile.validate_profile`` on the way in.
+    lead_profile: dict | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -497,6 +501,8 @@ class CompanySettingsRead(BaseModel):
     #: The client's active links, so the screen can offer "leave this property out" by name
     #: rather than by id. Only ever a handful, and the screen already loads this row.
     links: list[LinkBrief] = Field(default_factory=list)
+    #: The stored measurement profile, ``None`` = no leads dashboard for this client.
+    lead_profile: dict | None = None
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #
@@ -523,6 +529,9 @@ class MarketingSettingsRead(BaseModel):
     #: The tenant's own client-facing source names (#446) — only the ones set; the defaults
     #: are the code's and the screen prints them as placeholders.
     portal_source_labels: dict[str, str] = Field(default_factory=dict)
+    #: The house channel grouping for the leads dashboard — always resolved, the ``default_compare``
+    #: rule: the screen shows what a dashboard does, never a blank that means "the code decides".
+    channel_groups: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class MarketingSettingsWrite(BaseModel):
@@ -542,6 +551,20 @@ class MarketingSettingsWrite(BaseModel):
     #: stored map; a present map is merged key by key, and an empty label clears that key back
     #: to the default — so the settings form posts every source it draws and nothing else.
     portal_source_labels: dict[str, str] | None = None
+    #: The house channel grouping (docs/MARKETING.md). Omitted keeps the stored one; a present
+    #: mapping replaces it whole, since a grouping is small enough to state in full.
+    channel_groups: dict[str, list[str]] | None = None
+
+    @field_validator("channel_groups")
+    @classmethod
+    def _channel_groups_known(
+        cls, value: dict[str, list[str]] | None
+    ) -> dict[str, list[str]] | None:
+        if value is None:
+            return None
+        from app.modules.marketing.leads.profile import validate_channel_groups  # noqa: PLC0415
+
+        return validate_channel_groups(value)
 
     @field_validator("portal_source_labels")
     @classmethod

@@ -18,6 +18,8 @@
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
   import { comparePeriodLabel, compareModeLabel, currentPeriodLabel } from "./format";
+  import MarketingLeadsSection from "./leads/MarketingLeadsSection.svelte";
+  import type { LeadsDashboard } from "./leads/types";
   import MarketingPeriodPicker from "./MarketingPeriodPicker.svelte";
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
   import { anchorMonth, PERIOD_PRESETS } from "./periods";
@@ -42,16 +44,31 @@
     urlFor,
     manageHref,
     onconnect = undefined,
+    leads = null,
+    leadsPending = false,
+    leadsError = null,
+    filters = {},
+    profileHref = null,
   }: {
     companyId: string;
     metrics: CompanyMarketing | null;
+    /** The leads dashboard (docs/MARKETING.md), streamed beside the sources; `null` before it
+     *  lands. Drawn above the per-source sections whenever the client has a profile. */
+    leads?: LeadsDashboard | null;
+    leadsPending?: boolean;
+    leadsError?: string | null;
+    /** The reader's dimension filters, as read from the URL (`?f=service:x`). */
+    filters?: Record<string, string[]>;
+    /** Where the measurement profile is edited — a manager's link, `null` otherwise. */
+    profileHref?: string | null;
     /** The payload is still in flight (it streams — docs/PERFORMANCE.md). "Nothing linked yet" is
      *  a wrong answer while that is true, not a slow one, so the shell says "loading" instead. */
     pending?: boolean;
     range: string;
     website: string;
-    /** Builds the page's own URL for a range/website pick (the two hosts differ in query shape). */
-    urlFor: (range: string, website: string) => string;
+    /** Builds the page's own URL for a range/website/filters pick (the two hosts differ in
+     *  query shape). `filters` omitted keeps the current ones. */
+    urlFor: (range: string, website: string, filters?: Record<string, string[]>) => string;
     /** Where the empty state sends the user to link accounts (the client page). */
     manageHref: string;
     /**
@@ -94,6 +111,20 @@
     return out;
   });
   const showGroupHeadings = $derived(groups.some((g) => g.id !== null));
+
+  // Cross-filtering (Looker's click-a-category): a link that toggles one value of one
+  // dimension, keeping the period and the website. The URL is the view, so the narrowed
+  // dashboard is shareable and the back button undoes a click.
+  function filterHref(dimension: string, key: string): string {
+    const next: Record<string, string[]> = {};
+    for (const [dim, values] of Object.entries(filters)) next[dim] = [...values];
+    const current = next[dimension] ?? [];
+    next[dimension] = current.includes(key) ? current.filter((v) => v !== key) : [...current, key];
+    if (next[dimension].length === 0) delete next[dimension];
+    return urlFor(range, website, next);
+  }
+  const clearFiltersHref = $derived(urlFor(range, website, {}));
+  const periodHref = (token: string) => urlFor(token, website);
 
   const rangeClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
@@ -351,6 +382,24 @@
         >
       {/if}
     </p>
+  </div>
+{/if}
+
+<!-- The leads dashboard sits above the per-source sections: it is the report a client asks
+     for, and the sections below are the cross-source overview it used to be the only one of. -->
+{#if leads || leadsPending || leadsError}
+  <div class="mb-6">
+    <MarketingLeadsSection
+      {leads}
+      pending={leadsPending}
+      errorKey={leadsError}
+      activeFilters={filters}
+      {filterHref}
+      {clearFiltersHref}
+      {periodHref}
+      profileHref={metrics?.can_manage || leads?.can_manage ? profileHref : null}
+      isPortal={Boolean(page.data.user?.isPortal)}
+    />
   </div>
 {/if}
 

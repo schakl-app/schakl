@@ -10,6 +10,8 @@
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
+  import MarketingLeadsSection from "./leads/MarketingLeadsSection.svelte";
+  import type { LeadsDashboard } from "./leads/types";
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
   import type { CompanyMarketing } from "./types";
 
@@ -19,9 +21,32 @@
     companyId: string | null;
     website: string;
     metrics: CompanyMarketing | null;
+    /** The client's leads dashboard (docs/MARKETING.md), or `null` when they have no profile. */
+    leads?: LeadsDashboard | null;
   }
   const portal = $derived(
-    (data ?? { companyId: null, website: "", metrics: null }) as PortalMarketing,
+    (data ?? { companyId: null, website: "", metrics: null, leads: null }) as PortalMarketing,
+  );
+  // The client's homepage is one company at a time and its tiles are links into the page
+  // itself; a filter here is a link back to the same board, narrowed.
+  function filterHref(dimension: string, key: string): string {
+    const params = new URLSearchParams();
+    if (portal.companyId) params.set("company", portal.companyId);
+    if (portal.website) params.set("website", portal.website);
+    const current = portal.leads?.filters.find((f) => f.dimension === dimension)?.active ?? [];
+    const active = current.includes(key) ? current.filter((v) => v !== key) : [...current, key];
+    for (const f of portal.leads?.filters ?? []) {
+      const values = f.dimension === dimension ? active : f.active;
+
+      for (const v of values) params.append("f", `${f.dimension}:${v}`);
+    }
+    return `?${params.toString()}`;
+  }
+  const clearHref = $derived(
+    `?${new URLSearchParams({ ...(portal.companyId ? { company: portal.companyId } : {}), ...(portal.website ? { website: portal.website } : {}) }).toString()}`,
+  );
+  const activeFilters = $derived(
+    Object.fromEntries((portal.leads?.filters ?? []).map((f) => [f.dimension, f.active])),
   );
   const websites = $derived(portal.metrics?.websites ?? []);
   // A client with several websites always sees them named and switchable (owner feedback);
@@ -75,6 +100,18 @@
       {/if}
     </div>
   {/if}
+  {#if portal.leads?.configured}
+    <div class="mb-5">
+      <MarketingLeadsSection
+        leads={portal.leads}
+        {activeFilters}
+        {filterHref}
+        clearFiltersHref={clearHref}
+        periodHref={() => clearHref}
+        isPortal={true}
+      />
+    </div>
+  {/if}
   {#if sources.length > 0}
     <div class="space-y-5">
       {#each sources as src (src.link_id)}
@@ -89,7 +126,7 @@
         />
       {/each}
     </div>
-  {:else}
+  {:else if !portal.leads?.configured}
     <p class="text-sm text-text-muted">{t("portal.home.no_data")}</p>
   {/if}
 </DashboardWidgetCard>

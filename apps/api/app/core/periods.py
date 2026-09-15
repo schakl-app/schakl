@@ -30,7 +30,8 @@ that can only say "the last N days" cannot answer the question an agency is actu
 did July go?" — and a trailing window is a *different question* from a calendar month: 30 days
 back from 9 August is 11 July to 9 August, which is not a month anyone reports on. So
 :func:`resolve_period` reads one token (``30d``, ``month``, ``last_month``, ``quarter``,
-``last_quarter``, ``2026-07``, ``2026-Q3``) and answers with two dates, and everything downstream
+``last_quarter``, ``2026-07``, ``2026-Q3``, or a free ``2026-08-29..2026-09-03``) and answers
+with two dates, and everything downstream
 — the label, the comparison, the SQL — takes the dates. Nothing but this function knows what a
 token means, which is what keeps the browser out of the date business (#312): the resolution needs
 the tenant's timezone, and a browser guessing "today" from its own clock is how a dashboard in
@@ -174,6 +175,17 @@ DEFAULT_PERIOD = "30d"
 _DAYS_RE = re.compile(r"^(\d{1,6})d$")
 _MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 _QUARTER_RE = re.compile(r"^(\d{4})-[Qq]([1-4])$")
+#: A free span, both ends inclusive: ``2026-08-29..2026-09-03``. The one form a *measurement
+#: breakpoint* needs — "from the day the tracking was rebuilt" is neither a month nor a trailing
+#: window — and, because it is a token like the others, it rides every URL, MCP tool and report
+#: that already takes a period rather than growing a second ``date_from``/``date_to`` pair
+#: beside the first. Two dots, not a hyphen: the dates already hold two of those each.
+_RANGE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$")
+
+
+def range_token(start: date, end: date) -> str:
+    """The token :func:`resolve_period` reads back into ``[start, end]``."""
+    return f"{start.isoformat()}..{end.isoformat()}"
 
 #: Tokens kept alive because they are in URLs people have shared and bookmarked (§9: the URL
 #: *is* the view). They are spellings of a trailing window, not periods of their own.
@@ -209,6 +221,21 @@ def resolve_period(token: str | None, today: date, *, max_days: int = 400) -> tu
     if match := _QUARTER_RE.match(raw):
         span = _quarter_span(int(match.group(1)), int(match.group(2)))
         return _to_date(span, yesterday, span)
+
+    if match := _RANGE_RE.match(raw):
+        try:
+            start, end = date.fromisoformat(match.group(1)), date.fromisoformat(match.group(2))
+        except ValueError:
+            return resolve_period(DEFAULT_PERIOD, today, max_days=max_days)
+        # The same three clamps a trailing window gets, for the same reasons: nothing past
+        # yesterday (today is partial), nothing longer than the cap, and a span whose end is
+        # before its start names nothing — so it falls back rather than answering an empty
+        # chart under a label that looks deliberate.
+        end = min(end, yesterday)
+        start = max(start, end - timedelta(days=max_days - 1))
+        if start > end:
+            return resolve_period(DEFAULT_PERIOD, today, max_days=max_days)
+        return start, end
 
     match raw:
         case PeriodPreset.MONTH:

@@ -15,6 +15,8 @@
   import MarketingClientTiles from "$lib/modules/marketing/MarketingClientTiles.svelte";
   import MarketingConnectDialog from "$lib/modules/marketing/MarketingConnectDialog.svelte";
   import MarketingDashboard from "$lib/modules/marketing/MarketingDashboard.svelte";
+  import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
+  import { appendFilters, type LeadFilters } from "$lib/modules/marketing/leads/url";
   import { ALL_SOURCES } from "$lib/modules/marketing/types";
   import type { CompanyMarketing, MarketingClientRow } from "$lib/modules/marketing/types";
 
@@ -47,17 +49,41 @@
     });
   });
 
-  function urlFor(companyId: string, range: string, website: string): string {
+  // The leads dashboard streams beside the metrics (docs/MARKETING.md) and is resolved the
+  // same way, for the same reason: a raw `{#await}` would reset on every invalidation.
+  let leads = $state<LeadsDashboard | null>(null);
+  let leadsPending = $state(true);
+  let leadsError = $state<string | null>(null);
+  $effect(() => {
+    const promise = data.leads;
+    leadsPending = true;
+    void promise.then((value) => {
+      if (data.leads !== promise) return;
+      leads = value?.data ?? null;
+      leadsError = value?.errorKey ?? null;
+      leadsPending = false;
+    });
+  });
+
+  function urlFor(
+    companyId: string,
+    range: string,
+    website: string,
+    filters?: LeadFilters,
+  ): string {
     const params = new URLSearchParams();
     if (companyId) params.set("company", companyId);
     if (range && range !== "30d") params.set("range", range);
     if (website) params.set("website", website);
+    // Filters omitted keeps the current ones: a period tab or a website pick must not silently
+    // drop a narrowing the reader made a moment ago.
+    appendFilters(params, filters ?? (data.filters as LeadFilters));
     const qs = params.toString();
     return qs ? `/marketing?${qs}` : "/marketing";
   }
 
   // A website belongs to one client, so the filter resets with the client.
-  const clientHref = (companyId: string) => urlFor(companyId, data.range, "");
+  const clientHref = (companyId: string) => urlFor(companyId, data.range, "", {});
 </script>
 
 <svelte:head>
@@ -96,7 +122,7 @@
   <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
     {#if !page.data.user?.isPortal || data.clientsTotal > 1}
       <!-- A client with one company has no picker to go back to (the landing opens on it). -->
-      <a href={urlFor("", data.range, "")} class="text-sm text-text-muted hover:text-text">
+      <a href={urlFor("", data.range, "", {})} class="text-sm text-text-muted hover:text-text">
         ← {t("marketing.clients.all")}
       </a>
     {/if}
@@ -111,8 +137,13 @@
     {pending}
     range={data.range}
     website={data.website}
-    urlFor={(range, website) => urlFor(data.companyId, range, website)}
+    urlFor={(range, website, filters) => urlFor(data.companyId, range, website, filters)}
     manageHref={`/companies/${data.companyId}`}
+    {leads}
+    {leadsPending}
+    {leadsError}
+    filters={data.filters}
+    profileHref={`/companies/${data.companyId}/marketing/profile`}
   />
 {/if}
 

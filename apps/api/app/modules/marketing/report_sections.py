@@ -1284,7 +1284,78 @@ async def _site_audit(ctx: RequestContext, window: ReportWindow) -> dict[str, An
 #: analysis with one section to reason over — it could tell a marketer about the site audit and
 #: nothing about the traffic, the rankings or the conversions, which is most of what they need
 #: and all of what the workflow this replaces gave them.
+async def _leads(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
+    """The leads dashboard's figures for the report's month (docs/MARKETING.md).
+
+    Read through the same service the screen reads, over the same profile and the same
+    reports, so the document and the dashboard cannot disagree — the reuse the spec asked for.
+    ``None`` for a client without a profile, which is every client that had none before this
+    section existed; the section then simply does not appear.
+    """
+    from app.core.periods import range_token  # noqa: PLC0415 — keeps the import graph flat
+    from app.modules.marketing.leads.service import LeadsService  # noqa: PLC0415
+
+    dashboard = await LeadsService(ctx).dashboard(
+        window.company_id, range_token(window.start, window.end), {}
+    )
+    if not dashboard.configured or not dashboard.ga4_available:
+        return None
+    widgets = {w.key: w for w in dashboard.widgets}
+    totals: dict[str, float] = {}
+    for key in ("requests", "quotes", "contacts", "failures"):
+        widget = widgets.get(key)
+        if widget is not None and widget.value is not None:
+            totals[key] = float(widget.value)
+    services = widgets.get("requests_by_service")
+    steps = widgets.get("funnel")
+    by_service = {row.key: row for row in (services.rows if services else [])}
+    funnel = {row.key: row for row in (steps.rows if steps else [])}
+
+    def requests_of(key: str) -> float:
+        row = by_service.get(key)
+        return float((row.values.get("count") if row else 0) or 0)
+
+    rows: list[dict[str, Any]] = []
+    for key in sorted(set(by_service) | set(funnel), key=lambda k: -requests_of(k)):
+        step = funnel.get(key)
+        dropout = step.values.get("dropout") if step else None
+        label_row = by_service.get(key) or step
+        rows.append(
+            {
+                "label": label_row.label if label_row else key,
+                "requests": requests_of(key),
+                "started": float((step.values.get("started") if step else 0) or 0),
+                "submitted": float((step.values.get("submitted") if step else 0) or 0),
+                "dropout": round(dropout * 100, 1) if dropout is not None else None,
+            }
+        )
+    if not totals and not rows:
+        return None
+    return {
+        "kind": "leads",
+        "columns": ["requests", "started", "submitted", "dropout"] if rows else [],
+        "rows": rows,
+        "totals": totals,
+        "compare": None,
+        "chart": None,
+        "notes": [
+            {"code": w.code, "detail": ", ".join(f"{k}={v}" for k, v in w.details.items())}
+            for w in dashboard.warnings
+        ],
+    }
+
+
 MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
+    ReportSectionSpec(
+        key="marketing.leads",
+        title_key="reporting.section.leads",
+        brief_key="reporting.brief.leads",
+        source_key="reporting.source.ga4",
+        provider=_leads,
+        audience=AUDIENCE_BOTH,
+        requires_permission="marketing.metrics.read",
+        position=5,
+    ),
     ReportSectionSpec(
         key="marketing.traffic_channels",
         title_key="reporting.section.traffic_channels",
