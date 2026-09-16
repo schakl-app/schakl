@@ -33,10 +33,11 @@
    discards is called **Annuleren** and nothing else, and an exit that says it is finished
    *submits* — through `requestSubmit()`, never `submit()`, so `required` is checked and the
    surface's own `use:enhance` runs, which is what keeps a validation failure inside edit mode
-   with the error showing instead of dropping the work. It matters most where the edit surface is
-   the *whole page*: the task detail page joins title, status, dates, priority, relations,
-   visibility and planning to one `form="task-edit"` whose save is at the foot, and reaching for
-   the control nearest the field you just changed is exactly what lost the change.
+   with the error showing instead of dropping the work. It mattered most where the edit surface
+   was the *whole page*: the task detail page joined title, status, dates, priority, relations,
+   visibility and planning to one `form="task-edit"` whose save was at the foot, and reaching for
+   the control nearest the field you just changed is exactly what lost the change — which is
+   half of why that page no longer has an edit mode at all (below).
    **A single-field inline edit is its own surface; the one-save rule is about edit mode**
    (#455). The principle keeps a record's *definition* behind Bewerken, and it was being applied
    to the one field people change ten times a day: a task's description read "Voeg een
@@ -65,8 +66,43 @@
    lazily fetches, the field fetches too** — the client's contacts for the assignee picker are
    read when either surface opens, never on every page view. And **the read view may carry a
    link**, so the wrapper is not a button: a click on the client's name navigates, a click on the
-   value opens, and the pencil is a real button for the keyboard. Edit mode stays for the whole
-   definition at once, and for the title.
+   value opens, and the pencil is a real button for the keyboard.
+   **…and once every field edits in place, a page-wide edit mode is a second save model with
+   nothing left to save** (the owner's decision, September 2026). The task page ran both for a
+   while: ⋯ → Bewerken swapped every in-place field for its `form="task-edit"` twin and put one
+   Opslaan at the foot, so the same property had two editors, two save gestures and — for the
+   deadline — a prompt that behaved differently in each. The mode is gone: the title is renamed
+   by clicking it (Enter saves, blur saves what changed, Escape puts the words back — the rule a
+   step already followed), the status is an `InlineField` whose read view is a dot in the
+   status's colour beside its name at the band's text size (an 11 px chip among eight 14 px
+   values was the one thing in the band at a different scale, and the board only ever draws a
+   chip for a status that is neither the default nor finished) and whose pick is the save,
+   checklist structure (a new list, order, a copy, a delete) and links (add,
+   remove) are a ＋ in the heading and a ⋯ on the row, and the grips sit beside every row for a
+   writer, faint until hovered — the drag zones arm only from a grip, so nothing is dragged by
+   accident while being ticked. Three rules survive the mode. **One field, one save** stays the
+   shape of every editor — and **one gesture is one save**: Enter in the date box commits the
+   value, fires the native `change` *and* submits the form implicitly, which wrote three
+   identical "Vervaldatum gewijzigd" lines per pick until `InlineField` started refusing a
+   submit while one is in flight and `DateInput` stopped announcing a value the field already
+   held. **A prompt that confirms is a prompt that saves**: the deadline's
+   reason prompt used to stage the reason and hand the user back to a field with an Opslaan
+   still to press, which read as the confirm having done nothing; Bevestigen now posts the date
+   and the reason together, an earlier date saves on pick with no prompt, and "14 okt houden" is
+   the only other way out — and it closes the editor, there being nothing left in it to save.
+   The implicit submit an Enter fires *before* the prompt has its answer is refused by the
+   field's `beforeSubmit`, or the API's "reason required" would print under a field the prompt
+   is standing over. **A one-control editor closes when focus leaves it** (`dismissOnBlur` on
+   the status, priority and the two checkboxes): the control takes focus on open, a pick saves,
+   a click anywhere else or a Tab away cancels, and no Annuleren is drawn under a select — the
+   dangling button row under a one-line dropdown was what made the status editor look like a
+   form. The deadline keeps its Annuleren because its prompt takes focus, and focus moving into
+   a dialog of your own must not read as leaving. And **a control that opens a surface is drawn only for a viewer the
+   API would let through** — the ⋯ at the top holds the delete alone, for a holder of
+   `tasks.task.delete`, and a reader's title is a heading and nothing more. Create-then-edit
+   (#230) lands on the same page with nothing open; the `?edit=1` marker older links carry is
+   ignored there. `tests/unit/task-inline-edit.test.ts` pins the two lines a browser cannot
+   show you.
 4. **Accountability is a feature.** Overdue work is loudly red everywhere (rows, widgets,
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. **A deadline nobody stated is not extended,

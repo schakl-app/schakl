@@ -1,7 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
-import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
@@ -161,9 +160,8 @@ export const actions: Actions = {
    * marked `unnamed`) is gone by decision: an abandoned create was a task on somebody's board,
    * and marking it never made it not one.
    *
-   * What the dialog does *not* ask for stays behind create-then-edit (#230, docs/UX.md
-   * Principle 3): the redirect lands the user on the new task in edit mode (#78's `?edit=1`),
-   * the one surface where the rest of a task's definition is edited.
+   * What the dialog does *not* ask for is filled in on the task's own page, where every field
+   * is edited in place — the redirect lands the user there, and nothing else is open.
    */
   create: async (event) => {
     const form = await event.request.formData();
@@ -174,7 +172,7 @@ export const actions: Actions = {
     if (!body) return fail(400, { qcError: "errors.required" });
     const { data, error } = await apiFor(event).POST("/api/v1/tasks", { body });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-    throw redirect(303, editHref(`/tasks/${data.id}`));
+    throw redirect(303, `/tasks/${data.id}`);
   },
 
   /**

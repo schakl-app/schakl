@@ -5,7 +5,7 @@
     Copy,
     GripVertical,
     Link as LinkIcon,
-    Pencil,
+    Plus,
     Sparkles,
     Trash2,
   } from "@lucide/svelte";
@@ -16,7 +16,6 @@
   import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
-  import { clearEditIntent, editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { originOf, withOrigin } from "$lib/core/origin";
@@ -392,22 +391,23 @@
    * and probably the commoner one — so it gets the same offer (#314).
    *
    * It opens the prompt only when there is actually something to offer. A confirm dialog whose
-   * only content is a button that repeats what the user just did is friction, and this select
+   * only content is a button that repeats what the user just did is friction, and the status
    * has always been a one-click control; so where the hours cannot be logged anyway (no
-   * permission, module off, budget already met) it submits exactly as it did before.
+   * permission, module off, budget already met) the pick is the save, like every other one-pick
+   * field on this page.
    */
-  function onStatusPicked(event: Event & { currentTarget: HTMLSelectElement }) {
+  function onStatusPicked(submit: () => void, cancel: () => void) {
     const target = statuses.find((s) => s.key === statusValue);
     if (target?.is_terminal && !isDone && offerLogTime && !needsClosingMoment(target)) {
       // The prompt is what commits the move, so put the control back to what is still true —
       // through the binding, never `select.value`: an imperative assignment marks the control
-      // dirty and it then keeps that value through the re-render the confirm triggers, so the
-      // sidebar went on reading the old status until a hard reload.
+      // dirty and it then keeps that value through the re-render the confirm triggers.
       statusValue = task.status;
+      cancel();
       openFinishPrompt("status", target.key);
       return;
     }
-    event.currentTarget.form?.requestSubmit();
+    submit();
   }
   // The @ and # candidate lists are the editor's own business (#237, #290). This page used to
   // fire two mount-time fetches — 200 contacts and 200 tasks — on *every* open, to fill
@@ -421,26 +421,15 @@
 
   const priorities = ["low", "normal", "high"] as const;
 
-  // Live company/project picks for the edit form (#227): the client narrows the project list
-  // and a picked project backfills its client, like every create-side pairing of these two
-  // pickers (time's EntryForm, the interaction forms). Re-armed from the stored task on the
-  // edit-mode toggle and when navigating to another task — a mid-session reload (a comment,
-  // a quick-create) must not clobber a live pick.
+  // Live company/project picks for the in-place relation editors (#227): the client narrows the
+  // project list and a picked project backfills its client, like every create-side pairing of
+  // these two pickers (time's EntryForm, the interaction forms). Re-armed from the stored task
+  // when an editor closes and when navigating to another task — a mid-session reload (a
+  // comment, a quick-create) must not clobber a live pick.
   // svelte-ignore state_referenced_locally
   let fCompany = $state(task.company_id ?? "");
   // svelte-ignore state_referenced_locally
   let fProject = $state(task.project_id ?? "");
-  // The deadline as it stands *in the form*, not as stored: it is the repeat rule's anchor, so a
-  // preview built from the stored value would answer for a date the user has already changed —
-  // and the two controls now sit inches apart in the same card, which makes that impossible to
-  // miss and impossible to defend.
-  // svelte-ignore state_referenced_locally
-  let liveDue = $state(task.due_date ?? "");
-  // Same rule for the budget: it is what the auto-plan's length prefills from, and the two
-  // controls are on the same screen — a prefill that read the stored value would offer an hour
-  // to somebody who has just typed 1:30 two cards up.
-  // svelte-ignore state_referenced_locally
-  let liveAllocated = $state<number | null>(task.allocated_minutes ?? null);
   // svelte-ignore state_referenced_locally
   let pickedTaskId = task.id;
   $effect(() => {
@@ -448,8 +437,6 @@
       pickedTaskId = task.id;
       fCompany = task.company_id ?? "";
       fProject = task.project_id ?? "";
-      liveDue = task.due_date ?? "";
-      liveAllocated = task.allocated_minutes ?? null;
     }
   });
   // The client narrows the project list (above); the lifecycle then decides what is *suggested*
@@ -473,18 +460,17 @@
     const project = data.projects.find((p) => p.id === id);
     if (project?.company_id) fCompany = project.company_id;
   }
-  // The task's own client contacts (#273): the options for a contact assignee, and the source
-  // for naming a contact assignee in the read view. Follows the *live* company pick (fCompany) so
-  // re-homing the task in edit mode narrows the options.
+  // The task's own client contacts (#273): the options for a contact assignee. Follows the
+  // *live* company pick (fCompany) so re-homing the task narrows the options.
   //
-  // Fetched only when something actually needs it (#290): edit mode, where the picker is drawn,
-  // or a task that already carries a contact assignee, whose name the read view has to show. It
-  // used to piggyback on a mention-candidate fetch that *every* open paid for; that fetch is
-  // gone, and this must not quietly reinstate it for the majority of tasks, which are assigned
-  // to a colleague or to nobody.
+  // Fetched only when something actually needs it (#290): the assignee field opened in place,
+  // where the picker is drawn. It used to piggyback on a mention-candidate fetch that *every*
+  // open paid for; that fetch is gone, and this must not quietly reinstate it for the majority
+  // of tasks, which are assigned to a colleague or to nobody. The read view prints
+  // `assignee_contact_name`, which the API resolves — a portal login cannot read `/contacts`.
   let editContacts = $state<{ id: string; name: string }[]>([]);
   let editContactsFor = $state<string>("");
-  // The assignee field is open in place (use mode): the one other moment the picker is drawn.
+  // The assignee field is open in place: the one moment the picker is drawn.
   let assigneeInlineOpen = $state(false);
   /** A cancelled in-place pick of the client or the project must not linger as the live pair. */
   function resetRelationPicks() {
@@ -494,10 +480,7 @@
   $effect(() => {
     const companyId = fCompany;
     if (!companyId) return;
-    // Edit mode only since #453 — or the assignee field opened in place: the read view prints
-    // `assignee_contact_name`, which the API resolves — a portal login cannot read `/contacts`
-    // and used to see "Contactpersoon".
-    if (!editMode && !assigneeInlineOpen) return;
+    if (!assigneeInlineOpen) return;
     if (companyId === editContactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
@@ -524,62 +507,58 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name;
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name;
 
-  // Two modes (docs/UX.md §3). "Use" (default) is working the task: change status, tick and
-  // quick-add checklist items, comment, plan, open what's attached. "Edit" (⋯ menu, staff only)
-  // is changing what the task *is*: title, description, relations, due/priority, labels,
-  // recurrence, checklist structure, links and file attachments. Empty structural sections
-  // don't render in use mode at all — their create forms live behind the pencil.
-  // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
-  // edit mode once — and only for someone who may actually edit *this* task. A URL is not a
-  // grant: the ⋯ that sets the marker is gated, but a pasted link would otherwise open a form
-  // whose every save 403s, for a portal login and for a `:own` holder on a colleague's task alike.
-  // svelte-ignore state_referenced_locally
-  let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
+  // One mode (docs/UX.md, Principle 3 — the task page's entry). Every field on this page is
+  // edited where it is read: the title by clicking it, each property through `InlineField`,
+  // the description through `InlineText`, a step by clicking its words. There is no page-wide
+  // edit mode and no save at the foot: a change is one field, its own save, the page's own
+  // `?/update`, which patches only what the posted form carries. The `?edit=1` marker older
+  // links may still carry is simply ignored.
   const busy = new InFlight();
 
-  /**
-   * Create-then-edit lands here to *name* the task, so the caret starts in the title and the
-   * placeholder is selected: the first keystroke replaces "Naamloze taak" rather than appending
-   * to it, which is the whole difference between this and a form that merely happens to be open.
-   *
-   * Only for a row nobody has named (`unnamed`, #350) — opening the pencil on real work must not
-   * put the reader's cursor in a field they did not come to change.
-   *
-   * Repeated over the second after arrival, and for the same three reasons `TaskComments.reveal`
-   * is: arriving here is a navigation, so SvelteKit's `reset_focus()` hands focus back to
-   * `<body>` *after* we take it, and the description editor mounts asynchronously beside us. One
-   * attempt loses to whichever runs last, silently. `claimedTitle` makes it once per visit, so a
-   * later reload (the AI fill-in, #327) never steals a caret back.
-   */
+  // --- the title, edited in place ------------------------------------------------------- //
+  // The one field the old edit mode kept for itself. Click the words, type, Enter (the rename
+  // rule a step already follows below): blur saves what changed, Escape puts the words back. An
+  // empty title is never posted — the old words stay, which is what "cancel" means here.
+  let titleEditing = $state(false);
+  let titleDraft = $state("");
   let titleInput = $state<HTMLInputElement | null>(null);
-  let claimedTitle = false;
-  $effect(() => {
-    if (claimedTitle || !editMode || !data.task.unnamed) return;
-    claimedTitle = true;
-    void (async () => {
-      for (const wait of [0, 60, 200, 500]) {
-        await tick();
-        if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-        if (!titleInput) continue;
-        if (document.activeElement === titleInput) return;
-        titleInput.focus({ preventScroll: true });
-        titleInput.select();
-      }
-    })();
-  });
+  async function startTitleEdit() {
+    if (!canEditTask || titleEditing) return;
+    titleDraft = task.title;
+    titleEditing = true;
+    await tick();
+    titleInput?.focus();
+    titleInput?.select();
+  }
+  function titleKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitTitle(event.currentTarget as HTMLInputElement);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      titleEditing = false;
+    }
+  }
+  function commitTitle(input: HTMLInputElement) {
+    // Escape has already closed the editor (a blur may follow the unmount), and a blur while
+    // the Enter's save is still in flight must not post the same title twice.
+    if (!titleEditing || busy.is("title")) return;
+    const next = titleDraft.trim();
+    if (next && next !== task.title) input.form?.requestSubmit();
+    else titleEditing = false;
+  }
 
-  // A detour that started on a client's or a project's page (#408): leaving edit mode — by
-  // saving, by Annuleren, or by ⋯ → Klaar met bewerken — returns to where it started, and so does
-  // Verwijderen. With no `?from=` each one behaves exactly as it did: this task, edit mode off.
+  // A detour that started on a client's or a project's page (#408): finishing the task returns
+  // to where it started, and so does Verwijderen. With no `?from=` each one lands on the board.
   const origin = $derived(originOf(page.url));
 
   /**
    * Finishing a task is leaving it. The card was the place to *do* the work; once it is done
    * there is nothing on it left to look at, and the reader's next question is "what's next",
    * which the board answers and a finished card does not. So every way of finishing — the
-   * confirm below, the status select in use mode, an edit-mode save that lands on a finished
-   * status — returns to the detour's origin where there is one (#408), else to the board, on
-   * the slice the reader last had of it (`returnHref`: their filters, their page).
+   * confirm below, the status field — returns to the detour's origin where there is one (#408),
+   * else to the board, on the slice the reader last had of it (`returnHref`: their filters,
+   * their page).
    */
   function leaveFinished(): void {
     void goto(origin ?? returnHref("/tasks"), { invalidateAll: true });
@@ -590,36 +569,10 @@
     return Boolean(target?.is_terminal) && !isDone;
   }
 
-  function leaveEdit(): void {
-    // …and the marker that opened the form is consumed with it (#402) — but only on the arm that
-    // stays on this page. A detour's exit replaces this URL, and its `?edit=1` goes with it.
-    if (origin) void goto(origin, { invalidateAll: true });
-    else {
-      editMode = false;
-      clearEditIntent();
-    }
-  }
+  // Whether the status pick that is being saved finishes the task, read *before* the request
+  // (`isDone` is recomputed off the reloaded task afterwards) and acted on after it landed.
+  let statusFinishing = false;
 
-  // --- acting on the *stored* record from inside edit mode (#335 F7) ----------------------- //
-  // Create-then-edit (#230) is right: the record exists, so Inplannen is reachable without a
-  // save. But the modal prefills from what is **stored**, so typing a title and a budget and then
-  // pressing Inplannen booked a block called "Naamloze taak" for a default hour — and its Google
-  // event too. The honest sequence was save-then-plan and nothing said so, so this does it: one
-  // round trip ahead of the one the user asked for, through the same single save.
-  //
-  // Rejected alternative: disabling Inplannen while editing — a padlock on the thing the user is
-  // most likely to want next (#253's "a control that always refuses").
-  let editForm: HTMLFormElement | undefined = $state();
-  let pendingSave: ((ok: boolean) => void) | null = null;
-
-  /** Resolves once what is typed is stored — `true` when it landed, `false` when the save failed. */
-  function saveIfEditing(): Promise<boolean> {
-    if (!editMode || !editForm) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      pendingSave = resolve;
-      editForm?.requestSubmit();
-    });
-  }
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
   // done): the dialog posts to ?/createCompany / ?/createProject and the new record
@@ -633,27 +586,22 @@
     if (created?.slot === "company") onCompanyPicked(created.id);
     if (created?.slot === "project") onProjectPicked(created.id);
   });
-  // The AI box (`TaskAIRevise`) rewrote the row: reload it, and remount the edit-mode
-  // description editor onto the new text (it holds its own state and would keep the old one).
-  let reviseKey = $state(0);
+  // The AI box (`TaskAIRevise`) rewrote the row: reload it. The in-place description editor
+  // remounts on every open, so the next open reads the new text.
   async function onRevised(): Promise<void> {
     await invalidateAll();
-    reviseKey += 1;
   }
 
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
-  // Reachable from **use mode** too: a step's explanation is the part of a plan that changes
-  // while the work is being done ("let op: de klant wil het in het blauw"), and it used to
-  // cost ⋯ → Bewerken, the pencil on the step and a save at the foot of the page. In use
-  // mode the rendered text opens its editor (the InlineText shape, #455) and an empty one is
-  // a small "toelichting" affordance; the same forms serve both modes.
+  // A step's explanation is the part of a plan that changes while the work is being done ("let
+  // op: de klant wil het in het blauw"): the rendered text opens its editor (the InlineText
+  // shape, #455) and an empty one is a small "toelichting" affordance.
   let editingChecklistId = $state<string | null>(null);
   let editingItemId = $state<string | null>(null);
-  // A step's title, and a list's, edited in place in *use* mode: click the words, type, Enter
-  // (`InlineText`'s rule, one row down — renaming a step is the thing people do ten times a
-  // day, and it used to cost edit mode, ⋯ → Bewerken and a form). Blur saves what changed;
-  // Escape puts the words back. The posted form carries the current description too, because
-  // the action reads both and an absent one would clear it.
+  // A step's title, and a list's, edited in place: click the words, type, Enter (`InlineText`'s
+  // rule, one row down — renaming a step is the thing people do ten times a day). Blur saves
+  // what changed; Escape puts the words back. The posted form carries the current description
+  // too, because the action reads both and an absent one would clear it.
   let renamingItemId = $state<string | null>(null);
   let renamingChecklistId = $state<string | null>(null);
   let renameDraft = $state("");
@@ -723,10 +671,11 @@
   }
 
   // ---------------------------------------------------------------------------------------- //
-  // Reordering checklists, and items inside one (edit mode)
+  // Reordering checklists, and items inside one
   //
-  // Order is structure, so it lives behind the pencil beside rename and delete — a to-do you
-  // dragged by accident while ticking it off is a change you did not ask for.
+  // The zones stay disabled until a grip takes the pointer down (below), so a to-do cannot be
+  // dragged by accident while ticking it off — which is what lets the grips sit beside every
+  // row for a writer, instead of behind a mode.
   //
   // Both gestures produce the same thing — the whole new order — and post it as one call, so a
   // drag can never half-apply. Drag *and* arrows, because a drag is the only reorder a mouse
@@ -762,7 +711,7 @@
   );
 
   // The zones stay disabled until a grip takes the pointer down — the rows hold checkboxes,
-  // menus and (while editing) text inputs, and a drag that starts anywhere would eat all three.
+  // menus and text inputs, and a drag that starts anywhere would eat all three.
   // Two flags, not one: pressing an item's grip must not also arm the checklist zone around it.
   let dragChecklists = $state(false);
   let dragItemsIn = $state<string | null>(null);
@@ -881,14 +830,19 @@
     duplicateOpen = true;
   }
 
-  let showLabelPicker = $state(false);
   let newLabelColor = $state("blue");
+  // Adding a checklist or a link is one row of controls, unfolded from a ＋ rather than always
+  // drawn: a task with three lists does not want a permanent dashed input under them, and a task
+  // with none wants one line, not a card of forms.
+  let addChecklistOpen = $state(false);
+  let addLinkOpen = $state(false);
 
-  // Extending a deadline requires a reason (accountability): staged here, posted with the
-  // single save (the API rejects an extension without one). Not on a placeholder row nobody
-  // has saved yet (`unnamed`, #350): create-then-edit wrote today over it and dropped the user
-  // into this form, so the first date they pick is *setting* the deadline, and the API asks
-  // for no reason either — the flag clears with the save that names the task.
+  // The deadline saves on pick, like every one-pick field on this page: a date is a decision,
+  // not a draft. Extending it requires a reason (accountability), asked in a prompt — and
+  // **confirming the prompt is the save**. It used to stage the reason and hand the user back
+  // to the field with an Opslaan still to press, which read as the confirm having done nothing.
+  // Not on a placeholder row nobody has saved yet (`unnamed`, #350): the first date picked on
+  // one is *setting* the deadline, and the API asks for no reason either.
   const dueIsCommitted = $derived(!task.unnamed);
   let reasonModalOpen = $state(false);
   let stagedDueDate = $state("");
@@ -897,11 +851,17 @@
   // The deadline field's value, owned here so the prompt can put the old date back.
   // svelte-ignore state_referenced_locally
   let dueValue = $state(task.due_date ?? "");
-  function onDueChanged(value: string) {
-    liveDue = value;
-    if (dueIsCommitted && task.due_date && value && value > task.due_date) {
+  // The in-place editor's own submit and cancel, held while the prompt is up: the confirm
+  // presses the one, "keep the old date" the other.
+  let dueSubmit: (() => void) | null = null;
+  let dueCancel: (() => void) | null = null;
+  function onDueChanged(value: string, submit: () => void, cancel: () => void) {
+    if (!value || value === task.due_date) return;
+    if (dueIsCommitted && task.due_date && value > task.due_date) {
       stagedDueDate = value;
-      reasonDraft = dueReason;
+      reasonDraft = "";
+      dueSubmit = submit;
+      dueCancel = cancel;
       reasonModalOpen = true;
       // Focus moves into the prompt, so Escape is the prompt's to answer: with focus still in
       // the date field, the keystroke reached the in-place editor's own Escape (which closed
@@ -911,34 +871,50 @@
           document.querySelector('[data-testid="due-reason"]') as HTMLTextAreaElement | null
         )?.focus(),
       );
+      return;
     }
+    // Earlier, or a first date: nothing to ask, so the pick is the save — next tick, because
+    // `DateInput` calls back *before* Svelte has written the picked value into the hidden
+    // input the form posts, and a submit on the same tick posted the date it had.
+    dueReason = "";
+    void tick().then(submit);
   }
   /**
    * Every way out of the prompt that is not Bevestigen keeps the *old* date. The API refuses an
    * extension without a reason, so a prompt that could be dismissed — Annuleren, Escape, the
    * backdrop, or Bevestigen over an empty box — with the new date still in the field left a form
-   * that could not be saved, and nothing beside the date said why. The prompt now has exactly
-   * two answers: a reason, or the date it had.
+   * that could not be saved, and nothing beside the date said why. The prompt has exactly two
+   * answers: a reason, which saves, or the date it had — and keeping the date closes the
+   * editor too, since there is nothing left in it to save.
    */
   function keepOldDue() {
     dueValue = task.due_date ?? "";
-    liveDue = dueValue;
     dueReason = "";
     reasonDraft = "";
+    dueSubmit = null;
     reasonModalOpen = false;
+    const cancel = dueCancel;
+    dueCancel = null;
+    cancel?.();
   }
+  /** The reason is given: post the new date and the reason together, in one save. */
   function confirmDueReason() {
     if (!reasonDraft.trim()) return;
     dueReason = reasonDraft.trim();
     reasonModalOpen = false;
+    const submit = dueSubmit;
+    dueSubmit = null;
+    dueCancel = null;
+    // Next tick, so the hidden `due_change_reason` carries the reason before the form is read.
+    void tick().then(() => submit?.());
   }
 
   // --- "This one, or this one and every following" ---------------------------------------- //
   // A task in a series being handed to somebody else is a question before it is a save: the
   // following occurrences already exist, each with its own roster and its own planned block, so
-  // "reassign" has two honest meanings and only the person at the keyboard knows which. Both
-  // forms that carry the assignee — the edit form and the in-place editor — are held by the same
-  // guard, raise the same dialog, and re-submit themselves with the answer in a hidden field.
+  // "reassign" has two honest meanings and only the person at the keyboard knows which. The
+  // in-place editor is held by the guard, raises the dialog, and re-submits itself with the
+  // answer in a hidden field.
   let applyTo = $state<"" | "this" | "future">("");
   let applyToOpen = $state(false);
   let applyToResubmit: (() => void) | null = null;
@@ -1175,35 +1151,61 @@
   <!-- "schakl leest de e-mail" (#327). Above the card rather than inside it: it is about the whole
        task, it is short-lived, and it must not push the title around while it comes and goes. -->
   {#if task.ai_status}
-    <TaskAIStatus taskId={task.id} status={task.ai_status} editing={editMode} />
+    <TaskAIStatus taskId={task.id} status={task.ai_status} />
   {/if}
 
   <!-- Header — what this task is, and what is true of it at a glance. Always first, and not
        in the ordered list below: it is the page's title, not a section of it. -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <div class="flex items-start gap-3">
-      {#if editMode}
-        <input
-          name="title"
-          value={task.title}
-          required
-          form="task-edit"
-          bind:this={titleInput}
-          class="w-full flex-1 rounded-lg border border-border p-2 text-xl font-semibold text-text outline-none focus:border-brand"
-        />
+      {#if titleEditing}
+        <!-- The title, in place: Enter saves, blur saves what changed, Escape puts the words
+             back. Posts `title` alone to `?/update`, which patches only what the form carries. -->
+        <form
+          method="POST"
+          action="?/update"
+          class="min-w-0 flex-1"
+          use:enhance={busy.wrap("title", () => async ({ update, result }) => {
+            if (result.type === "success") titleEditing = false;
+            await update({ reset: false });
+          })}
+        >
+          <input
+            name="title"
+            bind:this={titleInput}
+            bind:value={titleDraft}
+            required
+            aria-label={t("tasks.field.title")}
+            class="w-full rounded-lg border border-brand px-2 py-1 text-xl font-semibold text-text outline-none"
+            onkeydown={titleKeydown}
+            onblur={(event) => commitTitle(event.currentTarget)}
+          />
+        </form>
       {:else}
         <!-- 20 px, the one page-title size (#404's scale). It was 18 px here and 20 px on the
              other 97 H1s in the app — a page title that shrinks when you open a record is a
-             hierarchy the reader has to re-learn per screen. -->
-        <h1
-          class="flex-1 text-xl font-semibold {isDone
-            ? 'text-text-muted line-through'
-            : 'text-text'}"
-        >
-          {task.title}
-        </h1>
-        <!-- Use mode only: while editing, the checkbox below is the live answer and a header
-               marker still showing the *stored* one would contradict it mid-edit. -->
+             hierarchy the reader has to re-learn per screen. A writer's title is the affordance
+             (the words, a text cursor, the rename hint); a reader's is a heading and nothing more. -->
+        {#if canEditTask}
+          <h1 class="min-w-0 flex-1 text-xl font-semibold">
+            <button
+              type="button"
+              class="-mx-1 max-w-full cursor-text rounded px-1 text-left hover:bg-surface {isDone
+                ? 'text-text-muted line-through'
+                : 'text-text'}"
+              title={t("tasks.detail.title_edit_hint")}
+              onclick={startTitleEdit}>{task.title}</button
+            >
+          </h1>
+        {:else}
+          <h1
+            class="flex-1 text-xl font-semibold {isDone
+              ? 'text-text-muted line-through'
+              : 'text-text'}"
+          >
+            {task.title}
+          </h1>
+        {/if}
         <ClientVisibilityIcon
           visible={task.visible_to_client}
           companyId={task.company_id}
@@ -1212,59 +1214,18 @@
         />
       {/if}
 
-      <!-- Each item asks the key its own call declares, and the menu disappears when nothing
-             survives (#253). It used to hang off `!isPortal` alone — which is right about a
-             portal contact (they work the task, never its definition) and wrong about everyone
-             else: a member holding `tasks.task.write:own` was offered Bewerken on a colleague's
-             task, and *every* staff viewer was offered Verwijderen, an admin-only permission. -->
-      {#if canEditTask || canDeleteTask}
+      <!-- Deleting is the one act left in the ⋯ now that every field edits in place: its own,
+             genuinely unscoped permission (admin by default), and the menu disappears when the
+             viewer does not hold it (#253). -->
+      {#if canDeleteTask}
         <ActionsMenu
           items={[
-            ...(canEditTask
-              ? [
-                  {
-                    label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
-                    icon: Pencil,
-                    onclick: () => {
-                      // "Klaar" is an assertion that the work is done, so it commits it (#409).
-                      // Flipping the flag was a second Annuleren under the opposite word: the
-                      // page left edit mode, the header showed the stored title again, and
-                      // nothing said the save had not happened — the kebab sits at the top of a
-                      // whole-page edit surface whose one save is at the bottom, so reaching for
-                      // the control nearest the field you just changed is what lost the change.
-                      // `requestSubmit` rather than `submit` so the title's `required` is checked
-                      // and `use:enhance` runs; that handler closes edit mode on success and
-                      // keeps it open on a validation failure, with the error shown.
-                      if (editMode) {
-                        if (!busy.is("update")) editForm?.requestSubmit();
-                        return;
-                      }
-                      // Re-arm the relation picks so a stale pick never overrides the stored
-                      // relation on a later edit session.
-                      fCompany = task.company_id ?? "";
-                      fProject = task.project_id ?? "";
-                      // Opening only — the leaving half returned above. So this is no longer a
-                      // toggle, and neither of the two things that used to ride on its false arm
-                      // is dropped: the submit runs `use:enhance`, whose handler consumes the
-                      // `?edit=1` marker (#402) and returns to the detour's origin (#408) on the
-                      // save that closes the mode. "Klaar met bewerken" therefore now saves *and*
-                      // lands back on the client you opened the task from, which is both issues'
-                      // answer to the same gesture.
-                      editMode = true;
-                    },
-                  },
-                ]
-              : []),
-            ...(canDeleteTask
-              ? [
-                  {
-                    label: t("tasks.detail.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () => (confirmDelete = true),
-                  },
-                ]
-              : []),
+            {
+              label: t("tasks.detail.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => (confirmDelete = true),
+            },
           ]}
         />
       {/if}
@@ -1302,11 +1263,6 @@
               : ""}
         </a>
       {/if}
-      {#if editMode}
-        <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
-          >{t("tasks.detail.edit_mode")}</span
-        >
-      {/if}
     </div>
   </section>
 
@@ -1325,64 +1281,79 @@
         {t("tasks.detail.properties")}
       </h3>
       <div class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-        <!-- Status. In **use** mode it stays the instant one-click control it has always been; in
-             edit mode it joins `task-edit` like every field around it, so the card stops running
-             one-and-a-half save models at once (#335 F8, docs/UX.md's one-save rule). -->
-        <div>
-          <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
-            >{t("tasks.field.status")}</label
-          >
-          {#if !canEditTask}
-            <p id="status" class="text-sm text-text">
-              {statuses.find((s) => s.key === task.status)?.name ?? task.status}
+        <!-- Status. The status's own colour as a dot beside its name, at the band's text size:
+             it read as an 11 px chip among eight 14 px values — the one thing in the band drawn
+             at a different scale, and the only coloured one — where the board draws a chip only
+             for a status that is neither the resting default nor finished. Opening it is the
+             select, and the pick is the save — the instant one-click control it has always been. -->
+        <InlineField
+          id="status"
+          label={t("tasks.field.status")}
+          canEdit={canEditTask}
+          saveOnChange
+          dismissOnBlur
+          onopen={() => (statusValue = task.status)}
+          beforeSubmit={(formData) => {
+            // Read before the request: `isDone` is recomputed off the reloaded task afterwards.
+            statusFinishing = finishes(formData.get("status"));
+            return true;
+          }}
+          onsaved={() => {
+            // The one-click finish lands on the board like every other finish; the field's own
+            // reload is skipped, since the page is being left.
+            if (!statusFinishing) return true;
+            leaveFinished();
+            return false;
+          }}
+        >
+          {#snippet read()}
+            {@const current = statuses.find((s) => s.key === task.status)}
+            <p class="flex items-center gap-1.5 text-sm text-text">
+              <span
+                class="h-2.5 w-2.5 shrink-0 rounded-full {current
+                  ? labelDotClass(current.color)
+                  : 'bg-text-muted'}"
+                aria-hidden="true"
+              ></span>
+              {current?.name ?? task.status}
             </p>
-          {:else if editMode}
-            <select id="status" name="status" form="task-edit" class={inputClass}>
+          {/snippet}
+          {#snippet editor({ submit, cancel })}
+            <select
+              id="status"
+              name="status"
+              class={inputClass}
+              bind:value={statusValue}
+              onchange={() => onStatusPicked(submit, cancel)}
+            >
               {#each statuses as s (s.key)}
-                <option value={s.key} selected={task.status === s.key}>{s.name}</option>
+                <option value={s.key}>{s.name}</option>
               {/each}
             </select>
-          {:else}
-            <form
-              method="POST"
-              action="?/update"
-              use:enhance={busy.wrap("status", ({ formData }) => {
-                // The one-click finish: a terminal status picked with nothing to offer in a
-                // prompt submits straight away, and lands on the board like every other finish.
-                const finishing = finishes(formData.get("status"));
-                return async ({ update, result }) => {
-                  if (finishing && result.type === "success") return leaveFinished();
-                  await update({ reset: false });
-                };
-              })}
-            >
-              <select
-                id="status"
-                name="status"
-                class={inputClass}
-                bind:value={statusValue}
-                onchange={onStatusPicked}
-              >
-                {#each statuses as s (s.key)}
-                  <option value={s.key}>{s.name}</option>
-                {/each}
-              </select>
-            </form>
-          {/if}
-        </div>
+          {/snippet}
+        </InlineField>
 
         <!-- The client comes before the two fields it narrows: the contact half of the assignee
-             picker, and the project list. In use mode every property below is edited in place
+             picker, and the project list. Every property below is edited in place
              (`InlineField`): one field, its own save, the page's own `?/update` — the same shape
              the description got in #455, because moving a deadline or handing a task to a
-             colleague should not cost the pencil and a save at the foot of the page. -->
-        {#if editMode}
-          <div>
-            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.company")}</label
-            >
-            <!-- No "Wissen": a task is a client's, and the API refuses clearing it — a control
-                 that can only produce a refused state is not drawn (#392's DateInput rule). -->
+             colleague should not cost a pencil and a save at the foot of the page. -->
+        <InlineField
+          id="company"
+          label={t("tasks.field.company")}
+          canEdit={canEditTask}
+          onclose={resetRelationPicks}
+        >
+          {#snippet read()}
+            <p class="truncate text-sm text-text">
+              {#if task.company_id}
+                <a href={`/companies/${task.company_id}`} class="hover:text-brand"
+                  >{companyName(task.company_id) ?? "—"}</a
+                >
+              {:else}—{/if}
+            </p>
+          {/snippet}
+          {#snippet editor()}
             <Combobox
               items={companyItems}
               archived={companyPicker.retired}
@@ -1390,7 +1361,6 @@
               name="company_id"
               value={fCompany}
               id="company"
-              formId="task-edit"
               allowEmpty={false}
               onselect={onCompanyPicked}
               oncreate={(name) => {
@@ -1398,117 +1368,78 @@
                 qcCompanyOpen = true;
               }}
             />
-          </div>
-        {:else}
-          <InlineField
-            id="company"
-            label={t("tasks.field.company")}
-            canEdit={canEditTask}
-            onclose={resetRelationPicks}
-          >
-            {#snippet read()}
-              <p class="truncate text-sm text-text">
-                {#if task.company_id}
-                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
-                    >{companyName(task.company_id) ?? "—"}</a
-                  >
-                {:else}—{/if}
-              </p>
-            {/snippet}
-            {#snippet editor()}
-              <Combobox
-                items={companyItems}
-                archived={companyPicker.retired}
-                archivedLabel={companyArchivedLabel()}
-                name="company_id"
-                value={fCompany}
-                id="company"
-                allowEmpty={false}
-                onselect={onCompanyPicked}
-                oncreate={(name) => {
-                  qcCompanyName = name;
-                  qcCompanyOpen = true;
-                }}
-              />
-              <!-- The pair travels together: a project of another client is dropped by the pick
+            <!-- The pair travels together: a project of another client is dropped by the pick
                    above, exactly as edit mode does, and the API stores the pair as given. -->
-              <input type="hidden" name="project_id" value={fProject} />
-            {/snippet}
-          </InlineField>
-        {/if}
+            <input type="hidden" name="project_id" value={fProject} />
+          {/snippet}
+        </InlineField>
 
-        {#if editMode}
-          <div>
-            <label for="assignee-employees" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.assignees")}</label
-            >
-            <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
-                 contacts. -->
+        <!-- Employees (#375), or — when the task has a client (#273) — one of that client's
+               contacts. -->
+        <InlineField
+          id="assignee-employees"
+          label={t("tasks.field.assignees")}
+          canEdit={canEditTask}
+          onopen={() => {
+            assigneeInlineOpen = true;
+            applyTo = "";
+          }}
+          onclose={() => {
+            assigneeInlineOpen = false;
+            applyTo = "";
+          }}
+          beforeSubmit={(formData) =>
+            guardAssigneeSubmit(formData, () =>
+              (
+                document.getElementById("assignee-employees-form") as HTMLFormElement | null
+              )?.requestSubmit(),
+            )}
+        >
+          {#snippet read()}
+            {#if task.assignee_contact_id}
+              <p class="text-sm text-text">
+                {task.assignee_contact_name ??
+                  contactName(task.assignee_contact_id) ??
+                  t("party.contact")}
+                <span class="text-xs text-text-muted">({t("party.contact")})</span>
+              </p>
+            {:else if (task.assignees ?? []).length > 0}
+              <!-- The whole roster, not the star alone: `max` is high because this is the
+                     record's own page, where "who is on this" is the question, not a column
+                     with 180px to spend. -->
+              <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
+            {:else}
+              <p class="text-sm text-text">—</p>
+            {/if}
+          {/snippet}
+          {#snippet editor()}
             <TaskAssigneePicker
-              formId="task-edit"
               employees={data.members}
               contacts={assigneeContacts}
-              contactsEnabled={!!fCompany}
+              contactsEnabled={!!task.company_id}
               assignees={task.assignees ?? []}
               contactValue={task.assignee_contact_id ?? ""}
             />
-            <input type="hidden" name="apply_to" value={applyTo} form="task-edit" />
-          </div>
-        {:else}
-          <InlineField
-            id="assignee-employees"
-            label={t("tasks.field.assignees")}
-            canEdit={canEditTask}
-            onopen={() => {
-              assigneeInlineOpen = true;
-              applyTo = "";
-            }}
-            onclose={() => {
-              assigneeInlineOpen = false;
-              applyTo = "";
-            }}
-            beforeSubmit={(formData) =>
-              guardAssigneeSubmit(formData, () =>
-                (
-                  document.getElementById("assignee-employees-form") as HTMLFormElement | null
-                )?.requestSubmit(),
-              )}
-          >
-            {#snippet read()}
-              {#if task.assignee_contact_id}
-                <p class="text-sm text-text">
-                  {task.assignee_contact_name ??
-                    contactName(task.assignee_contact_id) ??
-                    t("party.contact")}
-                  <span class="text-xs text-text-muted">({t("party.contact")})</span>
-                </p>
-              {:else if (task.assignees ?? []).length > 0}
-                <!-- The whole roster, not the star alone: `max` is high because this is the
-                     record's own page, where "who is on this" is the question, not a column
-                     with 180px to spend. -->
-                <Assignees assignees={task.assignees ?? []} members={data.members} max={8} />
-              {:else}
-                <p class="text-sm text-text">—</p>
-              {/if}
-            {/snippet}
-            {#snippet editor()}
-              <TaskAssigneePicker
-                employees={data.members}
-                contacts={assigneeContacts}
-                contactsEnabled={!!task.company_id}
-                assignees={task.assignees ?? []}
-                contactValue={task.assignee_contact_id ?? ""}
-              />
-              <input type="hidden" name="apply_to" value={applyTo} />
-            {/snippet}
-          </InlineField>
-        {/if}
+            <input type="hidden" name="apply_to" value={applyTo} />
+          {/snippet}
+        </InlineField>
 
-        {#if editMode}
-          <div>
-            <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.project")}</label
-            >
+        <InlineField
+          id="project"
+          label={t("tasks.field.project")}
+          canEdit={canEditTask}
+          onclose={resetRelationPicks}
+        >
+          {#snippet read()}
+            <p class="truncate text-sm text-text">
+              {#if task.project_id}
+                <a href={`/projects/${task.project_id}`} class="hover:text-brand"
+                  >{projectName(task.project_id) ?? "—"}</a
+                >
+              {:else}—{/if}
+            </p>
+          {/snippet}
+          {#snippet editor()}
             <Combobox
               items={projectItems}
               archived={projectPicker.retired}
@@ -1516,223 +1447,119 @@
               name="project_id"
               value={fProject}
               id="project"
-              formId="task-edit"
               onselect={onProjectPicked}
               oncreate={(name) => {
                 qcProjectName = name;
                 qcProjectOpen = true;
               }}
             />
-          </div>
-        {:else}
-          <InlineField
-            id="project"
-            label={t("tasks.field.project")}
-            canEdit={canEditTask}
-            onclose={resetRelationPicks}
-          >
-            {#snippet read()}
-              <p class="truncate text-sm text-text">
-                {#if task.project_id}
-                  <a href={`/projects/${task.project_id}`} class="hover:text-brand"
-                    >{projectName(task.project_id) ?? "—"}</a
-                  >
-                {:else}—{/if}
-              </p>
-            {/snippet}
-            {#snippet editor()}
-              <Combobox
-                items={projectItems}
-                archived={projectPicker.retired}
-                archivedLabel={projectArchivedLabel()}
-                name="project_id"
-                value={fProject}
-                id="project"
-                onselect={onProjectPicked}
-                oncreate={(name) => {
-                  qcProjectName = name;
-                  qcProjectOpen = true;
-                }}
-              />
-              <!-- A picked project backfills its client, as everywhere the pair is picked. -->
-              <input type="hidden" name="company_id" value={fCompany} />
-            {/snippet}
-          </InlineField>
-        {/if}
+            <!-- A picked project backfills its client, as everywhere the pair is picked. -->
+            <input type="hidden" name="company_id" value={fCompany} />
+          {/snippet}
+        </InlineField>
 
-        {#if editMode}
-          <div>
-            <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.priority")}</label
-            >
-            <select id="priority" name="priority" form="task-edit" class={inputClass}>
+        <InlineField
+          id="priority"
+          label={t("tasks.field.priority")}
+          canEdit={canEditTask}
+          saveOnChange
+          dismissOnBlur
+        >
+          {#snippet read()}
+            <p class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
+          {/snippet}
+          {#snippet editor({ submit })}
+            <select id="priority" name="priority" class={inputClass} onchange={submit}>
               {#each priorities as p (p)}
                 <option value={p} selected={task.priority === p}>{t(`tasks.priority.${p}`)}</option>
               {/each}
             </select>
-          </div>
-        {:else}
-          <InlineField
-            id="priority"
-            label={t("tasks.field.priority")}
-            canEdit={canEditTask}
-            saveOnChange
-          >
-            {#snippet read()}
-              <p class="text-sm text-text">{t(`tasks.priority.${task.priority}`)}</p>
-            {/snippet}
-            {#snippet editor({ submit })}
-              <select id="priority" name="priority" class={inputClass} onchange={submit}>
-                {#each priorities as p (p)}
-                  <option value={p} selected={task.priority === p}
-                    >{t(`tasks.priority.${p}`)}</option
-                  >
-                {/each}
-              </select>
-            {/snippet}
-          </InlineField>
-        {/if}
+          {/snippet}
+        </InlineField>
 
         <!-- Not for a client (#449): the estimate is the agency's, the API blanks it, and a
              dash headed "Tijdbudget" is a question the client should not be holding. -->
         <div class:hidden={isPortal}>
-          {#if editMode}
-            <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.allocated_input")}</label
-            >
-            <DurationInput
-              id="allocated"
-              name="allocated_minutes"
-              formId="task-edit"
-              minutes={task.allocated_minutes ?? null}
-              onchange={(minutes) => (liveAllocated = minutes)}
-              class={inputClass}
-            />
-          {:else}
-            <InlineField
-              id="allocated"
-              label={t("tasks.field.allocated")}
-              canEdit={canEditTask}
-              onclose={() => (liveAllocated = task.allocated_minutes ?? null)}
-            >
-              {#snippet read()}
-                {#if burn}
-                  <!-- The figure opens the hours behind it (#443, Principle 7) — only for a
+          <InlineField id="allocated" label={t("tasks.field.allocated")} canEdit={canEditTask}>
+            {#snippet read()}
+              {#if burn}
+                <!-- The figure opens the hours behind it (#443, Principle 7) — only for a
                        viewer /overview will let in, never a link that bounces (#253). -->
-                  <BudgetBar
-                    spent={burn.spent}
-                    budget={burn.budget}
-                    remainingText={burn.remainingText}
-                    spentText={burn.spentText}
-                    href={can(page.data.user, "time.report.read")
-                      ? `/overview/hours?task_id=${task.id}`
-                      : undefined}
-                  />
-                {:else}
-                  <p class="text-sm tabular-nums text-text">
-                    {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
-                  </p>
-                {/if}
-              {/snippet}
-              {#snippet editor()}
-                <DurationInput
-                  id="allocated"
-                  name="allocated_minutes"
-                  minutes={task.allocated_minutes ?? null}
-                  onchange={(minutes) => (liveAllocated = minutes)}
-                  class={inputClass}
+                <BudgetBar
+                  spent={burn.spent}
+                  budget={burn.budget}
+                  remainingText={burn.remainingText}
+                  spentText={burn.spentText}
+                  href={can(page.data.user, "time.report.read")
+                    ? `/overview/hours?task_id=${task.id}`
+                    : undefined}
                 />
-              {/snippet}
-            </InlineField>
-          {/if}
+              {:else}
+                <p class="text-sm tabular-nums text-text">
+                  {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
+                </p>
+              {/if}
+            {/snippet}
+            {#snippet editor()}
+              <DurationInput
+                id="allocated"
+                name="allocated_minutes"
+                minutes={task.allocated_minutes ?? null}
+                class={inputClass}
+              />
+            {/snippet}
+          </InlineField>
         </div>
 
         {#if !isPortal}
           <!-- Staff-only: a client reading their own task learns nothing from "yes, you can see
-               this", and the icon's meaning lives in a `title=` a phone cannot show. Full width
-               only while editing, where it is a checkbox carrying a line of explanation; as a
-               two-word read state it is an ordinary cell and a full row of it is a hole. -->
-          <div class={editMode ? "sm:col-span-2 lg:col-span-3" : ""}>
-            {#if editMode}
-              <!-- Hidden "false" precedes the checkbox so an unchecked box still submits a value;
-                   the use-mode status quick-form carries neither and leaves both untouched. -->
-              <input type="hidden" name="visible_to_client" value="false" form="task-edit" />
-              <label class="flex items-start gap-2 text-sm text-text">
-                <FormCheckbox
-                  name="visible_to_client"
-                  value="true"
-                  checked={task.visible_to_client}
-                  form="task-edit"
-                  class="mt-0.5 shrink-0"
-                />
-                <span>
-                  <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
-                  <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
-                    >{t("tasks.field.visible_to_client_hint")}</span
-                  >
-                </span>
-              </label>
-            {:else}
-              <InlineField
-                id="visible_to_client"
-                label={t("tasks.field.visible_to_client")}
-                canEdit={canEditTask}
-                saveOnChange
-              >
-                {#snippet read()}
-                  <p class="flex items-center gap-1.5 text-sm text-text">
-                    <ClientVisibilityIcon
-                      visible={task.visible_to_client}
-                      companyId={task.company_id}
-                      projectId={task.project_id}
-                      size={13}
-                    />
-                    {task.visible_to_client ? t("common.yes") : t("common.no")}
-                  </p>
-                {/snippet}
-                {#snippet editor({ submit })}
-                  <input type="hidden" name="visible_to_client" value="false" />
-                  <label class="flex items-start gap-2 text-sm text-text">
-                    <FormCheckbox
-                      id="visible_to_client"
-                      name="visible_to_client"
-                      value="true"
-                      checked={task.visible_to_client}
-                      class="mt-0.5 shrink-0"
-                      onchange={submit}
-                    />
-                    <span>
-                      <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
-                      <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
-                        >{t("tasks.field.visible_to_client_hint")}</span
-                      >
-                    </span>
-                  </label>
-                {/snippet}
-              </InlineField>
-            {/if}
+               this", and the icon's meaning lives in a `title=` a phone cannot show. -->
+          <div>
+            <InlineField
+              id="visible_to_client"
+              label={t("tasks.field.visible_to_client")}
+              canEdit={canEditTask}
+              saveOnChange
+              dismissOnBlur
+            >
+              {#snippet read()}
+                <p class="flex items-center gap-1.5 text-sm text-text">
+                  <ClientVisibilityIcon
+                    visible={task.visible_to_client}
+                    companyId={task.company_id}
+                    projectId={task.project_id}
+                    size={13}
+                  />
+                  {task.visible_to_client ? t("common.yes") : t("common.no")}
+                </p>
+              {/snippet}
+              {#snippet editor({ submit })}
+                <!-- Hidden "false" precedes the checkbox so an unchecked box still submits a
+                       value; the status field carries neither and leaves it untouched. -->
+                <input type="hidden" name="visible_to_client" value="false" />
+                <label class="flex items-start gap-2 text-sm text-text">
+                  <FormCheckbox
+                    id="visible_to_client"
+                    name="visible_to_client"
+                    value="true"
+                    checked={task.visible_to_client}
+                    class="mt-0.5 shrink-0"
+                    onchange={submit}
+                  />
+                  <span>
+                    <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
+                    <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                      >{t("tasks.field.visible_to_client_hint")}</span
+                    >
+                  </span>
+                </label>
+              {/snippet}
+            </InlineField>
           </div>
         {/if}
 
-        <div class={editMode ? "sm:col-span-2 lg:col-span-3" : ""}>
-          {#if editMode}
-            <input type="hidden" name="requires_interaction" value="false" form="task-edit" />
-            <label class="flex items-start gap-2 text-sm text-text">
-              <FormCheckbox
-                name="requires_interaction"
-                value="true"
-                checked={task.requires_interaction}
-                form="task-edit"
-                class="mt-0.5 shrink-0"
-              />
-              <span>
-                <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
-                <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
-                  >{t("tasks.field.requires_interaction_hint")}</span
-                >
-              </span>
-            </label>
-          {:else if task.requires_interaction || canEditTask}
+        <div>
+          {#if task.requires_interaction || canEditTask}
             <!-- Read-only, the cell exists only when the policy is on; an editor sees it either
                  way, because "off" is the state they switch it from. -->
             <InlineField
@@ -1740,6 +1567,7 @@
               label={t("tasks.field.requires_interaction")}
               canEdit={canEditTask}
               saveOnChange
+              dismissOnBlur
             >
               {#snippet read()}
                 {#if task.requires_interaction}
@@ -1775,114 +1603,13 @@
           {/if}
         </div>
 
-        <!-- Labels: the chips already sit under the title in use mode, so only the picker lives
-             here — and it lives *in* the properties band now instead of a card of its own above
-             the repeat rule, which is how the least important thing on the page came to sit above
-             the most easily misread one (#335 F9). -->
-        {#if editMode}
-          <div class="sm:col-span-2 lg:col-span-3">
-            <div class="mb-1 flex items-center justify-between">
-              <span class="text-xs font-medium text-text-muted">{t("tasks.field.labels")}</span>
-              <button
-                type="button"
-                class="text-xs text-text-muted hover:text-brand"
-                onclick={() => (showLabelPicker = !showLabelPicker)}
-              >
-                {showLabelPicker ? t("common.cancel") : t("common.edit")}
-              </button>
-            </div>
-
-            {#if showLabelPicker}
-              <form
-                method="POST"
-                action="?/setLabels"
-                use:enhance={busy.wrap("setLabels", () => ({ update }) => {
-                  showLabelPicker = false;
-                  void update({ reset: false });
-                })}
-                class="space-y-1 rounded-lg border border-border p-3"
-              >
-                {#each data.labels as label (label.id)}
-                  <label
-                    class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface"
-                  >
-                    <FormCheckbox
-                      name="label_ids"
-                      value={label.id}
-                      checked={currentLabelIds.includes(label.id)}
-                      class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-                    />
-                    <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
-                    <span class="text-text">{label.name}</span>
-                  </label>
-                {/each}
-                <Button size="sm" loading={busy.is("setLabels")} class="mt-2"
-                  >{t("common.apply")}</Button
-                >
-              </form>
-
-              <!-- Ticking labels onto this task is `tasks.task.write`; *minting* one adds a row to
-                   the org's vocabulary and is `tasks.label.write`, which only an admin holds. -->
-              {#if canWriteLabels}
-                <form
-                  method="POST"
-                  action="?/createLabel"
-                  use:enhance={busy.wrap("createLabel", () => ({ update }) => {
-                    showLabelPicker = false;
-                    void update();
-                  })}
-                  class="mt-2 rounded-lg border border-dashed border-border p-3"
-                >
-                  {#each currentLabelIds as id (id)}
-                    <input type="hidden" name="current_label_ids" value={id} />
-                  {/each}
-                  <input
-                    name="name"
-                    placeholder={t("tasks.labels.new_placeholder")}
-                    required
-                    class="w-full rounded-lg border border-border px-2 py-1 text-sm"
-                  />
-                  <input type="hidden" name="color" value={newLabelColor} />
-                  <div class="mt-2 flex flex-wrap gap-1">
-                    {#each LABEL_COLORS as color (color)}
-                      <button
-                        type="button"
-                        aria-label={color}
-                        class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                          ? 'ring-2 ring-text ring-offset-1'
-                          : ''}"
-                        onclick={() => (newLabelColor = color)}
-                      ></button>
-                    {/each}
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={busy.is("createLabel")}
-                    class="mt-2"
-                  >
-                    {t("tasks.labels.create")}
-                  </Button>
-                </form>
-              {/if}
-            {:else if (task.labels ?? []).length === 0}
-              <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
-            {:else}
-              <div class="flex flex-wrap gap-1">
-                {#each task.labels ?? [] as label (label.id)}
-                  <span
-                    class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
-                      label.color,
-                    )}">{label.name}</span
-                  >
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {:else if canEditTask}
-          <!-- In use mode the chips already sit under the title; this cell is where a writer
-               changes them without leaving the page. Posts `?/setLabels`, the whole set at once,
-               and minting a new label (`tasks.label.write`) is a second form *beside* it. -->
+        <!-- Labels: the chips already sit under the title, so only the picker lives here — and
+             it lives *in* the properties band instead of a card of its own above the repeat
+             rule, which is how the least important thing on the page came to sit above the most
+             easily misread one (#335 F9). This cell is where a writer changes them without
+             leaving the page. Posts `?/setLabels`, the whole set at once, and minting a new
+             label (`tasks.label.write`) is a second form *beside* it. -->
+        {#if canEditTask}
           <InlineField
             id="labels"
             label={t("tasks.field.labels")}
@@ -1991,85 +1718,69 @@
       </h3>
 
       <div class="space-y-4">
-        <!-- Deadline -->
+        <!-- Deadline: the date, its reason when it is an extension (the prompt below, whose
+             confirm is the save), and the API's refusal beside the field. A pick saves; the
+             field draws no Opslaan that would repeat it. -->
         <div>
-          {#if editMode}
-            <label for="due_date" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.due_date")}</label
-            >
-            <div class="max-w-xs">
+          <InlineField
+            id="due_date"
+            label={t("tasks.field.due_date")}
+            canEdit={canEditTask}
+            class="max-w-xs"
+            saveOnChange
+            onclose={() => {
+              dueValue = task.due_date ?? "";
+              dueReason = "";
+              dueSubmit = null;
+              dueCancel = null;
+            }}
+            beforeSubmit={(formData) => {
+              // Enter in the date box submits the form implicitly, before the prompt has its
+              // answer: an extension with no reason is never posted — the API would refuse it
+              // and print the refusal under a field the prompt is standing over. The save
+              // this prompt makes is `confirmDueReason`, with the reason on the form.
+              const posted = String(formData.get("due_date") ?? "");
+              const reason = String(formData.get("due_change_reason") ?? "").trim();
+              const extends_ = dueIsCommitted && !!task.due_date && posted > task.due_date;
+              return !(extends_ && !reason);
+            }}
+          >
+            {#snippet read()}
+              <p
+                class="text-sm tabular-nums {overdue
+                  ? 'font-semibold text-red-600 dark:text-red-400'
+                  : 'text-text'}"
+              >
+                {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
+                {#if distance && "on" in distance}
+                  <span class="text-xs font-normal text-text-muted" title={fmtDateTime(distance.on)}
+                    >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
+                  >
+                {:else if distance}
+                  <!-- The distance, muted: a date on its own asks the reader to subtract
+                         (#395). -->
+                  <span class="text-xs font-normal text-text-muted"
+                    >{t(distance.key, { count: distance.count })}</span
+                  >
+                {/if}
+              </p>
+            {/snippet}
+            {#snippet editor({ submit, cancel })}
               <DateInput
                 id="due_date"
                 name="due_date"
                 bind:value={dueValue}
-                formId="task-edit"
                 required
-                onchange={onDueChanged}
+                onchange={(value) => onDueChanged(value, submit, cancel)}
               />
-            </div>
-            <!-- A hint that promises a question the form will not ask is half a sentence: a
-                 placeholder row's first date is set, not moved. -->
-            {#if dueIsCommitted}
-              <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
-            {/if}
-            <!-- Rows written before #392 open, render and edit exactly as before — but saving
-                 one asks for the date it never had, which is the way out rather than a refusal. -->
-            {#if !task.due_date}
-              <p class="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-                {t("tasks.detail.due_required_hint")}
-              </p>
-            {/if}
-          {:else}
-            <!-- Moved in place: the date, its reason when it is an extension (the same modal edit
-                 mode uses, and the same hidden field), and the API's refusal beside the field. -->
-            <InlineField
-              id="due_date"
-              label={t("tasks.field.due_date")}
-              canEdit={canEditTask}
-              class="max-w-xs"
-              onclose={() => {
-                liveDue = task.due_date ?? "";
-                dueValue = liveDue;
-                dueReason = "";
-              }}
-            >
-              {#snippet read()}
-                <p
-                  class="text-sm tabular-nums {overdue
-                    ? 'font-semibold text-red-600 dark:text-red-400'
-                    : 'text-text'}"
-                >
-                  {task.due_date ? fmtDayMonthYear(task.due_date) : "—"}
-                  {#if distance && "on" in distance}
-                    <span
-                      class="text-xs font-normal text-text-muted"
-                      title={fmtDateTime(distance.on)}
-                      >{t(distance.key, { date: fmtDayMonth(distance.on) })}</span
-                    >
-                  {:else if distance}
-                    <!-- The distance, muted: a date on its own asks the reader to subtract
-                         (#395). -->
-                    <span class="text-xs font-normal text-text-muted"
-                      >{t(distance.key, { count: distance.count })}</span
-                    >
-                  {/if}
-                </p>
-              {/snippet}
-              {#snippet editor()}
-                <DateInput
-                  id="due_date"
-                  name="due_date"
-                  bind:value={dueValue}
-                  required
-                  onchange={onDueChanged}
-                />
-                <input type="hidden" name="due_change_reason" value={dueReason} />
-                {#if dueIsCommitted}
-                  <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
-                {/if}
-              {/snippet}
-            </InlineField>
-          {/if}
+              <input type="hidden" name="due_change_reason" value={dueReason} />
+              <!-- A hint that promises a question the field will not ask is half a sentence:
+                     a placeholder row's first date is set, not moved. -->
+              {#if dueIsCommitted}
+                <p class="text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
+              {/if}
+            {/snippet}
+          </InlineField>
         </div>
 
         <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one.
@@ -2092,15 +1803,12 @@
             currentUserId={page.data.user?.id ?? ""}
             canWrite={canSchedule}
             {canScheduleAny}
-            preparing={busy.is("update")}
-            beforeOpen={saveIfEditing}
           />
         </div>
 
-        <!-- The repeat rule. In use mode it renders only when there *is* one: "Herhaling: herhaalt
-             niet" is the empty structural section docs/UX.md §3 keeps out of use mode, and the
-             editor behind the pencil is where a rule gets made. -->
-        {#if editMode || shownRecurrence || canEditTask}
+        <!-- The repeat rule. A reader sees it only when there *is* one; a writer sees the row
+             even without a rule ("Herhaalt niet"), because that is the state a rule is made from. -->
+        {#if shownRecurrence || canEditTask}
           <div class="border-t border-border pt-4">
             {#if isOccurrence && series}
               <!-- An occurrence carries no rule of its own: the rule lives on the root, and is
@@ -2118,24 +1826,8 @@
                   </a>
                 {/if}
               </p>
-            {:else if editMode}
-              <RecurrenceEditor
-                formId="task-edit"
-                previewUrl={`/tasks/${task.id}/recurrence-preview`}
-                {recurrence}
-                dueDate={liveDue}
-                allocatedMinutes={liveAllocated}
-                {lastBlockStart}
-                members={data.members}
-                currentUserId={page.data.user?.id ?? ""}
-                {assigneeIds}
-                {canSchedule}
-                {canScheduleAny}
-              />
             {:else}
-              <!-- In place too, through `?/setRecurrence` — the rule alone, nothing else touched.
-                   A writer sees the row even without a rule ("Herhaalt niet"), because that is the
-                   state a rule is made from; a reader still sees it only when there is one. -->
+              <!-- In place, through `?/setRecurrence` — the rule alone, nothing else touched. -->
               <InlineField
                 id="recurrence"
                 label={t("tasks.recurrence.title")}
@@ -2232,47 +1924,27 @@
       <h3 class="mb-2 {PANEL_HEADING}">
         {t("tasks.field.description")}
       </h3>
-      {#if editMode}
-        <!-- Keyed on the last AI revision: the editor holds its own text, so a description the
-             box just rewrote would otherwise stay the old one under the reader's cursor. -->
-        {#key reviseKey}
-          <RichTextEditor
-            name="description"
-            form="task-edit"
-            rows={4}
-            value={task.description ?? ""}
-            scope={candidateScope}
-            upload={{ entityType: "task", entityId: task.id }}
-          />
-        {/key}
-      {:else}
-        <!-- Edited in place (#455): the one field people change ten times a day should not cost
-             ⋯ → Bewerken and a save at the foot of the page. Posts `description` alone to
+      <!-- Edited in place (#455): the one field people change ten times a day should not cost
+             a pencil and a save at the foot of the page. Posts `description` alone to
              `?/update`, which patches only what the form carries. -->
-        <InlineText
-          name="description"
-          value={task.description ?? ""}
-          placeholder={t("tasks.detail.description_placeholder")}
-          canEdit={canEditTask}
-          scope={candidateScope}
-          images
-          upload={{ entityType: "task", entityId: task.id }}
-          id="task-description-inline"
-        />
-      {/if}
+      <InlineText
+        name="description"
+        value={task.description ?? ""}
+        placeholder={t("tasks.detail.description_placeholder")}
+        canEdit={canEditTask}
+        scope={candidateScope}
+        images
+        upload={{ entityType: "task", entityId: task.id }}
+        id="task-description-inline"
+      />
       {#if aiAvailable}
         <!-- Change the task in words (`tasks/assist.py`): one instruction, applied as the
              viewer, every change on the trail. The page reloads its data afterwards, the
-             way any other write here does. In **both** modes: a fresh create lands here in
-             edit mode (#230), which is exactly when "beschrijf deze taak" is wanted, and the
-             box used to be the one thing the pencil hid. While editing, the typed fields are
-             saved first (`saveIfEditing`, #335 F7's save-then-act) so the model reads what
-             the reader sees, and edit mode stays open over the reloaded row. When the task
-             has no checklist yet, the second button writes one from the notes — it lives
-             here because the checklist section is not drawn until there is one (an empty
-             card is the clutter use mode avoids). -->
+             way any other write here does. When the task has no checklist yet, the second
+             button writes one from the notes — it lives here because a reader gets no
+             checklist section until there is one. -->
         <div class="mt-4">
-          <TaskAIRevise taskId={task.id} before={saveIfEditing} onapplied={onRevised} />
+          <TaskAIRevise taskId={task.id} onapplied={onRevised} />
           {#if (task.checklists ?? []).length === 0}
             <div class="mt-2 flex flex-wrap items-center gap-2">
               <Button
@@ -2301,23 +1973,22 @@
   {/snippet}
 
   {#snippet checklists()}
-    <!-- Checklists. Ticking and quick-adding items is "using" (docs/UX.md §3, §5); creating,
-           renaming or deleting a checklist is structure and lives in edit mode. A task without
-           checklists shows no section at all until you edit — an empty card with a create form
-           is exactly the clutter use mode exists to avoid. -->
-    {#if (task.checklists ?? []).length > 0 || editMode}
+    <!-- Checklists. Ticking, quick-adding, renaming, reordering and removing all happen in
+           place; a new list unfolds from the ＋ in the heading. A reader with no checklists to
+           read gets no section at all — an empty card is the clutter this page avoids. -->
+    {#if (task.checklists ?? []).length > 0 || canEditTask}
       <section class="rounded-xl border border-border bg-surface-raised p-5">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 class={PANEL_HEADING}>
             {t("tasks.checklist.title")}
           </h3>
-          {#if aiAvailable && !editMode}
-            <div class="flex items-center gap-2">
-              {#if generateError}
-                <span class="text-xs text-red-600 dark:text-red-400" role="alert"
-                  >{t(generateError)}</span
-                >
-              {/if}
+          <div class="flex items-center gap-2">
+            {#if generateError}
+              <span class="text-xs text-red-600 dark:text-red-400" role="alert"
+                >{t(generateError)}</span
+              >
+            {/if}
+            {#if aiAvailable}
               <Button
                 type="button"
                 size="xs"
@@ -2331,13 +2002,25 @@
                   ? t("tasks.ai.checklist_busy")
                   : t("tasks.ai.checklist_generate")}
               </Button>
-            </div>
-          {/if}
+            {/if}
+            {#if canEditTask}
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                aria-expanded={addChecklistOpen}
+                onclick={() => (addChecklistOpen = !addChecklistOpen)}
+              >
+                <Plus size={12} aria-hidden="true" />
+                {t("tasks.checklist.add_button")}
+              </Button>
+            {/if}
+          </div>
         </div>
 
         <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
                items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
-        {#if editMode}
+        {#if canEditTask}
           <form
             method="POST"
             action="?/reorderChecklists"
@@ -2365,7 +2048,7 @@
             flipDurationMs: 150,
             dropTargetStyle: {},
             type: "task-checklists",
-            dragDisabled: !editMode || !dragChecklists,
+            dragDisabled: !canEditTask || !dragChecklists,
           }}
           onconsider={considerChecklists}
           onfinalize={finalizeChecklists}
@@ -2376,11 +2059,13 @@
             {@const doneCount = items.filter((i) => i.done).length}
             <div class="mb-4 bg-surface-raised">
               <div class="mb-1 flex items-center justify-between gap-2">
-                <div class="flex min-w-0 items-center gap-1">
-                  {#if editMode}
+                <div class="group/list flex min-w-0 items-center gap-1">
+                  {#if canEditTask}
+                    <!-- Faint until the row is hovered or the grip focused: forty rows each
+                         wearing a grip is noise, and a drag starts nowhere else. -->
                     <button
                       type="button"
-                      class="-ml-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                      class="-ml-1 shrink-0 cursor-grab touch-none text-text-muted opacity-30 transition-opacity active:cursor-grabbing focus-visible:opacity-100 group-hover/list:opacity-100"
                       aria-label={t("tasks.checklist.drag", { title: checklist.title })}
                       onpointerdown={() => (dragChecklists = true)}
                     >
@@ -2410,7 +2095,7 @@
                         onblur={(event) => renameBlur(event, checklist.title)}
                       />
                     </form>
-                  {:else if canEditTask && !editMode}
+                  {:else if canEditTask}
                     <button
                       type="button"
                       class="min-w-0 cursor-text truncate rounded px-1 text-left text-sm font-semibold text-text hover:bg-surface"
@@ -2426,7 +2111,7 @@
                   <span class="text-xs tabular-nums text-text-muted"
                     >{t("tasks.checklist.progress", { done: doneCount, total })}</span
                   >
-                  {#if editMode && items.length > 0 && canSaveChecklistTemplate}
+                  {#if items.length > 0 && canSaveChecklistTemplate}
                     <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                       <input type="hidden" name="title" value={checklist.title} />
                       <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
@@ -2448,7 +2133,9 @@
                       </button>
                     </form>
                   {/if}
-                  {#if editMode}
+                  {#if canEditTask}
+                    <!-- Rename and the note are edited by clicking them; the menu holds what has
+                         no words to click: order, a copy, and the delete. -->
                     <ActionsMenu
                       compact
                       items={[
@@ -2463,13 +2150,6 @@
                           icon: ArrowDown,
                           disabled: checklistIndex === dndChecklists.length - 1,
                           onclick: () => moveChecklist(checklist.id, 1),
-                        },
-                        {
-                          label: t("common.edit"),
-                          icon: Pencil,
-                          onclick: () =>
-                            (editingChecklistId =
-                              editingChecklistId === checklist.id ? null : checklist.id),
                         },
                         {
                           label: t("tasks.checklist.duplicate"),
@@ -2503,13 +2183,9 @@
                   class="mb-2 space-y-2"
                 >
                   <input type="hidden" name="checklist_id" value={checklist.id} />
-                  {#if editMode}
-                    <input name="title" value={checklist.title} required class={inputClass} />
-                  {:else}
-                    <!-- Use mode renames by clicking the title above; this form is the
-                         description alone, and posts the title it already has. -->
-                    <input type="hidden" name="title" value={checklist.title} />
-                  {/if}
+                  <!-- Renaming is a click on the title above; this form is the description
+                       alone, and posts the title it already has. -->
+                  <input type="hidden" name="title" value={checklist.title} />
                   <RichTextEditor
                     name="description"
                     rows={2}
@@ -2526,7 +2202,7 @@
                     >
                   </div>
                 </form>
-              {:else if canEditTask && !editMode}
+              {:else if canEditTask}
                 {#if checklist.description}
                   <div
                     role="button"
@@ -2573,7 +2249,7 @@
                   flipDurationMs: 150,
                   dropTargetStyle: {},
                   type: `checklist-items-${checklist.id}`,
-                  dragDisabled: !editMode || dragItemsIn !== checklist.id,
+                  dragDisabled: !canEditTask || dragItemsIn !== checklist.id,
                 }}
                 onconsider={(e) => considerItems(checklist.id, e)}
                 onfinalize={(e) => finalizeItems(checklist.id, e)}
@@ -2581,10 +2257,10 @@
                 {#each items as item, itemIndex (item.id)}
                   <li class="group bg-surface-raised">
                     <div class="flex items-center gap-2">
-                      {#if editMode}
+                      {#if canEditTask}
                         <button
                           type="button"
-                          class="-mr-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                          class="-mr-1 shrink-0 cursor-grab touch-none text-text-muted opacity-0 transition-opacity active:cursor-grabbing focus-visible:opacity-100 group-hover:opacity-100"
                           aria-label={t("tasks.checklist.drag_item", { title: item.title })}
                           onpointerdown={() => (dragItemsIn = checklist.id)}
                         >
@@ -2678,7 +2354,7 @@
                             onblur={(event) => renameBlur(event, item.title)}
                           />
                         </form>
-                      {:else if canEditTask && !editMode}
+                      {:else if canEditTask}
                         <button
                           type="button"
                           class="min-w-0 flex-1 cursor-text rounded px-1 text-left text-sm hover:bg-surface {item.done
@@ -2695,7 +2371,7 @@
                             : 'text-text'}">{item.title}</span
                         >
                       {/if}
-                      {#if editMode}
+                      {#if canEditTask}
                         <ActionsMenu
                           compact
                           items={[
@@ -2710,12 +2386,6 @@
                               icon: ArrowDown,
                               disabled: itemIndex === items.length - 1,
                               onclick: () => moveItem(checklist.id, item.id, 1),
-                            },
-                            {
-                              label: t("common.edit"),
-                              icon: Pencil,
-                              onclick: () =>
-                                (editingItemId = editingItemId === item.id ? null : item.id),
                             },
                             {
                               label: t("common.delete"),
@@ -2744,11 +2414,7 @@
                       >
                         <input type="hidden" name="checklist_id" value={checklist.id} />
                         <input type="hidden" name="item_id" value={item.id} />
-                        {#if editMode}
-                          <input name="title" value={item.title} required class={inputClass} />
-                        {:else}
-                          <input type="hidden" name="title" value={item.title} />
-                        {/if}
+                        <input type="hidden" name="title" value={item.title} />
                         <RichTextEditor
                           name="description"
                           rows={2}
@@ -2766,7 +2432,7 @@
                           >
                         </div>
                       </form>
-                    {:else if canEditTask && !editMode}
+                    {:else if canEditTask}
                       {#if item.description}
                         <div
                           role="button"
@@ -2827,11 +2493,16 @@
           {/each}
         </div>
 
-        {#if editMode}
+        {#if canEditTask && addChecklistOpen}
+          <!-- Unfolded from the ＋ in the heading; a created list folds it back. A create, so
+               the next one starts blank (`reset: true`, stated — docs/UX.md, forms:check). -->
           <form
             method="POST"
             action="?/addChecklist"
-            use:enhance={busy.wrap("addChecklist")}
+            use:enhance={busy.wrap("addChecklist", () => async ({ update, result }) => {
+              if (result.type === "success") addChecklistOpen = false;
+              await update({ reset: true });
+            })}
             class="flex gap-2"
           >
             <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
@@ -2851,7 +2522,10 @@
             <form
               method="POST"
               action="?/addChecklist"
-              use:enhance={busy.clear("addChecklistTpl")}
+              use:enhance={busy.wrap("addChecklistTpl", () => async ({ update, result }) => {
+                if (result.type === "success") addChecklistOpen = false;
+                await update({ reset: true });
+              })}
               class="mt-2 flex gap-2"
             >
               <select
@@ -2876,10 +2550,10 @@
   {/snippet}
 
   {#snippet links()}
-    <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
-           uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
-           no files → no section, until you edit. -->
-    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode || canWriteFile}
+    <!-- Links & attachments. What is attached (open, download), and for a writer the ＋ that
+           adds a link and the ⋯ that removes one; uploads have their own strip below. No links,
+           no files and nothing to add → no section. -->
+    {#if (task.links ?? []).length > 0 || data.files.length > 0 || canEditTask || canWriteFile}
       <!-- A register (#404): where the files are is looked up when somebody needs a file, and
            it is never the news on a task. Under a rule rather than in the eighth bordered box —
            and the Drive card directly under it declares the same, so the two now read as one
@@ -2890,15 +2564,27 @@
              bytes live here and a Drive row is a reference into somebody else's system, which
              is why deleting means something different in each — so the heading gets one line
              saying which is which. Merging them would make that difference unsayable. -->
-        <div class="mb-3">
-          <h3 class={PANEL_HEADING}>
-            {t("tasks.links.title")}
-          </h3>
-          <p class="text-[11px] text-text-muted">{t("tasks.links.stored_here")}</p>
+        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 class={PANEL_HEADING}>
+              {t("tasks.links.title")}
+            </h3>
+            <p class="text-[11px] text-text-muted">{t("tasks.links.stored_here")}</p>
+          </div>
+          {#if canEditTask}
+            <Button
+              type="button"
+              size="xs"
+              variant="secondary"
+              aria-expanded={addLinkOpen}
+              onclick={() => (addLinkOpen = !addLinkOpen)}
+            >
+              <Plus size={12} aria-hidden="true" />
+              {t("tasks.links.add_button")}
+            </Button>
+          {/if}
         </div>
-        {#if (task.links ?? []).length === 0}
-          {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
-        {:else}
+        {#if (task.links ?? []).length > 0}
           <ul class="mb-3 space-y-1">
             {#each task.links ?? [] as link (link.id)}
               <li class="group flex items-center gap-2">
@@ -2911,7 +2597,7 @@
                 >
                   {link.title || link.url}
                 </a>
-                {#if editMode}
+                {#if canEditTask}
                   <ActionsMenu
                     compact
                     items={[
@@ -2933,17 +2619,15 @@
             {/each}
           </ul>
         {/if}
-        {#if editMode}
+        {#if canEditTask && addLinkOpen}
           <form
             method="POST"
             action="?/addLink"
-            use:enhance={busy.wrap(
-              "addLink",
-              () =>
-                ({ update }) =>
-                  void update({ reset: true }),
-            )}
-            class="flex flex-wrap gap-2"
+            use:enhance={busy.wrap("addLink", () => ({ update, result }) => {
+              if (result.type === "success") addLinkOpen = false;
+              void update({ reset: true });
+            })}
+            class="mb-3 flex flex-wrap gap-2"
           >
             <input
               name="url"
@@ -2970,7 +2654,7 @@
                API checks, never on `!isPortal`: a client holds no `files.file.write` and the API
                hands it only the files ticked visible. -->
           <div
-            class={(task.links ?? []).length > 0 || editMode
+            class={(task.links ?? []).length > 0 || addLinkOpen
               ? "mt-4 border-t border-border pt-4"
               : ""}
           >
@@ -3093,73 +2777,6 @@
       {@render render()}
     {/if}
   {/each}
-
-  <!--
-    The one save for the whole edit mode — sticky, so it is reachable from anywhere on the page.
-
-    It used to sit bottom-right under Labels on a desktop and *mid-page* on a phone, where the
-    button visually ended the form while half the edit surface (planning, checklists, links)
-    carried on below it (#335 F9). One save button per editing surface is docs/UX.md's rule; this
-    is that rule made visible. Inputs across the page join it by `form="task-edit"`.
-  -->
-  {#if editMode}
-    <form
-      id="task-edit"
-      bind:this={editForm}
-      method="POST"
-      action="?/update"
-      use:enhance={busy.wrap("update", ({ formData, cancel }) => {
-        // A task in a series being handed over is a question first (the dialog below); the
-        // answer re-submits this same form with `apply_to` filled in.
-        if (!guardAssigneeSubmit(formData, () => editForm?.requestSubmit())) {
-          cancel();
-          return;
-        }
-        // Read before the request: `isDone` is recomputed off the reloaded task afterwards.
-        const finishing = finishes(formData.get("status"));
-        return async ({ update, result }) => {
-          applyTo = "";
-          // A save that was only a means to an end (#335 F7 — pressing Inplannen while editing)
-          // keeps edit mode open: the user asked to plan, not to stop editing. That is also why the
-          // detour's exit (#408) is skipped for one: leaving now would abandon the act the save was
-          // in service of. A save that finished the task leaves the same way (`leaveFinished`).
-          const waiting = pendingSave;
-          pendingSave = null;
-          if (result.type === "success" && !waiting && (origin || finishing)) {
-            dueReason = "";
-            return leaveFinished();
-          }
-          if (result.type === "success") {
-            editMode = waiting !== null;
-            // …and the marker that opened it goes with it (#402). A task created from a client
-            // lands here as `?edit=1`, and leaving the mode while the URL still says otherwise
-            // means the next visit — a reload, the back button off the client's page — reopens
-            // the form over a save that had already happened. An intent is consumed once. The
-            // detour's exit above needs none of this: it leaves this URL behind entirely.
-            if (!editMode) clearEditIntent();
-          }
-          dueReason = "";
-          // Never reset: a save that keeps edit mode open (Inplannen, the AI box) would
-          // otherwise blank every display-only input associated with this form — the
-          // date's dd-mm-jjjj text went empty over a hidden value that was still right.
-          await update({ reset: false });
-          waiting?.(result.type === "success");
-        };
-      })}
-      class="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface/90 px-1 py-3 backdrop-blur"
-    >
-      <input type="hidden" name="due_change_reason" value={dueReason} />
-      <span class="mr-auto text-xs text-text-muted">{t("tasks.detail.edit_mode")}</span>
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={leaveEdit}
-      >
-        {t("common.cancel")}
-      </button>
-      <Button loading={busy.is("update")}>{t("common.save")}</Button>
-    </form>
-  {/if}
 </div>
 
 {#if form?.error}

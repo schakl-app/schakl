@@ -981,6 +981,24 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **A task's page has one mode, and a prompt that confirms is a prompt that saves** (the owner's
+  decision, `docs/UX.md` Principle 3). Every field on the task detail page is edited where it is
+  read — the title by clicking it, each property through `InlineField`, the description through
+  `InlineText`, a step by clicking its words — and the page-wide edit mode (⋯ → Bewerken, one
+  `form="task-edit"`, one Opslaan at the foot) is deleted rather than kept beside it: two editors
+  for one property are two save models, and the deadline's reason prompt behaved differently in
+  each. The status is a dot in its colour beside its name, at the band's own size, and saves on
+  pick; checklist structure and links are a ＋ in the heading and a ⋯ on the row. Confirming the
+  deadline reason posts the date and the reason together — a prompt that stages an answer and
+  leaves a save still to press reads as a prompt that did nothing. Create-then-edit (#230) now
+  lands on the page with nothing open. Two rules the browser pass found: **one gesture is one
+  save** — Enter in a date box commits the value *and* submits the form implicitly, and the
+  native `change` fires a third time, so a save-on-change field wrote three identical trail lines
+  until `InlineField` refused a submit while one is in flight and `DateInput` stopped announcing
+  a value the field already held; and **a one-control editor closes when focus leaves it**
+  (`dismissOnBlur`: the select or checkbox takes focus on open, a pick saves, a click anywhere
+  else cancels, no Annuleren drawn) — except one that raises a dialog of its own, since focus
+  moving into the prompt would read as leaving.
 - **A task is named before it exists, and it is always a client's** (the owner's decision closing
   #350/#391, `docs/UX.md`). The placeholder create — one click, a row titled "Naamloze taak",
   marked `unnamed` so a list could italicise it and `?unnamed=1` could gather it — is deleted

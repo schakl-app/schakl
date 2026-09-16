@@ -24,7 +24,7 @@
    * the pencil is a real button so the keyboard has one.
    */
   import { Pencil } from "@lucide/svelte";
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -37,6 +37,7 @@
     action = "?/update",
     canEdit = false,
     saveOnChange = false,
+    dismissOnBlur = false,
     labelledEditor = false,
     id,
     class: className = "",
@@ -46,6 +47,7 @@
     onopen,
     onclose,
     beforeSubmit,
+    onsaved,
   }: {
     /** The field's caption, above both the value and the editor. */
     label: string;
@@ -55,6 +57,14 @@
     canEdit?: boolean;
     /** The editor saves itself on change — a select, a checkbox — so no Opslaan is drawn. */
     saveOnChange?: boolean;
+    /**
+     * A one-control editor (a select, a checkbox) closes when focus leaves it, and draws no
+     * Annuleren: the control takes focus on open, a pick saves, and a click anywhere else or a
+     * Tab away is the cancel — the way a dropdown on a row behaves everywhere else. Not for an
+     * editor that opens a dialog of its own (the deadline's reason prompt): focus moving into
+     * the dialog would read as leaving.
+     */
+    dismissOnBlur?: boolean;
     /** The editor draws its own caption (a multi-control editor), so ours is not repeated. */
     labelledEditor?: boolean;
     /** Base id: the form is `${id}-form`, and an editor's control should take `${id}` itself. */
@@ -77,6 +87,12 @@
      * dialog and re-submits the form by id once it has an answer.
      */
     beforeSubmit?: (formData: FormData) => boolean;
+    /**
+     * The save landed. Answering `false` takes over from here — the host is leaving the page
+     * (a status pick that finished the task lands on the board) and the field's own reload
+     * and close are skipped; anything else, or no handler, reloads the record and closes.
+     */
+    onsaved?: (formData: FormData) => boolean | void;
   } = $props();
 
   const busy = new InFlight();
@@ -88,12 +104,24 @@
   let formEl = $state<HTMLFormElement | undefined>();
   const formId = $derived(`${id}-form`);
 
-  function open() {
+  async function open() {
     if (!canEdit || editing) return;
     session += 1;
     error = null;
     editing = true;
     onopen?.();
+    if (!dismissOnBlur) return;
+    // The control has to hold focus for "focus left" to mean anything — and a keyboard user
+    // who opened the field is in it, not beside it.
+    await tick();
+    formEl?.querySelector<HTMLElement>("select, input, textarea")?.focus();
+  }
+  /** Focus left the editor (`dismissOnBlur`): close it, unless a save is on its way. */
+  function onfocusout(event: FocusEvent) {
+    if (!dismissOnBlur || busy.active) return;
+    const next = event.relatedTarget as Node | null;
+    if (next && formEl?.contains(next)) return;
+    close();
   }
   function close() {
     if (!editing) return;
@@ -131,13 +159,18 @@
       {action}
       class="space-y-2"
       {onkeydown}
+      {onfocusout}
       use:enhance={busy.wrap("save", ({ formData, cancel }) => {
-        if (beforeSubmit && !beforeSubmit(formData)) {
+        // One save at a time. A save-on-change editor can be asked twice for one gesture —
+        // Enter in a text input commits the value *and* submits the form implicitly — and the
+        // second request would write the same change again, one trail line per copy.
+        if (busy.active || (beforeSubmit && !beforeSubmit(formData))) {
           cancel();
           return;
         }
         return async ({ update, result }) => {
           if (result.type === "success") {
+            if (onsaved?.(formData) === false) return;
             // Edits what exists: never reset (docs/UX.md, "Saving must never blank the form").
             await update({ reset: false });
             close();
@@ -158,16 +191,18 @@
       {#if error}
         <p class="text-xs text-red-600 dark:text-red-400">{t(error)}</p>
       {/if}
-      <div class="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
-          onclick={close}>{t("common.cancel")}</button
-        >
-        {#if !saveOnChange}
-          <Button size="sm" loading={busy.active}>{t("common.save")}</Button>
-        {/if}
-      </div>
+      {#if !dismissOnBlur}
+        <div class="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+            onclick={close}>{t("common.cancel")}</button
+          >
+          {#if !saveOnChange}
+            <Button size="sm" loading={busy.active}>{t("common.save")}</Button>
+          {/if}
+        </div>
+      {/if}
     </form>
     {#if after}
       {@render after({ close })}
