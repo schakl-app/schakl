@@ -8,7 +8,7 @@
    * that popup as browser chrome, so page CSS — `accent-color` included — cannot reach it
    * and it always draws in the browser's own blue, ignoring the tenant brand (#9).
    */
-  import { CalendarDays } from "@lucide/svelte";
+  import CalendarDays from "@lucide/svelte/icons/calendar-days";
 
   import { addMonths, isoAddDays, monthGrid, monthOf } from "$lib/core/calendar";
   import { type DateFormat, getDateFormat } from "$lib/core/dateformat";
@@ -96,7 +96,8 @@
     if (iso) return validDate(Number(iso[3]), Number(iso[2]), Number(iso[1]));
 
     const three = /^(\d{1,4})[-/.](\d{1,4})[-/.](\d{1,4})$/.exec(text);
-    if (three) return fromRoles(order, [Number(three[1]), Number(three[2]), Number(three[3])], currentYear);
+    if (three)
+      return fromRoles(order, [Number(three[1]), Number(three[2]), Number(three[3])], currentYear);
 
     const two = /^(\d{1,2})[-/.](\d{1,2})$/.exec(text);
     if (two) return fromRoles(nonYear, [Number(two[1]), Number(two[2])], currentYear);
@@ -123,7 +124,9 @@
 
   const todayIso = orgToday();
 
-  let text = $state(toDisplay(value));
+  // What is typed: follows outside value changes (a day navigation remount, a picker set) and
+  // holds whatever is typed until the value next moves — a writable derived is exactly that.
+  let text = $derived(toDisplay(value));
   let open = $state(false);
   // The month on screen and the arrow-key cursor, seeded from the value each time we open.
   let viewMonth = $state(monthOf(value || todayIso));
@@ -131,17 +134,16 @@
   let rootEl: HTMLDivElement | undefined = $state();
   let gridEl: HTMLDivElement | undefined = $state();
 
-  // Follow outside value changes (e.g. day navigation remounts or picker set).
-  $effect(() => {
-    text = toDisplay(value);
-  });
-
   const days = $derived(monthGrid(viewMonth));
   const weekdays = $derived(days.slice(0, 7).map(fmtWeekdayShort));
 
   function commit(iso: string) {
-    value = iso;
     text = toDisplay(iso);
+    // Enter in the text box reaches here twice — once from the keydown, once from the native
+    // `change` the same keystroke fires — and a host that saves on change would save twice.
+    // A commit of the value the field already holds is not a change, so it says nothing.
+    if (iso === value) return;
+    value = iso;
     onchange?.(iso);
   }
 
@@ -275,7 +277,8 @@
         >
           ‹
         </button>
-        <span class="text-sm font-medium text-text">{capitalizeFirst(fmtMonthYear(viewMonth))}</span>
+        <span class="text-sm font-medium text-text">{capitalizeFirst(fmtMonthYear(viewMonth))}</span
+        >
         <button
           type="button"
           class="rounded p-1 text-text-muted hover:bg-surface hover:text-brand"

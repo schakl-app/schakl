@@ -18,7 +18,7 @@
    * (docs/UX.md). Destructive and edit-definition actions are kept out of the row/header so
    * they can't be clicked by accident — they open from here, and deletes always confirm.
    */
-  import { EllipsisVertical } from "@lucide/svelte";
+  import EllipsisVertical from "@lucide/svelte/icons/ellipsis-vertical";
 
   import { t } from "$lib/core/i18n";
 

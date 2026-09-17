@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Download, Upload } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { t } from "$lib/core/i18n";
   import ImportWizard from "$lib/core/impex/ImportWizard.svelte";

@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { ChevronDown, Pencil, ShieldOff, UserCheck, UserMinus, UserX } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import ShieldOff from "@lucide/svelte/icons/shield-off";
+  import UserCheck from "@lucide/svelte/icons/user-check";
+  import UserMinus from "@lucide/svelte/icons/user-minus";
+  import UserX from "@lucide/svelte/icons/user-x";
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";

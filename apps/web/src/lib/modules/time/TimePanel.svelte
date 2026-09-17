@@ -28,7 +28,9 @@
    * #402) `?/createEntry` form actions, and `updateEntry` must post **only the fields it was
    * given** — see `EntryQuickEdit`. All three are `timeEntryActions`, spread by the host.
    */
-  import { Check, Pencil, Trash2 } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { page } from "$app/state";
   import { capitalizeFirst, fmtPeriod, fmtWeekdayShort } from "$lib/core/format";

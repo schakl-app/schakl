@@ -42,8 +42,20 @@ export const actions: Actions = {
         String(form.get(`portal_label_${key}`) ?? "").trim(),
       ]),
     );
+    // The house channel grouping for the leads dashboard (docs/MARKETING.md): one textarea per
+    // group, a channel name per line. Posted whole — a grouping is four short lists.
+    const channel_groups = Object.fromEntries(
+      ["organic", "ads", "ai"].map((group) => [
+        group,
+        String(form.get(`channel_group_${group}`) ?? "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ]),
+    );
     const { error } = await apiFor(event).PUT("/api/v1/marketing/settings", {
       body: {
+        channel_groups,
         ads_developer_token: token,
         seranking_api_key: seranking,
         default_compare,

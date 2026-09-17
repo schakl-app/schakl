@@ -11,7 +11,7 @@
  * its health badge, one card up, and whose connect control was already `MarketingConnectDialog`
  * (#338). Two cards saying the same thing are not two answers; they are one answer read twice.
  */
-import { Megaphone } from "@lucide/svelte";
+import Megaphone from "@lucide/svelte/icons/megaphone";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

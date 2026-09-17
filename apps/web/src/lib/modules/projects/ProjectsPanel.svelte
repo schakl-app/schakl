@@ -1,6 +1,7 @@
 <script lang="ts">
   /** Company-detail panel: projects attached to this company (CLAUDE.md §6). */
-  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

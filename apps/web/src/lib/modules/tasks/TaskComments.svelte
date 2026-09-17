@@ -35,7 +35,10 @@
    * without reading. A relative stamp does the same for "when" and keeps the exact one in its
    * `title`.
    */
-  import { ChevronDown, Pencil, Reply, Trash2 } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Reply from "@lucide/svelte/icons/reply";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { tick } from "svelte";
 
   import { enhance } from "$app/forms";

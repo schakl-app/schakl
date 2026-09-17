@@ -981,6 +981,24 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   forbids, the bulk edit dates a whole selection (`clearable=False` — settable, never emptiable),
   and the edit form says in one line what it is about to ask for.
 
+- **A task's page has one mode, and a prompt that confirms is a prompt that saves** (the owner's
+  decision, `docs/UX.md` Principle 3). Every field on the task detail page is edited where it is
+  read — the title by clicking it, each property through `InlineField`, the description through
+  `InlineText`, a step by clicking its words — and the page-wide edit mode (⋯ → Bewerken, one
+  `form="task-edit"`, one Opslaan at the foot) is deleted rather than kept beside it: two editors
+  for one property are two save models, and the deadline's reason prompt behaved differently in
+  each. The status is a dot in its colour beside its name, at the band's own size, and saves on
+  pick; checklist structure and links are a ＋ in the heading and a ⋯ on the row. Confirming the
+  deadline reason posts the date and the reason together — a prompt that stages an answer and
+  leaves a save still to press reads as a prompt that did nothing. Create-then-edit (#230) now
+  lands on the page with nothing open. Two rules the browser pass found: **one gesture is one
+  save** — Enter in a date box commits the value *and* submits the form implicitly, and the
+  native `change` fires a third time, so a save-on-change field wrote three identical trail lines
+  until `InlineField` refused a submit while one is in flight and `DateInput` stopped announcing
+  a value the field already held; and **a one-control editor closes when focus leaves it**
+  (`dismissOnBlur`: the select or checkbox takes focus on open, a pick saves, a click anywhere
+  else cancels, no Annuleren drawn) — except one that raises a dialog of its own, since focus
+  moving into the prompt would read as leaving.
 - **A task is named before it exists, and it is always a client's** (the owner's decision closing
   #350/#391, `docs/UX.md`). The placeholder create — one click, a row titled "Naamloze taak",
   marked `unnamed` so a list could italicise it and `?unnamed=1` could gather it — is deleted
@@ -1023,6 +1041,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   two bells. Deliberately not a Redis bucket, not an inbound webhook and not a per-tenant SMTP
   listener: the address must merely exist (an alias or group), and a second delivery path would
   be a second answer to "who wrote this".
+- **The first live mail to the task address found four faults, and the parser owned none of
+  them alone** (`tasks/intake.py`, `docs/AI.md`). *"deadline as vrijdag"* sent on a Monday landed
+  on the Thursday: the directive parser read only `deadline:` lines, so the weekday went to the
+  model, which was told *today is 2026-09-14* and left to work out that this was a Monday. Weekday
+  arithmetic is ours (§8), so the prompt states today **with its weekday**, the org-local time and
+  the next fourteen days by name (`intake_ai.calendar_line`), and a deadline phrase in running
+  text (`due_phrase`: *"deadline a.s. vrijdag"*, *"uiterlijk 1 oktober"*) is read deterministically
+  before the model is asked at all. The mail *to* `taak@` became a pending contact moment in the
+  sender's own review queue, because with internal logging on a colleague-only mail is logged —
+  but a mail whose only recipient is the intake address is an instruction to the system, never a
+  conversation, so both feeds skip its timeline half (`SkipReason.INTAKE_ONLY`); a client thread
+  with the address in Cc keeps its other recipients and stays both. The forwarded client mail was
+  pasted into the task's notes, signature and all: **what was forwarded is a contact moment, not
+  notes.** The forward's header block (From/Date/Subject/To in the mail client's language, read
+  through the markdown converter's escapes) becomes an e-mail interaction filed on the task —
+  `InteractionSource.FORWARDED`, the `.eml` upload's shape: logged at birth, owned by the
+  forwarding colleague, under the original sender's name and date — and where a connected mailbox
+  had already logged that very message, the existing row is filed onto the task instead of a copy
+  being made (`interactions.system.file_on_task`); a quoted reply is left alone, being the thread's
+  previous turn, which the mailbox logs itself. The colleague's own words lose their sign-off
+  (`strip_signature`) and become the notes. And the `.md` spec the mail said to attach was dropped
+  without a word: a mail client labels what it does not recognise `application/octet-stream`, so
+  the type is re-read off the file name before the storage allow-list is asked, and a part still
+  refused is named on the receipt *and* in the task's own notes (`tasks.intake.attachment_skipped`)
+  — a loss with nothing taking its place is stated where the person will look. The confirmation
+  notification was never broken; it was the tenth row under nine that shared its timestamp.
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,
@@ -1874,6 +1918,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   *default* stays a portal substitution; and the mention picker offers active colleagues only —
   `/members/lookup` returns a departed account flagged so a record keeps its author's name, and an
   `@` on a new comment was the one member picker that never split them out.
+- **A report built by hand per client is a vocabulary problem, not a dashboard problem**
+  (`app/modules/marketing/leads/`, `docs/MARKETING.md`). The agency built one Looker Studio
+  report per client — five pages of the same fourteen questions asked in that client's event
+  names — and the brief asked for the same as a module without a canvas. What differed per
+  client was never the dashboard: it was *which event is a request*, *which parameter carries
+  the service* and *what `internationaal-transport` is called*. So the **measurement profile**
+  (`marketing_company_settings.lead_profile`) is data — seven functional roles mapped to a
+  client's GA4 events by exact/prefix/contains/regex matchers, the dimensions the dashboard may
+  group by with a label per value, the quote form types, the Ads conversion action → service
+  map, the measurement breakpoints — and the **widget catalog** is code: a fixed list of
+  questions, each declaring what it needs and answered in one of eight shapes. Five rules
+  generalise. **A widget the profile cannot answer is withheld and named, never drawn as zero**
+  — "no funnel" and "100 % dropout" are different sentences, and `unavailable` is the editor's
+  hint for what a missing role would unlock. **A period can be a free span** (`2026-08-29..
+  2026-09-03`, `core/periods.py`) because a breakpoint is neither a month nor a trailing window,
+  and a token rides every URL, MCP tool and report that already takes one instead of a second
+  parameter pair. **The cache holds the provider's raw answers keyed on the exact requests
+  sent**, so a relabel shows at once and a changed role re-fetches. **GA4 events and Ads costs
+  are never joined on a date** — every widget names the one report it read (the Looker lesson:
+  a join on the one shared column multiplies rows the moment a second dimension appears), and a
+  ratio the API did not send is `null`, never `0`. And **honesty rides the payload**: sampled and
+  thresholded answers, the `(not set)` share per dimension, a silent zero (traffic and no
+  request for a week), a profile dimension the property never registered, and the fixed note
+  with every breakpoint — each a sentence beside the numbers, never a footnote. Cross-filtering
+  is the URL (`?f=service:x`), the second client (APEX) is configuration only and a test says so,
+  and the report reuses the same service as a `marketing.leads` section.
 - **A second provider is what tells you which rules were the vendor's** (`microsoft`,
   `docs/MICROSOFT.md`). Microsoft 365 answers the Google integration's three data problems a
   second time — Outlook calendar, OneDrive, Outlook mail — on the same seams (the calendar

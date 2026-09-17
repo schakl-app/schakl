@@ -10,7 +10,13 @@
    * itself; the chart's default metric is a select. Every change calls `onchange` so the host
    * persists immediately.
    */
-  import { Eye, EyeOff, ExternalLink, GripVertical, Plus, Upload, X } from "@lucide/svelte";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import GripVertical from "@lucide/svelte/icons/grip-vertical";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Upload from "@lucide/svelte/icons/upload";
+  import X from "@lucide/svelte/icons/x";
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";

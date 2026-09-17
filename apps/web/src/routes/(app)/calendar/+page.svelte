@@ -1,13 +1,11 @@
 <script lang="ts">
-  import {
-    CalendarClock,
-    CalendarPlus,
-    ChevronLeft,
-    ChevronRight,
-    Plus,
-    SlidersHorizontal,
-    TreePalm,
-  } from "@lucide/svelte";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
+  import CalendarPlus from "@lucide/svelte/icons/calendar-plus";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Plus from "@lucide/svelte/icons/plus";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+  import TreePalm from "@lucide/svelte/icons/tree-palm";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

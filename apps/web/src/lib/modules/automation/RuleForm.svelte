@@ -24,7 +24,7 @@
 </script>
 
 <script lang="ts">
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";

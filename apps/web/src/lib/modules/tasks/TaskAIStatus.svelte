@@ -37,7 +37,9 @@
    * answers whether the screen now shows what was added: `false` keeps the button, because a
    * field the reader was typing in is theirs until they ask.
    */
-  import { Check, Sparkles, TriangleAlert } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 
   import { invalidateAll } from "$app/navigation";
   import { t } from "$lib/core/i18n";

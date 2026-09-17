@@ -14,7 +14,10 @@
    * list instead, which is why the window is a control rather than a constant
    * (docs/PERFORMANCE.md names the exception).
    */
-  import { CalendarPlus, Pencil, Plus, Trash2 } from "@lucide/svelte";
+  import CalendarPlus from "@lucide/svelte/icons/calendar-plus";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";

@@ -1,4 +1,4 @@
-import { RefreshCcw } from "@lucide/svelte";
+import RefreshCcw from "@lucide/svelte/icons/refresh-ccw";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

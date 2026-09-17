@@ -21,7 +21,7 @@
    * The requirement is *derived*, not validated: the API refuses an invalid set anyway
    * (`ensure_requirements_met`), and a backstop should never be the thing a user meets first.
    */
-  import { ArrowRight } from "@lucide/svelte";
+  import ArrowRight from "@lucide/svelte/icons/arrow-right";
 
   import { t } from "$lib/core/i18n";
   import { moduleDescription, moduleLabel } from "$lib/core/registry";

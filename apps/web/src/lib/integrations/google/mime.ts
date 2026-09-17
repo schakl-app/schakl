@@ -3,18 +3,16 @@
  * browser draw from the same table, so a Google Doc looks like a Google Doc everywhere.
  * Kind labels are i18n keys (`google.drive.kind.*`), en+nl like everything.
  */
-import {
-  File,
-  FileArchive,
-  FileAudio,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  Folder,
-  ListChecks,
-  Presentation,
-} from "@lucide/svelte";
+import File from "@lucide/svelte/icons/file";
+import FileArchive from "@lucide/svelte/icons/file-archive";
+import FileAudio from "@lucide/svelte/icons/file-audio";
+import FileImage from "@lucide/svelte/icons/file-image";
+import FileSpreadsheet from "@lucide/svelte/icons/file-spreadsheet";
+import FileText from "@lucide/svelte/icons/file-text";
+import FileVideo from "@lucide/svelte/icons/file-video";
+import Folder from "@lucide/svelte/icons/folder";
+import ListChecks from "@lucide/svelte/icons/list-checks";
+import Presentation from "@lucide/svelte/icons/presentation";
 import type { Component } from "svelte";
 
 interface DriveKind {

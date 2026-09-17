@@ -15,7 +15,7 @@
    * `interactionActions`, which every one of those hosts already spreads, so the ＋ arrives with
    * the panel instead of having to be re-wired per screen.
    */
-  import { Plus } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

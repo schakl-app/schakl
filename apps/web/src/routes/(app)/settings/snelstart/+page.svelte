@@ -30,7 +30,10 @@
    * words, not as a JSON dump — a batch that pushed 37 of 40 is not a success with a footnote, it
    * is a run with three things still to do, and the three are named.
    */
-  import { AlertTriangle, ExternalLink, Pencil, Trash2 } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";

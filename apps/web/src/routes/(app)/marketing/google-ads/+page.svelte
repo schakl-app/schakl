@@ -3,7 +3,9 @@
    * The linked Google Ads accounts. A directory, not a dashboard: pick an account and the
    * numbers are on its own page, where the wait for Google is expected.
    */
-  import { AlertTriangle, Megaphone, Plus } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Megaphone from "@lucide/svelte/icons/megaphone";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

@@ -26,7 +26,7 @@
    * page. It is safe to post a partial form because the update action patches only the fields the
    * form actually carried — absent means leave alone, exactly as bulk edit reads it (§18).
    */
-  import { Pencil } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   import { enhance } from "$app/forms";
 

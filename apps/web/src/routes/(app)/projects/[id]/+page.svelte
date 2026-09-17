@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Trash2 } from "@lucide/svelte";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";

@@ -5,7 +5,8 @@ from __future__ import annotations
 import base64
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -16,9 +17,10 @@ from app.db import async_session_maker, set_current_org
 from app.integrations.google.gmail.service import poll_connection
 from app.integrations.google.models import GoogleConnection, GoogleSettings
 from app.integrations.google.oauth import SCOPE_GMAIL
-from app.modules.interactions.models import Interaction
+from app.modules.interactions.models import Interaction, InteractionTask
 from app.modules.notifications.models import Notification, NotificationEvent
 from app.modules.tasks import intake
+from app.modules.tasks.intake_ai import calendar_line
 from app.modules.tasks.models import Task, TaskActivity, TaskIntakeMessage
 from tests.conftest import auth_cookie, make_tenant, org_today
 from tests.test_google_gmail import _message, _StubGmail
@@ -89,6 +91,77 @@ def test_due_dates_as_people_type_them() -> None:
     assert parse("over 2 weken") == date(2026, 9, 23)
     assert parse("eind van de week") == date(2026, 9, 11)
     assert parse("ooit") is None
+    # "The coming one", as people write it — and a day with its month name.
+    assert parse("as vrijdag") == date(2026, 9, 11)
+    assert parse("a.s. vrijdag") == parse("vrijdag a.s.") == parse("aanstaande vrijdag")
+    assert parse("voor woensdag") == today
+    assert parse("1 oktober") == date(2026, 10, 1)
+    assert parse("1 okt 2026") == date(2026, 10, 1)
+    assert parse("12 januari") == date(2027, 1, 12)  # already passed this year: next year's
+
+
+def test_a_deadline_stated_in_the_running_text_is_read() -> None:
+    """The live mail: "met deadline as vrijdag" on a Monday landed on the Thursday, because the
+    directive parser only read ``deadline:`` lines and the model did the weekday arithmetic."""
+    phrase = intake.due_phrase
+    assert phrase("Maak een taak aan voor Stan met deadline as vrijdag. Hij moet") == "as vrijdag"
+    assert phrase("Graag uiterlijk 1 oktober opleveren.") == "1 oktober"
+    assert phrase("Dit moet voor woensdag af zijn") == "woensdag"
+    assert phrase("Bel de klant, deadline: 30-09") == "30-09"
+    # "voor" is also "for": a keyword whose words name no date names nothing.
+    assert phrase("Niets over een datum hier voor Stan of project X") is None
+    monday = date(2026, 9, 14)
+    draft = intake.parse_intake("Fwd: Dashboard", "Maak een taak aan met deadline as vrijdag.")
+    assert intake.parse_due(draft.due_hint, today=monday) == date(2026, 9, 18)
+    # And the model is told the weekday, and every day it may resolve a word against.
+    line = calendar_line(monday, datetime(2026, 9, 14, 17, 56, tzinfo=UTC))
+    assert line.startswith("Today is Monday 2026-09-14, local time 17:56.")
+    assert "Fri 2026-09-18" in line
+
+
+def test_the_signature_is_cut_and_the_forward_headers_are_read() -> None:
+    zone = ZoneInfo("Europe/Amsterdam")
+    # The HTML-derived body: escaped marker, bold names, addresses wrapped in mailto links.
+    body = (
+        "Kijk ook de doorgestuurde mail.\n\nMet vriendelijke groet,\n\n**Stan**\n\n"
+        "**T. 0113** [stan@breik.nl](mailto:stan@breik.nl)\n\n"
+        "\\---------- Forwarded message ---------  \n"
+        "From: **Luka Abazovic | breik.** <[luka@breik.nl](mailto:luka@breik.nl)\\>  \n"
+        "Date: Fri, 11 Sept 2026 at 10:35  \n"
+        "Subject: Dashboard module uitleg  \n"
+        "To: Stan Marcusse <[stan@breik.nl](mailto:stan@breik.nl)\\>\n\n"
+        "Ik hoop dat het duidelijk is!\n\nHartelijke groet,\n\n**Luka**"
+    )
+    draft = intake.parse_intake("Fwd: Dashboard module uitleg", body)
+    assert draft.own_text == "Kijk ook de doorgestuurde mail."
+    assert draft.forwarded_text.startswith("\\---------- Forwarded message")
+    mail = intake.parse_forwarded(draft.forwarded_text, zone=zone)
+    assert (mail.from_name, mail.from_email) == ("Luka Abazovic | breik.", "luka@breik.nl")
+    assert mail.to == [("Stan Marcusse", "stan@breik.nl")]
+    assert mail.subject == "Dashboard module uitleg"
+    assert mail.sent_at == datetime(2026, 9, 11, 10, 35, tzinfo=zone)
+    assert mail.body == "Ik hoop dat het duidelijk is!\n\nHartelijke groet,\n\n**Luka**"
+    assert not mail.quoted
+    # Outlook's Dutch header block, and a quoted reply (which names its sender and nothing
+    # else, and is marked as a quote — the thread's previous turn, not a forward).
+    outlook = intake.parse_forwarded(
+        "Van: Klant <k@client.nl>\nVerzonden: vrijdag 11 september 2026 09:15\n"
+        "Aan: Ik <me@agency.nl>\nOnderwerp: Offerte\n\nGraag een offerte.",
+        zone=zone,
+    )
+    assert outlook.from_email == "k@client.nl" and outlook.subject == "Offerte"
+    assert outlook.sent_at == datetime(2026, 9, 11, 9, 15, tzinfo=zone)
+    assert outlook.body == "Graag een offerte."
+    quoted = intake.parse_forwarded(
+        "> Op vr 11 sep 2026 om 10:35 schreef Klant <k@client.nl>:\n> Logo bijgevoegd", zone=zone
+    )
+    assert quoted.quoted and (quoted.from_name, quoted.from_email) == ("Klant", "k@client.nl")
+    assert quoted.sent_at == datetime(2026, 9, 11, 10, 35, tzinfo=zone)
+    assert quoted.body == "Logo bijgevoegd"
+    # A sign-off phrase in the middle of a sentence is not a signature.
+    assert (
+        intake.strip_signature("Groeten aan de klant overbrengen.\nDaarna klaar.").count("\n") == 1
+    )
 
 
 def test_merge_links_files_the_interaction_onto_the_task() -> None:
@@ -115,12 +188,15 @@ def _stub_acting_as(stub):
     return _factory
 
 
-async def _seed(tenant, *, history_id: str = "5") -> uuid.UUID:
+async def _seed(tenant, *, history_id: str = "5", log_internal: bool = False) -> uuid.UUID:
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         session.add(
             GoogleSettings(
-                org_id=tenant.org.id, gmail_enabled=True, gmail_approval_mode="approval_required"
+                org_id=tenant.org.id,
+                gmail_enabled=True,
+                gmail_approval_mode="approval_required",
+                gmail_log_internal=log_internal,
             )
         )
         connection = GoogleConnection(
@@ -183,6 +259,45 @@ async def _rows(org_id, model):
         return (await session.execute(select(model))).scalars().all()
 
 
+def receipt_links(receipts) -> list[str | None]:  # noqa: ANN001
+    return [(r.hints or {}).get("interaction_id") for r in receipts]
+
+
+async def _logged_email(
+    org_id,  # noqa: ANN001
+    *,
+    owner_user_id: uuid.UUID,
+    sender: str,
+    to: str,
+    subject: str,
+    occurred_at: datetime,
+    status: str = "logged",
+) -> uuid.UUID:
+    """A row the mailbox feed would have written for the original message."""
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        row = Interaction(
+            org_id=org_id,
+            kind="email",
+            status=status,
+            occurred_at=occurred_at,
+            subject=subject,
+            direction="inbound",
+            owner_user_id=owner_user_id,
+            owner_name="Ik",
+            participants=[
+                {"email": sender, "name": None, "role": "from"},
+                {"email": to, "name": None, "role": "to"},
+            ],
+            source="gmail",
+            gmail_message_id="orig-1",
+            gmail_thread_id="thr-orig",
+        )
+        session.add(row)
+        await session.commit()
+        return row.id
+
+
 async def test_a_mail_to_the_task_address_becomes_the_senders_task(
     client_for, monkeypatch, tmp_path
 ) -> None:
@@ -237,6 +352,18 @@ async def test_a_mail_to_the_task_address_becomes_the_senders_task(
         assert task.due_date == org_today() + timedelta(days=1)
         assert "Graag voor het weekend regelen." in (task.description or "")
         assert "prioriteit:" not in (task.description or "")
+        # What was forwarded is not notes: it is Sander's mail, filed on the task as a contact
+        # moment under his name, with the forwarding colleague as its owner.
+        assert "Ons certificaat verloopt." not in (task.description or "")
+        forwarded = await _rows(t.org.id, Interaction)
+        assert len(forwarded) == 1
+        mail = forwarded[0]
+        assert mail.source == "forwarded" and mail.status == "logged" and mail.kind == "email"
+        assert mail.task_id == task.id and mail.company_id == task.company_id
+        assert mail.owner_user_id == t.user.id and mail.direction == "inbound"
+        assert mail.body_text == "Ons certificaat verloopt."
+        assert [p["email"] for p in mail.participants] == ["sander@nova.nl"]
+        assert receipt_links(await _rows(t.org.id, TaskIntakeMessage))[0] == str(mail.id)
 
         stored = await _rows(t.org.id, StoredFile)
         assert [(f.filename, f.entity_type, f.entity_id) for f in stored] == [
@@ -262,8 +389,9 @@ async def test_a_mail_to_the_task_address_becomes_the_senders_task(
             if n.user_id == t.user.id and events[n.event_id].event_type.startswith("task.")
         )
         assert kinds == ["task.intake_created"]
-        # No timeline row: colleague-to-colleague chatter stays off the timeline.
-        assert await _rows(t.org.id, Interaction) == []
+        # The mail *to* the address is not a contact moment: the only timeline row is the
+        # forwarded message, never the instruction that carried it.
+        assert [r.source for r in await _rows(t.org.id, Interaction)] == ["forwarded"]
 
         # The settings screen can say when the last one arrived.
         settings = (await c.get("/api/v1/tasks/settings", headers=headers)).json()
@@ -345,6 +473,119 @@ async def test_a_mail_with_no_recognisable_client_parks_for_its_sender(
                 headers=other_headers,
             )
         ).status_code == 404
+
+
+async def test_a_mail_to_the_address_alone_is_never_a_contact_moment(
+    client_for, monkeypatch
+) -> None:
+    """The live fault: with internal logging on, the mail *to* ``taak@`` landed in the sender's
+    review queue as a pending contact moment filed on the task it had just made."""
+    t = await make_tenant("intake-only")
+    connection_id = await _seed(t, log_internal=True)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+    message = _sent("msg-o", subject="[Nova Fietsen] DNS nakijken", body="Even de MX checken.")
+    stub = _StubGmail(history=["msg-o"], messages={"msg-o": message}, history_id="9500")
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    assert len(await _rows(t.org.id, Task)) == 1
+    assert await _rows(t.org.id, Interaction) == []
+
+
+async def test_a_forwarded_mail_the_mailbox_already_logged_is_filed_not_copied(
+    client_for, monkeypatch
+) -> None:
+    """The client's mail arrived in my connected mailbox and was logged; forwarding it to the
+    task address files *that* row onto the task rather than putting the e-mail on the timeline
+    a second time."""
+    t = await make_tenant("intake-adopt")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    zone = ZoneInfo("Europe/Amsterdam")
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        ).json()
+    original = await _logged_email(
+        t.org.id,
+        owner_user_id=t.user.id,
+        sender="sander@nova.nl",
+        to="me@agency.nl",
+        subject="SSL verlengen",
+        occurred_at=datetime(2026, 9, 11, 10, 35, tzinfo=zone),
+    )
+    message = _sent(
+        "msg-f",
+        subject="Fwd: [Nova Fietsen] SSL verlengen",
+        body=(
+            "Oppakken graag.\n\n---------- Forwarded message ---------\n"
+            "From: Sander <sander@nova.nl>\nDate: Fri, 11 Sept 2026 at 10:35\n"
+            "Subject: SSL verlengen\nTo: Ik <me@agency.nl>\n\nOns certificaat verloopt."
+        ),
+    )
+    stub = _StubGmail(history=["msg-f"], messages={"msg-f": message}, history_id="9600")
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    task = (await _rows(t.org.id, Task))[0]
+    assert task.company_id == uuid.UUID(company["id"])
+    rows = await _rows(t.org.id, Interaction)
+    assert [r.id for r in rows] == [original]
+    assert rows[0].task_id == task.id and rows[0].company_id == task.company_id
+    links = await _rows(t.org.id, InteractionTask)
+    assert [(link.interaction_id, link.task_id) for link in links] == [(original, task.id)]
+    assert receipt_links(await _rows(t.org.id, TaskIntakeMessage)) == [str(original)]
+    assert "Ons certificaat verloopt." not in (task.description or "")
+
+
+async def test_an_attachment_the_client_did_not_type_is_typed_by_its_name(
+    client_for, monkeypatch, tmp_path
+) -> None:
+    """The live fault: a ``.md`` spec arrived as ``application/octet-stream`` and was dropped
+    without a word, on a mail that said "voeg de bijlage toe"."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("intake-md")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+    message = _sent("msg-m", subject="[Nova Fietsen] Specs", body="Zie bijlage.")
+    message["payload"] = {
+        "headers": message["payload"]["headers"],
+        "mimeType": "multipart/mixed",
+        "parts": [
+            {"mimeType": "text/plain", "body": {"data": message["payload"]["body"]["data"]}},
+            {
+                "filename": "specificaties.md",
+                "mimeType": "application/octet-stream",
+                "body": {"attachmentId": "att-md", "size": 5},
+            },
+            {
+                "filename": "build.exe",
+                "mimeType": "application/octet-stream",
+                "body": {"attachmentId": "att-exe", "size": 5},
+            },
+        ],
+    }
+    stub = _StubGmail(history=["msg-m"], messages={"msg-m": message}, history_id="9700")
+    stub.messages["att-md"] = {"data": base64.urlsafe_b64encode(b"# Spec").decode()}
+    stub.messages["att-exe"] = {"data": base64.urlsafe_b64encode(b"MZ...").decode()}
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    task = (await _rows(t.org.id, Task))[0]
+    stored = await _rows(t.org.id, StoredFile)
+    assert [(f.filename, f.content_type, f.entity_id) for f in stored] == [
+        ("specificaties.md", "text/markdown", task.id)
+    ]
+    # The one it still refused is named on the receipt and in the task's own notes, in the
+    # org's language — never silently dropped.
+    receipt = (await _rows(t.org.id, TaskIntakeMessage))[0]
+    assert receipt.hints["skipped_attachments"] == ["build.exe"]
+    description = task.description or ""
+    assert "Zie bijlage." in description
+    assert "De bijlage “build.exe” uit de e-mail kon niet worden bewaard" in description
 
 
 async def test_an_outsider_mailing_the_address_creates_nothing(client_for, monkeypatch) -> None:

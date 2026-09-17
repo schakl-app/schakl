@@ -10,7 +10,7 @@ import { fmtClockTime, RANGE_DASH } from "$lib/core/format";
 import { hasPermission } from "$lib/core/permissions";
 import { getTimeZone } from "$lib/core/timezone";
 import { t } from "$lib/core/i18n";
-import { TreePalm } from "@lucide/svelte";
+import TreePalm from "@lucide/svelte/icons/tree-palm";
 
 import LeaveBalanceWidget from "./LeaveBalanceWidget.svelte";
 import LeavePendingWidget from "./LeavePendingWidget.svelte";

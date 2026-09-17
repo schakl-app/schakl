@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Check, Pencil, X } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import X from "@lucide/svelte/icons/x";
   import { untrack } from "svelte";
   import { dndzone } from "svelte-dnd-action";
   import type { SubmitFunction } from "@sveltejs/kit";

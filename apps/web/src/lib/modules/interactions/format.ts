@@ -1,5 +1,11 @@
 /** Shared presentation helpers for contactmomenten rows. */
-import { Mail, MapPin, MessageSquare, Phone, StickyNote, Users, Video } from "@lucide/svelte";
+import Mail from "@lucide/svelte/icons/mail";
+import MapPin from "@lucide/svelte/icons/map-pin";
+import MessageSquare from "@lucide/svelte/icons/message-square";
+import Phone from "@lucide/svelte/icons/phone";
+import StickyNote from "@lucide/svelte/icons/sticky-note";
+import Users from "@lucide/svelte/icons/users";
+import Video from "@lucide/svelte/icons/video";
 import type { Component } from "svelte";
 
 import { fmtLongDay } from "$lib/core/format";
@@ -225,7 +231,7 @@ export function contactChips(
 }
 
 export function isMailRow(item: Pick<InteractionItem, "source">): boolean {
-  return isMailboxRow(item) || item.source === "upload";
+  return isMailboxRow(item) || item.source === "upload" || item.source === "forwarded";
 }
 
 /** The sources with a connected mailbox behind them — the API's `MAILBOX_SOURCES`. */

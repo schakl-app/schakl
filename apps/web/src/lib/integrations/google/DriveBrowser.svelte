@@ -48,17 +48,15 @@
    * **Host contract:** the page exposes `?/linkDriveFile`, and `?/setDriveFolder` when the
    * host renders this in pick mode (spread `driveActions`).
    */
-  import {
-    Check,
-    ChevronLeft,
-    ExternalLink,
-    FolderPlus,
-    Link2,
-    RefreshCw,
-    Search,
-    Trash2,
-    Upload,
-  } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import FolderPlus from "@lucide/svelte/icons/folder-plus";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import Search from "@lucide/svelte/icons/search";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Upload from "@lucide/svelte/icons/upload";
   import { onMount, untrack } from "svelte";
 
   import { enhance } from "$app/forms";

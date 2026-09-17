@@ -4,7 +4,8 @@
    * is posted through a hidden input under `name`. Hand-rolled (like all UI here) so it can
    * match the app's Tailwind idiom exactly.
    */
-  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
   import { t } from "$lib/core/i18n";
 

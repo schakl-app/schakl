@@ -13,7 +13,9 @@
    * Copy-to-other-days matters more here than anywhere: nobody wants to enter two breaks five
    * times.
    */
-  import { Copy, Plus, X } from "@lucide/svelte";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Plus from "@lucide/svelte/icons/plus";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";

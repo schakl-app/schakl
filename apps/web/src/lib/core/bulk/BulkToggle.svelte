@@ -14,7 +14,7 @@
    * once and spreads it into both.
    */
   import { page } from "$app/state";
-  import { Pencil } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";

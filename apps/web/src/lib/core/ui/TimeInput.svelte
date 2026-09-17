@@ -7,7 +7,7 @@
    * display preference, an explicit meridiem ("9:30 pm", "9pm", "930p").
    * Display follows the personal 12/24-hour clock (#13); the posted value stays 24-hour.
    */
-  import { Clock } from "@lucide/svelte";
+  import Clock from "@lucide/svelte/icons/clock";
   import { getClock } from "$lib/core/dateformat";
   import { fmtClockTime } from "$lib/core/format";
 

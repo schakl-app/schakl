@@ -26,7 +26,8 @@
    * otherwise would be a second source of truth. It is also the only place "iDEAL is not
    * enabled" is visible before a client meets it at checkout.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";

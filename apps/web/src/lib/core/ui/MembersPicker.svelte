@@ -15,7 +15,7 @@
    * No `oncreate`, for `MemberPicker`'s reason: an employee is invited, never created from a
    * dropdown (docs/UX.md).
    */
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
   import {

@@ -14,7 +14,7 @@
    * Managers may pass `userOptions` to register leave for someone else (e.g. a sick call), and
    * `canOverride` to set the hours by hand when the computation cannot express what was agreed.
    */
-  import { Clock } from "@lucide/svelte";
+  import Clock from "@lucide/svelte/icons/clock";
 
   import { enhance } from "$app/forms";
   import { capitalizeFirst, fmtPeriod } from "$lib/core/format";

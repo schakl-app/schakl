@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Plus, Trash2 } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";

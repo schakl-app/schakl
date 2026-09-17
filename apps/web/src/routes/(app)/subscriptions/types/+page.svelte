@@ -5,7 +5,9 @@
    * activate/deactivate and the spawn-on-activation picker moved here from the old stacked
    * catalog.
    */
-  import { Pencil, Power, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Power from "@lucide/svelte/icons/power";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { t, tn } from "$lib/core/i18n";

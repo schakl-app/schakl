@@ -16,7 +16,8 @@
    * SnelStart where the credential is. What belongs here is the answer, plus the one link that
    * takes somebody to where they can do something about it.
    */
-  import { AlertTriangle, BookOpenCheck } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import BookOpenCheck from "@lucide/svelte/icons/book-open-check";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

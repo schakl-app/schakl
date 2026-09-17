@@ -25,7 +25,8 @@
    * takes `position` from the array index and the document prints in that order. One save
    * button for the whole surface (docs/UX.md).
    */
-  import { Plus, Trash2 } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";

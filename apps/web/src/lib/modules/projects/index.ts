@@ -4,7 +4,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
-import { FolderKanban } from "@lucide/svelte";
+import FolderKanban from "@lucide/svelte/icons/folder-kanban";
 
 import ProjectBudgetsOverviewWidget from "./ProjectBudgetsOverviewWidget.svelte";
 import ProjectBudgetsWidget from "./ProjectBudgetsWidget.svelte";

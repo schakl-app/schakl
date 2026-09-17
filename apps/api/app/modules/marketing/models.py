@@ -228,6 +228,13 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     #: default**, the idiom above. ``exclude`` is only ever meaningful here, because a link id
     #: belongs to one client.
     report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: This client's **measurement profile** (the *meetprofiel*, docs/MARKETING.md): which GA4
+    #: events play which functional role, which custom dimensions the leads dashboard may group
+    #: by and what their values are called, the Ads conversion-action → service mapping, the
+    #: measurement breakpoints and the widgets the client sees. Validated by
+    #: ``modules/marketing/leads/profile.py``. **NULL = no leads dashboard**: every client meant
+    #: that before the column existed, and nothing on any screen invents a profile for them.
+    lead_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -274,3 +281,9 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: client's own account, which they know by that name). Never "Breik. Analytics" in code:
     #: the brand is the tenant's (§2, rule 4), so the tenant types it here.
     portal_source_labels: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: The house regrouping of GA4's ``sessionDefaultChannelGroup`` into the four groups a
+    #: client can read — ``{group: [channel, …]}``, validated by ``leads/profile.py``. NULL =
+    #: the code default, which files Cross-network (Performance Max) under advertising: a
+    #: reader who treats only Paid Search as ads misses most of the paid traffic. A client's
+    #: profile may override it.
+    channel_groups: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

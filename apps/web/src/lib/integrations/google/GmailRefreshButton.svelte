@@ -17,7 +17,7 @@
    * a control that always refuses is a broken control (#253), and "connect your mailbox" is
    * Instellingen → Account's job, not this list's.
    */
-  import { RefreshCw } from "@lucide/svelte";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Mic, Trash2 } from "@lucide/svelte";
+  import Mic from "@lucide/svelte/icons/mic";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import FilterBar from "$lib/core/filters/FilterBar.svelte";
   import { filterUrl, type FilterDef } from "$lib/core/filters/types";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";

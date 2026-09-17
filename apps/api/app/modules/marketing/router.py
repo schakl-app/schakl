@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, Query, UploadFile
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.marketing.aiv_import import MAX_BYTES, parse_export, parse_rows
+from app.modules.marketing.leads.schemas import LeadsCatalog, LeadsDashboard
+from app.modules.marketing.leads.service import LeadsService, parse_filters
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.schemas import (
     AccountsResponse,
@@ -284,7 +286,54 @@ async def set_company_settings(
             else None
         ),
         report_set="report" in payload.model_fields_set,
+        lead_profile=payload.lead_profile,
+        lead_profile_set="lead_profile" in payload.model_fields_set,
     )
+
+
+@router.get(
+    "/companies/{company_id}/leads",
+    response_model=LeadsDashboard,
+    dependencies=[require_permission("marketing.metrics.read")],
+)
+async def company_leads(
+    company_id: uuid.UUID,
+    period: str | None = Query(
+        None,
+        description=(
+            "The span to report on: a trailing window (30d), a preset (month, last_month), a "
+            "named period (2026-07, 2026-Q3) or a free span (2026-08-29..2026-09-03). Defaults "
+            "to the last 30 complete days; a span is clamped to end yesterday."
+        ),
+    ),
+    f: list[str] = Query(
+        default=[],
+        description=(
+            "Dimension filters, repeatable, as `dimension:value` on the profile's dimension keys "
+            "(service, form_type, language, …). Several values of one dimension are OR-ed, "
+            "different dimensions AND-ed. An unknown dimension is refused, never ignored."
+        ),
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> LeadsDashboard:
+    """The leads dashboard for one client: form, call and e-mail conversions from GA4 and the
+    ad spend behind them from Google Ads, read through the client's measurement profile
+    (docs/MARKETING.md). ``configured`` is false for a client without a profile."""
+    return await LeadsService(ctx).dashboard(company_id, period, parse_filters(f))
+
+
+@router.get(
+    "/companies/{company_id}/leads/catalog",
+    response_model=LeadsCatalog,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def company_leads_catalog(
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> LeadsCatalog:
+    """What the client's GA4 property and Ads account carry — event names, custom dimensions,
+    key events, conversion actions — so a measurement profile is picked from what exists."""
+    return await LeadsService(ctx).catalog(company_id)
 
 
 @router.get(

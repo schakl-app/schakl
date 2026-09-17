@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Debounced search box that syncs `?q=` — the SSR load does the actual filtering. */
-  import { Search } from "@lucide/svelte";
+  import Search from "@lucide/svelte/icons/search";
 
   import { goto } from "$app/navigation";
   import { page } from "$app/state";

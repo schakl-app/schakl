@@ -19,7 +19,11 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { ChevronUp, Ellipsis, ExternalLink, Paperclip, Plus } from "@lucide/svelte";
+  import ChevronUp from "@lucide/svelte/icons/chevron-up";
+  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Paperclip from "@lucide/svelte/icons/paperclip";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";

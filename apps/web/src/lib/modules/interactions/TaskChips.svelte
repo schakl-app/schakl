@@ -15,7 +15,7 @@
    * and retired halves in, and hears about the lead through `onpick` so it can backfill the
    * levels above — the picker itself knows nothing about projects.
    */
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
 
   import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

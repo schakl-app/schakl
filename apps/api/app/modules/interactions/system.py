@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.core.activity import ActivityService
 from app.core.events import EmitContext
@@ -127,13 +127,149 @@ async def record_email(
         # Auto-approved at birth (trusted thread / auto-approve policy): the host records
         # hear about it now (#152), attributed to the system — a pending row stays silent
         # until the owner approves it (the service records that moment).
-        activity = ActivityService(ctx)
-        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
-        for field, entity_type in HOST_ENTITY.items():
-            target_id = getattr(row, field)
-            if target_id is not None:
-                await activity.record(entity_type, target_id, "interaction.logged", payload)
+        await _record_logged_on_hosts(ctx, row)
     return row
+
+
+async def record_forwarded_email(
+    ctx: EmitContext,
+    *,
+    owner_user_id: uuid.UUID,
+    owner_name: str | None,
+    occurred_at: datetime,
+    subject: str | None,
+    snippet: str | None,
+    direction: str,
+    participants: list[dict[str, Any]],
+    body_text: str | None,
+    body_markdown: str | None,
+    mappings: dict[str, Any],
+) -> Interaction:
+    """The message underneath a forward, as its own row (``InteractionSource.FORWARDED``).
+
+    Written by the tasks module's e-mail intake through this boundary, as the feeds write
+    theirs: the fields came out of the forward's header block and the words underneath it, in
+    the same shape a ``.eml`` upload produces (#262), and like an upload the row lands
+    ``logged`` — the person forwarded it on purpose, so there is nothing to review. The body
+    arrives *now* (unlike a mailbox row's, which waits for approval) because the intake had the
+    whole message in hand.
+    """
+    row = Interaction(
+        org_id=ctx.org.id,
+        kind=InteractionKind.EMAIL.value,
+        status=InteractionStatus.LOGGED.value,
+        occurred_at=occurred_at,
+        subject=(subject or "")[:500] or None,
+        snippet=snippet,
+        body_text=body_text,
+        body_markdown=body_markdown,
+        direction=direction,
+        owner_user_id=owner_user_id,
+        owner_name=owner_name,
+        participants=participants,
+        source=InteractionSource.FORWARDED.value,
+        **{field: mappings.get(field) for field in MAPPING_FIELDS},
+    )
+    ctx.session.add(row)
+    await ctx.session.flush()
+    if row.task_id is not None:
+        ctx.session.add(
+            InteractionTask(
+                org_id=ctx.org.id, interaction_id=row.id, task_id=row.task_id, position=0
+            )
+        )
+    if row.contact_id is not None:
+        ctx.session.add(
+            InteractionContact(
+                org_id=ctx.org.id, interaction_id=row.id, contact_id=row.contact_id, position=0
+            )
+        )
+    await ctx.session.flush()
+    await _record_logged_on_hosts(ctx, row)
+    return row
+
+
+async def find_email(
+    ctx: EmitContext,
+    *,
+    from_email: str,
+    around: datetime,
+    window: timedelta = timedelta(minutes=30),
+) -> list[Interaction]:
+    """E-mail rows the org already holds from this sender near this instant — a forwarded
+    message that a connected mailbox had logged (or parked for review) before the forward.
+    The caller compares subjects and decides; this only narrows."""
+    stmt = (
+        select(Interaction)
+        .where(
+            Interaction.org_id == ctx.org.id,
+            Interaction.kind == InteractionKind.EMAIL.value,
+            Interaction.occurred_at >= around - window,
+            Interaction.occurred_at <= around + window,
+            Interaction.participants.contains([{"email": from_email.lower(), "role": "from"}]),
+        )
+        .order_by(Interaction.occurred_at)
+        .limit(10)
+    )
+    return list((await ctx.session.execute(stmt)).scalars().all())
+
+
+async def file_on_task(
+    ctx: EmitContext,
+    row: Interaction,
+    *,
+    task_id: uuid.UUID,
+    company_id: uuid.UUID | None,
+    project_id: uuid.UUID | None,
+) -> None:
+    """Add a task to an existing row's roster (and the task's client and project where the row
+    named none) — what ``merge_links`` does for the mail *to* the task address, applied to
+    the message it forwarded."""
+    on_roster = await ctx.session.scalar(
+        select(InteractionTask.id).where(
+            InteractionTask.org_id == ctx.org.id,
+            InteractionTask.interaction_id == row.id,
+            InteractionTask.task_id == task_id,
+        )
+    )
+    if on_roster is None:
+        position = await ctx.session.scalar(
+            select(func.count())
+            .select_from(InteractionTask)
+            .where(InteractionTask.org_id == ctx.org.id, InteractionTask.interaction_id == row.id)
+        )
+        ctx.session.add(
+            InteractionTask(
+                org_id=ctx.org.id,
+                interaction_id=row.id,
+                task_id=task_id,
+                position=int(position or 0),
+            )
+        )
+    if row.task_id is None:
+        row.task_id = task_id
+    if row.company_id is None and company_id is not None:
+        row.company_id = company_id
+    if row.project_id is None and project_id is not None:
+        row.project_id = project_id
+    await ctx.session.flush()
+    if row.status == InteractionStatus.LOGGED.value:
+        await ActivityService(ctx).record(
+            "task",
+            task_id,
+            "interaction.logged",
+            {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject},
+        )
+
+
+async def _record_logged_on_hosts(ctx: EmitContext, row: Interaction) -> None:
+    """The host records hear about a row logged at birth (#152), attributed to the system."""
+    activity = ActivityService(ctx)
+    payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+    for field, entity_type in HOST_ENTITY.items():
+        target_id = getattr(row, field)
+        if target_id is not None:
+            await activity.record(entity_type, target_id, "interaction.logged", payload)
 
 
 async def gmail_message_seen(

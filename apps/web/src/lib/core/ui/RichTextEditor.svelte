@@ -13,19 +13,17 @@
    * Mentions (issues #63, #103, #165, #197): the editor shows chips; the serialized value holds
    * the `@[Name](mention:<uuid>)` / `#[Title](mention:task:<uuid>)` markers, same as ever.
    */
-  import {
-    Bold,
-    Braces,
-    CircleStop,
-    ExternalLink,
-    Heading as HeadingIcon,
-    ImagePlus,
-    Italic,
-    Link as LinkIcon,
-    List,
-    ListOrdered,
-    Sparkles,
-  } from "@lucide/svelte";
+  import Bold from "@lucide/svelte/icons/bold";
+  import Braces from "@lucide/svelte/icons/braces";
+  import CircleStop from "@lucide/svelte/icons/circle-stop";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import HeadingIcon from "@lucide/svelte/icons/heading";
+  import ImagePlus from "@lucide/svelte/icons/image-plus";
+  import Italic from "@lucide/svelte/icons/italic";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import List from "@lucide/svelte/icons/list";
+  import ListOrdered from "@lucide/svelte/icons/list-ordered";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
   import { getContext, onMount } from "svelte";
 
   import { browser } from "$app/environment";

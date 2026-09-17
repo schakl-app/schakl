@@ -4,7 +4,8 @@
    * 0/1 child of a domain, so creating one here is connecting it to a domain. Rows link to the
    * website's **own** detail page, which links back to the domain: two records, two pages.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

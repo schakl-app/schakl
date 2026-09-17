@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { CalendarPlus, Pencil, Power, Plus, Sparkles, Trash2 } from "@lucide/svelte";
+  import CalendarPlus from "@lucide/svelte/icons/calendar-plus";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Power from "@lucide/svelte/icons/power";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { tick } from "svelte";
 
   import { enhance } from "$app/forms";

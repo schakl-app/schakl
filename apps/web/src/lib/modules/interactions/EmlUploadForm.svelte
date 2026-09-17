@@ -26,7 +26,9 @@
    * logged twice (same `Message-ID`, "toch vastleggen"), and an attachment the storage
    * guardrails refused is reported rather than dropped.
    */
-  import { Mail, Paperclip, Search } from "@lucide/svelte";
+  import Mail from "@lucide/svelte/icons/mail";
+  import Paperclip from "@lucide/svelte/icons/paperclip";
+  import Search from "@lucide/svelte/icons/search";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

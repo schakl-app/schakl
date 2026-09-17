@@ -39,7 +39,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.core.ai.prompts import language_name
@@ -273,7 +273,27 @@ def plan_from_call(
     )
 
 
-def _system_prompt(*, today: date, locale: str, agency: str, candidates: str) -> str:
+def calendar_line(today: date, now: datetime | None = None, *, days: int = 14) -> str:
+    """Today *with its weekday*, the local time, and the next two weeks as weekday → date.
+
+    A model told only "today is 2026-09-14" has to work out for itself that it is a Monday,
+    and gets it wrong often enough that "a.s. vrijdag" landed on the Thursday. Weekday
+    arithmetic is ours to do, so the prompt states every day it may resolve a word against.
+    """
+    clock = f", local time {now:%H:%M}" if now is not None else ""
+    ahead = ", ".join(
+        f"{today + timedelta(days=offset):%a} {(today + timedelta(days=offset)).isoformat()}"
+        for offset in range(1, days + 1)
+    )
+    return (
+        f"Today is {today:%A} {today.isoformat()}{clock}. The days ahead, by weekday: {ahead}. "
+        "A weekday named without 'next' ('vrijdag', 'a.s. vrijdag') is the coming one."
+    )
+
+
+def _system_prompt(
+    *, today: date, locale: str, agency: str, candidates: str, now: datetime | None = None
+) -> str:
     return "\n\n".join(
         [
             "You turn one e-mail an agency employee sent to the agency's task address into "
@@ -291,11 +311,15 @@ def _system_prompt(*, today: date, locale: str, agency: str, candidates: str) ->
             "own words; leave those fields null. Set a field only when the mail supports it. "
             "For company_id, project_id, assignee_user_id and label_ids copy an id from the "
             "lists below verbatim, or answer null — never invent, never pick the closest.",
-            f"Today is {today.isoformat()}. Resolve relative deadlines ('vrijdag', 'volgende "
+            f"{calendar_line(today, now)} Resolve relative deadlines ('vrijdag', 'volgende "
             f"week') against it. Write in {language_name(locale)}.",
             "Be short. The mail is stored with the task, so notes are the few lines someone "
             "needs to act, never a retelling. Never open with the sender, the date or the "
             "subject; never state what the mail did not say.",
+            "What the colleague tells the application to do — make the task, attach the "
+            "attachment, set the deadline, use the forwarded mail for context — is not a "
+            "step and not a note: the application does that itself. A step is work the "
+            "agency does for the client.",
             candidates,
             "Call submit_intake_task exactly once.",
         ]
@@ -349,10 +373,12 @@ async def plan_intake(
     search_text: str,
     body: str,
     today: date,
+    now: datetime | None = None,
 ) -> IntakePlan | None:
     """One model call as the **sender** (their horizon bounds the shortlist), or ``None`` when
     the answer could not be read. Raises nothing the caller has to catch: an intake mail is
-    created without the model's help rather than parked behind a provider outage."""
+    created without the model's help rather than parked behind a provider outage. ``now`` is
+    the org's wall clock at the moment the mail arrived, for the prompt's calendar line."""
     # Imported here: ``candidates`` reads the tasks models, and this module is imported by the
     # tasks package at registration time — a module-level import is a cycle.
     from app.core.ai.candidates import TASK_BLOCKS
@@ -368,6 +394,7 @@ async def plan_intake(
                 FEATURE,
                 system=_system_prompt(
                     today=today,
+                    now=now,
                     locale=locale,
                     agency=agency,
                     candidates=candidates.as_prompt_block(),
@@ -395,4 +422,12 @@ async def plan_intake(
     return plan
 
 
-__all__ = ["FEATURE", "MAX_BODY_CHARS", "IntakePlan", "available", "plan_from_call", "plan_intake"]
+__all__ = [
+    "FEATURE",
+    "MAX_BODY_CHARS",
+    "IntakePlan",
+    "available",
+    "calendar_line",
+    "plan_from_call",
+    "plan_intake",
+]

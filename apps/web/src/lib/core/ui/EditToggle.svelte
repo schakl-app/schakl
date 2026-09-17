@@ -16,7 +16,9 @@
    * record scrolls its own buttons out of view, so the header keeps an exit, but it must be the
    * *same* exit, never a third one hidden in the menu.
    */
-  import { Check, Pencil, X } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
 

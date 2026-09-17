@@ -15,18 +15,16 @@
    * `?/deleteInteraction`, `?/approveInteraction` and `?/rejectInteraction` form actions —
    * spread `interactionActions` from `./actions.server` into its `actions`.
    */
-  import {
-    ArrowDownLeft,
-    ArrowRightLeft,
-    ArrowUpRight,
-    CheckCircle2,
-    Link2,
-    Mail,
-    Pencil,
-    Plus,
-    Trash2,
-    X,
-  } from "@lucide/svelte";
+  import ArrowDownLeft from "@lucide/svelte/icons/arrow-down-left";
+  import ArrowRightLeft from "@lucide/svelte/icons/arrow-right-left";
+  import ArrowUpRight from "@lucide/svelte/icons/arrow-up-right";
+  import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import Mail from "@lucide/svelte/icons/mail";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

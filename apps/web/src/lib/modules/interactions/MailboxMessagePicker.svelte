@@ -31,7 +31,9 @@
    * gives about brand colour — the tenant's hue may be anything, so a state told apart only by
    * colour is a state told apart by nothing.
    */
-  import { Check, Info, Mail } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Info from "@lucide/svelte/icons/info";
+  import Mail from "@lucide/svelte/icons/mail";
 
   import { fmtDateTime } from "$lib/core/format";
   import { hasMessage, t } from "$lib/core/i18n";

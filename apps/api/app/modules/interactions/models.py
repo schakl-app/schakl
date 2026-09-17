@@ -164,6 +164,12 @@ class InteractionSource(StrEnum):
     #: someone's typed note, and distinct from ``GMAIL`` because there is no mailbox behind
     #: it: no review flow, no thread, no deep link.
     UPLOAD = "upload"
+    #: The message underneath a mail a colleague forwarded to the org's task address
+    #: (``tasks/intake.py``): a real message somebody else wrote, under their name and date,
+    #: recovered from the forward's header block rather than from a mailbox or a file. Like an
+    #: upload — no review flow, no thread, no deep link — and like one it is the forwarding
+    #: person's own row, logged at birth, because forwarding it *was* the decision to log it.
+    FORWARDED = "forwarded"
 
 
 #: The sources whose body *is* an email message: rendered as received (never as markdown),
@@ -173,6 +179,7 @@ EMAIL_SOURCES = frozenset(
         InteractionSource.GMAIL.value,
         InteractionSource.OUTLOOK.value,
         InteractionSource.UPLOAD.value,
+        InteractionSource.FORWARDED.value,
     }
 )
 

@@ -28,7 +28,11 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { Mic, Plus, Sparkles, Trash2, X } from "@lucide/svelte";
+  import Mic from "@lucide/svelte/icons/mic";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
 
   import { aiEnabled } from "$lib/core/ai";

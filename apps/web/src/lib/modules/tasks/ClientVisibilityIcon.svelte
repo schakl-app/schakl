@@ -28,7 +28,8 @@
    *   portal login. Same marker, and now it warns about a promise unkept rather than one
    *   over-kept.)
    */
-  import { Eye, EyeOff } from "@lucide/svelte";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
 
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";

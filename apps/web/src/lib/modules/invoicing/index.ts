@@ -2,7 +2,8 @@
  * invoicing web module (issue #207): nav, company panel. Routes live under
  * `routes/(app)/invoices` + `/quotes`; settings under `settings/invoicing`.
  */
-import { FileClock, FileText } from "@lucide/svelte";
+import FileClock from "@lucide/svelte/icons/file-clock";
+import FileText from "@lucide/svelte/icons/file-text";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

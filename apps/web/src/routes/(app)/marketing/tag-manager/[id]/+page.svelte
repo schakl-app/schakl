@@ -9,7 +9,9 @@
    * about.
    */
   import { enhance } from "$app/forms";
-  import { AlertTriangle, ExternalLink, Tags } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Tags from "@lucide/svelte/icons/tags";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

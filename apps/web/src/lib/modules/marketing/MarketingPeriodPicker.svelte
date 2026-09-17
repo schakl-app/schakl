@@ -11,7 +11,8 @@
    * the streamed payload's `current_end`: that would put the control behind the very thing the
    * page streams, and a picker that appears a second after the page did reads as a glitch.
    */
-  import { Calendar, Check } from "@lucide/svelte";
+  import Calendar from "@lucide/svelte/icons/calendar";
+  import Check from "@lucide/svelte/icons/check";
 
   import { t } from "$lib/core/i18n";
 
@@ -40,7 +41,20 @@
 
   const months = $derived(monthOptions(anchor));
   const quarters = $derived(quarterOptions(anchor));
-  const isNamed = $derived([...months, ...quarters].some((o: PeriodOption) => o.token === active));
+  // A free span (`2026-08-29..2026-09-03`, docs/MARKETING.md) is the third kind of period: the
+  // one a measurement breakpoint needs, which is neither a month nor a trailing window.
+  const RANGE_RE = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/;
+  const rangeMatch = $derived(RANGE_RE.exec(active));
+  const isNamed = $derived(
+    Boolean(rangeMatch) || [...months, ...quarters].some((o: PeriodOption) => o.token === active),
+  );
+  let from = $state("");
+  let to = $state("");
+  $effect(() => {
+    from = rangeMatch?.[1] ?? "";
+    to = rangeMatch?.[2] ?? anchor;
+  });
+  const rangeHref = $derived(from && to && from <= to ? urlFor(`${from}..${to}`) : "");
 
   function toggle() {
     if (!open && root) {
@@ -88,10 +102,47 @@
     <div
       role="menu"
       style={panelStyle}
-      class="fixed z-30 max-h-80 w-64 overflow-y-auto rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+      class="fixed z-30 max-h-96 w-72 overflow-y-auto rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
       data-sveltekit-preload-data="hover"
     >
+      <!-- A free span, first: two dates and a link. The link is the control (the URL is the
+           view), so a span the reader typed is a bookmark the moment they open it. -->
       <p class="px-4 pt-2 pb-1 text-xs font-medium text-text-muted">
+        {t("marketing.period.custom")}
+      </p>
+      <div class="flex flex-wrap items-center gap-1.5 px-4 pb-2">
+        <input
+          type="date"
+          bind:value={from}
+          max={anchor}
+          aria-label={t("marketing.period.from")}
+          class="w-[7.6rem] rounded border border-border bg-surface px-1.5 py-1 text-xs text-text outline-none focus:border-brand"
+        />
+        <span class="text-xs text-text-muted">–</span>
+        <input
+          type="date"
+          bind:value={to}
+          max={anchor}
+          aria-label={t("marketing.period.to")}
+          class="w-[7.6rem] rounded border border-border bg-surface px-1.5 py-1 text-xs text-text outline-none focus:border-brand"
+        />
+        {#if rangeHref}
+          <a
+            role="menuitem"
+            href={rangeHref}
+            onclick={() => (open = false)}
+            data-sveltekit-noscroll
+            class="rounded bg-brand px-2 py-1 text-xs font-medium text-white"
+          >
+            {t("common.apply")}
+          </a>
+        {:else}
+          <span class="rounded bg-surface px-2 py-1 text-xs text-text-muted"
+            >{t("common.apply")}</span
+          >
+        {/if}
+      </div>
+      <p class="border-t border-border px-4 pt-2 pb-1 text-xs font-medium text-text-muted">
         {t("marketing.period.months")}
       </p>
       {#each months as option (option.token)}

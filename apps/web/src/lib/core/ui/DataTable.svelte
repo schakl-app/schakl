@@ -17,7 +17,10 @@
    * A `<tr>` cannot be wrapped in an `<a>`, so `rowHref` links the primary cell and the row
    * merely highlights — the same compromise the time-overview table already made.
    */
-  import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { untrack, type Snippet } from "svelte";
 
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";

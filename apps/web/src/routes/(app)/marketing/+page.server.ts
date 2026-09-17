@@ -1,11 +1,13 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
+import { apiErrorKey, streamed } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { gtmConnectActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingConnectActions } from "$lib/modules/marketing/actions.server";
+import { filtersFromUrl } from "$lib/modules/marketing/leads/url";
+import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -19,6 +21,9 @@ export const load: PageServerLoad = async (event) => {
   // Website filter: "" = everything, "client" = client-level links only, else a website id.
   // Filtering happens client-side — the metrics payload already carries every link.
   const website = event.url.searchParams.get("website") || "";
+  // The reader's dimension filters (`?f=service:autotransport`), handed to the leads read and
+  // echoed back so every link on the page keeps them.
+  const filters = filtersFromUrl(event.url);
 
   // The picker's tiles: the clients that actually have a source linked, with which sources and
   // how each is doing. Deliberately not `/companies` — the old dropdown listed every company,
@@ -30,6 +35,19 @@ export const load: PageServerLoad = async (event) => {
         params: { path: { company_id: companyId }, query: { period: range } },
       })
     : null;
+  const leadsP = companyId
+    ? streamed<LeadsDashboard>(
+        api.GET("/api/v1/marketing/companies/{company_id}/leads", {
+          params: {
+            path: { company_id: companyId },
+            query: {
+              period: range,
+              f: Object.entries(filters).flatMap(([d, vs]) => vs.map((v) => `${d}:${v}`)),
+            },
+          },
+        }),
+      )
+    : null;
   const clients = await clientsP;
   // A client's own marketing page is their dashboard, not a picker: with one company (the
   // usual case) the picker has one tile that only ever leads here, so the page opens on it.
@@ -37,7 +55,11 @@ export const load: PageServerLoad = async (event) => {
   const clientRows = clients.data?.rows ?? [];
   const only = clientRows.length === 1 ? clientRows[0] : undefined;
   if (event.locals.user?.isPortal && !companyId && only) {
-    throw redirect(303, `/marketing?company=${only.company_id}`);
+    // Carry the period and the filters along: a link to "the last month, autotransport only"
+    // must still mean that after the redirect picks the client for them.
+    const params = new URLSearchParams(event.url.searchParams);
+    params.set("company", only.company_id);
+    throw redirect(303, `/marketing?${params.toString()}`);
   }
 
   return {
@@ -49,6 +71,10 @@ export const load: PageServerLoad = async (event) => {
     // Streamed behind the shell (docs/PERFORMANCE.md): the client picker and the period tabs are
     // what the user interacts with, and neither needs a fold of daily metric rows to render.
     metrics: metricsP ? metricsP.then((r) => r.data ?? null) : Promise.resolve(null),
+    // The leads dashboard streams beside it (docs/MARKETING.md): a cold read is two GA4
+    // batches and three Ads queries, and the shell must not wait for Google.
+    leads: leadsP ?? Promise.resolve(null),
+    filters,
     range,
     website,
     // Whether to draw the ＋ (#338). The client list behind its picker is fetched by the dialog

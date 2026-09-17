@@ -10,16 +10,14 @@
    * tone of voice excludes. It is never part of the document and a client never sees it — the
    * API strips it for a portal caller, and this screen only draws what it was sent.
    */
-  import {
-    AlertTriangle,
-    ArrowLeft,
-    Download,
-    Eye,
-    RefreshCw,
-    Send,
-    Settings2,
-    Trash2,
-  } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import Download from "@lucide/svelte/icons/download";
+  import Eye from "@lucide/svelte/icons/eye";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import Send from "@lucide/svelte/icons/send";
+  import Settings2 from "@lucide/svelte/icons/settings-2";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";

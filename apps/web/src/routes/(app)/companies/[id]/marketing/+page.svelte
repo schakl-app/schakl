@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Plus } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import MarketingConnectDialog from "$lib/modules/marketing/MarketingConnectDialog.svelte";
   import MarketingDashboard from "$lib/modules/marketing/MarketingDashboard.svelte";
+  import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
+  import { appendFilters, type LeadFilters } from "$lib/modules/marketing/leads/url";
   import { ALL_SOURCES } from "$lib/modules/marketing/types";
   import type { CompanyMarketing } from "$lib/modules/marketing/types";
 
@@ -35,6 +37,21 @@
     });
   });
 
+  // The leads dashboard, resolved the same way for the same reason (docs/MARKETING.md).
+  let leads = $state<LeadsDashboard | null>(null);
+  let leadsPending = $state(true);
+  let leadsError = $state<string | null>(null);
+  $effect(() => {
+    const promise = data.leads;
+    leadsPending = true;
+    void promise.then((value) => {
+      if (data.leads !== promise) return;
+      leads = value?.data ?? null;
+      leadsError = value?.errorKey ?? null;
+      leadsPending = false;
+    });
+  });
+
   // Already linked here, so the pickers do not offer an account twice.
   const linkedIds = $derived(
     Object.fromEntries(
@@ -45,10 +62,11 @@
     ),
   );
 
-  function urlFor(range: string, website: string): string {
+  function urlFor(range: string, website: string, filters?: LeadFilters): string {
     const params = new URLSearchParams();
     if (range && range !== "30d") params.set("range", range);
     if (website) params.set("website", website);
+    appendFilters(params, filters ?? (data.filters as LeadFilters));
     const qs = params.toString();
     return qs ? `?${qs}` : `/companies/${company.id}/marketing`;
   }
@@ -84,6 +102,11 @@
   {urlFor}
   manageHref={`/companies/${company.id}`}
   onconnect={data.canLink ? () => (connecting = true) : undefined}
+  {leads}
+  {leadsPending}
+  {leadsError}
+  filters={data.filters}
+  profileHref={`/companies/${company.id}/marketing/profile`}
 />
 
 {#if data.canLink}

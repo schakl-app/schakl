@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Pencil, Power, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Power from "@lucide/svelte/icons/power";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

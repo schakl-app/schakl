@@ -12,7 +12,9 @@
    * labels whose event didn't appear in this range stay editable below, and an event can be
    * added by its raw GA4 name, so labeling never depends on a live Google call.
    */
-  import { ExternalLink, Plus, X } from "@lucide/svelte";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Plus from "@lucide/svelte/icons/plus";
+  import X from "@lucide/svelte/icons/x";
 
   import { localeLabel, t } from "$lib/core/i18n";
   import { editLocale } from "$lib/core/i18n-edit.svelte";

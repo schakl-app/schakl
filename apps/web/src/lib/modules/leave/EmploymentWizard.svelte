@@ -17,7 +17,10 @@
    * The result screen reports what landed and, when a changed contract left free days the pot no
    * longer covers, offers to give them back — never silently cancelling somebody's plans.
    */
-  import { ArrowLeft, ArrowRight, Check, Trash2 } from "@lucide/svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import ArrowRight from "@lucide/svelte/icons/arrow-right";
+  import Check from "@lucide/svelte/icons/check";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";

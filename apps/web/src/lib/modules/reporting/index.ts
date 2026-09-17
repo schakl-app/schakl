@@ -4,7 +4,7 @@
  *
  * Self-registers on import via the `lib/modules` barrel.
  */
-import { FileBarChart } from "@lucide/svelte";
+import FileBarChart from "@lucide/svelte/icons/file-bar-chart";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

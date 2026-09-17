@@ -12,7 +12,9 @@
    * button, the drop and the replace all land on (`filedrop`'s rule), submitting on change so
    * choosing a file *is* the act — there is nothing else on the form to fill in.
    */
-  import { Download, Trash2, Upload } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { enhance } from "$app/forms";
   import { fmtBytes, fmtDateTime } from "$lib/core/format";

@@ -8,7 +8,9 @@
    * stops being what they were told it is, and nothing else on any screen surfaces it.
    */
   import { enhance } from "$app/forms";
-  import { AlertTriangle, Plus, Tags } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Tags from "@lucide/svelte/icons/tags";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

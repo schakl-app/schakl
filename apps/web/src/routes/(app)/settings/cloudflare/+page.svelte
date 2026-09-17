@@ -11,7 +11,8 @@
    * at a button three screens away. And **which zones are not matched to a domain**: an unknown
    * zone in a client's account is exactly what an agency taking over a setup wants to see.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

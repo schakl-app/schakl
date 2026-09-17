@@ -26,7 +26,8 @@
    * past" and the org's own today all live in `app/modules/tasks/recurrence.py`; re-implementing
    * them here would be a second opinion about a question the API already answers (#312).
    */
-  import { Plus, Trash2 } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { untrack } from "svelte";
 
   import {

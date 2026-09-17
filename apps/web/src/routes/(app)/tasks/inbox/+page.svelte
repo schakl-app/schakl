@@ -8,7 +8,8 @@
    * `Taak aanmaken` opens the ordinary quick-create dialog over it, prefilled, posting to the
    * mail's own create action so the rest travels with the task.
    */
-  import { Mail, Paperclip } from "@lucide/svelte";
+  import Mail from "@lucide/svelte/icons/mail";
+  import Paperclip from "@lucide/svelte/icons/paperclip";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

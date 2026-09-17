@@ -101,7 +101,8 @@ def api_base() -> str:
     """``https://googleads.googleapis.com/<version>`` — resolved per call, never at import, so
     the version is a setting an operator can change without rebuilding the image."""
     version = (settings.google_ads_api_version or DEFAULT_API_VERSION).strip().strip("/")
-    return f"{API_HOST}/{version}"
+    host = (settings.google_ads_api_host or API_HOST).rstrip("/")
+    return f"{host}/{version}"
 
 
 def normalise_customer_id(raw: str | None) -> str:

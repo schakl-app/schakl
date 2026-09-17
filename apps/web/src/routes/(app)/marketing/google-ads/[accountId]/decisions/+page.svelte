@@ -9,7 +9,8 @@
    *
    * Business-licensed — see LICENSE.
    */
-  import { ArrowLeft, Undo2 } from "@lucide/svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

@@ -58,6 +58,11 @@ class SkipReason(StrEnum):
     #: A copy of a colleague's mail whose own mailbox polls and will log it.
     #: ``detail["owner"]`` names them.
     DEFERRED_TO_OWNER = "deferred_to_owner"
+    #: Sent to the org's intake address (``taak@``, :mod:`app.core.mailbox.intake`) and to
+    #: nobody else: an instruction to the system, which becomes a record of its own kind and is
+    #: never a contact moment — whatever the org's internal-logging setting says. A client
+    #: thread with the address in Cc is not this; it keeps its other recipients and is both.
+    INTAKE_ONLY = "intake_only"
     #: Colleague-to-colleague, and the org has internal logging switched off.
     INTERNAL_ONLY = "internal_only"
     #: Nobody on it is a contact we know from outside the agency (#324) — by a wide margin the

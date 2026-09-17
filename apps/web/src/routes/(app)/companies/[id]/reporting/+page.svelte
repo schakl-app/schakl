@@ -12,7 +12,9 @@
    * field says what will happen if it stays blank, so a form full of blanks is readable rather
    * than mysterious.
    */
-  import { ArrowLeft, FileText, Play } from "@lucide/svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Play from "@lucide/svelte/icons/play";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

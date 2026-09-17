@@ -35,7 +35,10 @@
    * direct strip also listens for the paste in the **capture** phase: a host page's own strip
    * registered first and would otherwise take the screenshot meant for the dialog.
    */
-  import { Eye, EyeOff, Paperclip, Trash2 } from "@lucide/svelte";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
+  import Paperclip from "@lucide/svelte/icons/paperclip";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";

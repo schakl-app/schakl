@@ -75,6 +75,7 @@ from app.modules.marketing.layout import (
     source_layout,
     validate_layout,
 )
+from app.modules.marketing.leads.profile import resolve_channel_groups, validate_profile
 from app.modules.marketing.models import (
     MarketingCompanySettings,
     MarketingLink,
@@ -1140,6 +1141,8 @@ class MarketingService:
         rankings_set: bool = False,
         report: dict | None = None,
         report_set: bool = False,
+        lead_profile: dict | None = None,
+        lead_profile_set: bool = False,
     ) -> CompanySettingsRead:
         """Per-client marketing preferences (upsert, one row per org+company).
 
@@ -1180,7 +1183,17 @@ class MarketingService:
         previous_compare = row.compare
         previous_rankings = row.rankings
         previous_report = row.report
+        previous_profile = row.lead_profile
 
+        if lead_profile_set:
+            # The measurement profile (docs/MARKETING.md): validated whole, stored whole. An
+            # explicit null removes it — and the leads dashboard with it — which is a choice the
+            # editor offers, so it is a real value and not the absence of one (§18).
+            row.lead_profile = (
+                validate_profile(lead_profile).model_dump(mode="json", exclude_none=True)
+                if lead_profile
+                else None
+            )
         if compare_set:
             row.compare = compare.value if compare is not None else None
         if rankings_set:
@@ -1253,6 +1266,8 @@ class MarketingService:
             await activity.record("company", company_id, "marketing.rankings_changed", {})
         if report_set and previous_report != row.report:
             await activity.record("company", company_id, "marketing.report_changed", {})
+        if lead_profile_set and previous_profile != row.lead_profile:
+            await activity.record("company", company_id, "marketing.lead_profile_changed", {})
         return await self._company_settings_read(company_id, row)
 
     async def _company_settings_read(
@@ -1301,6 +1316,7 @@ class MarketingService:
             report=row.report if row else None,
             report_resolved=ReportSplitSettingsRead(**report_resolved.as_dict()),
             links=[LinkBrief.model_validate(link) for link in links],
+            lead_profile=row.lead_profile if row else None,
         )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
@@ -2367,6 +2383,7 @@ class MarketingSettingsService:
             portal_source_labels={
                 k: v for k, v in ((row.portal_source_labels if row else None) or {}).items() if v
             },
+            channel_groups=resolve_channel_groups(row.channel_groups if row else None, None),
         )
 
     async def get(self) -> MarketingSettingsRead:
@@ -2443,6 +2460,10 @@ class MarketingSettingsService:
                 else:
                     merged.pop(source, None)
             row.portal_source_labels = merged or None
+        if data.channel_groups is not None:
+            # Replaced whole, never merged: a grouping is four short lists, and a diff over
+            # lists is a merge whose result nobody can predict from the form they posted.
+            row.channel_groups = data.channel_groups or None
         await self.ctx.session.flush()
         return self._read(row)
 

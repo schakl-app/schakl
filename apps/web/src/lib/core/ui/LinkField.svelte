@@ -31,7 +31,8 @@
    * id field name (`idField`) and the actions come from the parent.
    */
   import { enhance } from "$app/forms";
-  import { Star, X } from "@lucide/svelte";
+  import Star from "@lucide/svelte/icons/star";
+  import X from "@lucide/svelte/icons/x";
 
   import Combobox from "$lib/core/ui/Combobox.svelte";
 

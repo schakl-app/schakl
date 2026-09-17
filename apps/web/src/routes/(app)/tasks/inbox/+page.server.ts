@@ -1,6 +1,5 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -71,7 +70,7 @@ export const actions: Actions = {
       },
     });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-    throw redirect(303, editHref(`/tasks/${data.id}`));
+    throw redirect(303, `/tasks/${data.id}`);
   },
 
   discard: async (event) => {

@@ -29,7 +29,8 @@
    * `search={false}`: the index's own *content* is this same list and it owns the search over it,
    * so the rule stays one search box per screen rather than two that filter different things.
    */
-  import { ChevronDown, Menu } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Menu from "@lucide/svelte/icons/menu";
   import type { Snippet } from "svelte";
 
   import { page } from "$app/state";

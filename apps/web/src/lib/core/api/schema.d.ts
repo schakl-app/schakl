@@ -8959,6 +8959,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/companies/{company_id}/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Leads
+         * @description The leads dashboard for one client: form, call and e-mail conversions from GA4 and the
+         *     ad spend behind them from Google Ads, read through the client's measurement profile
+         *     (docs/MARKETING.md). ``configured`` is false for a client without a profile.
+         */
+        get: operations["company_leads_api_v1_marketing_companies__company_id__leads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/leads/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Leads Catalog
+         * @description What the client's GA4 property and Ads account carry — event names, custom dimensions,
+         *     key events, conversion actions — so a measurement profile is picked from what exists.
+         */
+        get: operations["company_leads_catalog_api_v1_marketing_companies__company_id__leads_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/companies/{company_id}/metrics": {
         parameters: {
             query?: never;
@@ -17350,6 +17393,31 @@ export interface components {
             /** Sensitive */
             sensitive: boolean;
         };
+        /** CatalogAction */
+        CatalogAction: {
+            /** Category */
+            category?: string | null;
+            /** Name */
+            name: string;
+            /** Primary */
+            primary?: boolean | null;
+        };
+        /** CatalogDimension */
+        CatalogDimension: {
+            /** Display Name */
+            display_name: string;
+            /** Field */
+            field: string;
+            /** Parameter */
+            parameter: string;
+        };
+        /** CatalogEvent */
+        CatalogEvent: {
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
+        };
         /** CatalogRead */
         CatalogRead: {
             /** Actions */
@@ -18028,6 +18096,10 @@ export interface components {
             layout?: {
                 [key: string]: unknown;
             } | null;
+            /** Lead Profile */
+            lead_profile?: {
+                [key: string]: unknown;
+            } | null;
             /** Linked Sources */
             linked_sources?: components["schemas"]["MarketingSource"][];
             /** Links */
@@ -18064,6 +18136,10 @@ export interface components {
             compare?: components["schemas"]["ComparePeriod"] | null;
             /** Layout */
             layout?: {
+                [key: string]: unknown;
+            } | null;
+            /** Lead Profile */
+            lead_profile?: {
                 [key: string]: unknown;
             } | null;
             rankings?: components["schemas"]["RankingSettingsWrite"] | null;
@@ -23790,7 +23866,7 @@ export interface components {
          * InteractionSource
          * @enum {string}
          */
-        InteractionSource: "manual" | "gmail" | "outlook" | "upload";
+        InteractionSource: "manual" | "gmail" | "outlook" | "upload" | "forwarded";
         /**
          * InteractionStatus
          * @enum {string}
@@ -24484,6 +24560,291 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /** LeadBreakpoint */
+        LeadBreakpoint: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "hard" | "soft";
+            /** Text */
+            text?: string | null;
+        };
+        /** LeadColumn */
+        LeadColumn: {
+            /** Alarm Above */
+            alarm_above?: number | null;
+            /** Key */
+            key: string;
+            /** Title */
+            title?: string | null;
+            /** Title Key */
+            title_key?: string | null;
+            /**
+             * Unit
+             * @default count
+             * @enum {string}
+             */
+            unit: "count" | "money" | "percent" | "ratio" | "text";
+            /** Warn Above */
+            warn_above?: number | null;
+        };
+        /**
+         * LeadCoverage
+         * @description How much of the requests a dimension actually carries — the ``(not set)`` share.
+         */
+        LeadCoverage: {
+            /** Dimension */
+            dimension: string;
+            /** Not Set */
+            not_set: number;
+            /** Share */
+            share: number;
+            /** Title */
+            title?: string | null;
+            /** Total */
+            total: number;
+        };
+        /**
+         * LeadFilter
+         * @description A dimension the reader may narrow on, with the values seen in this period.
+         */
+        LeadFilter: {
+            /** Active */
+            active?: string[];
+            /** Dimension */
+            dimension: string;
+            /** Options */
+            options?: components["schemas"]["LeadFilterOption"][];
+            /** Title */
+            title?: string | null;
+        };
+        /** LeadFilterOption */
+        LeadFilterOption: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /** LeadRow */
+        LeadRow: {
+            /** Cells */
+            cells?: {
+                [key: string]: number;
+            } | null;
+            /** Group */
+            group?: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Texts */
+            texts?: {
+                [key: string]: string;
+            };
+            /** Values */
+            values?: {
+                [key: string]: number | null;
+            };
+        };
+        /** LeadSeries */
+        LeadSeries: {
+            /** Bars */
+            bars?: string[];
+            /** Dates */
+            dates: string[];
+            /** Units */
+            units?: {
+                [key: string]: "count" | "money" | "percent" | "ratio" | "text";
+            };
+            /** Values */
+            values: {
+                [key: string]: number[];
+            };
+        };
+        /** LeadUnavailable */
+        LeadUnavailable: {
+            /** Key */
+            key: string;
+            /** Reason */
+            reason: string;
+        };
+        /** LeadWarning */
+        LeadWarning: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+        };
+        /** LeadWidget */
+        LeadWidget: {
+            /** Columns */
+            columns?: components["schemas"]["LeadColumn"][];
+            /** Currency */
+            currency?: string | null;
+            /** Dimension */
+            dimension?: string | null;
+            /** Dimension Title */
+            dimension_title?: string | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "scorecard" | "bars" | "line" | "donut" | "pivot" | "table" | "funnel" | "combo";
+            /** Note Key */
+            note_key?: string | null;
+            /** Other */
+            other?: number | null;
+            /**
+             * Part
+             * @enum {string}
+             */
+            part: "leads" | "ads";
+            /** Reports */
+            reports?: string[];
+            /** Row Count */
+            row_count?: number | null;
+            /** Rows */
+            rows?: components["schemas"]["LeadRow"][];
+            /** Secondary */
+            secondary?: number | null;
+            /** Secondary Key */
+            secondary_key?: string | null;
+            series?: components["schemas"]["LeadSeries"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "ga4" | "gads";
+            /** Title Key */
+            title_key: string;
+            /** Total */
+            total?: number | null;
+            /**
+             * Unit
+             * @default count
+             * @enum {string}
+             */
+            unit: "count" | "money" | "percent" | "ratio" | "text";
+            /** Value */
+            value?: number | null;
+        };
+        /**
+         * LeadsCatalog
+         * @description What the client's property and account actually carry — so the profile editor offers
+         *     the event names, dimensions, key events and conversion actions to pick from rather than
+         *     asking somebody to type them from memory.
+         */
+        LeadsCatalog: {
+            /**
+             * Ads Available
+             * @default false
+             */
+            ads_available: boolean;
+            /** Channels */
+            channels?: string[];
+            /** Conversion Actions */
+            conversion_actions?: components["schemas"]["CatalogAction"][];
+            /** Custom Dimensions */
+            custom_dimensions?: components["schemas"]["CatalogDimension"][];
+            /** Events */
+            events?: components["schemas"]["CatalogEvent"][];
+            /**
+             * Ga4 Available
+             * @default false
+             */
+            ga4_available: boolean;
+            /** Key Events */
+            key_events?: string[];
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+        };
+        /** LeadsDashboard */
+        LeadsDashboard: {
+            /**
+             * Ads Available
+             * @default false
+             */
+            ads_available: boolean;
+            /**
+             * Ads Deep Link
+             * @default
+             */
+            ads_deep_link: string;
+            /** Breakpoints */
+            breakpoints?: components["schemas"]["LeadBreakpoint"][];
+            /**
+             * Can Manage
+             * @default false
+             */
+            can_manage: boolean;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Configured */
+            configured: boolean;
+            /** Coverage */
+            coverage?: components["schemas"]["LeadCoverage"][];
+            /** Disclaimer */
+            disclaimer?: string | null;
+            /** Filters */
+            filters?: components["schemas"]["LeadFilter"][];
+            /**
+             * Ga4 Available
+             * @default false
+             */
+            ga4_available: boolean;
+            /**
+             * Ga4 Deep Link
+             * @default
+             */
+            ga4_deep_link: string;
+            /** Refreshed At */
+            refreshed_at?: string | null;
+            /** Unavailable */
+            unavailable?: components["schemas"]["LeadUnavailable"][];
+            /** Warnings */
+            warnings?: components["schemas"]["LeadWarning"][];
+            /** Widgets */
+            widgets?: components["schemas"]["LeadWidget"][];
+            window?: components["schemas"]["LeadsWindow"] | null;
+        };
+        /** LeadsWindow */
+        LeadsWindow: {
+            /** Comparable From */
+            comparable_from?: string | null;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Token */
+            token: string;
         };
         /**
          * LeaveBalance
@@ -25744,6 +26105,10 @@ export interface components {
              * @default false
              */
             ads_developer_token_configured: boolean;
+            /** Channel Groups */
+            channel_groups?: {
+                [key: string]: string[];
+            };
             /** @default year */
             default_compare: components["schemas"]["ComparePeriod"];
             /**
@@ -25767,6 +26132,10 @@ export interface components {
         MarketingSettingsWrite: {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
+            /** Channel Groups */
+            channel_groups?: {
+                [key: string]: string[];
+            } | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
             /** Portal Source Labels */
             portal_source_labels?: {
@@ -54733,6 +55102,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DrilldownResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_leads_api_v1_marketing_companies__company_id__leads_get: {
+        parameters: {
+            query?: {
+                /** @description The span to report on: a trailing window (30d), a preset (month, last_month), a named period (2026-07, 2026-Q3) or a free span (2026-08-29..2026-09-03). Defaults to the last 30 complete days; a span is clamped to end yesterday. */
+                period?: string | null;
+                /** @description Dimension filters, repeatable, as `dimension:value` on the profile's dimension keys (service, form_type, language, …). Several values of one dimension are OR-ed, different dimensions AND-ed. An unknown dimension is refused, never ignored. */
+                f?: string[];
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadsDashboard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_leads_catalog_api_v1_marketing_companies__company_id__leads_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadsCatalog"];
                 };
             };
             /** @description Validation Error */

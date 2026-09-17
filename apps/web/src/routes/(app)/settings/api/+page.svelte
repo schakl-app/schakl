@@ -7,7 +7,10 @@
    * — the connection line has to be on screen *while* the secret still is, or the user copies a
    * token and then goes looking for docs they no longer have the credential for.
    */
-  import { Bot, ChevronDown, Plug, Terminal } from "@lucide/svelte";
+  import Bot from "@lucide/svelte/icons/bot";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Plug from "@lucide/svelte/icons/plug";
+  import Terminal from "@lucide/svelte/icons/terminal";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";

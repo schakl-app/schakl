@@ -20,12 +20,23 @@
     values,
     label,
     format,
+    markers = [],
   }: {
     dates: string[];
     values: number[];
     label: string;
     format: (v: number) => string;
+    /**
+     * Dated marks on the axis — a measurement breakpoint, drawn as a dashed line where the
+     * date falls in the span, with its text on hover. A series that crosses one is two series
+     * wearing one line, and the mark is what says so.
+     */
+    markers?: { date: string; label: string }[];
   } = $props();
+
+  const marks = $derived(
+    markers.map((m) => ({ ...m, i: dates.indexOf(m.date) })).filter((m) => m.i >= 0),
+  );
 
   const color = $derived(resolvedTheme.current === "dark" ? "#3b82f6" : "#2563eb");
 
@@ -108,6 +119,19 @@
           {fmtDayMonth(dates[dates.length - 1])}
         </text>
       {/if}
+      {#each marks as mark (mark.date)}
+        <line
+          x1={x(mark.i)}
+          x2={x(mark.i)}
+          y1={PAD.top}
+          y2={PAD.top + plotH}
+          class="stroke-text-muted"
+          stroke-width="1"
+          stroke-dasharray="3 3"
+        >
+          <title>{mark.label}</title>
+        </line>
+      {/each}
       {#if hover}
         <line
           x1={hover.x}

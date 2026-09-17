@@ -28,7 +28,12 @@
    * most staff will not hold.
    */
   import { enhance } from "$app/forms";
-  import { ExternalLink, Lock, Mail, UserCheck, UserX, VenetianMask } from "@lucide/svelte";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Lock from "@lucide/svelte/icons/lock";
+  import Mail from "@lucide/svelte/icons/mail";
+  import UserCheck from "@lucide/svelte/icons/user-check";
+  import UserX from "@lucide/svelte/icons/user-x";
+  import VenetianMask from "@lucide/svelte/icons/venetian-mask";
 
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";

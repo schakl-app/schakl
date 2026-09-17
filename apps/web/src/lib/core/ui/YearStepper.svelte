@@ -5,7 +5,8 @@
    * (docs/UX.md, "the URL is the view"). `hrefFor` keeps every other query parameter the page
    * carries — a VAT toggle, a filter — because stepping a year must not reset them.
    */
-  import { ChevronLeft, ChevronRight } from "@lucide/svelte";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
   import { t } from "$lib/core/i18n";
 

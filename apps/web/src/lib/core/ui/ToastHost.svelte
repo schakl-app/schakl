@@ -8,7 +8,10 @@
    * interrupt a screen reader mid-sentence, which is precisely what it would do to someone who
    * has already moved on.
    */
-  import { Check, Info, TriangleAlert, X } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Info from "@lucide/svelte/icons/info";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
 

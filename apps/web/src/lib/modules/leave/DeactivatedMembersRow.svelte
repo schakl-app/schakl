@@ -12,7 +12,7 @@
    * Closed by default and absent when there is nobody to fold — the host renders it only for a
    * non-zero count, because a "Gedeactiveerd (0)" strip is a heading over a negative sentence.
    */
-  import { ChevronDown } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
 
   import { t } from "$lib/core/i18n";
 

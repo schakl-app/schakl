@@ -16,7 +16,9 @@
    * the top of the page whether they ticked eleven or twelve.
    */
   import { page } from "$app/state";
-  import { Pencil, Trash2, X } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";

@@ -12,7 +12,7 @@
    * and what a collapsed row prints, so clicking another chip promotes it, exactly as the
    * assignee picker promotes a primary. Colour alone marks it (docs/UX.md), never a glyph.
    */
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";

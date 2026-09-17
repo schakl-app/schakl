@@ -16,17 +16,15 @@
    * Escape is answered **here and stops** (`stopPropagation`): `Modal` and `SlideOver` listen on
    * the window and would otherwise close the record underneath along with the picture.
    */
-  import {
-    ChevronLeft,
-    ChevronRight,
-    Download,
-    ExternalLink,
-    Maximize2,
-    Minimize2,
-    X,
-    ZoomIn,
-    ZoomOut,
-  } from "@lucide/svelte";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Download from "@lucide/svelte/icons/download";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Maximize2 from "@lucide/svelte/icons/maximize-2";
+  import Minimize2 from "@lucide/svelte/icons/minimize-2";
+  import X from "@lucide/svelte/icons/x";
+  import ZoomIn from "@lucide/svelte/icons/zoom-in";
+  import ZoomOut from "@lucide/svelte/icons/zoom-out";
 
   import { t } from "$lib/core/i18n";
   import { fmtBytes } from "$lib/core/format";

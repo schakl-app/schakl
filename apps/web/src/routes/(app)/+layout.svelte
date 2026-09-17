@@ -1,24 +1,22 @@
 <script lang="ts">
   import "$lib/modules"; // ensure the web-module registry is populated
   import Avatar from "$lib/core/ui/Avatar.svelte";
-  import {
-    BarChart3,
-    CalendarDays,
-    Menu,
-    ChevronDown,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    FileText,
-    Handshake,
-    LayoutDashboard,
-    LogOut,
-    ServerCog,
-    Settings,
-    Sparkles,
-    UserRound,
-    VenetianMask,
-  } from "@lucide/svelte";
+  import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
+  import CalendarDays from "@lucide/svelte/icons/calendar-days";
+  import Menu from "@lucide/svelte/icons/menu";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
+  import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Handshake from "@lucide/svelte/icons/handshake";
+  import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
+  import LogOut from "@lucide/svelte/icons/log-out";
+  import ServerCog from "@lucide/svelte/icons/server-cog";
+  import Settings from "@lucide/svelte/icons/settings";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import UserRound from "@lucide/svelte/icons/user-round";
+  import VenetianMask from "@lucide/svelte/icons/venetian-mask";
 
   import { setContext } from "svelte";
 

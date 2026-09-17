@@ -246,6 +246,32 @@
       </div>
     </div>
 
+    <!-- The house channel grouping for the leads dashboard (docs/MARKETING.md). GA4's default
+         channel groups regrouped into what a client can read; Cross-network (Performance Max)
+         belongs under advertising, and "AI Assistant" keeps a group of its own. Anything not
+         listed is "other". A client's profile may override the whole grouping. -->
+    <fieldset class="border-t border-border pt-5">
+      <legend class="mb-1 text-sm font-semibold text-text">
+        {t("settings.marketing.channel_groups")}
+      </legend>
+      <p class="mb-3 text-xs text-text-muted">{t("settings.marketing.channel_groups_hint")}</p>
+      <div class="grid gap-3 sm:grid-cols-3">
+        {#each ["organic", "ads", "ai"] as group (group)}
+          <div>
+            <label for={`channel-group-${group}`} class="mb-1 block text-xs text-text-muted">
+              {t(`marketing.leads.group.${group}`)}
+            </label>
+            <textarea
+              id={`channel-group-${group}`}
+              name={`channel_group_${group}`}
+              rows="5"
+              class={inputClass}
+              value={(settings?.channel_groups?.[group] ?? []).join("\n")}></textarea>
+          </div>
+        {/each}
+      </div>
+    </fieldset>
+
     {#if form?.saved}
       <p class="text-sm text-green-600 dark:text-green-400">{t("settings.marketing.saved")}</p>
     {:else if form?.error}

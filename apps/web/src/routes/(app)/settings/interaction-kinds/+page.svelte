@@ -2,7 +2,9 @@
   /** Instellingen → Contactmoment-typen (#174): rename, add and deactivate the org's
    *  interaction kinds — the contact-types screen's shape. `email` is system-owned: only
    *  the gmail feed writes it, so it can be relabelled but never deactivated or deleted. */
-  import { Pencil, Power, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Power from "@lucide/svelte/icons/power";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
