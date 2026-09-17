@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { FileArchive, Pencil, Trash2, Upload } from "@lucide/svelte";
+  import FileArchive from "@lucide/svelte/icons/file-archive";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { enhance } from "$app/forms";
   import ImportWizard from "$lib/core/impex/ImportWizard.svelte";

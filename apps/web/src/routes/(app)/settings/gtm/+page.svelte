@@ -9,7 +9,8 @@
    * screen that cannot say so leaves people looking for a password that does not exist.
    */
   import { enhance } from "$app/forms";
-  import { AlertTriangle, ExternalLink } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

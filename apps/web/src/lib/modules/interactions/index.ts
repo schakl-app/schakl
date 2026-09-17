@@ -5,7 +5,7 @@
  * since #168 also on its own cross-cutting Interacties page — nav item below. Host pages spread
  * `interactionActions` (./actions.server) into their form actions — that is the whole contract.
  */
-import { MessagesSquare } from "@lucide/svelte";
+import MessagesSquare from "@lucide/svelte/icons/messages-square";
 
 import { registerWebModule, type EntityPanelSpec } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";

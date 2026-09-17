@@ -13,7 +13,11 @@
    * already sets that precedent. The primary column is pinned — a row with no link out is a dead
    * end — so it is neither hideable nor movable.
    */
-  import { ArrowDown, ArrowDownUp, ArrowUp, Columns3, GripVertical } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowDownUp from "@lucide/svelte/icons/arrow-down-up";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Columns3 from "@lucide/svelte/icons/columns-3";
+  import GripVertical from "@lucide/svelte/icons/grip-vertical";
   import { dndzone } from "svelte-dnd-action";
 
   import { t } from "$lib/core/i18n";

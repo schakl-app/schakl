@@ -7,7 +7,9 @@
    * scheduled row can be deleted before its day comes — and so can the current one: a price
    * entered with the wrong date is otherwise stuck, since a backdated row never outranks it.
    */
-  import { Pencil, Trash2, TrendingUp } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import TrendingUp from "@lucide/svelte/icons/trending-up";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

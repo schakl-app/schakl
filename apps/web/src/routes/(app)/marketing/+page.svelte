@@ -8,7 +8,7 @@
    * The picker is a grid of tiles over the clients that have a source linked, not a dropdown
    * over every company: see `MarketingClientTiles`.
    */
-  import { Plus } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";

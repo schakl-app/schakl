@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { RefreshCw, Trash2 } from "@lucide/svelte";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

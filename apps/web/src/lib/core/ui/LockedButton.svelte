@@ -13,7 +13,7 @@
    * It renders exactly like the real control it stands in for (same variant, same size), so the
    * layout does not jump when it is replaced by the working one.
    */
-  import { Lock } from "@lucide/svelte";
+  import Lock from "@lucide/svelte/icons/lock";
 
   import Button from "$lib/core/ui/Button.svelte";
   import UpgradeModal from "$lib/core/ui/UpgradeModal.svelte";

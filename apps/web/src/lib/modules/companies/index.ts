@@ -6,7 +6,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
-import { Building2 } from "@lucide/svelte";
+import Building2 from "@lucide/svelte/icons/building-2";
 
 import CompanyDetailsPanel from "./CompanyDetailsPanel.svelte";
 

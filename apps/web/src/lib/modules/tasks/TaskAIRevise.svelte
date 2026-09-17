@@ -26,7 +26,7 @@
    * A budget refusal is the one refusal that gets its own sentence — it is a decision the org
    * made, not a fault.
    */
-  import { Sparkles } from "@lucide/svelte";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
   import { onMount } from "svelte";
 
   import { page } from "$app/state";

@@ -11,7 +11,9 @@
    * the honesty strip (spec §8, §10): a sampled number, a `(not set)` share and a measurement
    * breakpoint are each a sentence beside the numbers, never a footnote nobody finds.
    */
-  import { ExternalLink, Settings2, X } from "@lucide/svelte";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Settings2 from "@lucide/svelte/icons/settings-2";
+  import X from "@lucide/svelte/icons/x";
 
   import { fmtDateTime, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

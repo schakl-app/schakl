@@ -18,7 +18,8 @@
    * straight in without spelling out which of it happens to be set.
    */
   import { page } from "$app/state";
-  import { Download, Upload } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";

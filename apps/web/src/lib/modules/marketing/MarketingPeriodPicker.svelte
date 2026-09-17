@@ -11,7 +11,8 @@
    * the streamed payload's `current_end`: that would put the control behind the very thing the
    * page streams, and a picker that appears a second after the page did reads as a glitch.
    */
-  import { Calendar, Check } from "@lucide/svelte";
+  import Calendar from "@lucide/svelte/icons/calendar";
+  import Check from "@lucide/svelte/icons/check";
 
   import { t } from "$lib/core/i18n";
 

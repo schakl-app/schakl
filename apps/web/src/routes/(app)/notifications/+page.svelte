@@ -25,7 +25,8 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { Check, Undo2 } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

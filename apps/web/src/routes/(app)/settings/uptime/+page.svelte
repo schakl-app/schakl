@@ -13,7 +13,7 @@
    * And **that TLS verification is off**, badged rather than buried, because that means we send
    * an administrator credential to whoever answers the address.
    */
-  import { Trash2 } from "@lucide/svelte";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";

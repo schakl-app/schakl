@@ -16,17 +16,15 @@
    * gaan niet terug naar Timeon" rather than "richting: ophalen", because the second reads as a
    * label and the first reads as a warning where it needs to.
    */
-  import {
-    AlertTriangle,
-    ArrowDown,
-    ArrowUp,
-    ArrowUpDown,
-    CalendarRange,
-    Clock,
-    Lock,
-    MinusCircle,
-    ShieldCheck,
-  } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
+  import CalendarRange from "@lucide/svelte/icons/calendar-range";
+  import Clock from "@lucide/svelte/icons/clock";
+  import Lock from "@lucide/svelte/icons/lock";
+  import MinusCircle from "@lucide/svelte/icons/minus-circle";
+  import ShieldCheck from "@lucide/svelte/icons/shield-check";
 
   import { fmtClockTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

@@ -9,7 +9,7 @@ import { t } from "$lib/core/i18n";
 import { hasPermission } from "$lib/core/permissions";
 import { registerWebModule, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
 import { orgToday } from "$lib/core/today";
-import { SquareCheckBig } from "@lucide/svelte";
+import SquareCheckBig from "@lucide/svelte/icons/square-check-big";
 
 import { localDayTime } from "./schedule";
 import TasksPanel from "./TasksPanel.svelte";

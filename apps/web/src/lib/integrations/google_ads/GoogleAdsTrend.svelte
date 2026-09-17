@@ -12,7 +12,9 @@
    *   drawn as a decline. The direction is carried by an arrow and a word, never by colour
    *   alone: `text-brand` is gold on some tenants and would read as a warning on every tile.
    */
-  import { ArrowDown, ArrowUp, Minus } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Minus from "@lucide/svelte/icons/minus";
 
   import { dateLocale, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

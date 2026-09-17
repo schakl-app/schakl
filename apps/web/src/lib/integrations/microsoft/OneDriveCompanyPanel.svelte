@@ -13,7 +13,9 @@
    * **Host contract:** `?/linkOneDriveFile`, `?/unlinkOneDriveFile`, `?/deleteOneDriveFile`,
    * `?/provisionOneDriveFolder`, `?/setOneDriveFolder`.
    */
-  import { FolderPlus, FolderSearch, Link2Off } from "@lucide/svelte";
+  import FolderPlus from "@lucide/svelte/icons/folder-plus";
+  import FolderSearch from "@lucide/svelte/icons/folder-search";
+  import Link2Off from "@lucide/svelte/icons/link-2-off";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

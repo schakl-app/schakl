@@ -15,7 +15,10 @@
    * message that may end in a write.
    */
   import { page } from "$app/state";
-  import { CircleStop, SendHorizontal, Sparkles, X } from "@lucide/svelte";
+  import CircleStop from "@lucide/svelte/icons/circle-stop";
+  import SendHorizontal from "@lucide/svelte/icons/send-horizontal";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
 
   import { t } from "$lib/core/i18n";

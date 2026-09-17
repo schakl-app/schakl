@@ -5,7 +5,8 @@
    * the surrounding form. The `name` stays on the native input, so form posts and
    * `input[name=…]` test selectors are unchanged.
    */
-  import { Eye, EyeOff } from "@lucide/svelte";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
   import type { HTMLInputAttributes } from "svelte/elements";
 
   import { t } from "$lib/core/i18n";

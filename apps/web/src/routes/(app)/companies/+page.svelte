@@ -4,7 +4,8 @@
   import { applyAction, enhance } from "$app/forms";
   import { replaceState } from "$app/navigation";
   import { page } from "$app/state";
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import BulkBar from "$lib/core/bulk/BulkBar.svelte";
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";

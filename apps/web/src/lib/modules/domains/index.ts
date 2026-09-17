@@ -1,4 +1,4 @@
-import { Globe } from "@lucide/svelte";
+import Globe from "@lucide/svelte/icons/globe";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

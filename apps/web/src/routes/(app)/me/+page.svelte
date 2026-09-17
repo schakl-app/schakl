@@ -4,7 +4,8 @@
    * contract copy, growth plans, bonus agreements, benefits, CAO. A dossier manager can
    * view and file for any employee (?user=); everyone else sees exactly their own.
    */
-  import { Download, Trash2 } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

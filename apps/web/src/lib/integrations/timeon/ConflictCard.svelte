@@ -14,7 +14,10 @@
    * offered again (#318). Without it the honest thing a person wants to do — leave two systems
    * deliberately out of step for one entry — has no expression, so they close the tab instead.
    */
-  import { ArrowRight, Building2, Clock, User } from "@lucide/svelte";
+  import ArrowRight from "@lucide/svelte/icons/arrow-right";
+  import Building2 from "@lucide/svelte/icons/building-2";
+  import Clock from "@lucide/svelte/icons/clock";
+  import User from "@lucide/svelte/icons/user";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";

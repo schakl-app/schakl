@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { AlertTriangle, CircleCheck, Plus, Sparkles } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

@@ -8,7 +8,9 @@
    * contacts-panel pattern): ⋯ → Bewerken reveals removable chips + the account pickers, which post
    * to the host page's `?/marketingLink` / `?/marketingUnlink` actions. Empty states teach.
    */
-  import { AlertTriangle, ExternalLink, X } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

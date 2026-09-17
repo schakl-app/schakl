@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { Ban, CalendarClock, Pencil, Plus, Repeat } from "@lucide/svelte";
+  import Ban from "@lucide/svelte/icons/ban";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Repeat from "@lucide/svelte/icons/repeat";
 
   import { page } from "$app/state";
   import { fmtPeriod } from "$lib/core/format";

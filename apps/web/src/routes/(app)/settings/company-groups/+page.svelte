@@ -6,7 +6,8 @@
    * they can *see* to the union of those groups' companies. No assignment = sees everything —
    * so this screen is also where "who is restricted" is visible at a glance.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

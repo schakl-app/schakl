@@ -9,7 +9,7 @@
    * and asks for a tick, not a click — it is the one action in the product that is both
    * irreversible and invisible in its cost (docs/UX.md, `ConfirmDialog.acknowledge`).
    */
-  import { Trash2 } from "@lucide/svelte";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

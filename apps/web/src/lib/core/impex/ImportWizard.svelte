@@ -17,7 +17,7 @@
    * dry run, "Importeren" is the save — and it only arms after a clean preview of the mapping
    * as it stands. The server re-validates regardless; the arming is courtesy, not the gate.
    */
-  import { Upload } from "@lucide/svelte";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { enhance } from "$app/forms";
 

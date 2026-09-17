@@ -8,7 +8,7 @@
    * that popup as browser chrome, so page CSS — `accent-color` included — cannot reach it
    * and it always draws in the browser's own blue, ignoring the tenant brand (#9).
    */
-  import { CalendarDays } from "@lucide/svelte";
+  import CalendarDays from "@lucide/svelte/icons/calendar-days";
 
   import { addMonths, isoAddDays, monthGrid, monthOf } from "$lib/core/calendar";
   import { type DateFormat, getDateFormat } from "$lib/core/dateformat";

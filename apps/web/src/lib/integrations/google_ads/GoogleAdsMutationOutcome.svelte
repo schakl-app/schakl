@@ -9,7 +9,9 @@
    *
    * Business-licensed — see LICENSE.
    */
-  import { AlertTriangle, Check, X } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Check from "@lucide/svelte/icons/check";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
 

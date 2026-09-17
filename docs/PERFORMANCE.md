@@ -567,7 +567,7 @@ Node 22's default old-space cap (~4.3 GB on a 16 GB machine) and every `vite bui
 `Ineffective mark-compacts near heap limit` — exit **134**, not a lint or a type error.
 
 So `apps/web`'s `build` script states its own ceiling
-(`NODE_OPTIONS=--max-old-space-size=6144`). It lives in `package.json` rather than in the CI
+(`NODE_OPTIONS=--max-old-space-size=12288`). It lives in `package.json` rather than in the CI
 workflow because **three** places run this build and only one of them is CI: the `web` job, the
 release image's builder stage (`apps/web/Dockerfile`), and a developer's own machine. A flag set
 in the workflow fixes the red check and still ships a release that cannot build.
@@ -578,6 +578,18 @@ this and not a code error. And the ceiling is a symptom worth watching: when it 
 again, prefer spending the graph down first — deep icon imports (`@lucide/svelte/icons/<name>`)
 retire ~1,700 modules for a mechanical change, which is the cheaper fix and the one that also
 makes every dev server start faster.
+
+**That has now been done, and it bought less than it promised** (September 2026). The ceiling had
+crept to 10 GB without this section being told, and this release's ~180 new message keys pushed
+the build past it: the two Vite passes finished and the process died in `adapter-node`'s bundling,
+which needs only ~1 GB on its own (replayed in isolation: 7 s, 1.4 GB with source maps) but starts
+on top of everything the Vite passes still hold. Every icon is now a deep import (198 files, no
+barrel import left), and the build completes — but at 11.6 GB peak RSS, and with an 8 GB ceiling
+it still dies before the SSR pass ends. So the ceiling went to 12 GB beside the deep imports,
+which fits a 16 GB CI runner with little to spare. Import an icon as
+`import X from "@lucide/svelte/icons/<name>"`, never from the barrel. The next thing to spend down
+is Paraglide's output: ~7,700 keys, each compiled into three functions, all in one server chunk
+(`chunks/i18n.js`, 8 MB), because `t()` looks keys up dynamically through `import * as messages`.
 
 ## Checklist for any new screen or endpoint
 

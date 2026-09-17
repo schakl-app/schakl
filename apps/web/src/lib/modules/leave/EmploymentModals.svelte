@@ -1,6 +1,8 @@
 <script lang="ts" module>
   import type { ActionItem } from "$lib/core/ui/ActionsMenu.svelte";
-  import { BadgeEuro, Briefcase, CalendarClock } from "@lucide/svelte";
+  import BadgeEuro from "@lucide/svelte/icons/badge-euro";
+  import Briefcase from "@lucide/svelte/icons/briefcase";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
 
   import { t } from "$lib/core/i18n";
 

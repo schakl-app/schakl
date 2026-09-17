@@ -1,6 +1,12 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { Ban, Check, ChevronDown, ChevronRight, Pencil, Plus, X } from "@lucide/svelte";
+  import Ban from "@lucide/svelte/icons/ban";
+  import Check from "@lucide/svelte/icons/check";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import X from "@lucide/svelte/icons/x";
 
   import { page } from "$app/state";
   import { fmtPeriod } from "$lib/core/format";

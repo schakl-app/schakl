@@ -12,7 +12,7 @@
    * It draws nothing unless this user's own mailbox is actually opted in and working: a control
    * that always refuses is a broken control (#253).
    */
-  import { RefreshCw } from "@lucide/svelte";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";

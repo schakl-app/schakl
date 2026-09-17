@@ -23,7 +23,7 @@
    * asking, on a bounded schedule, and stops the moment the answer is final. That polling is
    * the *only* reason this component has an effect in it.
    */
-  import { CircleCheck } from "@lucide/svelte";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
 
   import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";

@@ -13,7 +13,9 @@
    * Every write here self-gates on the API's own permission, because /leave is reachable by a
    * `client` portal login and living outside edit mode is not a gate (docs/UX.md, #244).
    */
-  import { CalendarClock, Ban, Pencil } from "@lucide/svelte";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
+  import Ban from "@lucide/svelte/icons/ban";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   import { page } from "$app/state";
   import {

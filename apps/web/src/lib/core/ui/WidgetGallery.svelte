@@ -9,7 +9,7 @@
    * the board itself stays as it was. Used by both the personal dashboard (in edit mode) and the
    * org default template under Instellingen → Dashboard.
    */
-  import { Plus } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
   import { type DashboardWidgetSpec, widgetTitleKey, type WidgetSize } from "$lib/core/registry";

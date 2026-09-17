@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { Download, Check, FileText, Printer, Trash2, X } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import Check from "@lucide/svelte/icons/check";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Printer from "@lucide/svelte/icons/printer";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

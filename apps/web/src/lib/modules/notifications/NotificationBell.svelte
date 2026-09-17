@@ -14,7 +14,9 @@
   import { untrack } from "svelte";
 
   import { invalidateAll } from "$app/navigation";
-  import { Bell, CheckCheck, Settings } from "@lucide/svelte";
+  import Bell from "@lucide/svelte/icons/bell";
+  import CheckCheck from "@lucide/svelte/icons/check-check";
+  import Settings from "@lucide/svelte/icons/settings";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

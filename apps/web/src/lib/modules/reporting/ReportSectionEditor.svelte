@@ -11,7 +11,10 @@
    * would reset the textarea to its (empty) `defaultValue` and write that emptiness back — the
    * exact data loss `pnpm forms:check` exists to prevent.
    */
-  import { Check, Pencil, Sparkles, X } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

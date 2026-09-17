@@ -6,7 +6,9 @@
    * they arrived over an unauthenticated registration endpoint, so they are a stranger's words on
    * a page whose whole purpose is for the reader to trust what it says.
    */
-  import { Bot, Check, ShieldCheck } from "@lucide/svelte";
+  import Bot from "@lucide/svelte/icons/bot";
+  import Check from "@lucide/svelte/icons/check";
+  import ShieldCheck from "@lucide/svelte/icons/shield-check";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

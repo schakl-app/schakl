@@ -16,7 +16,9 @@
    * `fileName` carries an optional upload that the server action prefers over the URL. So no form
    * action changes shape.
    */
-  import { ImageOff, Trash2, Upload } from "@lucide/svelte";
+  import ImageOff from "@lucide/svelte/icons/image-off";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Upload from "@lucide/svelte/icons/upload";
 
   import { t } from "$lib/core/i18n";
   import { filedrop } from "$lib/core/ui/filedrop";

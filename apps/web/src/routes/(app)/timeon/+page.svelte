@@ -17,7 +17,9 @@
    * heading over "geen conflicten" is a heading over a negative sentence (#364), and a queue that
    * sits there greyed out every day is one people stop reading the day it fills.
    */
-  import { AlertTriangle, Link2Off, RefreshCw } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Link2Off from "@lucide/svelte/icons/link-2-off";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { enhance } from "$app/forms";
   import { fmtClockTime, fmtDateTime, fmtNumericDate } from "$lib/core/format";

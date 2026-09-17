@@ -21,7 +21,11 @@
    * §6 is intact: the page still composes whatever the registry hands it. It has only stopped
    * pretending a Drive link and an invoice ledger want the same box.
    */
-  import { ChevronDown, ListChecks, Pencil, Plus, Trash2 } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ListChecks from "@lucide/svelte/icons/list-checks";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { SvelteSet } from "svelte/reactivity";
 

@@ -19,7 +19,8 @@
    * whether it is empty because the client has no social traffic or because nobody ever linked
    * the property, and a list of nine names answers neither.
    */
-  import { Check, Minus } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Minus from "@lucide/svelte/icons/minus";
 
   import { t } from "$lib/core/i18n";
 

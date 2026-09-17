@@ -4,7 +4,9 @@
    * #229): a full DataTable with filters and a personal column layout, one tab of the
    * subscriptions section. The create/edit dialog moved here from the old stacked catalog.
    */
-  import { Pencil, Trash2, TrendingUp } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import TrendingUp from "@lucide/svelte/icons/trending-up";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

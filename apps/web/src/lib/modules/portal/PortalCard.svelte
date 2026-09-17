@@ -8,7 +8,8 @@
    * state, which is the module's own commercial concern, is stated once.
    */
   import { enhance } from "$app/forms";
-  import { Lock, VenetianMask } from "@lucide/svelte";
+  import Lock from "@lucide/svelte/icons/lock";
+  import VenetianMask from "@lucide/svelte/icons/venetian-mask";
 
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";

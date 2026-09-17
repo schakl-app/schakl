@@ -12,7 +12,8 @@
    * Only ever the published, client-facing ones: the API's portal repository decides that, not
    * this component — and on the selected company, because the board is one company at a time.
    */
-  import { Download, FileText } from "@lucide/svelte";
+  import Download from "@lucide/svelte/icons/download";
+  import FileText from "@lucide/svelte/icons/file-text";
 
   import { getLocale } from "$lib/paraglide/runtime";
   import { t } from "$lib/core/i18n";

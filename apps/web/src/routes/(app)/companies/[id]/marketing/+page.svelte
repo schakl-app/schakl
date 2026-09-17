@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";

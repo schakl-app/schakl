@@ -8,7 +8,9 @@
    * red is one the column's own threshold flagged (`alarm_above`), never a colour picked here:
    * red is for faults and critical dropout only (docs/UX.md, spec §11).
    */
-  import { ArrowDown, ArrowUp, Download } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Download from "@lucide/svelte/icons/download";
 
   import { t } from "$lib/core/i18n";
   import { orgToday } from "$lib/core/today";

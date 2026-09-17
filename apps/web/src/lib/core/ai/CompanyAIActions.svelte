@@ -6,7 +6,8 @@
    * model, and a report is always a draft: markdown in the shared editor, saved as a record
    * (auditable, §16), never auto-sent.
    */
-  import { FileText, Sparkles } from "@lucide/svelte";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
 
   import { t } from "$lib/core/i18n";
   import Markdown from "$lib/core/ui/Markdown.svelte";

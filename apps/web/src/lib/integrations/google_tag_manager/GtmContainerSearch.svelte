@@ -18,7 +18,11 @@
    * No inline-create: a Tag Manager container is somebody else's resource, the documented picker
    * exception (docs/UX.md).
    */
-  import { AlertTriangle, Check, ExternalLink, Search, Tags } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Check from "@lucide/svelte/icons/check";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Search from "@lucide/svelte/icons/search";
+  import Tags from "@lucide/svelte/icons/tags";
 
   import { t } from "$lib/core/i18n";
 

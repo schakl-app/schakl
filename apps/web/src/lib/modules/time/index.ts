@@ -6,7 +6,7 @@
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
 import { orgToday } from "$lib/core/today";
-import { Clock } from "@lucide/svelte";
+import Clock from "@lucide/svelte/icons/clock";
 
 import EntriesPanel from "./EntriesPanel.svelte";
 import TimePanel from "./TimePanel.svelte";

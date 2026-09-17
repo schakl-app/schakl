@@ -8,7 +8,9 @@
    * The screen is the same for staff and for a client login; what differs is what the API
    * serves and which controls their permissions draw. `!isPortal` is never the gate here.
    */
-  import { FileText, Play, RefreshCw } from "@lucide/svelte";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Play from "@lucide/svelte/icons/play";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { enhance } from "$app/forms";
   import { goto, invalidate } from "$app/navigation";

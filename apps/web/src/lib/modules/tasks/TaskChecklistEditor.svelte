@@ -20,7 +20,8 @@
    * Every write is a task write (`tasks.task.write`, `:own` means assignee), which the host
    * has already mirrored by drawing this at all; a refusal is shown, never swallowed.
    */
-  import { Sparkles, Trash2 } from "@lucide/svelte";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { tick } from "svelte";
 
   import { t } from "$lib/core/i18n";

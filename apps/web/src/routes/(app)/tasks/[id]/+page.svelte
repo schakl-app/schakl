@@ -1,14 +1,12 @@
 <script lang="ts">
-  import {
-    ArrowDown,
-    ArrowUp,
-    Copy,
-    GripVertical,
-    Link as LinkIcon,
-    Plus,
-    Sparkles,
-    Trash2,
-  } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Copy from "@lucide/svelte/icons/copy";
+  import GripVertical from "@lucide/svelte/icons/grip-vertical";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { tick } from "svelte";
   import { dndzone } from "svelte-dnd-action";
 

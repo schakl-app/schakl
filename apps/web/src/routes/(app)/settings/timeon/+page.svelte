@@ -20,7 +20,9 @@
    * else's API and there is no way to fix it here, so the screen states it where the number is
    * set rather than leaving it to be discovered in March.
    */
-  import { AlertTriangle, CheckCircle2, Trash2 } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";

@@ -13,7 +13,9 @@
    * so the back button lands where the user left and a link to a client's dashboard is
    * shareable (CLAUDE.md §9, the URL is the view).
    */
-  import { AlertTriangle, Clock, Plus } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Clock from "@lucide/svelte/icons/clock";
+  import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
 

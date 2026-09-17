@@ -16,7 +16,8 @@
    * so a holder of only `oxxa.settings.manage` sees the credentials and no register at all —
    * rather than an empty table that lies about what is in it.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

@@ -1,4 +1,4 @@
-import { AppWindow } from "@lucide/svelte";
+import AppWindow from "@lucide/svelte/icons/app-window";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

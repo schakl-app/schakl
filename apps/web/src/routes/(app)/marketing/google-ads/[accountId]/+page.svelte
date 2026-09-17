@@ -12,7 +12,10 @@
    * deliberately keep — the second of which leaves no trace in Google and is therefore the half
    * that gets re-proposed forever if it is not written down.
    */
-  import { AlertTriangle, Check, Pause, Play } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import Check from "@lucide/svelte/icons/check";
+  import Pause from "@lucide/svelte/icons/pause";
+  import Play from "@lucide/svelte/icons/play";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

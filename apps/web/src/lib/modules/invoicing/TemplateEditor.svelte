@@ -14,7 +14,9 @@
    * catalog. That is what lets a field added by a later release appear on a template laid out
    * today, instead of being silently absent because this editor never named it.
    */
-  import { ChevronDown, ChevronUp, Lock } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import ChevronUp from "@lucide/svelte/icons/chevron-up";
+  import Lock from "@lucide/svelte/icons/lock";
 
   import { t } from "$lib/core/i18n";
   import { editLocale } from "$lib/core/i18n-edit.svelte";

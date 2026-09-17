@@ -4,7 +4,7 @@
  * and the Overzicht grid. The panel's data comes from the API PanelSpec of the same key.
  * Self-registers on import via the `lib/modules` barrel.
  */
-import { LineChart } from "@lucide/svelte";
+import LineChart from "@lucide/svelte/icons/line-chart";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

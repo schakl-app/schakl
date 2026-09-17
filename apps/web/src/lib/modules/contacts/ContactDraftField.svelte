@@ -13,7 +13,7 @@
    * Typing an unknown name opens the *full* new-contact dialog (real fields plus the tenant's
    * contact custom fields), never a name-only stub (docs/UX.md).
    */
-  import { X } from "@lucide/svelte";
+  import X from "@lucide/svelte/icons/x";
 
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";

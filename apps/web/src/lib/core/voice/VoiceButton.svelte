@@ -7,7 +7,8 @@
    * can actually work — the caller checks `recordingSupported()` after mount, never a user
    * agent — because a typed field sits right next to it as the fallback.
    */
-  import { Mic, Square } from "@lucide/svelte";
+  import Mic from "@lucide/svelte/icons/mic";
+  import Square from "@lucide/svelte/icons/square";
 
   import { t } from "$lib/core/i18n";
   import Button from "$lib/core/ui/Button.svelte";

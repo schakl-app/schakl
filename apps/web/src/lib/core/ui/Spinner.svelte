@@ -5,7 +5,7 @@
    * stands next to visible text that says what is happening (a button label, a loading
    * line), never alone as the only signal.
    */
-  import { LoaderCircle } from "@lucide/svelte";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
   let { size = 16, class: klass = "" }: { size?: number; class?: string } = $props();
 </script>

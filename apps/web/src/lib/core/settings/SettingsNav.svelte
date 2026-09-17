@@ -34,7 +34,8 @@
    * that list — so it renders the rail with `showSearch={false}`, and there is exactly one search
    * box per screen everywhere.
    */
-  import { ChevronRight, Search } from "@lucide/svelte";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Search from "@lucide/svelte/icons/search";
 
   import { browser } from "$app/environment";
   import { t } from "$lib/core/i18n";

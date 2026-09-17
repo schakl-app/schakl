@@ -8,7 +8,7 @@
    *
    * Use-vs-edit (docs/UX.md): the page reads as a record and the pencil turns it into a form.
    */
-  import { Trash2 } from "@lucide/svelte";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

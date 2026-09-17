@@ -15,7 +15,8 @@
    * a modal that closes takes its own success line with it. Toggling and deleting keep the
    * modal open, so those keep reporting through `generated` right here.
    */
-  import { Clock, Trash2 } from "@lucide/svelte";
+  import Clock from "@lucide/svelte/icons/clock";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import {

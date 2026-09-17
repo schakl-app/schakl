@@ -19,7 +19,8 @@
    * whole roster is serialised into one hidden field that the form action forwards to the API as
    * `assignees`. `formId` associates it with a <form> it does not sit inside.
    */
-  import { Star, X } from "@lucide/svelte";
+  import Star from "@lucide/svelte/icons/star";
+  import X from "@lucide/svelte/icons/x";
 
   import { t } from "$lib/core/i18n";
   import { memberArchivedLabel, memberLabel, splitMemberOptions } from "$lib/core/members";

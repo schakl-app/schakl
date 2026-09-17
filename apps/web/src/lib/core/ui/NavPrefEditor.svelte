@@ -15,7 +15,10 @@
    * org-wide config, so the personal editor never shows them; it still posts order + visibility
    * alone, and the row text there just reflects whatever the org renamed the item to.
    */
-  import { ArrowDown, ArrowUp, Eye, EyeOff } from "@lucide/svelte";
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Eye from "@lucide/svelte/icons/eye";
+  import EyeOff from "@lucide/svelte/icons/eye-off";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

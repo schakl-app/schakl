@@ -9,7 +9,9 @@
    *
    * A client's own profile is not on this page. It belongs on the client.
    */
-  import { ChevronDown, Plus, Trash2 } from "@lucide/svelte";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { SvelteSet } from "svelte/reactivity";
 
   import { enhance } from "$app/forms";

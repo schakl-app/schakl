@@ -12,7 +12,9 @@
    * Posts to `?/saveAvailability`, `?/moveAvailability` or `?/updateAvailability` — every host
    * declares all three by spreading `availabilityActions` (availability.server.ts).
    */
-  import { ArrowRight, CalendarPlus, CalendarX } from "@lucide/svelte";
+  import ArrowRight from "@lucide/svelte/icons/arrow-right";
+  import CalendarPlus from "@lucide/svelte/icons/calendar-plus";
+  import CalendarX from "@lucide/svelte/icons/calendar-x";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

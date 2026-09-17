@@ -24,7 +24,8 @@
    * browser that had just deleted the cookie; the probe is the server's own answer. A network
    * failure is neither, and `probeSession` reads it as "keep going" for that reason.
    */
-  import { LogIn, ShieldAlert } from "@lucide/svelte";
+  import LogIn from "@lucide/svelte/icons/log-in";
+  import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 
   import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";

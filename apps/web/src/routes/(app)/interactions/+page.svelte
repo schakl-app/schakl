@@ -7,20 +7,18 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import {
-    ArrowRightLeft,
-    Check,
-    CheckCheck,
-    Inbox,
-    Link2,
-    List as ListIcon,
-    Mail,
-    Pencil,
-    Plus,
-    Search,
-    Trash2,
-    X,
-  } from "@lucide/svelte";
+  import ArrowRightLeft from "@lucide/svelte/icons/arrow-right-left";
+  import Check from "@lucide/svelte/icons/check";
+  import CheckCheck from "@lucide/svelte/icons/check-check";
+  import Inbox from "@lucide/svelte/icons/inbox";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import ListIcon from "@lucide/svelte/icons/list";
+  import Mail from "@lucide/svelte/icons/mail";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Search from "@lucide/svelte/icons/search";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

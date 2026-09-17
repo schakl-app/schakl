@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { Ban, Bell, Download, FileMinus, Printer, Send, Trash2 } from "@lucide/svelte";
+  import Ban from "@lucide/svelte/icons/ban";
+  import Bell from "@lucide/svelte/icons/bell";
+  import Download from "@lucide/svelte/icons/download";
+  import FileMinus from "@lucide/svelte/icons/file-minus";
+  import Printer from "@lucide/svelte/icons/printer";
+  import Send from "@lucide/svelte/icons/send";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

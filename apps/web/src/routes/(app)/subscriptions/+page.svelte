@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { BookmarkPlus, Building2, Pencil, Trash2, TrendingUp } from "@lucide/svelte";
+  import BookmarkPlus from "@lucide/svelte/icons/bookmark-plus";
+  import Building2 from "@lucide/svelte/icons/building-2";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import TrendingUp from "@lucide/svelte/icons/trending-up";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

@@ -23,7 +23,7 @@
    * `<button>`: a click on an `<a>` navigates and nothing else, a click on the value opens, and
    * the pencil is a real button so the keyboard has one.
    */
-  import { Pencil } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
   import { tick, type Snippet } from "svelte";
 
   import { enhance } from "$app/forms";

@@ -18,7 +18,7 @@
    * already patches only the fields the posted form carries, so nothing else on the record is
    * touched by a save from here.
    */
-  import { Pencil } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";

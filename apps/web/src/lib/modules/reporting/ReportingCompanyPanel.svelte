@@ -11,7 +11,8 @@
    * them, and a control that would 403 is never drawn (docs/UX.md — `!isPortal` is not the gate,
    * the permission is).
    */
-  import { CalendarClock, Settings2 } from "@lucide/svelte";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
+  import Settings2 from "@lucide/svelte/icons/settings-2";
 
   import { page } from "$app/state";
 

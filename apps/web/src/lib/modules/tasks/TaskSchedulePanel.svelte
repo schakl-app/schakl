@@ -4,7 +4,9 @@
    * once a block's time has passed — log the worked hours from it in one click (confirm-to-log,
    * the owner's choice). Every mutation posts to the host page's schedule actions.
    */
-  import { CalendarClock, Pencil, Trash2 } from "@lucide/svelte";
+  import CalendarClock from "@lucide/svelte/icons/calendar-clock";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { fmtDayMonth, RANGE_DASH } from "$lib/core/format";

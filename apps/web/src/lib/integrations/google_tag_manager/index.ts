@@ -14,7 +14,7 @@
  * `marketingConnectors` entry below, which puts it in the one control that attaches every
  * marketing source.
  */
-import { Tags } from "@lucide/svelte";
+import Tags from "@lucide/svelte/icons/tags";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";

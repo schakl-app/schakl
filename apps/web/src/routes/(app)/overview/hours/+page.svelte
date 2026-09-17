@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Check, Pencil, Trash2 } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";

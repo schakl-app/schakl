@@ -22,7 +22,7 @@
    * A link a viewer cannot follow is a broken control (#253), which is why neither branch ever
    * renders a CTA it cannot honour.
    */
-  import { Lock } from "@lucide/svelte";
+  import Lock from "@lucide/svelte/icons/lock";
 
   import { t } from "$lib/core/i18n";
   import Button from "$lib/core/ui/Button.svelte";

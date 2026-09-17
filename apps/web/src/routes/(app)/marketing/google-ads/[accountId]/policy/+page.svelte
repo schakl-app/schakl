@@ -12,7 +12,7 @@
    *
    * Business-licensed — see LICENSE.
    */
-  import { ArrowLeft } from "@lucide/svelte";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

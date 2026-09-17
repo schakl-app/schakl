@@ -14,7 +14,10 @@
    * telling somebody what it needs from them — an unmapped person, a client Timeon has and schakl
    * does not — and must not make a run red. An error is something that went wrong.
    */
-  import { AlertTriangle, CheckCircle2, Info, XCircle } from "@lucide/svelte";
+  import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
+  import Info from "@lucide/svelte/icons/info";
+  import XCircle from "@lucide/svelte/icons/x-circle";
 
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

@@ -9,7 +9,8 @@
    * drill-downs, relabel key events in the table itself — and every change persists immediately
    * through the host page's `?/saveLayout` action. No separate editor form.
    */
-  import { Check, Pencil } from "@lucide/svelte";
+  import Check from "@lucide/svelte/icons/check";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";

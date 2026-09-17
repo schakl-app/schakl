@@ -4,7 +4,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
-import { Users } from "@lucide/svelte";
+import Users from "@lucide/svelte/icons/users";
 
 import ContactsPanel from "./ContactsPanel.svelte";
 

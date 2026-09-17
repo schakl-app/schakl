@@ -37,7 +37,9 @@
    * Nothing here fetches: `intents` rides the invoice's **detail** read, which the page already
    * loaded (docs/PERFORMANCE.md — a list draws none of this and pays for none of it).
    */
-  import { Copy, ExternalLink, RefreshCw } from "@lucide/svelte";
+  import Copy from "@lucide/svelte/icons/copy";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   import { enhance } from "$app/forms";
   import { invalidateAll } from "$app/navigation";

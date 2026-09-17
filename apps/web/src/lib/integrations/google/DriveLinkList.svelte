@@ -12,7 +12,9 @@
    * **Host contract:** the page exposes `?/unlinkDriveFile` and `?/deleteDriveFile`
    * (spread `driveActions`).
    */
-  import { ExternalLink, Link2Off, Trash2 } from "@lucide/svelte";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
+  import Link2Off from "@lucide/svelte/icons/link-2-off";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";

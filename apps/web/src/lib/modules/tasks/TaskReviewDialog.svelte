@@ -46,7 +46,7 @@
    * Escape, clicked the backdrop or followed the link to the full task, so the host can close
    * the review it was standing on.
    */
-  import { Link as LinkIcon } from "@lucide/svelte";
+  import LinkIcon from "@lucide/svelte/icons/link";
 
   import { deserialize, enhance } from "$app/forms";
   import { goto } from "$app/navigation";

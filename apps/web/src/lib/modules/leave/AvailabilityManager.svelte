@@ -15,7 +15,11 @@
    * agreed, and "I'm also free on Wednesdays from now on" is a weekly extra, not a rewrite of
    * the period somebody was engaged under.
    */
-  import { ArrowRight, CalendarPlus, CalendarX, Pencil, Trash2 } from "@lucide/svelte";
+  import ArrowRight from "@lucide/svelte/icons/arrow-right";
+  import CalendarPlus from "@lucide/svelte/icons/calendar-plus";
+  import CalendarX from "@lucide/svelte/icons/calendar-x";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";

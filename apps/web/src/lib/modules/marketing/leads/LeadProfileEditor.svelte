@@ -8,7 +8,8 @@
    * validates the record whole and names the field it refuses. Nothing here is a default for
    * any client: an empty profile draws nothing, and every event name is typed or picked.
    */
-  import { Plus, X } from "@lucide/svelte";
+  import Plus from "@lucide/svelte/icons/plus";
+  import X from "@lucide/svelte/icons/x";
 
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";

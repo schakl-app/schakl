@@ -14,7 +14,10 @@
  * Separate from `core/state.ts` because a lucide icon is a `.svelte` file and the palette's
  * rules are asserted by a plain-node test — see the note at the foot of that file.
  */
-import { CircleAlert, CircleCheck, CircleDot, Clock } from "@lucide/svelte";
+import CircleAlert from "@lucide/svelte/icons/circle-alert";
+import CircleCheck from "@lucide/svelte/icons/circle-check";
+import CircleDot from "@lucide/svelte/icons/circle-dot";
+import Clock from "@lucide/svelte/icons/clock";
 import type { Component } from "svelte";
 
 import type { UiState } from "$lib/core/state";

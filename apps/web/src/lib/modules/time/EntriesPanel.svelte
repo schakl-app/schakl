@@ -17,7 +17,8 @@
    * form actions (SvelteKit actions live on the page, so the host owns them). Mirrors the Uren
    * report's, which post the same fields.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";

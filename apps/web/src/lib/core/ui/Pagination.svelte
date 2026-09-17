@@ -24,7 +24,10 @@
    * say "1–50 of 50" over four thousand rows with total confidence. `count=false` belongs on
    * pickers and lookups — never on the read behind a `<Pagination>`.
    */
-  import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "@lucide/svelte";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import ChevronsLeft from "@lucide/svelte/icons/chevrons-left";
+  import ChevronsRight from "@lucide/svelte/icons/chevrons-right";
 
   import { goto } from "$app/navigation";
   import { page as pageState } from "$app/state";
