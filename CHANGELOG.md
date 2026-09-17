@@ -2,6 +2,98 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.48.0 — 2026-09-17
+
+A client's leads now have a dashboard of their own: form requests, calls and e-mail clicks from
+GA4, with the Google Ads spend behind them. Each client is read through a measurement profile that
+maps their own event names onto a fixed set of questions, which replaces the Looker Studio report an
+agency used to build by hand for every client. The task page loses its separate edit mode: every
+field is now edited where it is shown. The e-mail intake handles the first real mails better: a
+forwarded client mail is filed on the task as a contact moment, and "deadline vrijdag" lands on the
+Friday.
+
+One migration, `b7e3c9d14f6a` (`marketing_add_lead_profile`, revises `d5e1f7a2c9b4`): two
+nullable JSONB columns, expand-only and rollback-safe. No new permission keys. New endpoints:
+`GET /marketing/companies/{id}/leads` (`marketing.metrics.read`) and
+`GET /marketing/companies/{id}/leads/catalog` (`marketing.link.manage`). The marketing company
+settings accept `lead_profile`, and the marketing settings accept `channel_groups`. A period token
+may now be a free span (`2026-08-29..2026-09-03`) everywhere a period is accepted. Three new
+optional environment variables with production defaults: `SCHAKL_GOOGLE_ADS_API_HOST`,
+`SCHAKL_GOOGLE_ANALYTICS_DATA_BASE_URL` and `SCHAKL_GOOGLE_ANALYTICS_ADMIN_BASE_URL`. File uploads
+now accept Markdown and PowerPoint files. The public API reference and the typed client are
+regenerated.
+
+### Marketing
+
+- **The leads dashboard.** It sits on the client's Marketing tab and on `/marketing`, and it also
+  appears as a tile on the client's portal homepage. It shows scorecards for requests, quotes,
+  phone and e-mail contacts and failed submissions, then requests per day, service, channel, page
+  and form type. It also shows a funnel from form started to form submitted, the error reasons and
+  where they happen, and what Google Ads spent and converted per day, campaign and conversion
+  action, with the impression share lost to budget. Clicking a bar or a table row filters the whole
+  page by that value. The filter lives in the URL, so a filtered view is a link and the back button
+  undoes it. Tables sort, page and export to CSV.
+- **A measurement profile per client** (`/companies/{id}/marketing/profile`). The profile says
+  which GA4 events count as a request, a started, submitted or failed form, a phone click, an
+  e-mail click or an application. It also names the dimensions the page may group by, with a label
+  for each value, and says which form types are quotes, which Ads conversion actions belong to
+  which service, and where the measurement changed (breakpoints). Everything is picked from a live
+  list of the client's own GA4 property and Ads account, so nothing has to be typed from memory. A
+  client without a profile has no leads dashboard, which is how every client starts after this
+  upgrade.
+- **Missing data is flagged instead of shown as zero.** A widget the profile cannot answer is
+  listed with the reason. Sampled or thresholded GA4 answers, a period that starts before a
+  breakpoint, traffic without a single request, an event dimension GA4 has not registered, and
+  the `(not set)` share per dimension are all shown on the page. A client login sees the numbers
+  and the fixed note, never the diagnostics about the agency's setup.
+- **Channel grouping.** Instellingen → Marketing regroups GA4's channels into Organisch,
+  Advertenties, AI and Overig. Cross-network (Performance Max) counts as advertising by default. A
+  client's profile can override the grouping.
+- **A free date range.** The period picker offers any span beside the months and quarters.
+- Monthly reports gain a **leads** section that reads the same numbers as the dashboard. A client
+  without a profile gets no leads section.
+
+### Tasks
+
+- **The task page has one mode.** The ⋯ → Bewerken mode and its Opslaan button at the bottom are
+  gone. You rename the title by clicking it. The status, client, assignee, priority, budget,
+  labels, description, checklist and links are each edited in place and saved on their own. The
+  status reads as a coloured dot beside its name. Dropdowns and checkboxes save as soon as you pick
+  and close when you click elsewhere. A new task opens on the same page with nothing open.
+- **Confirming the reason for a later deadline saves it.** Bevestigen saves the new date and the
+  reason together, and "keep the old date" puts the date back. Pressing Enter in the date box
+  used to log the change three times; it now logs it once.
+- **The e-mail intake, after its first live mails:**
+  - "deadline vrijdag" sent on a Monday landed on the Thursday. Deadline phrases in the mail are
+    now read directly, and the model is told the weekday of every date in the next two weeks.
+  - A mail sent only to the task address no longer shows up as a pending contact moment.
+  - A forwarded client mail is filed on the task as an e-mail contact moment, under the original
+    sender's name and date, or linked to the copy a connected mailbox already logged. The task's
+    notes keep only what the colleague wrote, without their signature.
+  - A `.md` attachment that the mail labelled as a generic binary file is now recognised as
+    Markdown. An attachment that is still refused is named on the confirmation and in the task's
+    notes.
+
+### Build
+
+- **The web build fits in memory again.** Since the leads dashboard landed, every web build on
+  `dev` ran out of memory in its last step. That included the release image's build stage, so
+  a tag would not have built either. Every icon is now imported from its own module
+  (`@lucide/svelte/icons/<name>`) instead of through the package's index of 1,700 icons, and
+  the build's heap ceiling goes from 10 GB to 12 GB. Building the web image yourself needs a
+  machine with about 12 GB free.
+
+### Upgrade notes
+
+- The migration runs unattended on start-up and only adds nullable columns. Nothing changes until
+  someone saves a measurement profile for a client.
+- The leads dashboard reads the client's GA4 property and Google Ads account through the existing
+  Google connections. Answers are cached in Redis for an hour.
+- The three new environment variables exist so a test stack can point at a fake Google. Leave
+  them unset in production.
+- The task page's `?edit=1` links from older notifications still work: they open the page with
+  nothing in edit mode.
+
 ## v0.47.0 — 2026-09-14
 
 A task can now arrive by e-mail: an employee mails the org's task address — a note, a forwarded
