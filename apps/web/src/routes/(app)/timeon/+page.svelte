@@ -30,11 +30,12 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import ConflictCard from "$lib/integrations/timeon/ConflictCard.svelte";
   import RunReport from "$lib/integrations/timeon/RunReport.svelte";
-  import type {
-    TimeonAccount,
-    TimeonConflict,
-    TimeonLink,
-    TimeonRun,
+  import {
+    projectsUndecided,
+    type TimeonAccount,
+    type TimeonConflict,
+    type TimeonLink,
+    type TimeonRun,
   } from "$lib/integrations/timeon/types";
 
   let { data, form } = $props();
@@ -244,7 +245,7 @@
           <Button
             type="submit"
             name="kind"
-            value="hours"
+            value="full"
             loading={busy.is("sync")}
             disabled={busy.active}
           >
@@ -291,6 +292,43 @@
       <section class="mb-6">
         <h2 class="mb-2 text-base font-semibold text-text">{t("timeon.workspace.result")}</h2>
         <RunReport run={form.run} />
+        {#if account && projectsUndecided(form.run) && data.mayWrite && data.mayWriteHours}
+          <!-- Asked here, under the run that found it, and never as a setting: which side is
+               right about a project nobody has a record for is a question with a different
+               answer per occasion, and the hours' conflict policy is not it. -->
+          <form
+            method="POST"
+            action="?/sync"
+            class="mt-3 rounded-lg border border-border bg-surface p-3"
+            use:enhance={busy.keep("prefer")}
+          >
+            <input type="hidden" name="account_id" value={account.id} />
+            <input type="hidden" name="kind" value="projects" />
+            <input type="hidden" name="apply" value="1" />
+            <p class="text-sm font-medium text-text">{t("timeon.workspace.prefer_title")}</p>
+            <p class="mt-0.5 text-xs text-text-muted">{t("timeon.workspace.prefer_help")}</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                variant="secondary"
+                name="prefer"
+                value="schakl"
+                disabled={busy.active}
+              >
+                {t("timeon.workspace.prefer_schakl")}
+              </Button>
+              <Button
+                type="submit"
+                variant="secondary"
+                name="prefer"
+                value="timeon"
+                disabled={busy.active}
+              >
+                {t("timeon.workspace.prefer_timeon")}
+              </Button>
+            </div>
+          </form>
+        {/if}
       </section>
     {/if}
 

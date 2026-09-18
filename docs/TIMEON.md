@@ -144,6 +144,83 @@ These are `sync.py`'s own numbering; each is here because getting it wrong is ex
 9. **A dry run is the default**, at the API and on the screen. Every counter is computed and
    nothing is written, so an agency can see exactly what turning this on would do (#305).
 
+### 5a. Projects travel too, and for a month they did not
+
+The settings screen offered `projects_direction = push` and `two_way`, the plan on `/timeon` said
+*"Projectwijzigingen gaan naar Timeon"*, and **nothing in the engine wrote a project to Timeon**.
+`client.create_project` and `client.save_project` existed and had no caller. `_pair_projects`
+walked **Timeon's** project list and nothing else, so a project made in schakl was never looked
+at; the direction was read for one purpose, deciding whether a *Timeon* project might be created
+*here*. On breik.'s own connection (`two_way`, `create_missing_projects` on) every run reported
+`projects_read: 159` — Timeon's count — and an hour booked on a new schakl project went over
+with no project attached, because `_reference_out` had no Timeon id to send. That last part is
+how it was noticed.
+
+A second cause hid behind the first: both buttons on `/timeon` posted `kind: "hours"`, and only
+`full` and `projects` runs may create anything. So a manual press never created a project in
+*either* direction; the scheduled run was the only one that could.
+
+What the project phase does now, in the order it does it:
+
+1. **Pairs, by stored link first and by name second.** The name is how two projects are
+   *recognised* the first time. Matching on it every run meant a rename on either side read as
+   "unknown project", and with `create_missing_projects` on the run made a second copy here and
+   re-pointed the link at it. A pairing whose schakl half was deleted is reported
+   (`project_gone_here`) and left alone — re-creating it would be the sync overruling somebody.
+2. **Creates what is missing, in the direction projects travel.** `create_missing_projects` is
+   one switch for both directions. Towards Timeon: open, named projects only, under a client
+   Timeon knows (`project_no_customer` otherwise — clients are paired on their number and never
+   invented). The create is **never retried** on a 5xx or a timeout: it may well have happened,
+   and a second one is a second project. A create that is interrupted is met again safely,
+   because the next run finds that name under that client and pairs it.
+3. **Keeps four fields in step, per field**: name, open/closed, billable by default, budget. The
+   link's `observed.base` records what the two sides last agreed on, *per field*, which is what
+   answers "who moved" — a budget raised here and a project closed there are two changes by two
+   people and both land. A one-way direction answers for itself. In `two_way`, a field that both
+   sides changed — or that differs on a pairing with **no record at all**, which is every pairing
+   made before this existed — follows `conflict_policy`, and under `manual` it is *reported and
+   left alone* (`project_differs_*`). The run report then offers the two honest answers
+   (`prefer: "schakl" | "timeon"` on the sync request, for that run only); it is deliberately not
+   a setting, and it never touches hours.
+
+Only `full` and `projects` runs do 2 and 3. An hours run and *Alleen koppelen* pair references
+and stop, as their names promise.
+
+**What "invoicability" is, on each side.** schakl decides billability per entry (#284) and a
+project carries only a default; Timeon has the same default (`defaultBillable`) *and* a project
+**kind** (`projectTypeID`: billable, non-billable, leave, special leave, sick). A project pushed
+from here is always kind *billable* with the default set as it is here, because a kind that
+forbade a billable hour would refuse rows schakl holds. An hour's own billable flag already
+travelled with the hour.
+
+**Budgets.** A Timeon budget is a **resource of its own** (`/api/budget`), not a field of the
+project, so a create is two calls and the second can fail alone (`project_budget_failed`: the
+project is paired, the budget is simply not agreed yet and is tried again next run). `unitType`
+`1` is hours with the value in **seconds**, `2` is euros; one budget per project, so where a
+schakl project carries both, hours win. An existing budget is sent back whole with its two
+numbers changed, so the switches schakl has no word for — count only approved hours, leaders-only
+visibility, excluded categories — survive. Compared in *hours to two decimals*, because the
+importer stored `round(seconds / 3600, 2)` and comparing seconds would report 84,33 h as changed
+by twelve seconds forever. **A budget that resets** (`monthly` / `weekly` / `daily`) has nothing
+to become: Timeon's own screen only ever writes `periodType: 0`. It canonicalises to the sentinel
+— rule 4, *a difference no direction of sync could act on is not a difference* — and the run
+says so once (`project_budget_period`). The old pull also read every budget as seconds, so a
+€ 1500 budget arrived here as 0,42 hours; the unit is read now.
+
+**Where the write shapes came from.** Timeon's OpenAPI document gives `unitType`, `periodType`
+and `projectTypeID` as bare integer enums and describes no responses, so they were read out of
+Timeon's own web app (`app.timeon.nl`'s budget form and project dialog), the one client known
+to work: what it sends on create (`customerID`, `name`, the number from
+`POST /api/project/getnextnumber`, `projectTypeID`), that a status change goes through
+`PATCH /api/project/status` and nothing else, that `project/save` is sent the project as just
+read with the edits merged in (it **replaces**, like `hour/save`), and the budget body above.
+**None of it has been exercised against the live organisation** — the fake reproduces the two
+facts that matter (budgets as a resource, a wholesale save) and that is all it proves. Before
+trusting it: a **Proefrun** first, read what it would create and what it reports as differing;
+then let it create **one** project and compare that row in Timeon's own screen, budget included.
+What `project/create` *answers* is the least certain part, which is why an answer carrying no id
+is followed by a look at the list rather than by a second create.
+
 ### 6. What is configurable, and why each one is a setting
 
 | setting | default | why it is not decided in code |
@@ -155,7 +232,7 @@ These are `sync.py`'s own numbering; each is here because getting it wrong is ex
 | `protect_invoiced` | on | §2 |
 | `protect_approved` | off | an approval correction arriving from Timeon is ordinary mid-migration |
 | `push_approvals` | off | approving is a different act from logging |
-| `create_missing_projects` | off | a project is a thing an agency names deliberately; a sync inventing 157 is a mess to undo |
+| `create_missing_projects` | off | a project is a thing an agency names deliberately; a sync inventing 157 is a mess to undo. One switch for **both** directions (§5a): it creates wherever `projects_direction` lets projects travel |
 | `create_missing_users` | off | an account is a person, a membership may cost a seat, and the alternative failure ("3 people's hours were skipped") is loud and harmless |
 | `auto_sync` | off | a scheduled job that started the moment a key was pasted would make connecting an irreversible act |
 | `auto_frequency` · `auto_interval_hours` · `auto_time` | `daily` at `04:20` | §6a |

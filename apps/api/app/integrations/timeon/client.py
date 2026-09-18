@@ -236,7 +236,12 @@ class TimeonClient:
         return self._token
 
     async def call(
-        self, path: str, payload: dict[str, Any] | None = None, *, method: str | None = None
+        self,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        method: str | None = None,
+        retry: bool = True,
     ) -> Any:
         """One API call, returning ``resultObject``.
 
@@ -261,7 +266,7 @@ class TimeonClient:
                         headers=headers,
                     )
                 except httpx.HTTPError as exc:  # pragma: no cover - network shape
-                    if attempt < 3:
+                    if attempt < 3 and retry:
                         await asyncio.sleep(attempt)
                         continue
                     raise TimeonError(f"Timeon unreachable: {exc}", path=path) from exc
@@ -282,7 +287,7 @@ class TimeonClient:
             if res.status_code == 401 and attempt < 3:
                 self._token = None  # the four-hour token lapsed mid-run
                 continue
-            if res.status_code in _RETRY_STATUSES and attempt < 3:
+            if res.status_code in _RETRY_STATUSES and attempt < 3 and retry:
                 await asyncio.sleep(attempt)
                 continue
             if res.status_code >= 400:
@@ -407,10 +412,51 @@ class TimeonClient:
         path = "/api/hour/approve" if approved else "/api/hour/disapprove"
         await self.call(path, {"hourIDs": ",".join(str(i) for i in hour_ids)})
 
+    # --- project writes -------------------------------------------------------- #
+    # None of these bodies are in the OpenAPI document as more than bare integers; the shapes
+    # are the ones Timeon's own web app sends (``project_mapping.py`` names each).
+
+    async def project(self, project_id: int) -> dict[str, Any]:
+        """One project, whole — what a save has to send back (the save replaces)."""
+        return await self.call(f"/api/project/{int(project_id)}") or {}
+
+    async def next_project_number(self) -> str | None:
+        """The number Timeon would give the next project. Its own "new project" dialog asks for
+        one before every create, and a project made without it has a blank where every other
+        row in their list has a number."""
+        number = await self.call("/api/project/getnextnumber", method="POST")
+        return str(number) if number not in (None, "") else None
+
     async def create_project(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.call("/api/project/create", payload) or {}
+        """Create a project. **Never retried**: a create that answered 502 may well have
+        happened, and a second one is a second project — the caller looks before it tries again
+        (``google_ads``' rule: a retry is safe for a read and never for a write)."""
+        res = await self.call("/api/project/create", payload, retry=False)
+        return res if isinstance(res, dict) else {}
 
     async def save_project(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Replace a project. ``ProjectUpdate`` in Timeon's own schema, and wholesale like the
         hour save — the caller sends everything it wants kept."""
-        return await self.call("/api/project/save", payload) or {}
+        res = await self.call("/api/project/save", payload)
+        return res if isinstance(res, dict) else {}
+
+    async def set_project_status(self, project_id: int, status_id: int) -> None:
+        """Open or close a project, through the one endpoint that changes nothing else."""
+        await self.call(
+            "/api/project/status",
+            {"projectID": int(project_id), "statusID": int(status_id)},
+            method="PATCH",
+        )
+
+    async def project_budget(self, project_id: int) -> dict[str, Any] | None:
+        """The project's budget **resource** (its switches, its id), or ``None``. The ``budget``
+        object on a list row is the computed summary, not something that can be sent back."""
+        res = await self.call(f"/api/budget/project/{int(project_id)}")
+        return res if isinstance(res, dict) and res.get("budgetID") else None
+
+    async def save_budget(self, payload: dict[str, Any]) -> dict[str, Any]:
+        res = await self.call("/api/budget", payload, retry=bool(payload.get("budgetID")))
+        return res if isinstance(res, dict) else {}
+
+    async def delete_budget(self, budget_id: int) -> None:
+        await self.call(f"/api/budget/{int(budget_id)}", method="DELETE")

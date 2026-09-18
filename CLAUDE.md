@@ -1723,6 +1723,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   gate: the per-account loop's `rollback` — which existed so one connection's failure would not
   stop the next — also **discarded the hours the previous connection had just synced**, so the
   loop commits per account and re-binds the transaction-local RLS GUC after each one.
+- **A direction the settings offer is a direction the engine owes, and a client method with no
+  caller is the tell** (`timeon` projects, `docs/TIMEON.md` §5a). `projects_direction` offered
+  `push` and `two_way`, the plan on the screen said *"Projectwijzigingen gaan naar Timeon"*, and
+  nothing wrote a project to Timeon for a month: `_pair_projects` walked **Timeon's** list only,
+  `create_project` / `save_project` had no caller, and the direction was read solely to decide
+  whether a Timeon project might be created *here*. It was noticed sideways — hours on a new
+  schakl project arrived over there on no project. Four rules generalise. **Walk both lists**: a
+  sync that iterates one side can only ever discover the other side's absences. **A stored
+  pairing outranks the key it was made with** — matching on `(client, name)` every run turned a
+  rename into "unknown project" and, with create-missing on, into a duplicate. **Merge per field,
+  against a record of what was last agreed** (`observed.base` on the link): a budget raised here
+  and a project closed there are two changes by two people, and where no record exists nobody can
+  know who moved, so a two-way `manual` connection *reports and asks* (`prefer` on the run, never
+  a setting) rather than guessing. And **an enum the vendor's document leaves as bare integers is
+  read out of the vendor's own client** — Timeon's web app is what says `unitType 1` is hours in
+  seconds, `2` euros, `periodType` always `0` (so a budget that resets is unsayable, a sentinel,
+  and one warning), that a budget is its own resource, and that a save replaces. Its sibling is
+  the screen's: both buttons on `/timeon` posted `kind: "hours"`, the one kind that may not
+  create, so no manual press ever made a project in either direction — a default that quietly
+  narrows what a button does is the same fault as the engine's, one layer up. And a create is
+  **never retried**: a 502 may have happened, and the second attempt is a second project.
 - **A notification that names something inside a record has to open *that*, and the record has to
   be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
   three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`

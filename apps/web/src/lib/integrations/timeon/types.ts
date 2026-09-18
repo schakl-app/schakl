@@ -48,6 +48,13 @@ export const RUN_TILES: { key: string; tone: "good" | "warn" | "plain" }[] = [
   { key: "pushed_new", tone: "good" },
   { key: "pushed", tone: "good" },
   { key: "adopted", tone: "good" },
+  // Projects, counted per project rather than per field. They were never a tile at all — a run
+  // that created three projects here said "niets te doen" — which is half of why a project
+  // direction that wrote nothing went unnoticed for a month (docs/TIMEON.md §5a).
+  { key: "projects_pushed_new", tone: "good" },
+  { key: "projects_created", tone: "good" },
+  { key: "projects_pushed", tone: "good" },
+  { key: "projects_pulled", tone: "good" },
   { key: "deleted_local", tone: "warn" },
   { key: "deleted_remote", tone: "warn" },
   { key: "conflicts", tone: "warn" },
@@ -57,6 +64,8 @@ export const RUN_TILES: { key: string; tone: "good" | "warn" | "plain" }[] = [
   { key: "drift_local", tone: "plain" },
   { key: "drift_remote", tone: "plain" },
   { key: "in_step", tone: "plain" },
+  { key: "projects_drift", tone: "plain" },
+  { key: "projects_in_step", tone: "plain" },
   { key: "tolerated", tone: "plain" },
   { key: "remote_read", tone: "plain" },
   { key: "local_read", tone: "plain" },
@@ -67,6 +76,18 @@ export function runChanged(run: TimeonRun): boolean {
   const counts = (run.counts ?? {}) as Record<string, number>;
   return RUN_TILES.filter((tile) => tile.tone !== "plain").some(
     (tile) => (counts[tile.key] ?? 0) > 0,
+  );
+}
+
+/**
+ * Did the run leave a project field undecided — one that differs with nothing on record saying
+ * which side moved? Read off the counters rather than the warning list, because the list is
+ * capped at the API and the counters are not.
+ */
+export function projectsUndecided(run: TimeonRun): boolean {
+  const counts = (run.counts ?? {}) as Record<string, number>;
+  return Object.entries(counts).some(
+    ([key, value]) => key.startsWith("warn_project_differs_") && value > 0,
   );
 }
 

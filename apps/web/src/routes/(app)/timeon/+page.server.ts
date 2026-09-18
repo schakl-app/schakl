@@ -87,16 +87,22 @@ export const actions: Actions = {
     if (!account_id) return fail(400, { error: "errors.required" });
     const from = String(form.get("window_from") ?? "").trim();
     const to = String(form.get("window_to") ?? "").trim();
+    const prefer = String(form.get("prefer") ?? "");
     const { data, error } = await apiFor(event).POST("/api/v1/timeon/accounts/{account_id}/sync", {
       params: { path: { account_id } },
       body: {
-        kind: String(form.get("kind") ?? "hours") as never,
+        // `full`, not `hours`: the page says what the connection does, and that includes
+        // projects. With `hours` as the default neither button ever created or updated one, in
+        // either direction — only the scheduled run did.
+        kind: String(form.get("kind") ?? "full") as never,
         // The default is a **dry run** at the API too. The flag is only ever false because a
         // button that says so was pressed — a sync that writes by default is one whose first
         // press is irreversible.
         dry_run: form.get("apply") !== "1",
         window_from: from || null,
         window_to: to || null,
+        // Only ever set by the two buttons under a run that reported an undecided project.
+        prefer: prefer === "schakl" || prefer === "timeon" ? prefer : null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

@@ -35143,6 +35143,8 @@ export interface components {
             dry_run: boolean;
             /** @default hours */
             kind: components["schemas"]["TimeonSyncKind"];
+            /** Prefer */
+            prefer?: ("schakl" | "timeon") | null;
             /** Window From */
             window_from?: string | null;
             /** Window To */

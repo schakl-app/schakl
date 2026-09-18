@@ -124,8 +124,15 @@
         icon: directionIcon[account.projects_direction],
         text: t(`timeon.plan.projects_${account.projects_direction}`),
       });
-      if (account.create_missing_projects) {
+      // One switch, two sentences: it creates in whichever direction projects travel, and a
+      // screen that named only the pull half is how "two-way, create missing" came to read as
+      // a promise the push half never kept.
+      const direction = account.projects_direction;
+      if (account.create_missing_projects && (direction === "pull" || direction === "two_way")) {
         out.push({ icon: directionIcon.pull, text: t("timeon.plan.create_projects") });
+      }
+      if (account.create_missing_projects && (direction === "push" || direction === "two_way")) {
+        out.push({ icon: directionIcon.push, text: t("timeon.plan.push_projects") });
       }
     }
 
