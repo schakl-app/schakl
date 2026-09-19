@@ -399,7 +399,7 @@
 <!-- The leads dashboard sits above the per-source sections: it is the report a client asks
      for, and the sections below are the cross-source overview it used to be the only one of. -->
 {#if leads || leadsPending || leadsError}
-  <div class="mb-6">
+  <div class="mb-4">
     <MarketingLeadsSection
       {leads}
       pending={leadsPending}
@@ -471,7 +471,7 @@
     {/if}
   </div>
 {:else}
-  <div class="space-y-6">
+  <div class="space-y-4">
     {#each groups as group (group.id ?? "_company")}
       <section>
         {#if showGroupHeadings}
@@ -479,7 +479,7 @@
             {group.name ?? t("marketing.website_group_none")}
           </h2>
         {/if}
-        <div class="space-y-5">
+        <div class="space-y-4">
           {#each group.sources as src (src.link_id)}
             <MarketingSourceSection
               {companyId}
@@ -497,7 +497,7 @@
 {/if}
 
 {#if aiSearch && companyId}
-  <div class="mt-6">
+  <div class="mt-4">
     <MarketingAiSearchSection
       {companyId}
       overview={aiSearch}

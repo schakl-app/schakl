@@ -25027,6 +25027,11 @@ export interface components {
             dimension?: string | null;
             /** Dimension Title */
             dimension_title?: string | null;
+            /**
+             * Filterable
+             * @default false
+             */
+            filterable: boolean;
             /** Key */
             key: string;
             /**

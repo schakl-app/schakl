@@ -59,7 +59,7 @@ from app.modules.marketing.leads.schemas import (
     LeadsWindow,
     LeadWarning,
 )
-from app.modules.marketing.leads.widgets import compute
+from app.modules.marketing.leads.widgets import compute, period_values
 from app.modules.marketing.models import (
     MarketingCompanySettings,
     MarketingLink,
@@ -183,20 +183,15 @@ class LeadsService:
         if profile is None:
             return LeadsDashboard(company_id=company_id, configured=False, can_manage=can_manage)
 
+        filter_dimensions = profile.filter_dimensions()
         for key in filters:
-            spec = profile.dimension(key)
-            if spec is None or not spec.filterable:
+            if key not in filter_dimensions:
                 raise AppError(
                     "validation",
                     "errors.validation",
                     status_code=422,
                     fields={"f": "errors.marketing_lead_filter_unknown"},
-                    details={
-                        "dimension": key,
-                        "dimensions": sorted(
-                            k for k, s in profile.dimensions.items() if s.filterable
-                        ),
-                    },
+                    details={"dimension": key, "dimensions": filter_dimensions},
                 )
 
         today = await org_today(self.ctx.session, self.ctx.org.id)
@@ -262,12 +257,27 @@ class LeadsService:
                     locale=locale,
                     channel_groups=channel_groups,
                     has_ads=gads_link is not None,
+                    filtered=bool(filters),
                 )
                 widgets.extend(computed.widgets)
                 unavailable.extend(computed.unavailable)
                 warnings.extend(computed.warnings)
                 coverage = computed.coverage
                 seen = computed.seen_values
+                if filters:
+                    # What a filter *offers* is what the period saw, not what the narrowed
+                    # reports still contain — or picking one service removes every other
+                    # from the control. The unfiltered plan is the view the reader clicked
+                    # from, so this is a cache hit in every ordinary case; a miss costs the
+                    # same two batches that view would have, and a failure costs only the
+                    # options (the narrowed ones stand).
+                    base, _at, base_failure = await self._ga4_reports(
+                        ga4_link, profile, {}, start, end
+                    )
+                    if not base_failure:
+                        seen = period_values(
+                            profile, base, start=start, end=end, locale=locale
+                        )
                 if not portal:
                     warnings.extend(await self._setup_checks(ga4_link, profile))
 
@@ -315,7 +325,7 @@ class LeadsService:
                 active=list(filters.get(key, [])),
             )
             for key, spec in profile.dimensions.items()
-            if spec.filterable and (key in seen or key in filters)
+            if key in filter_dimensions and (key in seen or key in filters)
         ]
 
         if portal:

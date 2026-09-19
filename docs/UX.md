@@ -2159,6 +2159,23 @@ contrast bug in dark mode rather than only an inconsistency.
   is `register`, which is **not a box** — a hairline rule and the page's own ground, because
   reference material must not compete with the work above it.
 
+- **A tile the colour of the page** (the leads dashboard's first build). Every widget was a
+  hairline box with no fill, drawn straight on `--surface`, under a 12 px uppercase muted band
+  heading — so the only thing separating a tile from the background was a `#e5e5e5` line, and
+  the bar tracks (`bg-surface` on `--surface`) were not there at all. The vocabulary already
+  existed and was simply not used: a *section* is a `panel` (white, `--surface-raised`), a
+  figure inside it is a `stat` (`--surface-tint`, no border), a list or chart inside it is an
+  outlined box, and the band heading is `BAND_HEADING`. The per-source marketing sections had
+  the milder form of the same fault — `bg-surface` number tiles on a white card are `#fafafa`
+  on `#ffffff` — and take the tint too. Its sibling is about space: **a gap the size of a
+  block is a layout bug, not whitespace.** A two-column grid whose spans are a fixed list
+  leaves a half-width widget alone in its row wherever the profile happens to put a wide one
+  after it; arrange the ordered list (`arranged()` in `MarketingLeadsSection`) so a half with no
+  half beside it takes the row, and stretch paired halves to one height.
+- **A control whose press shows nothing for as long as somebody else's API takes.** A filter
+  chip on the leads dashboard navigated, and the page kept the previous answer on screen —
+  unpicked chip included — until Google answered. Read what is *picked* from the URL (it
+  changed at once), and say the rest is on its way (`aria-busy`, a dimmed body, "Bijwerken…").
 - Buttons that configure org-wide behaviour placed inside a working screen (the old "save
   as team default" on the dashboard) — config goes to Settings.
 - **A form filling itself in from the database and leaving the user to delete the wrong

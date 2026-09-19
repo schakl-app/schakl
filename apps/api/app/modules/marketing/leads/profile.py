@@ -58,6 +58,10 @@ DIM_PAGE_PATH = "page_path"
 DIM_PAGE_TITLE = "page_title"
 DIM_ERROR_REASON = "error_reason"
 
+#: Dimensions only one role's events carry — groupable, never a page filter (see
+#: ``LeadProfile.filter_dimensions``).
+_EVENT_SCOPED_DIMENSIONS = frozenset({DIM_ERROR_REASON})
+
 DIMENSION_KEYS: tuple[str, ...] = (
     DIM_SERVICE,
     DIM_FORM_TYPE,
@@ -295,6 +299,21 @@ class LeadProfile(BaseModel):
 
     def dimension(self, key: str) -> DimensionSpec | None:
         return self.dimensions.get(key)
+
+    def filter_dimensions(self) -> list[str]:
+        """The dimensions a reader may narrow the *page* by, sorted.
+
+        A page filter is AND-ed onto every report, so it has to be a field a request event
+        carries. ``error_reason`` is not: only an error event has one, and filtering the page by
+        it answers zero requests on every tile — a click on "validatiefout" emptied the
+        dashboard, its other filters and raised a silent-zero warning about a week that had 35
+        requests in it. It stays a dimension the error widgets group by; it is never a control.
+        """
+        return sorted(
+            key
+            for key, spec in self.dimensions.items()
+            if spec.filterable and key not in _EVENT_SCOPED_DIMENSIONS
+        )
 
     def hard_breakpoint(self) -> Breakpoint | None:
         """The latest hard breakpoint — the floor of comparable reporting."""

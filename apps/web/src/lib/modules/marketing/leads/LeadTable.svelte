@@ -74,7 +74,9 @@
   });
   const pages = $derived(Math.max(1, Math.ceil(sorted.length / pageSize)));
   const visible = $derived(sorted.slice(page * pageSize, (page + 1) * pageSize));
-  const filterable = $derived(Boolean(filterHref && widget.dimension));
+  // The API says whether a row is a page filter; a table grouped by something the page
+  // cannot be narrowed by draws plain text, never a link that can only refuse (#253).
+  const filterable = $derived(Boolean(filterHref && widget.filterable && widget.dimension));
 
   function toneClass(row: LeadRow, column: LeadColumn): string {
     const tone = cellTone(row, column);
@@ -128,7 +130,13 @@
       <tbody>
         {#each visible as row (row.key)}
           {@const active = activeKeys.includes(row.key)}
-          <tr class="border-b border-border/50 {active ? 'bg-surface' : ''}">
+          <tr
+            class="border-b border-border/50 last:border-b-0 {active
+              ? 'bg-brand/10'
+              : filterable
+                ? 'hover:bg-surface-tint'
+                : ''}"
+          >
             <td class="max-w-[18rem] py-1.5 pr-2 text-text">
               {#if filterable && widget.dimension}
                 <a

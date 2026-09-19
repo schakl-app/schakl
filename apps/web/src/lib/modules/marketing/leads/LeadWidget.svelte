@@ -8,6 +8,7 @@
   import ComboChart from "$lib/core/ui/charts/ComboChart.svelte";
   import DonutChart from "$lib/core/ui/charts/DonutChart.svelte";
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
+  import { PANEL_HEADING } from "$lib/core/ui/headings";
 
   import { channelGroupLabel, fmtUnit, widgetTitle } from "./format";
   import LeadBars from "./LeadBars.svelte";
@@ -48,9 +49,10 @@
 {#if widget.kind === "scorecard"}
   <LeadScorecard {widget} />
 {:else}
-  <div class="rounded-lg border border-border p-3">
+  <!-- `h-full`: two halves of one grid row end on one line, whichever is the longer. -->
+  <div class="h-full rounded-lg border border-border p-3">
     <div class="mb-2 flex items-baseline justify-between gap-2">
-      <p class="text-sm font-medium text-text">{widgetTitle(widget)}</p>
+      <h3 class={PANEL_HEADING}>{widgetTitle(widget)}</h3>
       {#if widget.total !== null && widget.total !== undefined && widget.kind !== "combo"}
         <span class="text-xs tabular-nums text-text-muted">
           {t("marketing.leads.total", { value: fmtUnit(widget.total, "count") })}

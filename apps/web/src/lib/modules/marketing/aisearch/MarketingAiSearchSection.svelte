@@ -556,7 +556,7 @@
         <div class="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="ai-search-tiles">
           {#each metrics as metric (metric.key)}
             {@const change = moved(metric)}
-            <div class="flex flex-col rounded-lg border border-border p-3">
+            <div class="flex flex-col rounded-lg bg-surface-tint p-3">
               <p class="text-xs text-text-muted">{t(`marketing.ai_search.metric.${metric.key}`)}</p>
               <p class="mt-0.5 text-lg font-semibold tabular-nums text-text">
                 {value(metric.key, metric.current)}

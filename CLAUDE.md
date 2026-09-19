@@ -1964,7 +1964,15 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   request for a week), a profile dimension the property never registered, and the fixed note
   with every breakpoint — each a sentence beside the numbers, never a footnote. Cross-filtering
   is the URL (`?f=service:x`), the second client (APEX) is configuration only and a test says so,
-  and the report reuses the same service as a `marketing.leads` section.
+  and the report reuses the same service as a `marketing.leads` section. Its first real use
+  found the filter half wrong in two ways, and both are the API's to state. **A page filter is
+  a field a request event carries** (`LeadProfile.filter_dimensions`, `LeadWidget.filterable`):
+  it is AND-ed onto every report, so an error reason — which only an error event has — is
+  grouped by and never filtered on; drawn as a link, one click zeroed every tile, emptied the
+  other filters and raised a silent-zero warning over a week with requests in it. And **what a
+  filter offers is what the period saw, not what the narrowed reports still contain**
+  (`widgets.period_values`, read off the unfiltered plan the reader clicked from — a cache
+  hit), or picking one service removes every other from the control.
 - **A second provider is what tells you which rules were the vendor's** (`microsoft`,
   `docs/MICROSOFT.md`). Microsoft 365 answers the Google integration's three data problems a
   second time — Outlook calendar, OneDrive, Outlook mail — on the same seams (the calendar

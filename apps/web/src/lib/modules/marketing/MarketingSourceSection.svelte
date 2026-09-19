@@ -182,7 +182,7 @@
 </script>
 
 <section
-  class="rounded-xl border bg-surface-raised p-5 {edit
+  class="rounded-xl border bg-surface-raised p-4 sm:p-5 {edit
     ? 'border-brand/40'
     : 'border-border'} {edit?.hidden ? 'opacity-60' : ''}"
 >
@@ -190,15 +190,6 @@
     <div class="flex items-center gap-2">
       <h2 class="text-base font-semibold text-text">{src.label ?? sourceLabel(src.source)}</h2>
       <span class="truncate text-sm text-text-muted">{src.display_name}</span>
-      {#if src.connection_owner}
-        <!-- Whose Google grant feeds this section. A colleague reading a client's dashboard
-             otherwise has no way to tell that these numbers hang on one person's account. -->
-        <span class="truncate text-xs text-text-muted" title={src.connection_owner.email}>
-          {t("marketing.via", {
-            who: src.connection_owner.is_me ? t("marketing.via_me") : src.connection_owner.name,
-          })}
-        </span>
-      {/if}
       {#if edit?.hidden}
         <span
           class="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
@@ -241,7 +232,18 @@
   {#if src.health === "pending"}
     <p class="text-sm text-text-muted">{t("marketing.pending_hint")}</p>
   {:else if src.health === "disconnected"}
-    <p class="text-sm text-red-600 dark:text-red-400">{t("marketing.disconnected")}</p>
+    <p class="text-sm text-red-600 dark:text-red-400">
+      {t("marketing.disconnected")}
+      {#if src.connection_owner}
+        <!-- Whose grant it was is named here and nowhere else: on a working section it is
+             noise on every heading, and on a broken one it is who to ask. -->
+        <span class="text-text-muted" title={src.connection_owner.email}>
+          {t("marketing.via", {
+            who: src.connection_owner.is_me ? t("marketing.via_me") : src.connection_owner.name,
+          })}
+        </span>
+      {/if}
+    </p>
   {:else if edit}
     <!-- Edit mode: the same tiles, now a drag zone. Tiles without data still render (you can
          arrange a client's dashboard before their first sync). -->
@@ -259,7 +261,7 @@
     >
       {#each edit.tiles as tile (tile.id)}
         {@const kpi = src.kpis?.[tile.id]}
-        <div class="relative rounded-lg border border-border bg-surface p-3">
+        <div class="relative rounded-lg border border-border bg-surface-tint p-3">
           <button
             type="button"
             onclick={() => hideTile(tile.id)}
@@ -309,7 +311,7 @@
     </div>
 
     {#if hiddenTiles.length > 0}
-      <div class="mb-5 flex flex-wrap items-center gap-1.5">
+      <div class="mb-4 flex flex-wrap items-center gap-1.5">
         <span class="text-xs text-text-muted">{t("marketing.layout.hidden_tiles")}:</span>
         {#each hiddenTiles as key (key)}
           <button
@@ -326,7 +328,7 @@
     {/if}
 
     <!-- Default charted metric, in place of the use-mode chart's tile switcher. -->
-    <div class="mb-5 max-w-xs">
+    <div class="mb-4 max-w-xs">
       <label for="chart-{src.link_id}" class="mb-1 block text-sm font-medium text-text">
         {t("marketing.layout.chart_metric")}
       </label>
@@ -345,7 +347,7 @@
 
     <!-- Drill-downs: enabled ones live with an ✕, disabled ones as quiet placeholders — no
          fetch until they're actually shown (docs/PERFORMANCE.md). -->
-    <div class="grid gap-5 md:grid-cols-2">
+    <div class="grid gap-x-5 gap-y-3 md:grid-cols-2">
       {#each allDrilldownKinds as kind (kind)}
         {@const enabled =
           edit.drilldowns.includes(kind) && !(kind === "key_events" && keyEventsLocked)}
@@ -396,7 +398,7 @@
     </div>
   {:else}
     <!-- KPI tiles: every metric the source carries, with its period-over-period delta. -->
-    <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {#each metrics as key (key)}
         {@const kpi = src.kpis?.[key]}
         {#if kpi}
@@ -405,9 +407,10 @@
           <button
             type="button"
             onclick={() => (override = key)}
-            class="flex flex-col rounded-lg border p-3 text-left transition-colors {selected === key
-              ? 'border-brand bg-surface'
-              : 'border-border hover:border-brand/50'}"
+            class="flex flex-col rounded-lg border bg-surface-tint p-3 text-left transition-colors {selected ===
+            key
+              ? 'border-brand'
+              : 'border-transparent hover:border-brand/50'}"
           >
             <p class="text-xs text-text-muted">{label(key)}</p>
             <p class="mt-0.5 text-lg font-semibold tabular-nums text-text">
@@ -437,7 +440,7 @@
     </div>
 
     <!-- Trend of the selected metric. -->
-    <div class="mb-5">
+    <div class="mb-4">
       <p class="mb-1 text-sm font-medium text-text">{label(selected)}</p>
       <TrendChart
         {dates}
@@ -448,13 +451,13 @@
     </div>
 
     {#if channelEntries.length}
-      <div class="mb-5">
+      <div class="mb-4">
         <p class="mb-2 text-sm font-medium text-text">{t("marketing.channels_title")}</p>
         <ul class="space-y-1.5">
           {#each channelEntries as [name, value] (name)}
             <li class="flex items-center gap-2 text-sm">
               <span class="w-32 shrink-0 truncate text-text-muted">{channelLabel(name)}</span>
-              <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface">
+              <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface-tint">
                 <span
                   class="block h-full rounded-full bg-brand"
                   style="width: {(value / channelMax) * 100}%"
@@ -481,7 +484,7 @@
            no card to a portal login, whose link would land in the agency's Google account. -->
       {@const imported = aiImported ?? src.ai_visibility.imported ?? null}
       <div
-        class="mb-5 rounded-lg border border-dashed border-border bg-surface p-3"
+        class="mb-4 rounded-lg border border-dashed border-border bg-surface p-3"
         use:filedrop={{ input: () => aiInput, disabled: !canImportAi || aiBusy.active }}
       >
         <p class="text-sm font-medium text-text">{t("marketing.ai_visibility.title")}</p>
@@ -577,7 +580,7 @@
     {/if}
 
     <!-- Live drill-downs (only these touch Google), keyed so a range change re-fetches. -->
-    <div class="grid gap-5 md:grid-cols-2">
+    <div class="grid gap-x-5 gap-y-3 md:grid-cols-2">
       {#each drilldowns as kind (kind)}
         {#key period}
           <MarketingDrilldown
