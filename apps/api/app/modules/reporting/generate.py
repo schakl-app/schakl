@@ -173,12 +173,19 @@ async def gather_sections(
             continue
         if not data:
             continue
-        out.sections[spec.key] = data
-        out.order.append(spec.key)
-        out.specs[spec.key] = spec
+        # Notes first, and whether or not anything prints: a section may be **withheld** — it
+        # has something to say to the agency and nothing to show the client (SE Ranking has not
+        # published the month yet; the plan is out of units). Returning ``None`` for that would
+        # drop the one sentence explaining why the chapter is missing from this month's
+        # document, and a loss with nothing taking its place has to be stated (CLAUDE.md §10).
         for note in data.pop("notes", None) or []:
             if note not in out.warnings:
                 out.warnings.append(note)
+        if data.get("withheld"):
+            continue
+        out.sections[spec.key] = data
+        out.order.append(spec.key)
+        out.specs[spec.key] = spec
     return out
 
 

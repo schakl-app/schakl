@@ -99,8 +99,12 @@
   {% endif %}
 
   <div class="cover-foot">
-    {{ labels.period }}: {{ period_label }}{% if compare_label %} · {{ labels.compared_with }}
-    {{ compare_label }}{% endif %}
+    {# The caption follows the strip above it: `cover_compare_label` is the span the headline
+       tiles were measured against, which is the report's own except where the only section
+       with figures compares with the month before (`context._headline_span`). #}
+    {% set cover_span = cover_compare_label or compare_label %}
+    {{ labels.period }}: {{ period_label }}{% if cover_span %} · {{ labels.compared_with }}
+    {{ cover_span }}{% endif %}
   </div>
 </div>
 
@@ -122,6 +126,15 @@
    what its name column is called) stays on `section`, so the two cannot drift. #}
 {% macro block(part, section) %}
       {% if part.totals %}{{ tiles(part.totals) }}{% endif %}
+      {# A section measured against a span of its own says so **directly under its tiles**,
+         whatever kind it is: the cover's "vergeleken met augustus 2025" describes the traffic
+         chapters, and a percentage standing under the wrong denominator is a lie (#312). This
+         used to live inside the rankings branch, so the second section to carry a span of its
+         own — AI search, against the month before — printed month-over-month changes with a
+         year-over-year caption as the only one on the page. #}
+      {% if part.compare_label %}
+        <p class="compared">{{ labels.compared_with }} {{ part.compare_label }}</p>
+      {% endif %}
 
       {# A chart sits *beside* its table when both are narrow enough to survive it, and above it
          when either is not. Deciding it here from the shape of the data, rather than per section
@@ -140,7 +153,10 @@
       {% set beside = part.chart and part.rows and (part.columns | length + part.hosts) <= 3
                       and part.chart_categories <= 6
                       and section.kind not in ('rankings', 'audit') %}
-      {% if part.chart and not beside %}<div class="chart">{{ part.chart }}</div>{% endif %}
+      {% if part.chart and not beside %}
+        {% if part.chart_caption %}<p class="chart-caption">{{ part.chart_caption }}</p>{% endif %}
+        <div class="chart">{{ part.chart }}</div>
+      {% endif %}
 
       {% if beside %}<div class="split"><div class="cell chart-cell">{{ part.chart }}</div>
         <div class="cell">{% endif %}
@@ -152,9 +168,6 @@
            The landing-page column is only drawn where the section carries one — a Search
            Console-sourced ranking table knows the query and not which page answered it, and a
            column of dashes is worse than no column (§17's rule, one layer over). #}
-        {% if part.compare_label %}
-          <p class="compared">{{ labels.compared_with }} {{ part.compare_label }}</p>
-        {% endif %}
         {% for group in part.groups %}
           {% set span = 3 + (1 if part.show_landing_page else 0) %}
           <table class="data">

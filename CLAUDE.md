@@ -1991,6 +1991,50 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   decisions about running both at once are stated rather than left: a colleague who connected
   both calendars gets a planned block in both, and the client hub draws a Drive panel beside a
   OneDrive panel.
+- **A paid read is claimed before it is made, and the month on the screen is the month the
+  answer covers** (SE Ranking's AI Search overview, `docs/SERANKING.md`). The ask was the Data
+  API's AI Search overview — brand presence, link presence, average position and AI opportunity
+  traffic in AI answers — on the dashboard and in the report, always last month against the
+  month before, fetched where it is missing. Five rules generalise. **A vendor's "all" may be a
+  different endpoint, not a missing parameter**: the adapter first sent `by-engine` with
+  `engine` left off, which the public reference marks *required*; the cross-engine aggregate
+  is its own path (`…/aggregated/…`, found in SE Ranking's own MCP server's source), and it is
+  the vendor's figure, never the five engines summed. Found by reading, which is §11's rule
+  doing its job before a live key existed to refuse it. **A call that costs money is claimed in
+  the database first** (docs/PAYMENTS.md, one integration over): 800 units a read, a streamed
+  page, two colleagues and a report worker — so the row is inserted as `fetching` under the
+  unique key or taken with a conditional `UPDATE`, and a refusal is *stored* and re-asked on
+  its own clock, while a refused re-read **keeps the month already stored** and reports itself
+  on that one response. **A summary that names no month is dated from the series beside it**:
+  `current`/`previous` are whatever the vendor's two newest months are, so a month not
+  published yet is served *as the month it is*, a month still running is realigned from the
+  series (and the two figures with no series lose their comparison rather than borrow one),
+  and the vendor's own `change_percent` is never read — its sign differs per metric, and it
+  reports a first snapshot as +100 %. **One credential may be two**: SE Ranking issues a token
+  per API, so the second key is optional (`NULL` = use the first) and the check asks each API
+  with the key that would actually be used for it — "rankings work, Data API refused" is a
+  sentence with a different fix from "the key is wrong" (§10's SnelStart rule). And **a
+  feature that spends the tenant's money is off until they switch it on, with the price on the
+  control** (#305): off in code, a house default, a per-client diff in both directions, and
+  800 × engines printed on the settings screen, in the client's editor and on the refresh
+  button. Three things only a browser found: an `$effect` that **read the `$state` it wrote**
+  re-ran for ever and froze the tab (a deep-proxied assignment is always a change —
+  `$state.raw`, and an effect reads nothing it writes); the report drew a section's own
+  compare span **only inside the rankings branch**, so month-over-month badges stood under the
+  cover's "vergeleken met augustus 2025"; and a KPI tile's badge took its verdict from the key
+  `"delta"` rather than from its metric, so **every lower-is-better tile printed its
+  improvement in red** — the rankings tile included, for as long as it has existed. A second
+  pass, as a client and through a generated report, found two more of the same family. **A
+  rule stated for a block must hold for the state above it**: `_block` left a refusal out for a
+  portal reader while `no_key` / `no_target` still reached them as sentences naming the
+  supplier and a settings screen they cannot open — to a client those states, and a `ready`
+  answer with every block left out, are now `off`, which draws nothing (#446). And **a caption
+  follows the tiles above it**: where this chapter is all a client has it leads the cover, and
+  month-over-month badges stood over the cover's "vergeleken met augustus 2025" — the very
+  mismatch the chapter's own caption was written to prevent, one page earlier
+  (`cover_compare_label`). One live read through SE Ranking's own connector confirmed the
+  aggregate path and that both presence figures are counts; its contract also says `scope` is
+  ignored on this endpoint, which `docs/SERANKING.md` §10 now lists as a thing to measure.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

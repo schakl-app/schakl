@@ -1,7 +1,7 @@
 """The marketing tools the in-app assistant is offered (#127, §12).
 
 Every ``/api/v1`` route is already an MCP tool, so what is asserted here is the *other* catalog:
-the six shapes the assistant gets, whether they are read-only, and — the part that is a rule
+the seven shapes the assistant gets, whether they are read-only, and — the part that is a rule
 rather than a preference — whether the permission each one declares is the permission its
 service is about to demand.
 
@@ -99,6 +99,7 @@ async def test_every_marketing_tool_is_a_read_and_declares_its_permission() -> N
         "marketing.drilldown",
         "marketing.connections",
         "marketing.summary",
+        "marketing.ai_search",
         "marketing.overview",
     }
     assert all(spec.permission for spec in MARKETING_MCP_TOOLS)

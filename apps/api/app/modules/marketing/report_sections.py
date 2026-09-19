@@ -40,6 +40,7 @@ from sqlalchemy import select
 
 from app.core.periods import ComparePeriod, compare_window
 from app.core.tenancy import RequestContext
+from app.i18n import translate
 from app.integrations.google import client as google_client
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.marketing.layout import resolved_tiles, source_layout
@@ -1255,6 +1256,139 @@ async def _ai_search(ctx: RequestContext, window: ReportWindow) -> dict[str, Any
     }
 
 
+#: The report's own names for the four AI Search figures. Prefixed, because ``link_presence``
+#: and ``average_position`` would otherwise share the renderer's vocabulary with metrics that
+#: mean something else (a rank tracker's ``avg_position`` is a position in Google).
+_AI_OVERVIEW_METRICS = {
+    "brand_presence": "ai_brand_presence",
+    "link_presence": "ai_link_presence",
+    "average_position": "ai_average_position",
+    "ai_opportunity_traffic": "ai_opportunity_traffic",
+}
+#: How many months of link presence the chart draws — half a year reads as a trend on a page.
+_AI_OVERVIEW_CHART_MONTHS = 6
+
+
+def _month_end(month: date) -> date:
+    following = date(month.year + 1, 1, 1) if month.month == 12 else date(
+        month.year, month.month + 1, 1
+    )
+    return following - timedelta(days=1)
+
+
+async def _ai_search_overview(
+    ctx: RequestContext, window: ReportWindow
+) -> dict[str, Any] | None:
+    """The brand's visibility inside AI answers, the report's month against the month before
+    — SE Ranking's AI Search overview (docs/SERANKING.md).
+
+    Reads through the very service the dashboard reads through, so the document and the screen
+    cannot disagree and the paid call is made once for both: a report run early in the month is
+    usually what fetches it. Three rules.
+
+    **Only the month the report is about.** Where SE Ranking's answer covers an earlier month
+    (it had not published this one yet) the chapter is withheld and the run says so — July's
+    AI figures under an August cover would be the one number on the document from a different
+    month, with nothing on the page able to say so.
+
+    **Compared with the month before, and saying it.** These are levels in a fast-moving
+    channel, the argument the rankings section already made (#312's exception): a year ago
+    most of these engines did not cite anybody. The section states its own span, since the
+    cover's "vergeleken met …" describes the traffic chapters.
+
+    **A refusal is the agency's to read, never the client's**: no Data API access, a plan out
+    of units and an outage each become a warning on the run and no chapter.
+    """
+    from app.modules.marketing.aisearch.service import AiSearchService
+
+    month = window.start.replace(day=1)
+    if window.start != month or window.end != _month_end(month):
+        return None  # SE Ranking's figures are monthly; a partial span has no honest answer
+    overview = await AiSearchService(ctx).overview(window.company_id, month=month)
+    if overview.state == "off":
+        return None
+    if overview.state != "ready":
+        return {
+            "withheld": True,
+            "notes": [
+                {"code": f"reporting.warning.seranking_ai_overview_{overview.state}", "detail": ""}
+            ],
+        }
+
+    notes: list[dict[str, str]] = []
+    usable = []
+    for block in overview.engines:
+        if block.metrics and block.data_month == month:
+            usable.append(block)
+        elif block.status in ("denied", "insufficient", "failed"):
+            notes.append(
+                {
+                    "code": f"reporting.warning.seranking_ai_overview_{block.status}",
+                    "detail": block.engine,
+                }
+            )
+        else:
+            notes.append(
+                {"code": "reporting.warning.seranking_ai_overview_lagging", "detail": block.engine}
+            )
+    if not usable:
+        return {"withheld": True, "notes": notes} if notes else None
+
+    # The headline is SE Ranking's cross-engine aggregate where the agency reads it, else the
+    # first engine picked — never a sum of engines, which nobody measured.
+    lead = next((block for block in usable if block.engine == "all"), usable[0])
+    totals: dict[str, float] = {}
+    compare: dict[str, float] = {}
+    for metric in lead.metrics:
+        name = _AI_OVERVIEW_METRICS[metric.key]
+        if metric.current is not None:
+            totals[name] = metric.current
+        if metric.previous is not None:
+            compare[name] = metric.previous
+
+    columns = list(_AI_OVERVIEW_METRICS.values())
+    rows: list[dict[str, Any]] = []
+    if len(usable) > 1:
+        for block in usable:
+            row: dict[str, Any] = {
+                "label": translate(f"marketing.ai_search.engine.{block.engine}", window.locale)
+            }
+            for metric in block.metrics:
+                row[_AI_OVERVIEW_METRICS[metric.key]] = metric.current
+            rows.append(row)
+
+    points = (lead.series.get("link_presence") or [])[-_AI_OVERVIEW_CHART_MONTHS:]
+    chart = (
+        {
+            "type": "grouped",
+            # ISO months: the renderer names them in the document's language.
+            "labels": [point.month for point in points],
+            "series": [{"key": "current", "values": [point.value for point in points]}],
+            # Which figure the bars are. Every other chart on the document sits beside a table
+            # that names its metric; this chapter usually has none, so an unlabelled chart of
+            # six rising bars would be a picture of *something* going up.
+            "metric": _AI_OVERVIEW_METRICS["link_presence"],
+        }
+        if len(points) > 1
+        else None
+    )
+    compared = lead.compare_month
+    return {
+        "kind": "ai_search_overview",
+        "columns": columns if rows else [],
+        "rows": rows,
+        "totals": totals,
+        "compare": compare or None,
+        "compare_period": (
+            _span((compared, _month_end(compared))) if compared and compare else None
+        ),
+        "chart": chart,
+        "brand": overview.brand,
+        "engine": lead.engine,
+        "notes": notes,
+    }
+
+
 async def _site_audit(ctx: RequestContext, window: ReportWindow) -> dict[str, Any] | None:
     """Internal only. A list of a client's technical faults is working material, not a
     deliverable — and reading it as one would have the client fixing our to-do list."""
@@ -1435,6 +1569,16 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=75,
+    ),
+    ReportSectionSpec(
+        key="marketing.ai_search_overview",
+        title_key="reporting.section.ai_search_overview",
+        brief_key="reporting.brief.ai_search_overview",
+        source_key="reporting.source.seranking",
+        provider=_ai_search_overview,
+        audience=AUDIENCE_BOTH,
+        requires_permission="marketing.metrics.read",
+        position=78,
     ),
     ReportSectionSpec(
         key="marketing.ai_search",

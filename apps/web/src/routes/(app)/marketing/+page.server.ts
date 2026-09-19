@@ -7,6 +7,7 @@ import { apiFor } from "$lib/core/session";
 import { gtmConnectActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingConnectActions } from "$lib/modules/marketing/actions.server";
 import { filtersFromUrl } from "$lib/modules/marketing/leads/url";
+import type { AiSearchOverview } from "$lib/modules/marketing/aisearch/types";
 import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -48,6 +49,15 @@ export const load: PageServerLoad = async (event) => {
         }),
       )
     : null;
+  // SE Ranking's AI Search overview for the picked client (docs/SERANKING.md) — streamed for
+  // the same reason the leads are: its first view of a month is a read from SE Ranking.
+  const aiSearchP = companyId
+    ? streamed<AiSearchOverview>(
+        api.GET("/api/v1/marketing/companies/{company_id}/ai-search", {
+          params: { path: { company_id: companyId } },
+        }),
+      )
+    : null;
   const clients = await clientsP;
   // A client's own marketing page is their dashboard, not a picker: with one company (the
   // usual case) the picker has one tile that only ever leads here, so the page opens on it.
@@ -74,6 +84,7 @@ export const load: PageServerLoad = async (event) => {
     // The leads dashboard streams beside it (docs/MARKETING.md): a cold read is two GA4
     // batches and three Ads queries, and the shell must not wait for Google.
     leads: leadsP ?? Promise.resolve(null),
+    aiSearch: aiSearchP ?? Promise.resolve(null),
     filters,
     range,
     website,

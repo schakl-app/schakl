@@ -96,6 +96,13 @@ quarters. The **profile editor** (`/companies/{id}/marketing/profile`, `marketin
 picks event names, custom dimensions, key events and conversion actions from a live catalog of
 the client's own property and account (`GET …/leads/catalog`), so nothing is typed from memory.
 
+`MarketingAiSearchSection` sits **below** the per-source sections on both hosts: SE Ranking's AI
+Search overview for the client — brand mentions, links, average position and opportunity traffic
+in AI answers, last month against the month before (`docs/SERANKING.md`). It is about the
+*client*, not about a link, so it is drawn whether or not any source is linked and the website
+filter does not apply to it; like the leads it streams, because the first view of a month is a
+read from SE Ranking. Off until the agency switches it on, since every read spends its units.
+
 ## 6. Reuse: the report section
 
 `marketing.leads` is a `ReportSectionSpec` on the registry (`report_sections.py`), reading the

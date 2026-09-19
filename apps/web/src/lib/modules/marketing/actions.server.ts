@@ -62,6 +62,103 @@ async function link(event: RequestEvent, companyId: string) {
   return { marketingLinked: true };
 }
 
+// --- the AI Search overview (docs/SERANKING.md) ------------------------------------------------ //
+const AI_ENGINES = ["all", "ai-overview", "ai-mode", "chatgpt", "perplexity", "gemini"] as const;
+type AiEngine = (typeof AI_ENGINES)[number];
+const AI_SCOPES = ["base_domain", "domain", "url"] as const;
+type AiScope = (typeof AI_SCOPES)[number];
+
+/** The client these three writes are about: the route where it names one, else the form. */
+function aiCompany(event: RequestEvent, form: FormData): string {
+  return (event.params.id as string | undefined) || String(form.get("company_id") ?? "").trim();
+}
+
+/**
+ * One client's diff over the house settings, **posted whole**: every blank is sent as `null`,
+ * which is how "volg de standaard" is said — omitting it would mean "leave alone" and a field
+ * somebody emptied would silently keep overriding (§18).
+ */
+async function aiSearchSettings(event: RequestEvent) {
+  const form = await event.request.formData();
+  const company_id = aiCompany(event, form);
+  if (!company_id) return fail(400, { error: "errors.required" });
+  const enabled = String(form.get("enabled") ?? "");
+  const scope = String(form.get("scope") ?? "");
+  // "Own engines" is its own switch: an unticked list must mean *follow the house*, never
+  // "on, and asking nothing" — so the boxes only count while the switch says they do.
+  const engines =
+    form.get("engines_mode") === "own"
+      ? form
+          .getAll("engines")
+          .map(String)
+          .filter((value): value is AiEngine => (AI_ENGINES as readonly string[]).includes(value))
+      : [];
+  const { error } = await apiFor(event).PUT(
+    "/api/v1/marketing/companies/{company_id}/ai-search/settings",
+    {
+      params: { path: { company_id } },
+      body: {
+        enabled: enabled === "on" ? true : enabled === "off" ? false : null,
+        engines: engines.length ? engines : null,
+        source:
+          String(form.get("source") ?? "")
+            .trim()
+            .toLowerCase() || null,
+        scope: (AI_SCOPES as readonly string[]).includes(scope) ? (scope as AiScope) : null,
+        target: String(form.get("target") ?? "").trim() || null,
+        brand: String(form.get("brand") ?? "").trim() || null,
+      },
+    },
+  );
+  if (error) return fail(400, { error: apiErrorKey(error).key });
+  return { aiSearchSaved: true };
+}
+
+/** Ask SE Ranking again now — 800 units per engine choice, a manager's deliberate press. */
+async function aiSearchRefresh(event: RequestEvent) {
+  const form = await event.request.formData();
+  const company_id = aiCompany(event, form);
+  if (!company_id) return fail(400, { error: "errors.required" });
+  const { data, error } = await apiFor(event).POST(
+    "/api/v1/marketing/companies/{company_id}/ai-search/refresh",
+    { params: { path: { company_id } } },
+  );
+  if (error) return fail(400, { error: apiErrorKey(error).key });
+  // A refused re-read keeps the stored figures and says so on *this* response only, so it is
+  // handed to the block here — the read that follows would show good numbers and no reason.
+  return { aiSearchRefreshed: true, aiSearchNotice: data?.notice ?? null };
+}
+
+/** Which brand SE Ranking attributes to the target (100 units) — answered into the brand box. */
+async function aiSearchBrand(event: RequestEvent) {
+  const form = await event.request.formData();
+  const company_id = aiCompany(event, form);
+  if (!company_id) return fail(400, { error: "errors.required" });
+  // What is in the editor's boxes, not what is stored: a manager correcting a domain looks up
+  // the domain they typed.
+  const { data, error } = await apiFor(event).POST(
+    "/api/v1/marketing/companies/{company_id}/ai-search/brand",
+    {
+      params: { path: { company_id } },
+      body: {
+        target: String(form.get("target") ?? "").trim() || null,
+        source:
+          String(form.get("source") ?? "")
+            .trim()
+            .toLowerCase() || null,
+      },
+    },
+  );
+  if (error) return fail(400, { error: apiErrorKey(error).key });
+  return { aiSearchBrands: data?.brands ?? [] };
+}
+
+const aiSearchActions = {
+  marketingAiSearchSettings: aiSearchSettings,
+  marketingAiSearchRefresh: aiSearchRefresh,
+  marketingAiSearchBrand: aiSearchBrand,
+};
+
 /**
  * Mounted by the pages that connect a source **without** a client in the route, beside
  * `createCompanyAction` so the dialog's ＋ can mint one (docs/UX.md's picker rule).
@@ -70,6 +167,8 @@ export const marketingConnectActions = {
   marketingLink: (event: RequestEvent) => link(event, ""),
   // The org-wide dashboard draws the same Search Console section, so the upload posts here too.
   marketingImportAiVisibility: importAiVisibility,
+  // The AI Search block is drawn on the org-wide dashboard too; the client rides the form.
+  ...aiSearchActions,
 };
 
 /**
@@ -116,6 +215,7 @@ async function importAiVisibility(event: RequestEvent) {
 export const marketingActions = {
   marketingLink: (event: RequestEvent) => link(event, event.params.id as string),
   marketingImportAiVisibility: importAiVisibility,
+  ...aiSearchActions,
 
   marketingUnlink: async (event: RequestEvent) => {
     const form = await event.request.formData();

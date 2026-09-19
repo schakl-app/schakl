@@ -28,7 +28,7 @@ from app.core.documents import (
     share_palette,
 )
 from app.i18n import translate
-from app.modules.reporting.prompts import span_label
+from app.modules.reporting.prompts import month_label, span_label
 
 #: Metrics a document renders as a percentage rather than a count. ``delta`` is not among them:
 #: a change has its own renderer (:func:`fmt_delta`, signed, and a multiplier past the point a
@@ -45,7 +45,7 @@ _CURRENCY_METRICS = {"totalRevenue", "conversionsValue", "cost"}
 #: rankings section's move in positions — three places, not three percent.
 _DELTA_METRICS = {"delta", "keyEvents_delta"}
 #: Metrics where a *lower* number is the better one, so a fall reads as good.
-_LOWER_IS_BETTER = {"position", "avg_position"}
+_LOWER_IS_BETTER = {"position", "avg_position", "ai_average_position"}
 
 #: The order a strip of figures is read in. **Not cosmetic: a snapshot has no order.**
 #:
@@ -70,6 +70,7 @@ _TILE_ORDER = (
     "engagementRate", "avg_engagement_time", "userEngagementDuration", "screenPageViews",
     "totalRevenue", "cost", "conversionsValue",
     "clicks", "impressions", "ctr", "position", "ai_impressions",
+    "ai_brand_presence", "ai_link_presence", "ai_average_position", "ai_opportunity_traffic",
     "avg_position", "top3", "top10", "top30", "keywords_ranking", "keywords_tracked",
     "score", "errors", "warnings", "pages",
 )
@@ -90,7 +91,7 @@ _SOURCE_KINDS = {"organic_sources", "social_sources", "referral_sources"}
 #: what every table on the document was before there was one whose rows are search engines —
 #: including ``ai_search``, whose column is arguably misnamed too and is not this change's to
 #: rename: a heading a client has read for three months is not collateral on a different fix.
-_NAME_LABELS = {"engines": "search_engine"}
+_NAME_LABELS = {"engines": "search_engine", "ai_search_overview": "engine"}
 
 #: Columns a **client** document drops from a traffic-split table. The provider returns the
 #: marketeer's seven (`report_sections._split_section`), which is the right answer for the
@@ -214,6 +215,18 @@ _METRIC_ICONS: dict[str, str] = {
     ),
     # A four-point spark — the mark Google itself puts on an AI Overview.
     "ai_impressions": "M8 1.8l1.6 4.6L14.2 8l-4.6 1.6L8 14.2l-1.6-4.6L1.8 8l4.6-1.6z",
+    # The AI Search overview (docs/SERANKING.md): a mention is the same spark a Search Console
+    # AI impression is, a citation is a link, and the traffic is a session's pulse.
+    "ai_brand_presence": "M8 1.8l1.6 4.6L14.2 8l-4.6 1.6L8 14.2l-1.6-4.6L1.8 8l4.6-1.6z",
+    "ai_link_presence": (
+        "M6.8 9.2a3 3 0 0 0 4.3 0l2.2-2.2a3 3 0 0 0-4.3-4.3l-.9.9"
+        "M9.2 6.8a3 3 0 0 0-4.3 0L2.7 9a3 3 0 0 0 4.3 4.3l.9-.9"
+    ),
+    "ai_opportunity_traffic": "M1 8h3.2l2.1-4.6 3 9.2 2.1-4.6H15",
+    "ai_average_position": (
+        "M8 14.4s5.2-4.3 5.2-7.7A5.2 5.2 0 1 0 2.8 6.7c0 3.4 5.2 7.7 5.2 7.7"
+        "M8 8.6a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8"
+    ),
     "avg_position": (
         "M8 14.4s5.2-4.3 5.2-7.7A5.2 5.2 0 1 0 2.8 6.7c0 3.4 5.2 7.7 5.2 7.7"
         "M8 8.6a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8"
@@ -429,7 +442,7 @@ def _arrow(direction: str) -> Markup:
     )
 
 
-def change_badge(key: str, value: Any, locale: str) -> Markup:
+def change_badge(key: str, value: Any, locale: str, *, metric: str | None = None) -> Markup:
     """A change, drawn beside the number it is about: a coloured arrow and the signed figure.
 
     The **arrow** is the direction the number moved (up for a rise, down for a fall, none for
@@ -442,6 +455,12 @@ def change_badge(key: str, value: Any, locale: str) -> Markup:
     places and prints as a signed count. Nothing to compare against (``None``, or not a number)
     draws nothing at all — a dash beside a number is a question, and the compare column already
     holds the answer.
+
+    ``metric`` names what the change is *of*, where the caller knows: ``key`` says how to print
+    it (a ``delta`` is a percentage) and cannot also say whether falling is good. A KPI tile
+    passed only ``"delta"``, so an average position that improved from 5,6 to 4,9 drew its
+    badge in red on every report — the very thing the paragraph above promises not to do, and
+    true of the rankings tile for as long as it has existed. Found by looking at the page.
     """
     if value is None or value == "":
         return Markup("")
@@ -461,7 +480,8 @@ def change_badge(key: str, value: Any, locale: str) -> Markup:
         text = f"{'+' if number > 0 else ''}{figure}"
     direction = "up" if number > 0 else ("down" if number < 0 else "")
     return Markup(
-        f'<span class="badge {delta_class(key, number)}">{_arrow(direction)}{escape(text)}</span>'
+        f'<span class="badge {delta_class(metric or key, number)}">'
+        f"{_arrow(direction)}{escape(text)}</span>"
     )
 
 
@@ -577,6 +597,8 @@ def build_context(
         "sections": sections,
         # The cover's own figures — see `_headline`.
         "headline": _headline(sections),
+        # …and the span *those* figures were measured against — see `_headline_span`.
+        "cover_compare_label": _headline_span(sections, compare.get("label")),
         "labels": {
             key: translate(f"reporting.doc.{key}", locale)
             for key in (
@@ -683,6 +705,13 @@ def _shaped_part(
         # describes them and a percentage with the wrong denominator under it is a lie (#312).
         "compare_label": _span_label(data.get("compare_period"), locale),
         "chart": _chart(data.get("chart"), style, locale),
+        # What the chart draws, where the section said so — printed above a chart that has no
+        # table beside it to name its metric. Absent on every snapshot stored before it existed.
+        "chart_caption": (
+            metric_label(str((data.get("chart") or {}).get("metric")), locale)
+            if (data.get("chart") or {}).get("metric")
+            else None
+        ),
         # How many things the chart draws, so a design can decide whether it will fit beside a
         # table without parsing the SVG it was handed.
         "chart_categories": _chart_categories(data.get("chart")),
@@ -744,7 +773,7 @@ def _tiles(data: dict[str, Any], locale: str, currency: str | None) -> list[dict
             # The drawn form — arrow and figure — so the tile and a table cell say a change
             # the same way. `delta` and `delta_class` stay for a tenant's own design that
             # reads them.
-            "badge": change_badge("delta", change, locale),
+            "badge": change_badge("delta", change, locale, metric=metric),
         }
         fingerprint = (str(tile["value"]), str(tile["delta"]))
         if fingerprint in seen:
@@ -799,10 +828,37 @@ def _headline(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from can never disagree, and so a client whose first section is Search Console (no GA4) gets
     *their* headline rather than an empty strip.
     """
+    # A section measured against a span of its own (rankings and AI search: the month before)
+    # is passed over while another has figures: the cover prints *one* caption — "vergeleken
+    # met augustus 2025" — and tiles whose percentages are month-over-month would stand under
+    # it as if they were year-over-year (#312). It still leads when it is all a client has,
+    # which is what it always did; its own span is stated in its chapter either way — and on
+    # the cover too, through `_headline_span`.
+    section = _headline_section(sections)
+    return list(section["totals"])[:_HEADLINE_TILES] if section else []
+
+
+def _headline_section(sections: list[dict[str, Any]]) -> dict[str, Any] | None:
+    fallback: dict[str, Any] | None = None
     for section in sections:
-        if section.get("totals"):
-            return list(section["totals"])[:_HEADLINE_TILES]
-    return []
+        if not section.get("totals"):
+            continue
+        if not section.get("compare_label"):
+            return section
+        fallback = fallback or section
+    return fallback
+
+
+def _headline_span(sections: list[dict[str, Any]], report_span: str | None) -> str | None:
+    """The span the cover's caption names: whichever one its tiles were measured against.
+
+    Where the only section with figures compares with the month before, the strip above the
+    caption is month-over-month — and "vergeleken met augustus 2025" under it is a sentence
+    about percentages that are not on the page. A percentage is a claim about two spans (#312),
+    so the caption follows the tiles, never the other way round.
+    """
+    section = _headline_section(sections)
+    return (section or {}).get("compare_label") or report_span
 
 
 def _chart_categories(spec: dict[str, Any] | None) -> int:
@@ -1205,7 +1261,11 @@ def _chart(spec: dict[str, Any] | None, style: ChartStyle, locale: str) -> str:
     if not spec:
         return ""
     kind = spec.get("type")
+    # A label shaped like a month *is* one (`2026-08` → `aug`): a section that charts a monthly
+    # series hands over the ISO month, and the name is the document's language, decided here.
+    labels = [month_label(str(label), locale) or label for label in spec.get("labels") or []]
     if kind == "grouped":
+        spec = {**spec, "labels": labels}
         series = spec.get("series") or []
         labelled = [
             (translate(f"reporting.doc.series_{item.get('key')}", locale), item.get("values") or [])

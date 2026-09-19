@@ -243,6 +243,25 @@ _SHORT_MONTHS = {
 }
 
 
+def month_label(value: str, locale: str) -> str | None:
+    """``2026-08`` as a chart axis reads it — ``aug`` — or ``None`` for anything else.
+
+    The year rides only on January (``jan 27``): six bars each labelled "aug 2026" would spend
+    the axis on the one part of the date a reader was never unsure about, while a series that
+    crosses New Year still has to say where it did. A section hands the renderer the ISO month
+    and not a name, so the snapshot stays a record and the language stays the document's.
+    """
+    year, sep, number = str(value).partition("-")
+    if not sep or len(year) != 4 or not (year.isdigit() and number.isdigit()):
+        return None
+    index = int(number)
+    if not 1 <= index <= 12:
+        return None
+    lang = (locale or "nl").split("-")[0]
+    name = _SHORT_MONTHS.get(lang, _SHORT_MONTHS["nl"])[index - 1]
+    return f"{name} {year[-2:]}" if index == 1 else name
+
+
 def day_label(value: date, locale: str) -> str:
     """One day, short: ``1 aug`` in Dutch, ``Aug 1`` in English.
 

@@ -116,13 +116,18 @@ what it is given and names no module.
 `marketing` contributes traffic channels, search engines, rankings, Search Console, referral,
 social, conversions, visibility in AI Overviews and AI Mode (Search Console's Generative AI
 report, uploaded by hand because Google's API does not carry it — `docs/GOOGLE_SEARCH_CONSOLE.md`
-§6a; the section exists only for a client whose agency uploaded it), AI search, and —
-**internal only** — the site audit. Adding a chapter is a change where the data lives; disabling
+§6a; the section exists only for a client whose agency uploaded it), the brand's visibility in
+AI answers against the month before (SE Ranking's AI Search overview — `docs/SERANKING.md`; only
+for a client the agency switched it on for), AI search, and — **internal only** — the site
+audit. Adding a chapter is a change where the data lives; disabling
 `marketing` removes its sections from every future report while already-generated ones keep
 theirs, because a report stores its own snapshot.
 
 A section returns `None` for "this client has none of this", which prints nothing rather than an
-empty table. A section that *fails* is a warning, not a failure: a report whose SE Ranking
+empty table. A section may also be **withheld** — `{"withheld": True, "notes": [...]}` — when it
+has something to tell the agency and nothing to show the client (SE Ranking had not published
+the month yet; the Data API plan is out of units): its notes reach the run's warnings and no
+chapter prints, because a loss with nothing taking its place has to be stated. A section that *fails* is a warning, not a failure: a report whose SE Ranking
 project is unreachable still goes out with its traffic in it.
 
 **A stored layout is a diff, not a snapshot** (docs/INVOICING.md's rule). Resolution starts from
@@ -670,7 +675,10 @@ declares its `auth` kind (`AUTH_GOOGLE` / `AUTH_ORG_KEY`) — Google's per-user 
 revocation and reconnect prompt are Google's semantics, not a general notion of "credential". An
 org-key source is configured or it is not.
 
-One API key per agency, encrypted on `marketing_settings` beside the Ads developer token.
+One API key per agency, encrypted on `marketing_settings` beside the Ads developer token — and,
+optionally, a second one for SE Ranking's **Data API**, which is a separate product with its own
+token. The AI Search overview that rides it (what the four figures mean, how the month is
+decided, what a read costs, the key check) has a document of its own: `docs/SERANKING.md`.
 
 ### The checklist to run against a live credential
 

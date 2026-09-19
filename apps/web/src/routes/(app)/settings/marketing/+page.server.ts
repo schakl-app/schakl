@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { AI_ENGINES, AI_SCOPES, type AiEngine } from "$lib/modules/marketing/aisearch/types";
 import { LABELLED_CONNECTIONS, PORTAL_LABEL_SOURCES } from "$lib/modules/marketing/types";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -24,6 +25,20 @@ export const actions: Actions = {
     const token = String(form.get("ads_developer_token") ?? "").trim() || null;
     // Same write-only rule for the SE Ranking key (#300): empty keeps what is stored.
     const seranking = String(form.get("seranking_api_key") ?? "").trim() || null;
+    // …and for the optional separate Data API key (docs/SERANKING.md §2). Removing one is its
+    // own tick, because an empty box means "keep it" like every other secret on this form.
+    const seranking_data = String(form.get("seranking_data_api_key") ?? "").trim() || null;
+    // The house AI Search defaults. Engines are read by presence; none ticked is sent as
+    // `null` (keep what is stored) rather than as an empty list, because "on, and asking
+    // nothing" is not a state anybody means — switching it off is what the checkbox is for.
+    const engines = form
+      .getAll("ai_search_engines")
+      .map(String)
+      .filter((value): value is AiEngine => (AI_ENGINES as string[]).includes(value));
+    const aiScope = String(form.get("ai_search_scope") ?? "");
+    const aiSource = String(form.get("ai_search_source") ?? "")
+      .trim()
+      .toLowerCase();
     // The house comparison every client dashboard inherits (#312). Unlike the two secrets it is
     // a plain choice with no "keep what is stored" state to preserve, so an unrecognised value
     // is dropped rather than written.
@@ -58,6 +73,16 @@ export const actions: Actions = {
         channel_groups,
         ads_developer_token: token,
         seranking_api_key: seranking,
+        seranking_data_api_key: seranking_data,
+        clear_seranking_data_api_key: checked(form, "clear_seranking_data_api_key"),
+        ai_search: {
+          enabled: checked(form, "ai_search_enabled"),
+          engines: engines.length ? engines : null,
+          source: /^[a-z]{2}$/.test(aiSource) ? aiSource : null,
+          scope: (AI_SCOPES as readonly string[]).includes(aiScope)
+            ? (aiScope as (typeof AI_SCOPES)[number])
+            : null,
+        },
         default_compare,
         portal_source_labels,
         rankings: {
@@ -85,5 +110,25 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };
+  },
+  // Which of SE Ranking's two APIs the key reaches, and what the Data API plan has left
+  // (docs/SERANKING.md §2). A key typed a moment ago is **saved first**: somebody who pastes a
+  // key and presses "controleer" means that key, and checking the old one would answer a
+  // question they did not ask. Nothing else on the form is written by this button.
+  checkSeranking: async (event) => {
+    const form = await event.request.formData();
+    const api = apiFor(event);
+    const seranking_api_key = String(form.get("seranking_api_key") ?? "").trim() || null;
+    const seranking_data_api_key = String(form.get("seranking_data_api_key") ?? "").trim() || null;
+    if (seranking_api_key || seranking_data_api_key) {
+      const { error } = await api.PUT("/api/v1/marketing/settings", {
+        // Only the two keys: every other field left out keeps what is stored.
+        body: { seranking_api_key, seranking_data_api_key, clear_seranking_data_api_key: false },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    const { data, error } = await api.GET("/api/v1/marketing/settings/seranking/check");
+    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    return { check: data };
   },
 };

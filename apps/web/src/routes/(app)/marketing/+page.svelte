@@ -144,6 +144,7 @@
     {leadsError}
     filters={data.filters}
     profileHref={`/companies/${data.companyId}/marketing/profile`}
+    aiSearch={data.aiSearch}
   />
 {/if}
 
