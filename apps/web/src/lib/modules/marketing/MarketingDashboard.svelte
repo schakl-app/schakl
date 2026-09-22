@@ -71,7 +71,10 @@
      * *client*, not about a link — so it is drawn whether or not any source is linked, and the
      * website filter does not apply to it.
      */
-    aiSearch?: Promise<{ data: AiSearchOverview | null; errorKey: string | null } | null> | null;
+    aiSearch?:
+      | { data: AiSearchOverview | null; errorKey: string | null }
+      | Promise<{ data: AiSearchOverview | null; errorKey: string | null } | null>
+      | null;
     /** The payload is still in flight (it streams — docs/PERFORMANCE.md). "Nothing linked yet" is
      *  a wrong answer while that is true, not a slow one, so the shell says "loading" instead. */
     pending?: boolean;
@@ -415,11 +418,22 @@
 {/if}
 
 {#if pending && !metrics}
-  <div
-    class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center text-sm text-text-muted"
+  <!-- The shape of one source section, so a cold read does not re-arrange the page when it
+       lands (the leads placeholder above follows the same rule). -->
+  <section
+    class="rounded-xl border border-border bg-surface-raised p-4 sm:p-5"
+    aria-busy="true"
+    role="status"
   >
-    {t("common.loading")}
-  </div>
+    <div class="mb-4 h-5 w-48 animate-pulse rounded bg-surface"></div>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {#each [0, 1, 2, 3] as i (i)}
+        <div class="h-20 animate-pulse rounded-lg bg-surface"></div>
+      {/each}
+    </div>
+    <div class="mt-4 h-40 animate-pulse rounded-lg bg-surface"></div>
+    <p class="mt-3 text-xs text-text-muted">{t("common.loading")}</p>
+  </section>
 {:else if !metrics || sources.length === 0}
   <!-- One empty state, not two, and `needs_connection` no longer owns a branch of its own.
        It is a question about **Google**, and it used to short-circuit the whole screen: a client

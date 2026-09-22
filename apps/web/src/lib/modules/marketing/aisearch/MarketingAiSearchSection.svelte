@@ -31,6 +31,7 @@
   import { invalidateAll } from "$app/navigation";
   import { fmtMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { isPending, settledNow } from "$lib/core/streaming";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
@@ -57,9 +58,10 @@
     isPortal = false,
   }: {
     companyId: string;
-    /** The streamed read (docs/PERFORMANCE.md): a first view may be SE Ranking's latency, and
-     *  the dashboard's shell must not wait for it. */
-    overview: Promise<Streamed>;
+    /** The read, settled in the shell or still streaming (`$lib/core/streaming`): a first view
+     *  may be SE Ranking's latency, and the dashboard's shell must not wait for it — while a
+     *  stored month arrives with the shell and is drawn once, in its final shape. */
+    overview: Streamed | Promise<Streamed>;
     isPortal?: boolean;
   } = $props();
 
@@ -71,17 +73,25 @@
   // so assigning the same payload again makes a *new* proxy — a change — and an effect that
   // read it would re-run, re-assign and spin the main thread for ever. Found by the first
   // browser pass, which simply never came back.
-  let overview = $state.raw<AiSearchOverview | null>(null);
-  let pending = $state(true);
-  let loadError = $state<string | null>(null);
-  let loaded = false; // plain on purpose: the effect must not depend on it
+  const settledIncoming = settledNow(incoming);
+  let overview = $state.raw<AiSearchOverview | null>(settledIncoming?.data ?? null);
+  let pending = $state(isPending(incoming));
+  let loadError = $state<string | null>(settledIncoming?.errorKey ?? null);
+  let loaded = !isPending(incoming); // plain on purpose: the effect must not depend on it
   $effect(() => {
-    const promise = incoming;
+    const current = incoming;
+    if (!isPending(current)) {
+      overview = current?.data ?? null;
+      loadError = current?.errorKey ?? null;
+      loaded = true;
+      pending = false;
+      return;
+    }
     // "Loading" only before the first answer. A later invalidation keeps the figures on
     // screen while it re-reads, so an open editor is never pulled out from under its user.
     if (!loaded) pending = true;
-    void promise.then((value) => {
-      if (incoming !== promise) return;
+    void current.then((value) => {
+      if (incoming !== current) return;
       overview = value?.data ?? null;
       loadError = value?.errorKey ?? null;
       loaded = true;

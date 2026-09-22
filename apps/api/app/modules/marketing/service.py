@@ -197,7 +197,12 @@ _OVERVIEW_COLUMNS: dict[str, tuple[str, str]] = {
     "conversions": (MarketingSource.GA4.value, "conversions"),
 }
 
-_DRILLDOWN_TTL = 3600  # ~1h, tier-2 lives behind this (issue #133)
+#: How long a drill-down table is served from Redis. A day, for the leads dashboard's reason
+#: (``leads/service.CACHE_TTL``): the key carries the resolved dates and every span ends
+#: yesterday, so it changes at the org's midnight anyway, and an hour meant eleven tables that
+#: said "Laden…" and popped in one by one on the first open of every hour. The nightly warm
+#: (``jobs.marketing_warm_dashboards``) reads the default period's tables before anyone does.
+_DRILLDOWN_TTL = 86400
 
 #: The GA4 metrics a client's ``show_key_events=False`` withholds — key events and their
 #: display alias. Scoped to GA4: Google Ads keeps its own ``conversions`` (#134).
@@ -1294,6 +1299,24 @@ class MarketingService:
             await activity.record("company", company_id, "marketing.report_changed", {})
         if lead_profile_set and previous_profile != row.lead_profile:
             await activity.record("company", company_id, "marketing.lead_profile_changed", {})
+            if row.lead_profile is not None:
+                # A changed profile changes the requests, and with them every Redis key the
+                # dashboard reads through — so the first open after a save would pay Google's
+                # latency on every view. Warm this client now rather than at 05:45. Deferred a
+                # few seconds, because the worker reads committed rows and this transaction has
+                # not committed yet: a job that started at once would warm the *old* profile's
+                # keys. Best effort — the profile is saved either way, and the nightly warm
+                # covers a missing queue.
+                try:
+                    await enqueue(
+                        "marketing_warm_company",
+                        str(self.ctx.org.id),
+                        str(company_id),
+                        _job_id=f"marketing-warm-{company_id}",
+                        _defer_by=timedelta(seconds=5),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("could not enqueue the leads warm for company %s", company_id)
         return await self._company_settings_read(company_id, row)
 
     async def _company_settings_read(

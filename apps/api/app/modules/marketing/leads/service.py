@@ -74,10 +74,13 @@ from app.modules.marketing.service import (
 
 logger = logging.getLogger("schakl.marketing.leads")
 
-#: How long a fetched dashboard is served from Redis. One daily refresh is enough for this
-#: reporting (GA4 itself lags), and an hour keeps a team opening the same client ten times a
-#: morning from spending ten of the property's quota.
-CACHE_TTL = 3600
+#: How long a fetched dashboard is served from Redis. **A day**, because the answer is a day's
+#: answer: every span ends yesterday at the latest (``resolve_period``), so the requests — and
+#: with them the key — change at the org's midnight, and GA4 itself finalises a day well after it
+#: ends. An hour was the first guess, and it meant the first person each hour paid Google's
+#: latency on every view they opened, filter and period tab included. The nightly warm
+#: (``jobs.marketing_warm_leads``) reads the day's keys before anyone is at their desk.
+CACHE_TTL = 86400
 #: Staff-only diagnostics: about the agency's setup, never the client's business.
 _STAFF_WARNINGS = frozenset(
     {"silent_zero", "dimension_unregistered", "key_events_mismatch", "report_failed"}

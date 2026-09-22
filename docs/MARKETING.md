@@ -58,8 +58,23 @@ free date range, the sortable tables and the CSV export.
 4. Fetch the GA4 batch and the Ads queries, or take them from Redis. **The cache holds Google's
    raw answers, keyed on the exact requests sent**: a relabel in the profile shows at once
    (labels are applied on the way out) and a changed role re-fetches because the request
-   changed. One hour, which is enough for a report GA4 itself lags behind. Every Google
-   round-trip runs inside `ctx.release_db()`.
+   changed. **A day**, because the answer is a day's answer: every span ends yesterday at the
+   latest, so the requests — and with them the key — change at the org's midnight anyway, and
+   GA4 finalises a day well after it ends. It was an hour first, which meant the first person
+   each hour paid Google's latency on every view they opened, filter chip and period tab
+   included, and a dashboard that "loads in parts". Every Google round-trip runs inside
+   `ctx.release_db()`.
+   **The keys are warmed before anyone opens the tab.** `marketing_warm_dashboards` runs
+   nightly at 05:45, after the sync, and reads every client's tab the way a person would: the
+   leads dashboard for each preset the tab row offers (`LEADS_WARM_PERIODS`) and, on the default
+   preset, once per single-value filter; and every drill-down table of every active link on the
+   default preset — the eleven "Laden…" blocks under the tiles, which are live Google reads
+   behind the same day-long key (`_DRILLDOWN_TTL`). Through the services themselves, so the keys
+   are the ones the tab reads and never a second copy of the digest. A profile save enqueues the
+   same warm for that one client (`marketing_warm_company`, deferred a few seconds so the worker
+   reads the committed profile), because a changed role changes every key. What stays cold is
+   what the warm cannot enumerate or should not spend on: a named month or quarter from the
+   picker, a second chip on top of a first, and the drill-downs of the five non-default tabs.
 5. Compute the widgets, the coverage, the warnings and the filter controls. **What a filter
    offers is what the period saw, not what the narrowed reports still contain**: under an active
    filter the options are read off the *unfiltered* plan (`widgets.period_values`) — the view

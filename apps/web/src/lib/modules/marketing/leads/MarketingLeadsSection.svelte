@@ -152,11 +152,23 @@
 </script>
 
 {#if pending && !leads}
-  <div
-    class="rounded-xl border border-dashed border-border bg-surface-raised p-6 text-center text-sm text-text-muted"
+  <!-- A cold read is Google's latency, so what stands in for it has the shape of what it
+       becomes — a heading, a row of tiles, a chart — rather than one line that the whole page
+       below then moves down to make room for (docs/UX.md: a placeholder reserves the space). -->
+  <section
+    class="rounded-xl border border-border bg-surface-raised p-4 sm:p-5"
+    aria-busy="true"
+    role="status"
   >
-    {t("marketing.leads.loading")}
-  </div>
+    <div class="mb-4 h-5 w-40 animate-pulse rounded bg-surface"></div>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {#each [0, 1, 2, 3] as i (i)}
+        <div class="h-20 animate-pulse rounded-lg bg-surface"></div>
+      {/each}
+    </div>
+    <div class="mt-4 h-56 animate-pulse rounded-lg bg-surface"></div>
+    <p class="mt-3 text-xs text-text-muted">{t("marketing.leads.loading")}</p>
+  </section>
 {:else if errorKey && !leads}
   <div
     class="rounded-xl border border-dashed border-border bg-surface-raised p-6 text-center text-sm text-text-muted"

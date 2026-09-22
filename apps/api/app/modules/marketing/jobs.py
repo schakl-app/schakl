@@ -8,6 +8,12 @@
 - ``marketing_backfill_link`` — the 13-month backfill kicked off when a link is first created, so
   sparklines and year-over-year work from day one. Chunked by month and committed per chunk so a
   failure keeps the progress it made.
+- ``marketing_warm_dashboards`` — the nightly warm of the marketing tab (docs/MARKETING.md): the
+  leads dashboard and the drill-down tables are live Google reads behind a day-long Redis key,
+  so the first open of every view paid Google's latency. The warm reads each client's presets,
+  single-value filters and drill-downs once, before anyone is at their desk;
+  ``marketing_warm_company`` is the same for one client, enqueued when its profile changes (a
+  changed role changes the requests, and with them the key).
 
 Every link syncs independently: ``sync_link_range`` swallows its own errors and records them on
 the link, so one broken connection never stops the other links' sync.
@@ -23,11 +29,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entitlements.service import sku_cron_enabled
-from app.core.jobs import enqueue, run_per_org
+from app.core.jobs import enqueue, run_per_org, system_context
 from app.core.models import Org, OrgStatus
 from app.core.timezone import org_zoneinfo
 from app.db import async_session_maker, set_current_org
-from app.modules.marketing.models import MarketingLink
+from app.errors import AppError
+from app.modules.marketing.models import MarketingCompanySettings, MarketingLink
 from app.modules.marketing.service import sync_link_range
 
 logger = logging.getLogger("schakl.marketing")
@@ -184,3 +191,134 @@ async def marketing_backfill_link(ctx: dict, org_id: str, link_id: str) -> None:
         link.backfill_done = True
         await session.commit()
         logger.info("marketing backfill complete for link %s (org %s)", link.id, org.slug)
+
+
+# --- the dashboard's warm (docs/MARKETING.md) ------------------------------------------------ #
+
+#: The rolling presets the dashboard's tab row offers — the same list as the web's
+#: ``PERIOD_PRESETS`` (``yoy`` there is this list's ``365d``). Each is a different set of
+#: requests and therefore a different key; a named month or quarter is not warmed, since a
+#: picker's option list is open-ended and its first reader is the person who chose it.
+LEADS_WARM_PERIODS: tuple[str, ...] = ("30d", "90d", "month", "last_month", "quarter", "365d")
+#: The period the tab opens on: the one whose single-value filters and drill-down tables are
+#: warmed too. The other presets warm the leads dashboard only — a drill-down table is one
+#: Google read per kind per link, and eleven of those six times over for every client every
+#: night is a quota spent on tabs most mornings nobody opens.
+WARM_DEFAULT_PERIOD = "30d"
+
+
+async def _warmable_companies(session: AsyncSession, org: Org) -> list[uuid.UUID]:
+    """Every client with a measurement profile or an active link — the ones with a tab."""
+    profiled = await session.execute(
+        select(MarketingCompanySettings.company_id).where(
+            MarketingCompanySettings.org_id == org.id,
+            MarketingCompanySettings.lead_profile.is_not(None),
+        )
+    )
+    linked = await session.execute(
+        select(MarketingLink.company_id)
+        .where(MarketingLink.org_id == org.id, MarketingLink.active.is_(True))
+        .distinct()
+    )
+    return list(dict.fromkeys([*profiled.scalars(), *linked.scalars()]))
+
+
+async def warm_company(org: Org, session: AsyncSession, company_id: uuid.UUID) -> int:
+    """Read one client's marketing tab the way a person would, so that every key lands in Redis:
+    the leads dashboard for every preset and, on the default preset, once per single-value
+    filter; and every drill-down table of every active link on the default preset. Returns how
+    many reads were made.
+
+    Through the services themselves — the keys are theirs, computed from the exact requests
+    they send, and a second copy of that computation here is how a warm comes to fill a key
+    nobody reads. A view already in Redis costs nothing (the service takes it from there), so
+    re-running this is cheap. Only single-value filters: the options a reader is offered are
+    the period's own values, and one click on one chip is the common case; a second chip on a
+    warm view still costs the reader one read, which is the cold path's price rather than the
+    warm's problem. A refusal from Google is the service's to record on the answer it returns;
+    a drill-down the client's layout hides is a 422 and simply skipped. Nothing here raises
+    past one client.
+    """
+    from app.modules.marketing.leads.service import LeadsService  # noqa: PLC0415 — flat graph
+    from app.modules.marketing.service import MarketingService  # noqa: PLC0415
+    from app.modules.marketing.sources import source_for  # noqa: PLC0415
+
+    ctx = system_context(org, session)
+    reads = 0
+
+    leads = LeadsService(ctx)
+    for period in LEADS_WARM_PERIODS:
+        dashboard = await leads.dashboard(company_id, period, {})
+        reads += 1
+        if not dashboard.configured:
+            break
+        if period != WARM_DEFAULT_PERIOD:
+            continue
+        for control in dashboard.filters:
+            for option in control.options:
+                await leads.dashboard(company_id, period, {control.dimension: [option.key]})
+                reads += 1
+
+    marketing = MarketingService(ctx)
+    links = (
+        (
+            await session.execute(
+                select(MarketingLink).where(
+                    MarketingLink.org_id == org.id,
+                    MarketingLink.company_id == company_id,
+                    MarketingLink.active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for link in links:
+        for kind in source_for(link.source).drilldowns:
+            try:
+                await marketing.drilldown(company_id, link.id, kind, 30, WARM_DEFAULT_PERIOD)
+            except AppError as exc:
+                if exc.status_code != 422:
+                    raise
+                continue  # hidden by this client's layout: no table, no key
+            reads += 1
+    return reads
+
+
+async def _warm_dashboards_org(org: Org, session: AsyncSession) -> None:
+    companies = await _warmable_companies(session, org)
+    reads = 0
+    for company_id in companies:
+        try:
+            reads += await warm_company(org, session, company_id)
+        except Exception:  # noqa: BLE001 — one client's failure must not cool the next
+            logger.exception("marketing warm failed for company %s (org %s)", company_id, org.slug)
+    if companies:
+        logger.info(
+            "marketing: warmed the tab for %s clients in %s reads (org %s)",
+            len(companies),
+            reads,
+            org.slug,
+        )
+
+
+async def marketing_warm_dashboards(ctx: dict) -> None:
+    """Nightly ARQ entrypoint, after the sync: fill the day's keys for every client's tab."""
+    if not await _licensed():
+        return
+    await run_per_org(_warm_dashboards_org)
+
+
+async def marketing_warm_company(ctx: dict, org_id: str, company_id: str) -> None:
+    """One client's warm, enqueued when its measurement profile is saved."""
+    if not await _licensed():
+        return
+    async with async_session_maker() as session:
+        org = await session.get(Org, uuid.UUID(org_id))
+        if org is None or org.status != OrgStatus.ACTIVE.value:
+            return
+        await set_current_org(session, org.id)
+        try:
+            await warm_company(org, session, uuid.UUID(company_id))
+        except Exception:  # noqa: BLE001
+            logger.exception("marketing warm failed for company %s (org %s)", company_id, org.slug)
