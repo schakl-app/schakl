@@ -436,7 +436,10 @@ _MEMBER_REQUEST_BUDGET = 8
 # 54 → 55: the tenant's own source names (#446, widened) are read for every caller of the
 # marketing panel now — one org-level statement, so the agency's word for a source is the same on
 # the hub as in the portal. Flat in the client's size, like the counts above.
-_PANELS_BUDGET = 55
+# 55 → 57 (v0.50.0's meetings module): the meetings panel is the shape #407 asked for — one page
+# of five and its count, the same two statements the meetings list's own budget test pins
+# (``test_the_list_is_two_statements_however_many_rows``). Flat in the client's size.
+_PANELS_BUDGET = 57
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.
