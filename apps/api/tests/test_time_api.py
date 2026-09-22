@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
 
 
 async def test_timer_start_stop(client_for) -> None:
@@ -57,8 +57,11 @@ async def test_manual_entry_and_summary(client_for) -> None:
         assert entry["minutes"] == 30
         assert entry["ended_at"] is not None
 
+        # The org's day, not UTC's: `started_at` is an aware instant and the summary buckets
+        # it in the tenant's zone (CLAUDE.md §8), so the two disagree for the hours between
+        # local midnight and UTC midnight — which is where this ran red at 00:49 CEST.
         summary = await c.get(
-            "/api/v1/time/summary", params={"date": now.date().isoformat()}, headers=headers
+            "/api/v1/time/summary", params={"date": org_today().isoformat()}, headers=headers
         )
         assert summary.status_code == 200
         assert summary.json()["minutes"] == 30
@@ -91,7 +94,8 @@ async def test_timesheet_grid(client_for) -> None:
     t = await make_tenant("time-sheet")
     headers = await auth_cookie(t.user)
     now = datetime.now(UTC)
-    week_start = now.date()
+    # The day the org filed that instant under, never UTC's (CLAUDE.md §8).
+    week_start = org_today()
     async with client_for(t.host) as c:
         await c.post(
             "/api/v1/time/entries",
@@ -297,7 +301,7 @@ async def test_timesheet_rows_keyed_by_company_project_task(client_for) -> None:
         sheet = (
             await c.get(
                 "/api/v1/time/timesheet",
-                params={"week_start": now.date().isoformat()},
+                params={"week_start": org_today().isoformat()},
                 headers=headers,
             )
         ).json()

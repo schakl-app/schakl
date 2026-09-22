@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 from tests.test_task_subresources import add_member
 
 
@@ -13,7 +13,9 @@ async def test_productivity_stats(client_for) -> None:
     owner_headers = await auth_cookie(t.user)
     member = await add_member(t)
     member_headers = await auth_cookie(member)
-    today = datetime.now(UTC).date().isoformat()
+    # The org's calendar day, never UTC's: an aware `started_at` is bucketed in the
+    # tenant's zone, and the two differ between local and UTC midnight (CLAUDE.md §8).
+    today = org_today().isoformat()
 
     async with client_for(t.host) as c:
         now = datetime.now(UTC).isoformat()
@@ -238,8 +240,8 @@ async def test_team_summary_is_one_bounded_dashboard_payload(client_for) -> None
         )
 
         params = {
-            "date_from": now.date().replace(day=1).isoformat(),
-            "date_to": now.date().isoformat(),
+            "date_from": org_today().replace(day=1).isoformat(),
+            "date_to": org_today().isoformat(),
         }
         summary = (
             await c.get("/api/v1/time/stats/team-summary", params=params, headers=headers)
