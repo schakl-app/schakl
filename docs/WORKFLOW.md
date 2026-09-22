@@ -88,6 +88,26 @@ cd apps/api && uv run pytest --store-durations --durations-path .test_durations
 Changing the shard count means editing two places that YAML cannot keep in step for you: the
 `matrix.shard` list and the `--splits` argument beside it.
 
+## The web build compiles one module per locale, not one per message
+
+Paraglide's default `outputStructure` is `message-modules` — a module per message, for
+tree-shaking. With 8200 keys across two locales that is 8200 modules and 33 MB of source for
+rollup to hold an AST of, and the peak crossed `--max-old-space-size=12288` in September 2026:
+the CI web job went red, the release image kept building only because it happened to land a few
+hundred megabytes under the line, and the cost rose with **every i18n key anybody added**. A
+build whose memory grows with the catalog and whose cap is a constant fails eventually, on
+somebody else's commit, for a reason that has nothing to do with their change.
+
+`--output-structure locale-modules` (in `apps/web`'s `machine:messages` script) makes it 7
+modules, and it costs nothing here: `t()` looks a dotted key up on a namespace import
+(`import * as messages`) and indexes it dynamically, so **every message was already retained in
+the bundle** and per-message modules bought granularity nothing could use. Measured on the same
+tree: peak RSS 15.9 GB → 4.4 GB, and the build 8m24s → 31s.
+
+The rule worth keeping: if you make the messages tree-shakeable — a static `m.some_key()` import
+per call site rather than `t("some.key")` — revisit this, because then the trade-off is real.
+Until then, the cap is headroom, not a budget.
+
 ## Commits
 
 Conventional, small, scoped: `feat(time): add weekly timesheet grid`,

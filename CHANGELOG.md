@@ -15,6 +15,16 @@ No migration, no new environment variable, no schema change. One new notificatio
 (`meetings.error.abandoned`) and five on the screens and in the inbox. The API surface is
 unchanged, so the typed client and the public reference are untouched.
 
+### Build
+
+- **The web build no longer runs out of memory, and stops getting closer to it with every
+  translated string.** Paraglide compiled one module per message — 8200 of them across two
+  locales — and rollup's peak crossed the build's own 12 GB cap: the CI web job went red and the
+  release image kept building only by landing a few hundred megabytes under the line. It now
+  compiles one module per locale, which costs nothing (`t()` indexes a namespace import
+  dynamically, so every message was already in the bundle). Peak memory 15.9 GB → 4.4 GB, build
+  8m24s → 31s. No change to what ships.
+
 ### Meetings
 
 - **A row exists only for a live capture.** The record screen created the meeting and *then*
