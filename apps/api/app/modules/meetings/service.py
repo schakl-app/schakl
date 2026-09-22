@@ -386,6 +386,10 @@ class MeetingService:
         — a later one is a continuation and would fail the magic-number check by construction.
         Every piece is held to the dictation's byte cap: a recorder sends one a minute, an
         upload cuts its file into a few megabytes each, and 24 MiB in one piece is neither.
+
+        Every piece is also the recording saying it is still alive: it stamps ``status_at``,
+        which is how the server decides a recorder is gone and ends the recording itself
+        (``jobs._reap_recordings``).
         """
         row = await self._writable(meeting_id)
         if row.status != MeetingStatus.RECORDING.value:
@@ -448,7 +452,11 @@ class MeetingService:
             )
             or 0
         )
-        values: dict[str, Any] = {"chunks_received": received}
+        # ``status_at`` is stamped with every piece, so "when did this recording last say
+        # anything" is one column. The reaper reads it (``jobs._reap_recordings``) to decide
+        # that a recorder is gone, and only a piece may make a recording look alive — a title
+        # edited mid-recording bumps ``updated_at`` and must not buy a dead tab another hour.
+        values: dict[str, Any] = {"chunks_received": received, "status_at": _now()}
         if data.seq == 0:
             values["audio_format"] = extension
         await self.repo.update(row, **values)

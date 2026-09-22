@@ -7,7 +7,7 @@ from __future__ import annotations
 import base64
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pwdlib import PasswordHash
@@ -21,7 +21,7 @@ from app.core.auth.models import User
 from app.core.models import Org
 from app.core.storage.models import StoredFile
 from app.db import async_session_maker, set_current_org
-from app.modules.meetings.jobs import run_pipeline
+from app.modules.meetings.jobs import RECORDING_STALE_AFTER_MINUTES, _reap_org, run_pipeline
 from app.modules.meetings.models import Meeting
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
@@ -965,3 +965,151 @@ async def test_a_run_the_worker_restart_cut_short_is_resumed(
         assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
             "status"
         ] == "review"
+
+
+# --------------------------------------------------------------------------- #
+# The recorder that never sent a stop.
+# --------------------------------------------------------------------------- #
+
+
+async def _age_recording(org_id: uuid.UUID, meeting_id: str, minutes: int) -> None:
+    """Pretend the last piece landed `minutes` ago — what a dead tab looks like."""
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        row = await session.get(Meeting, uuid.UUID(meeting_id))
+        row.status_at = datetime.now(UTC) - timedelta(minutes=minutes)
+        await session.commit()
+
+
+async def _reap(org_id: uuid.UUID) -> None:
+    async with async_session_maker() as session:
+        org = await session.get(Org, org_id)
+        await set_current_org(session, org.id)
+        await _reap_org(org, session)
+        await session.commit()
+
+
+async def test_a_recording_nobody_is_feeding_is_ended_by_the_server(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The stop is the one message a dead tab cannot send, so the server sends it.
+
+    A recording that stored pieces is *queued* — the same act as the recorder's own finish —
+    because the meeting is on the server and only the stop is missing. Before this, a
+    ``recording`` row was the one state nothing ever ended: three hours after a phone locked
+    mid-meeting, the screen still said a recording was running and the only control on it was
+    Delete.
+    """
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    queued: list[tuple] = []
+
+    async def _capture(*args, **kwargs):  # noqa: ANN002, ANN003
+        queued.append(args)
+        return object()
+
+    monkeypatch.setattr("app.modules.meetings.jobs.enqueue", _capture)
+    t = await make_tenant("meet-reap-pieces")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Kwartaaloverleg", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        for seq in range(2):
+            raw = WEBM_HEADER if seq == 0 else b"\x01" * 300
+            await c.post(
+                f"/api/v1/meetings/{meeting['id']}/chunks",
+                json={"seq": seq, "audio": _B64(raw)},
+                headers=headers,
+            )
+
+        # Still being recorded: a reap now must leave it alone, or it would 409 every
+        # remaining piece and lose the rest of a live meeting to save the start of it.
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "recording"
+        assert queued == []
+
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+        await _reap(t.org.id)
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "queued", detail
+        assert detail["error_key"] is None
+        assert queued and queued[0][0] == "meetings_process" and queued[0][2] == meeting["id"]
+
+
+async def test_a_recording_that_never_arrived_is_failed_and_says_so(client_for) -> None:
+    """Zero pieces is not a recording, it is a row claiming to be one.
+
+    This is the shape that stranded a three-hour meeting: the row was created before the
+    microphone was acquired, the capture never began, and nothing on the server disagreed with
+    a screen that went on saying "de opname loopt". It is failed with the reason rather than
+    deleted, because the title, the client and the roster the person typed did reach us and are
+    the only half worth keeping.
+    """
+    t = await make_tenant("meet-reap-empty")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Kick-off", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+        await _reap(t.org.id)
+
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "failed", detail
+        assert detail["error_key"] == "meetings.error.abandoned"
+        assert detail["title"] == "Kick-off"
+
+
+async def test_a_piece_keeps_the_recording_alive(client_for, tmp_path, monkeypatch) -> None:
+    """``status_at`` is stamped by every piece, so a live recorder can never look silent — and
+    only a piece may say so: a title edited mid-recording bumps ``updated_at`` and must not buy
+    a dead tab another twenty minutes."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("meet-reap-alive")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Standup", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+
+        # A title edit is not the recording saying anything.
+        await c.patch(
+            f"/api/v1/meetings/{meeting['id']}", json={"title": "Standup dinsdag"}, headers=headers
+        )
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "failed"
+
+        # A piece is.
+        second = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Standup 2", "participants_informed": True},
+            headers=headers,
+        )
+        second_id = second.json()["id"]
+        await _age_recording(t.org.id, second_id, RECORDING_STALE_AFTER_MINUTES + 1)
+        await c.post(
+            f"/api/v1/meetings/{second_id}/chunks",
+            json={"seq": 0, "audio": _B64(WEBM_HEADER)},
+            headers=headers,
+        )
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{second_id}", headers=headers)).json()[
+            "status"
+        ] == "recording"

@@ -104,8 +104,9 @@ model was `gpt-transcribe`, which answers text only, and nothing on any screen h
 `recording → queued → transcribing → summarising → review → done`, or `failed` with the reason as
 an i18n key on the row. The worker owns the two middle states and stamps `status_at`;
 `meetings_reap_stale` fails a row held past `STALE_AFTER_MINUTES` (90 — a three-hour recording
-through a slow provider is a legitimate forty minutes). `retry` re-queues a `failed` or `review`
-row over the folded recording. The detail page polls `GET /meetings/{id}/status` — three columns —
+through a slow provider is a legitimate forty minutes) and ends a `recording` row nothing has
+posted a piece to for `RECORDING_STALE_AFTER_MINUTES` (20; see below). `retry` re-queues a
+`failed` or `review` row over the folded recording. The detail page polls `GET /meetings/{id}/status` — three columns —
 while the row is in flight.
 
 ## What a redeploy does to a recording, and what a dead tab leaves behind
@@ -118,6 +119,27 @@ the edge stack restarting, or simply a phone stepping out of wifi at the same mo
 first recorder answered that with three retries over twelve seconds, then a red line and a button.
 The person who would press the button is in the meeting. Four rules now hold.
 
+- **A row exists only for a capture that is already running.** The record screen used to create
+  the meeting and *then* ask for the microphone, so every way a capture can fail to begin — a
+  permission prompt nobody answers, a phone that freezes the tab while the prompt is up, a
+  `MediaRecorder` the browser declines to build — left a row stamped `recording` behind it with
+  nothing to record into. `MeetingRecorder.arm()` acquires the microphone and builds the
+  recorder, `begin()` starts it, and the row is created between the two; a create that fails
+  aborts the armed capture so the phone stops showing a microphone nobody has a meeting for.
+- **The first piece is asked for after seconds** (`FIRST_CHUNK_MS`, five), with `requestData()`
+  rather than a shorter timeslice. Everything that kills a recording kills it at the start, and
+  until a piece lands there is nothing on the server at all — not a byte to transcribe, and no
+  evidence the capture was ever really running. With it, a recording that dies in its first
+  minute is a short recording rather than no recording. It also makes *"opgeslagen tot"* a
+  measured number (`savedSeconds`, the elapsed second the last landed piece was cut at) instead
+  of `uploaded × 60`, which claimed a whole minute was safe five seconds in.
+- **The screen wake lock is re-taken on every return to visibility.** The browser releases it
+  the moment the page hides and hands it back to nobody, so asking once at the start bought
+  exactly one screen-off; after that a phone slept on its own schedule, froze the tab, and
+  stopped the recording with nothing saying so. And a capture that did not survive being away is
+  *ended* rather than left to a timer that goes on ticking: a `MediaRecorder` the browser tore
+  down, or a microphone the OS took back for an incoming call, stops the recording, hands over
+  every piece that landed, and says why (`meetings.record.capture_lost`).
 - **A piece is retried for minutes, not seconds** (`upload.ts`): a capped backoff (1 s → 30 s)
   until `UPLOAD_RETRY_BUDGET_MS` (ten minutes) has been spent waiting, held in memory, in order.
   The screen says *"Verbinding herstellen… opgeslagen tot 12:03"* in amber while it retries — the
@@ -130,11 +152,28 @@ The person who would press the button is in the meeting. Four rules now hold.
   nav link or the back button — because the page's unmount aborts the capture *and deletes the
   row*, and a mis-click must not be how a meeting ends.
 - **A tab that died anyway leaves a row the page can finish.** The pieces it uploaded are stored;
-  what is missing is the stop. Every piece bumps `updated_at` and a recorder posts one a minute,
-  so the detail page polls a `recording` row and, once nothing has landed for two minutes, says
-  so and offers *Verwerk wat is opgeslagen* — `POST /finish` without a duration, the transcription's
-  own count filling it in — or the delete. Before this the row sat on *"nog aan het opnemen"* for
-  ever, and the reaper deliberately ignores `recording` (a four-hour meeting is legal).
+  what is missing is the stop. Every piece bumps `status_at` and a recorder posts one a minute,
+  so the detail page polls a `recording` row and, once nothing has landed for fifteen minutes,
+  says so and offers *Verwerk wat is opgeslagen* — `POST /finish` without a duration, the
+  transcription's own count filling it in — or the delete.
+- **And the server ends it whether or not anybody opens the page.** The bullet above was the
+  whole answer once, and it was an answer only for somebody who thinks to look. The first
+  three-hour meeting recorded on a phone made the gap plain: the tab was frozen by a screen lock
+  minutes in, no piece ever landed, and at half past ten the row still said *"de opname loopt nog
+  op een ander scherm"* with Verwijderen as the only control on the page. So
+  `meetings_reap_stale` reaps `recording` too (`RECORDING_STALE_AFTER_MINUTES`, twenty), and what
+  it does depends on what arrived: **pieces were stored**, so the meeting is queued and
+  transcribed from them — the recorder's own *Verwerk wat is opgeslagen*, taken without a person
+  pressing it; **nothing arrived at all**, so there is no recording, only a row claiming to be
+  one, and it is failed with `meetings.error.abandoned`. Failed rather than deleted: the title,
+  the client and the roster the person typed *did* reach us and are the half worth keeping.
+- **The three timers are ordered, and the order is the design.** A piece gives up at ten minutes
+  (`UPLOAD_RETRY_BUDGET_MS`), the screen offers to finish without the recorder at fifteen
+  (`STALLED_AFTER_MS`), the server finishes it at twenty. Being early here is expensive and being
+  late is only slow: offer at two minutes and somebody processes a meeting that is still being
+  recorded, which 409s every remaining piece and loses the rest of it to save the start.
+  `tests/unit/meeting-recorder-order.test.ts` pins the ordering across the three files, because
+  each number reads as correct on its own.
 - **The worker resumes a run its own restart cut short.** The worker rolls stop-first; arq
   cancels the running `meetings_process` and queues it again, and the second run arrives to a row
   still stamped `transcribing` or `summarising`. `run_pipeline` used to stand down on anything but

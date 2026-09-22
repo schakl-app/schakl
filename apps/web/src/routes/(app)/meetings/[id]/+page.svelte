@@ -94,13 +94,21 @@
 
   /**
    * A recording whose recorder is gone. The tab posts one piece a minute while it runs, so a
-   * `recording` row nothing has touched for longer than that is a tab that was reloaded, closed
-   * or crashed — a redeploy at the wrong moment, a phone that locked. The pieces it did upload
-   * are stored; what is missing is the stop, so the page offers it. Two minutes, not one: a
-   * piece retried through a connection blip lands late rather than never. Re-evaluated on every
-   * poll, which is where `meeting` changes.
+   * `recording` row nothing has touched for much longer than that is a tab that was reloaded,
+   * closed or crashed — a redeploy at the wrong moment, a phone that locked. The pieces it did
+   * upload are stored; what is missing is the stop, so the page offers it.
+   *
+   * Fifteen minutes, and the number is chosen rather than felt: a *live* recorder whose
+   * connection drops retries one piece for ten minutes before it gives up
+   * (`UPLOAD_RETRY_BUDGET_MS`), so anything shorter than that offers to process a meeting that
+   * is still being recorded — and pressing it would queue the row, 409 every remaining piece,
+   * and lose the rest of the meeting to save the start of it. Being early is expensive and
+   * being late is only slow, so the three timers are ordered deliberately: the upload gives up
+   * at ten, this offer appears at fifteen, and the server ends the recording itself at twenty
+   * (`jobs.RECORDING_STALE_AFTER_MINUTES`). Re-evaluated on every poll, which is where
+   * `meeting` changes.
    */
-  const STALLED_AFTER_MS = 2 * 60_000;
+  const STALLED_AFTER_MS = 15 * 60_000;
   const stalled = $derived(
     meeting.status === "recording" &&
       !!meeting.updated_at &&
@@ -596,25 +604,32 @@
             {tn("meetings.progress.stalled_hint", meeting.chunks_received ?? 0)}
           {/if}
         </p>
-        {#if canWrite}
-          <div class="mt-3 flex flex-wrap gap-2">
+        <p class="text-sm text-text-muted">{t("meetings.progress.stalled_auto")}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <!-- What is offered depends on what arrived. With pieces stored, processing them is
+               the act and Delete is the escape; with nothing stored there is no recording to
+               process, so the only honest control is the one that clears the row — drawn as the
+               primary, because a disabled button beside a greyed-out secondary is a screen that
+               refuses twice and suggests nothing. The server reaches the same two answers on
+               its own within the half hour (`jobs._reap_recordings`); this is the same decision
+               taken by hand, by somebody who does not want to wait. -->
+          {#if canWrite && (meeting.chunks_received ?? 0) > 0}
             <form method="POST" action="?/finishRecording" use:enhance={busy.keep("finish")}>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={busy.is("finish")}
-                disabled={(meeting.chunks_received ?? 0) === 0}
-              >
+              <Button type="submit" variant="primary" loading={busy.is("finish")}>
                 {t("meetings.action.finish_recording")}
               </Button>
             </form>
-            {#if meeting.can_delete}
-              <Button type="button" variant="secondary" onclick={() => (confirmDelete = true)}>
-                {t("common.delete")}
-              </Button>
-            {/if}
-          </div>
-        {/if}
+          {/if}
+          {#if meeting.can_delete}
+            <Button
+              type="button"
+              variant={(meeting.chunks_received ?? 0) > 0 ? "secondary" : "primary"}
+              onclick={() => (confirmDelete = true)}
+            >
+              {t("common.delete")}
+            </Button>
+          {/if}
+        </div>
       </div>
     </div>
   </Card>
