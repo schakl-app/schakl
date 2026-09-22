@@ -552,8 +552,8 @@ async def test_speech_capability_is_reported_only_when_it_can_work(client_for) -
         invalidate_features_cache(t.org.id)
         assert "speech" in (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
 
-        # All three hosts off (the assistant dictates too), and there is nothing left for a
-        # microphone to be for.
+        # All four hosts off (the assistant dictates too, and a meeting is recorded), and
+        # there is nothing left for a microphone to be for.
         await c.put(
             "/api/v1/ai/settings",
             json={
@@ -562,6 +562,7 @@ async def test_speech_capability_is_reported_only_when_it_can_work(client_for) -
                     "time_assist": {"enabled": False},
                     "task_assist": {"enabled": False},
                     "assistant": {"enabled": False},
+                    "meeting_assist": {"enabled": False},
                 },
             },
             headers=headers,

@@ -16,7 +16,11 @@ Provider = Literal["anthropic", "openai", "openai_compatible"]
 #: Transcription speaks one API shape (`POST {base}/audio/transcriptions`), and Anthropic has
 #: no speech endpoint at all — so the speech provider is a strictly narrower set than the chat
 #: one, rather than the same Literal reused.
-SpeechProvider = Literal["openai", "openai_compatible"]
+#: ``mistral`` is a speech provider and not a chat one on purpose: its chat API is
+#: OpenAI-compatible and reachable as such, while its transcription API takes two form fields
+#: (``diarize``, ``timestamp_granularities``) the OpenAI endpoint does not, and a meeting needs
+#: both (``core/ai/transcribe.py``).
+SpeechProvider = Literal["openai", "openai_compatible", "mistral"]
 
 _PERIOD = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 

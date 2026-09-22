@@ -29,6 +29,7 @@ import "./interactions";
 import "./marketing";
 import "./reporting";
 import "./portal";
+import "./meetings";
 
 // --- Integrations: what schakl talks to ----------------------------------- //
 import "$lib/integrations/google";

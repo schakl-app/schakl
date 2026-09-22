@@ -14,6 +14,7 @@ const FEATURES = [
   "reporting",
   "email_assist",
   "task_intake",
+  "meeting_assist",
 ] as const;
 
 // Instellingen → AI (#126): provider, write-only key, model, per-feature toggles, house
@@ -49,7 +50,8 @@ export const actions: Actions = {
     // Speech is a separate credential on purpose (#246): Anthropic has no transcription
     // endpoint, so "reuse the chat provider" leaves the default tenant unable to dictate.
     // Empty here means "off", which clears the stored speech key with it.
-    const speechProvider = text("speech_provider") as "openai" | "openai_compatible" | null;
+    const speechProvider = text("speech_provider") as
+      "openai" | "openai_compatible" | "mistral" | null;
     const audioBudgetRaw = text("monthly_audio_seconds_budget");
     const audioBudget = audioBudgetRaw ? Number.parseInt(audioBudgetRaw, 10) : null;
 

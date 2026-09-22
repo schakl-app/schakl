@@ -58,7 +58,10 @@ FROM python:3.12-slim AS runtime
 # raster stacks (pango shapes the text, cairo/gdk-pixbuf draw it). They are not optional —
 # without them `import weasyprint` raises at startup, so they belong in the runtime image
 # next to the font it shapes.
-RUN apt-get update && apt-get install -y --no-install-recommends curl fonts-inter \
+# ffmpeg cuts a meeting recording into the parts a speech provider takes in one request
+# (app/modules/meetings/pipeline.py) — a copy cut on a frame boundary, no re-encode. Only the
+# recordings over a provider's cap need it; without it those, and only those, are refused.
+RUN apt-get update && apt-get install -y --no-install-recommends curl fonts-inter ffmpeg \
        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libgdk-pixbuf-2.0-0 libcairo2 \
     && find /usr/share/fonts/opentype/inter -type f \
        ! -name 'Inter-Regular.otf' ! -name 'Inter-Medium.otf' ! -name 'Inter-SemiBold.otf' \

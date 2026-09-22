@@ -25,6 +25,7 @@ and the default provider cannot be one.
 | `anthropic` | **none** — Anthropic has no speech endpoint |
 | `openai` | `POST {base}/audio/transcriptions` |
 | `openai_compatible` | same shape, if the tenant's server implements it |
+| `mistral` | same wire shape, plus `diarize` and segment timestamps — three hours a request, in Dutch (`docs/MEETINGS.md`) |
 
 `anthropic` is the settings-page default, so "reuse the chat provider" resolves to nothing for
 the typical tenant. `ai_settings.speech_provider` / `speech_base_url` / `speech_api_key_enc` /
@@ -200,6 +201,15 @@ must not throw the words away**: the review still opens, with the transcript as 
 line saying which of the two happened. And **a field the model filled is marked as such** (a ✦
 beside the label), so "schakl picked this client" and "I picked this client" are not the
 same-looking cell.
+
+## Recording a meeting
+
+The fourth host, and the one that outgrew this file: two hours rather than two minutes, uploaded
+a minute at a time while it records, transcribed in the worker with speaker labels and
+timestamps, and drafted into minutes a person reviews. `docs/MEETINGS.md` holds it; what it
+took from here is the recorder's shape (`MeetingRecorder` mirrors `Recorder`, with an upload per
+`timeslice` instead of one clip at the end) and the rule that every way out releases the
+microphone.
 
 ## Where this goes next
 

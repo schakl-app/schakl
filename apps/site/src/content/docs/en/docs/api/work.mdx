@@ -7,7 +7,7 @@ sidebar:
 
 What the agency actually does, and what it bills: projects with budgets, task boards and checklists, the timer and the timesheet, and every contact moment on one timeline.
 
-105 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+113 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `projects`
 
@@ -143,6 +143,7 @@ Returns: `200` · `ProjectSettingsRead`
 | `GET` `/tasks/{task_id}/ai-status` | `tasks.task.read` |
 | `POST` `/tasks/{task_id}/ai/checklist` | `tasks.task.write` |
 | `POST` `/tasks/{task_id}/ai/revise` | `tasks.task.write` |
+| `POST` `/tasks/{task_id}/ai/transcribe` | `tasks.task.write` |
 | `POST` `/tasks/{task_id}/checklists` | `tasks.task.write` |
 | `PATCH` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
 | `DELETE` `/tasks/{task_id}/checklists/{checklist_id}` | `tasks.task.write` |
@@ -164,6 +165,10 @@ Returns: `200` · `ProjectSettingsRead`
 | `DELETE` `/tasks/checklist-templates/{template_id}` | `tasks.checklist_template.write` |
 | `GET` `/tasks/dashboard-groups` | `tasks.task.read` |
 | `GET` `/tasks/dashboard-mine` | `tasks.task.read` |
+| `GET` `/tasks/intake` | `tasks.task.create` |
+| `DELETE` `/tasks/intake/{intake_id}` | `tasks.task.create` |
+| `POST` `/tasks/intake/{intake_id}/create` | `tasks.task.create` |
+| `GET` `/tasks/intake/summary` | `tasks.task.create` |
 | `GET` `/tasks/labels` | `tasks.task.read` |
 | `POST` `/tasks/labels` | `tasks.label.write` |
 | `PATCH` `/tasks/labels/{label_id}` | `tasks.label.write` |
@@ -178,6 +183,8 @@ Returns: `200` · `ProjectSettingsRead`
 | `POST` `/tasks/schedules/{schedule_id}/log-time` | `time.entry.write` |
 | `POST` `/tasks/schedules/batch` | `tasks.schedule.write` |
 | `GET` `/tasks/schedules/busy` | `tasks.schedule.write` |
+| `GET` `/tasks/settings` | `tasks.settings.manage` |
+| `PUT` `/tasks/settings` | `tasks.settings.manage` |
 | `GET` `/tasks/statuses` | `tasks.task.read` |
 | `POST` `/tasks/statuses` | `tasks.status.write` |
 | `PATCH` `/tasks/statuses/{status_id}` | `tasks.status.write` |
@@ -218,6 +225,8 @@ Query parameters:
 | `due_to` | string | Deadline window end (inclusive) |
 | `q` | string |  |
 | `undated` | boolean | Only tasks with no deadline (rows written before the date became required, #392), or only dated ones. Omitted returns both. |
+| `series_id` | string | Every task of one schedule-mode series — the root that holds the repeat rule and each occurrence laid out from it, finished or not. Any member's id names the series; a task that is not in one answers an empty page. |
+| `collapse_series` | boolean | Fold each schedule-mode series onto its current occurrence: an unfinished occurrence due after today that is not the series' earliest unfinished one is left out, and the row that stands for them carries `series_pending`. Off by default — the export and the MCP surface read the whole list. (default `false`) |
 | `sort` | string | due \| title \| due_date \| priority \| status \| assignee \| …, '-' desc. `due` is the urgency reading the board opens on: deadline first, then priority, highest first. |
 | `meta` | boolean | Include label/checklist/comment aggregates (default `true`) |
 | `hours` | boolean | Include the hour budget's burn (logged/remaining minutes); costs one grouped query. Omitted for a caller without time.entry.read rather than refused. (default `false`) |
@@ -300,6 +309,18 @@ Path parameters: `task_id`
 Request body: `TaskReviseRequest`
 
 Returns: `200` · `TaskReviseResult`
+
+#### `POST /api/v1/tasks/{task_id}/ai/transcribe`
+
+**Transcribe Revise Instruction** — Speech to text for the revise box: an instruction spoken instead of typed.
+
+Permission: `tasks.task.write`
+
+Path parameters: `task_id`
+
+Request body: `TaskTranscribeRequest`
+
+Returns: `200` · `TimeTranscribeResult`
 
 #### `POST /api/v1/tasks/{task_id}/checklists`
 
@@ -541,6 +562,51 @@ Query parameters:
 
 Returns: `200` · `DashboardMineSummary`
 
+#### `GET /api/v1/tasks/intake`
+
+**List Intake** — The caller's own mails to the task address — parked ones first in the UI, recent ones for the record. Never another sender's: a mail is its sender's until it is a task.
+
+Permission: `tasks.task.create`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `status` | string |  |
+| `limit` | integer |  (default `50`) |
+
+Returns: `200` · `TaskIntakeRead[]`
+
+#### `DELETE /api/v1/tasks/intake/{intake_id}`
+
+**Discard Intake** — Throw a parked mail away. The receipt stays, so the same mail cannot come back.
+
+Permission: `tasks.task.create`
+
+Path parameters: `intake_id`
+
+Returns: `204`
+
+#### `POST /api/v1/tasks/intake/{intake_id}/create`
+
+**Complete Intake** — Finish a parked mail by hand: name the client, and the task is created as the caller.
+
+Permission: `tasks.task.create`
+
+Path parameters: `intake_id`
+
+Request body: `TaskIntakeComplete`
+
+Returns: `200` · `TaskRead`
+
+#### `GET /api/v1/tasks/intake/summary`
+
+**Intake Summary** — How many of the caller's mails wait for a client — the strip on the board.
+
+Permission: `tasks.task.create`
+
+Returns: `200` · `TaskIntakeSummary`
+
 #### `GET /api/v1/tasks/labels`
 
 **List Labels**
@@ -607,7 +673,7 @@ Returns: `200` · `RecurrencePreviewRead`
 
 #### `GET /api/v1/tasks/schedules`
 
-**List Schedules**
+**List Schedules** — Planned blocks in a window: the caller's own, named people's (``user_ids``, ``:any`` for anyone else), or everybody's (``all_users``, ``:any``; a holder of ``:own`` gets their own).
 
 Permission: `tasks.schedule.read`
 
@@ -619,6 +685,7 @@ Query parameters:
 | `date_to` | string |  |
 | `user_ids` | string[] |  |
 | `task_id` | string |  |
+| `all_users` | boolean |  (default `false`) |
 
 Returns: `200` · `ScheduleItem[]`
 
@@ -701,6 +768,24 @@ Query parameters:
 | `date_to` | string · required |  |
 
 Returns: `200` · `BusyFeedRead`
+
+#### `GET /api/v1/tasks/settings`
+
+**Get Settings** — The org's tasks settings: the e-mail intake address. No saved row means the defaults.
+
+Permission: `tasks.settings.manage`
+
+Returns: `200` · `TaskSettingsRead`
+
+#### `PUT /api/v1/tasks/settings`
+
+**Update Settings**
+
+Permission: `tasks.settings.manage`
+
+Request body: `TaskSettingsUpdate`
+
+Returns: `200` · `TaskSettingsRead`
 
 #### `GET /api/v1/tasks/statuses`
 
@@ -828,6 +913,7 @@ Returns: `201` · `TaskRead[]`
 | `GET` `/time/logged` | `time.entry.read` |
 | `GET` `/time/report` | `time.report.read` |
 | `GET` `/time/stats/productivity` | `time.report.read` |
+| `GET` `/time/stats/projects` | `time.report.read` |
 | `GET` `/time/stats/revenue` | `time.report.read` |
 | `GET` `/time/stats/team-summary` | `time.report.read` |
 | `GET` `/time/summary` | `time.entry.read` |
@@ -1083,6 +1169,21 @@ Query parameters:
 | `date_to` | string · required |  |
 
 Returns: `200` · `ProductivityStats`
+
+#### `GET /api/v1/time/stats/projects`
+
+**Project Time Stats** — Per-project minutes (all / billable / approved / invoiced) and the billable worth — what the projects report joins onto each budget. Unbounded dates mean all time.
+
+Permission: `time.report.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string |  |
+| `date_to` | string |  |
+
+Returns: `200` · `ProjectTimeStats`
 
 #### `GET /api/v1/time/stats/revenue`
 

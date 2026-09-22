@@ -46,11 +46,19 @@ async def store_system_file(
     entity_id: uuid.UUID,
     content_id: str | None = None,
     created_by_user_id: uuid.UUID | None = None,
+    max_bytes: int | None = None,
+    allowed_types: frozenset[str] | None = None,
 ) -> StoredFile | None:
-    """Store one file for a background actor; ``None`` when validation skips it."""
-    if content_type not in settings.upload_allowed_types:
+    """Store one file for a background actor; ``None`` when validation skips it.
+
+    ``max_bytes`` / ``allowed_types`` let a caller that owns a *different* guardrail state it —
+    a meeting recording is audio, which the attachment allow-list never admits, and two hours
+    of it is well past the 10 MiB an attachment may be (``app/modules/meetings``). The defaults
+    are the instance's, so every existing caller keeps the attachment rules.
+    """
+    if content_type not in (allowed_types or settings.upload_allowed_types):
         return None
-    if len(data) > settings.upload_max_bytes:
+    if len(data) > (max_bytes or settings.upload_max_bytes):
         return None
     # The same de-duplication the interactive path gets, and this is where it pays: a mailbox
     # poller storing the sender's signature logo on every message writes the object once

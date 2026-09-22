@@ -8,7 +8,7 @@ documents, never as instructions.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 _LANGUAGE_NAMES = {"nl": "Dutch", "en": "English"}
 
@@ -321,4 +321,22 @@ def report_system(*, language: str, period: str, brand: str) -> str:
             "names or links — plain prose and numbers only.",
             _INJECTION_STANCE,
         ]
+    )
+
+
+def calendar_line(today: date, now: datetime | None = None, *, days: int = 14) -> str:
+    """Today *with its weekday*, the local time, and the next two weeks as weekday → date.
+
+    A model told only "today is 2026-09-14" has to work out for itself that it is a Monday,
+    and gets it wrong often enough that "a.s. vrijdag" landed on the Thursday. Weekday
+    arithmetic is ours to do, so the prompt states every day it may resolve a word against.
+    """
+    clock = f", local time {now:%H:%M}" if now is not None else ""
+    ahead = ", ".join(
+        f"{today + timedelta(days=offset):%a} {(today + timedelta(days=offset)).isoformat()}"
+        for offset in range(1, days + 1)
+    )
+    return (
+        f"Today is {today:%A} {today.isoformat()}{clock}. The days ahead, by weekday: {ahead}. "
+        "A weekday named without 'next' ('vrijdag', 'a.s. vrijdag') is the coming one."
     )

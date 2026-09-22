@@ -39,6 +39,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/api/app/modules/invoicing/`
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/marketing/`
+- `apps/api/app/modules/meetings/`
 - `apps/api/app/modules/portal/`
 - `apps/api/app/modules/projects/`
 - `apps/api/app/modules/reporting/`
@@ -52,6 +53,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/lib/modules/invoicing/`
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/marketing/`
+- `apps/web/src/lib/modules/meetings/`
 - `apps/web/src/lib/modules/portal/`
 - `apps/web/src/lib/modules/projects/`
 - `apps/web/src/lib/modules/reporting/`
@@ -61,6 +63,7 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`
 - `apps/web/src/routes/(app)/invoices/`
+- `apps/web/src/routes/(app)/meetings/`
 - `apps/web/src/routes/invoice/`
 - `apps/web/src/routes/(app)/leave/`
 - `apps/web/src/routes/(app)/marketing/`

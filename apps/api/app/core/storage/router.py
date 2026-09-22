@@ -40,7 +40,22 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 #: Types a browser may render inline; anything else downloads. SVG is deliberately NOT inline —
 #: an inline SVG executes script in the serving origin, which would be a stored-XSS hole.
-_INLINE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"})
+_INLINE_TYPES = frozenset(
+    {
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/gif",
+        "application/pdf",
+        # A meeting recording plays in an ``<audio>`` element on its own page; none of these
+        # containers can carry script, and a download is not what a listener pressed play for.
+        "audio/webm",
+        "audio/ogg",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/wav",
+    }
+)
 
 
 async def _open_stored(stored: StoredFile, ctx: RequestContext | None = None):

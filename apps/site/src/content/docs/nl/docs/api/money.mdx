@@ -7,12 +7,13 @@ sidebar:
 
 Facturen en offertes die uit het werk zelf komen, terugkerende afspraken, de betaalprovider die ze vereffent en het boekhoudpakket waar ze in belanden.
 
-108 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+112 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `invoicing`
 
 | Endpoint | Recht |
 | --- | --- |
+| `GET` `/invoicing/billed-periods` | `invoicing.invoice.read` |
 | `GET` `/invoicing/invoices` | `invoicing.invoice.read` |
 | `POST` `/invoicing/invoices` | `invoicing.invoice.write` |
 | `GET` `/invoicing/invoices/{invoice_id}` | `invoicing.invoice.read` |
@@ -66,6 +67,7 @@ Facturen en offertes die uit het werk zelf komen, terugkerende afspraken, de bet
 | `GET` `/invoicing/recurring-backlog` | `invoicing.invoice.read:any` |
 | `GET` `/invoicing/settings` | `invoicing.invoice.read:any` |
 | `PUT` `/invoicing/settings` | `invoicing.settings.manage` |
+| `GET` `/invoicing/stats/revenue` | `invoicing.invoice.read:any` |
 | `GET` `/invoicing/summary` | `invoicing.invoice.read` |
 | `GET` `/invoicing/tax-rates` | `invoicing.invoice.read:any` |
 | `POST` `/invoicing/tax-rates` | `invoicing.settings.manage` |
@@ -84,6 +86,21 @@ Facturen en offertes die uit het werk zelf komen, terugkerende afspraken, de bet
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/invoicing/billed-periods`
+
+**Billed Periods** — Which periods of one agreement or domain a document already holds, and on which document — the record's own invoicing history, newest first.
+
+Recht: `invoicing.invoice.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `source` | `subscription` · `domain` · verplicht | subscription \| domain |
+| `source_id` | string · verplicht | the agreement's or domain's id |
+
+Antwoord: `200` · `BilledPeriod[]`
 
 #### `GET /api/v1/invoicing/invoices`
 
@@ -147,6 +164,12 @@ Recht: `invoicing.invoice.delete`
 
 Padparameters: `invoice_id`
 
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `force` | boolean | Delete an issued invoice as well. Off, only a draft deletes and an issued one answers 409 (cancel it, or credit it). On, the number leaves the sequence for good; refused while payments, credit notes, a ledger booking or an open online checkout hang off it. (default `false`) |
+
 Antwoord: `204`
 
 #### `POST /api/v1/invoicing/invoices/{invoice_id}/cancel`
@@ -161,11 +184,13 @@ Antwoord: `200` · `InvoiceRead`
 
 #### `POST /api/v1/invoicing/invoices/{invoice_id}/credit`
 
-**Credit Invoice** — Draft credit note mirroring this invoice with negated prices.
+**Credit Invoice** — Credit note mirroring this invoice with negated prices — a draft to edit down, or with ``issue=true`` a definitive one that writes the invoice off at once and hands its work back (the way to cancel an invoice the client has already received).
 
 Recht: `invoicing.invoice.write`
 
 Padparameters: `invoice_id`
+
+Request body: `InvoiceCredit`
 
 Antwoord: `201` · `InvoiceRead`
 
@@ -679,6 +704,20 @@ Request body: `InvoicingSettingsWrite`
 
 Antwoord: `200` · `InvoicingSettingsRead`
 
+#### `GET /api/v1/invoicing/stats/revenue`
+
+**Invoicing Revenue Stats** — What was invoiced in ``year`` beside the year before: per month, per client, per kind, excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth.
+
+Recht: `invoicing.invoice.read:any`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `year` | integer · verplicht |  |
+
+Antwoord: `200` · `InvoicingRevenueStats`
+
 #### `GET /api/v1/invoicing/summary`
 
 **Summary**
@@ -859,6 +898,8 @@ Antwoord: `200` · `UninvoicedReport`
 | `GET` `/subscriptions/{subscription_id}` | `subscriptions.subscription.read` |
 | `PATCH` `/subscriptions/{subscription_id}` | `subscriptions.subscription.write` |
 | `DELETE` `/subscriptions/{subscription_id}` | `subscriptions.subscription.delete` |
+| `POST` `/subscriptions/{subscription_id}/links` | `subscriptions.subscription.write` |
+| `DELETE` `/subscriptions/{subscription_id}/links/{entity_type}/{entity_id}` | `subscriptions.subscription.write` |
 | `GET` `/subscriptions/{subscription_id}/prices` | `subscriptions.subscription.read` |
 | `POST` `/subscriptions/price-increase` | `subscriptions.subscription.write` |
 | `POST` `/subscriptions/price-increase/preview` | `subscriptions.subscription.write` |
@@ -895,6 +936,7 @@ Queryparameters:
 | `entity_type` | string | with entity_id: linked-entity filter |
 | `entity_id` | string |  |
 | `usage` | boolean | include current-period usage per row (default `false`) |
+| `linkable` | boolean | with entity_type/entity_id: the agreements that could be attached to the record instead of the ones already on it — its client's, alive, of a kind that attaches to it, not yet linked (default `false`) |
 
 Antwoord: `200` · `Page_SubscriptionRead_`
 
@@ -943,6 +985,28 @@ Antwoord: `200` · `SubscriptionRead`
 Recht: `subscriptions.subscription.delete`
 
 Padparameters: `subscription_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/subscriptions/{subscription_id}/links`
+
+**Link Subscription** — Attach one project, task or website to the agreement. A website needs a kind that ``covers_websites``; a link already there is left as it is.
+
+Recht: `subscriptions.subscription.write`
+
+Padparameters: `subscription_id`
+
+Request body: `SubscriptionLinkWrite`
+
+Antwoord: `201` · `SubscriptionRead`
+
+#### `DELETE /api/v1/subscriptions/{subscription_id}/links/{entity_type}/{entity_id}`
+
+**Unlink Subscription** — Detach one record from the agreement.
+
+Recht: `subscriptions.subscription.write`
+
+Padparameters: `subscription_id`, `entity_type`, `entity_id`
 
 Antwoord: `204`
 
@@ -1050,7 +1114,7 @@ Antwoord: `201` · `SubscriptionTypeRead`
 
 #### `PATCH /api/v1/subscriptions/types/{type_id}`
 
-**Update Subscription Type**
+**Update Subscription Type** — Flipping ``billed_in_advance`` re-reads the periods of every agreement of this kind; ``shifted_subscriptions`` reports how many, so the screen can say so.
 
 Recht: `subscriptions.type.manage`
 
@@ -1058,7 +1122,7 @@ Padparameters: `type_id`
 
 Request body: `SubscriptionTypeUpdate`
 
-Antwoord: `200` · `SubscriptionTypeRead`
+Antwoord: `200` · `SubscriptionTypeSaved`
 
 #### `DELETE /api/v1/subscriptions/types/{type_id}`
 

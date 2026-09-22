@@ -76,7 +76,7 @@ _DOMAIN_TABLES = (
     # into the next test. `report_profiles` precedes the templates and tones it points at.
     "reports, report_profiles, report_templates, report_tones, reporting_settings, "
     "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
-    "interactions, interaction_kinds, "
+    "meetings, interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_skips, gmail_suppressions, "
     "google_connections, google_settings, "
@@ -104,7 +104,7 @@ _ENABLED_MODULES = [
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
     "interactions", "google", "microsoft", "marketing", "cloudflare", "oxxa", "mollie",
-    "snelstart", "timeon",
+    "snelstart", "timeon", "meetings",
 ]
 
 

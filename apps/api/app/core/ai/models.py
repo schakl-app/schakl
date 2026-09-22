@@ -50,6 +50,11 @@ AI_FEATURES: tuple[str, ...] = (
     # dictation (#382) is a colleague's own words with a person confirming; this is applied
     # unwatched and half the mail is usually forwarded from a client.
     "task_intake",
+    # A recorded meeting into a transcript and minutes (``app/modules/meetings``). Its own key
+    # for #327's reason: a meeting is mostly *other people's* words — a client's — sent whole
+    # to a model, and an agency happy to have a colleague's dictation drafted has not thereby
+    # agreed to that.
+    "meeting_assist",
 )
 
 #: The features that consume a microphone. ``speech`` stays a capability rather than a toggle
@@ -58,7 +63,8 @@ AI_FEATURES: tuple[str, ...] = (
 #: rather than the single ``"time_assist"`` this used to be spelled as inline, because #382 added
 #: the second host and the single-name version made task dictation die with the time quick-add.
 #: The assistant is the third host: a spoken question or instruction lands in its composer.
-SPEECH_FEATURES: tuple[str, ...] = ("time_assist", "task_assist", "assistant")
+#: A meeting is the fourth: two hours of it, in chunks, through the worker.
+SPEECH_FEATURES: tuple[str, ...] = ("time_assist", "task_assist", "assistant", "meeting_assist")
 
 
 class AISettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
