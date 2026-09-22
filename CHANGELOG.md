@@ -10,9 +10,10 @@ recorded a three-hour meeting on a phone and not one byte reached the server, an
 later the page still said the recording was running, with Verwijderen as the only control on
 it.
 
-No migration, no new environment variable, no schema change. One new i18n key on the row
-(`meetings.error.abandoned`) and three on the screens. The API surface is unchanged, so the
-typed client and the public reference are untouched.
+No migration, no new environment variable, no schema change. One new notification event,
+`meeting.lost`, which mails by default like `meeting.ready` does; one new i18n key on the row
+(`meetings.error.abandoned`) and five on the screens and in the inbox. The API surface is
+unchanged, so the typed client and the public reference are untouched.
 
 ### Meetings
 
@@ -27,6 +28,10 @@ typed client and the public reference are untouched.
   without a person pressing it. Nothing arrived, so the row is failed with a reason, rather
   than left claiming to be running. It is failed and not deleted: the title, the client and the
   roster the person typed did reach us.
+- **And the person who recorded it is told.** A new `meeting.lost` notification, mailed by
+  default: silence is what made the incident expensive, because somebody walked out of a
+  three-hour meeting believing it had been recorded and found out hours later by opening the
+  row.
 - **The first piece is uploaded after five seconds**, not after a minute. A recording that dies
   in its first minute is now a short recording rather than no recording, and *"opgeslagen tot"*
   states a measured second rather than the piece count times sixty.

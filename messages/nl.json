@@ -8131,6 +8131,8 @@
   "errors.meetings.template_render": "Dit sjabloon kon niet worden gerenderd.",
   "errors.meetings.template_too_large": "Dit sjabloon is te groot.",
   "meetings.error.unknown_section": "Onbekend hoofdstuk.",
+  "notifications.event.meeting.lost": "Van de opname “{title}” is niets binnengekomen. Het tabblad was waarschijnlijk gesloten of de telefoon vergrendeld; er is geen geluid om uit te schrijven.",
+  "notifications.event_label.meeting.lost": "Van een opname die ik maakte is niets binnengekomen",
   "notifications.event.meeting.ready": "De notulen van “{title}” staan klaar om na te kijken: {decisions} besluiten, {action_items} actiepunten.",
   "notifications.event_label.meeting.ready": "De notulen van een vergadering die ik opnam staan klaar",
   "permissions.meetings.settings.manage": "Vergaderinstellingen beheren",

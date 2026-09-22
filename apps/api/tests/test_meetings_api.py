@@ -1069,6 +1069,13 @@ async def test_a_recording_that_never_arrived_is_failed_and_says_so(client_for) 
         assert detail["error_key"] == "meetings.error.abandoned"
         assert detail["title"] == "Kick-off"
 
+        # And the colleague who pressed record is told, rather than finding out days later by
+        # opening the row: silence is what made the incident behind this expensive.
+        inbox = (await c.get("/api/v1/notifications", headers=headers)).json()
+        lost = [i for i in inbox["items"] if i["event_type"] == "meeting.lost"]
+        assert len(lost) == 1, inbox
+        assert lost[0]["payload"]["title"] == "Kick-off"
+
 
 async def test_a_piece_keeps_the_recording_alive(client_for, tmp_path, monkeypatch) -> None:
     """``status_at`` is stamped by every piece, so a live recorder can never look silent — and

@@ -8131,6 +8131,8 @@
   "errors.meetings.template_render": "This template could not be rendered.",
   "errors.meetings.template_too_large": "This template is too large.",
   "meetings.error.unknown_section": "Unknown chapter.",
+  "notifications.event.meeting.lost": "Nothing of the recording \u201c{title}\u201d ever arrived. The tab was closed or the phone locked; there is no audio to transcribe.",
+  "notifications.event_label.meeting.lost": "Nothing arrived of a recording I made",
   "notifications.event.meeting.ready": "The minutes of “{title}” are ready to review: {decisions} decisions, {action_items} action items.",
   "notifications.event_label.meeting.ready": "The minutes of a meeting I recorded are ready",
   "permissions.meetings.settings.manage": "Manage meeting settings",

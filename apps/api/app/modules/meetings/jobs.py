@@ -85,6 +85,9 @@ AUDIO_RETENTION_DAYS = 30
 #: The notification the colleague who recorded it gets when the draft lands on ``review``
 #: (registered in ``notifications/events.py``; ``MEETING_READY`` there must match).
 READY_EVENT = "meeting.ready"
+#: The notification the colleague who recorded it gets when the server had to end a recording
+#: that nothing of ever arrived (``notifications/events.py``; ``MEETING_LOST`` must match).
+LOST_EVENT = "meeting.lost"
 
 
 async def _licensed() -> bool:
@@ -344,6 +347,28 @@ async def _notify_ready(ctx, row: Meeting, draft) -> None:  # noqa: ANN001
     )
 
 
+async def _notify_lost(ctx, row: Meeting) -> None:  # noqa: ANN001
+    """The colleague who pressed record is told the recording never arrived.
+
+    Silence is what made this expensive: somebody walked out of a three-hour meeting believing
+    it had been recorded and found out hours later, by opening the row. The sentence names the
+    meeting and links to it, and mails by this event's own default — the person it is addressed
+    to recorded from a phone and is not at their desk (``notifications/defaults``).
+    """
+    if row.owner_user_id is None:
+        return
+    await emit(
+        LOST_EVENT,
+        ctx,
+        {
+            "meeting_id": row.id,
+            "title": row.title,
+            "_recipients": [row.owner_user_id],
+            "_dedup_key": f"meeting-lost:{row.id}",
+        },
+    )
+
+
 async def _fail(
     session: AsyncSession, org_id: uuid.UUID, meeting_id: uuid.UUID, error_key: str
 ) -> None:
@@ -439,6 +464,7 @@ async def _reap_recordings(org: Org, session: AsyncSession) -> None:
         .scalars()
         .all()
     )
+    ctx = system_context(org, session)
     for row in rows:
         now = datetime.now(UTC)
         if row.chunks_received <= 0:
@@ -446,6 +472,7 @@ async def _reap_recordings(org: Org, session: AsyncSession) -> None:
             row.status_at = now
             row.error_key = "meetings.error.abandoned"
             logger.warning("meetings: recording %s never received a piece; failing it", row.id)
+            await _notify_lost(ctx, row)
             continue
         row.status = MeetingStatus.QUEUED.value
         row.status_at = now
@@ -509,6 +536,7 @@ async def meetings_sweep_audio(ctx: dict) -> None:  # noqa: ARG001
 
 __all__ = [
     "AUDIO_RETENTION_DAYS",
+    "LOST_EVENT",
     "READY_EVENT",
     "RECORDING_STALE_AFTER_MINUTES",
     "STALE_AFTER_MINUTES",

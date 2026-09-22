@@ -106,6 +106,7 @@ ENTITY_ID_KEY: dict[str, str] = {
     "snelstart.sync.failed": "account_id",
     # Emitted by the meetings worker the moment a draft lands on ``review``.
     "meeting.ready": "meeting_id",
+    "meeting.lost": "meeting_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}

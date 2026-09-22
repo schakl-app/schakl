@@ -105,6 +105,13 @@ SNELSTART_SYNC_FAILED = "snelstart.sync.failed"
 # sentence is a whole one; the constant in ``meetings/jobs.py`` (``READY_EVENT``) must match.
 MEETING_READY = "meeting.ready"
 
+# meetings: a recording the server had to end because nothing was feeding it any more, and
+# nothing of it had ever arrived (``jobs._reap_recordings``). The one person who needs this
+# sentence is the colleague who pressed record and walked out of the room believing a meeting
+# was being recorded; without it they learn days later, by opening the row. Like MEETING_READY
+# it carries no actor, so its sentence is a whole one.
+MEETING_LOST = "meeting.lost"
+
 EVENT_TYPES: tuple[str, ...] = (
     TASK_ASSIGNED,
     TASK_UNASSIGNED,
@@ -132,6 +139,7 @@ EVENT_TYPES: tuple[str, ...] = (
     INTERACTION_MENTIONED,
     SNELSTART_SYNC_FAILED,
     MEETING_READY,
+    MEETING_LOST,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -162,6 +170,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     INTERACTION_MENTIONED: ENTITY_INTERACTION,
     SNELSTART_SYNC_FAILED: ENTITY_SNELSTART_ACCOUNT,
     MEETING_READY: ENTITY_MEETING,
+    MEETING_LOST: ENTITY_MEETING,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

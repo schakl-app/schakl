@@ -166,7 +166,10 @@ The person who would press the button is in the meeting. Four rules now hold.
   transcribed from them — the recorder's own *Verwerk wat is opgeslagen*, taken without a person
   pressing it; **nothing arrived at all**, so there is no recording, only a row claiming to be
   one, and it is failed with `meetings.error.abandoned`. Failed rather than deleted: the title,
-  the client and the roster the person typed *did* reach us and are the half worth keeping.
+  the client and the roster the person typed *did* reach us and are the half worth keeping. The
+  colleague who pressed record is **told** (`meeting.lost`, which mails by its own default like
+  `meeting.ready`): silence is what made this expensive — somebody walked out of a three-hour
+  meeting believing it had been recorded and found out hours later, by opening the row.
 - **The three timers are ordered, and the order is the design.** A piece gives up at ten minutes
   (`UPLOAD_RETRY_BUDGET_MS`), the screen offers to finish without the recorder at fifteen
   (`STALLED_AFTER_MS`), the server finishes it at twenty. Being early here is expensive and being
