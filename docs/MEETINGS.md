@@ -120,8 +120,24 @@ while the row is in flight.
   refused by their own modules, and a refused task is *reported* on the result (`skipped`, with
   the field named) rather than failing the confirm — the minutes are the record, the tasks a
   convenience (§18's split).
-- A portal login can never open a recording; reads follow the company horizon like every other
-  row with `company_id`.
+- **Who may see a meeting** is answered in three layers, and each is stated once. The
+  **permission** is `meetings.meeting.read` on every route, in the service and on the hub
+  panel. The **company horizon** rides the tenant-scoped repository: a member restricted to a
+  company group sees the meetings on those clients (plus meetings attached to no client, the
+  platform-wide rule for a nullable `company_id`), and cannot record onto or move a meeting to a
+  client outside it. The **portal** answer is `Meeting.__portal_horizon_clause__`, and it is
+  *nothing*: a transcript is a verbatim record of what the agency's people said and a draft is
+  prose nobody has confirmed, so a client — even one a tenant grants the read key to — gets an
+  empty list, a 404 on every id, and no company panel; the confirmed contact moment is what they
+  are owed, and `interactions` serves it under its own rules. `POST /meetings` refuses a portal
+  login outright on top of that.
+- **The recording reads exactly when the meeting does.** `meeting` is a record-gated file host
+  (`RECORD_GATED_ENTITY_TYPES`, `docs/STORAGE.md`): `GET /files/{id}` for the folded audio or a
+  chunk, and `GET /files?entity_type=meeting`, ask the meeting's own read key (the one its trail
+  registered, `read_permission_for`) and then its horizon and portal clause through
+  `entity_visible`. Before this the bytes were tenant-scoped only — any signed-in member with the
+  file id, a client included, could pull a recording — which for the most sensitive blob the
+  module holds was the wrong default.
 
 ## Costs
 

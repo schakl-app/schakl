@@ -2137,6 +2137,14 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   at no audio cost. Its sibling: **a model that answers text only must be named before the
   recording, not discovered after it** — the instance's `gpt-transcribe` labels nobody, so
   `speech_diarize` rides `/meta/me` beside `speech` and the recorder says so above the button.
+  Its sixth rule is about who may listen: **a recording reads exactly when its record does,
+  and a client never reads one.** The audio was a `files` row on a host nobody had gated, so
+  any signed-in member holding the id — a portal login included — could fetch it while the
+  meeting itself was behind `meetings.meeting.read` and the horizon. `meeting` is a
+  record-gated host now, and a record-gated read asks the record's own key (the one its trail
+  registered) before `entity_visible` asks the horizon; `Meeting.__portal_horizon_clause__` is
+  `false()` and the service hands a portal login the portal repository, so a client gets an
+  empty list and a 404 by construction rather than by seven reads each remembering.
 
 ## 11. Working agreement (for Claude Code)
 

@@ -33,8 +33,11 @@ registerWebModule({
       component: MeetingsCompanyPanel,
       position: 38,
       // Nothing here yet folds into the hub's one ＋ strip (#364); the chip opens the recorder
-      // with the client already on the form.
+      // with the client already on the form — for a viewer who may record. A reader gets the
+      // unfolding chip instead: the recorder redirects them back, and a link that always
+      // refuses is a broken control (#253).
       emptyHref: (id: string) => `/meetings/new?company=${id}`,
+      emptyRequiresPermission: "meetings.meeting.write",
     },
   ],
 });

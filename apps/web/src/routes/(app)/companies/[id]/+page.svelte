@@ -500,7 +500,7 @@
         {@const spec = companyPanelComponent(enabled, panel.key)}
         {@const label = t(spec?.emptyLabelKey ?? panel.title_key)}
         <li>
-          {#if spec?.emptyHref}
+          {#if spec?.emptyHref && (!spec.emptyRequiresPermission || can(page.data.user, spec.emptyRequiresPermission))}
             <a
               href={spec.emptyHref(company.id)}
               class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-text-muted transition-colors hover:border-brand hover:text-brand"

@@ -133,6 +133,14 @@ export interface CompanyPanelSpec {
    * card, which is the win, and never a control that goes nowhere (#253).
    */
   emptyHref?: (companyId: string) => string;
+  /**
+   * The permission the viewer must hold for the ＋ chip to be that link. `emptyHref` says
+   * where the chip goes; this says who may go there. A meeting's chip opens the recorder,
+   * which sits behind `meetings.meeting.write` and sends a reader straight back to the list —
+   * a control that only refuses (#253). Without it the chip unfolds the empty panel in place,
+   * which is what a viewer who may read and not record is honestly offered.
+   */
+  emptyRequiresPermission?: string;
   /** Overrides the chip's label; defaults to the panel's own `title_key`. */
   emptyLabelKey?: string;
 }

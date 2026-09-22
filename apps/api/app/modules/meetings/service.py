@@ -30,7 +30,7 @@ from app.core.parent import ensure_parent_in_tenant
 from app.core.storage.models import StoredFile
 from app.core.storage.service import drop_file
 from app.core.storage.system import store_system_file
-from app.core.tenancy import RequestContext
+from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
 from app.modules.meetings.minutes import FEATURE
 from app.modules.meetings.models import (
@@ -81,9 +81,23 @@ def _now() -> datetime:
 
 
 class MeetingService:
+    class _PortalMeetingRepository(TenantScopedRepository):
+        """The repo a portal login gets (#266) — the tasks/invoicing/contacts pattern. It defers
+        to ``Meeting.__portal_horizon_clause__`` (nothing), overriding ``company_horizon`` so
+        the trash half and every count keep riding in from the base."""
+
+        def company_horizon(self):  # noqa: ANN202 — mirrors the base signature
+            return Meeting.__portal_horizon_clause__(self.company_scope)
+
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-        self.repo = ctx.repo(Meeting)
+        self.repo = (
+            self._PortalMeetingRepository(
+                ctx.session, ctx.org.id, Meeting, company_scope=ctx.company_scope
+            )
+            if ctx.is_portal
+            else ctx.repo(Meeting)
+        )
 
     # --- reads ------------------------------------------------------------------------ #
     async def list(

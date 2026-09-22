@@ -727,3 +727,186 @@ async def test_the_capability_says_whether_the_speech_model_labels_speakers(clie
             "speech_diarize"
             in (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
         )
+
+
+# --------------------------------------------------------------------------- #
+# Who may see a meeting (§15): the key, the horizon, and the portal — for the record and for
+# its recording alike.
+# --------------------------------------------------------------------------- #
+async def _staff(t, email: str, *, role: str = "member") -> tuple[User, uuid.UUID]:  # noqa: ANN001
+    """A second login in ``t``'s org, holding the seeded ``role``; returns it with its
+    membership id, which is what a company group and a role set are keyed on."""
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        membership = await add_membership(session, t.org.id, user.id, role=role)
+        membership_id = membership.id
+        await session.commit()
+    return user, membership_id
+
+
+async def _scope_to(c, owner_h, *, company_id: str, membership_id: uuid.UUID, name: str) -> None:  # noqa: ANN001
+    """Restrict one membership to a company group holding exactly ``company_id``."""
+    group = (await c.post("/api/v1/companies/groups", json={"name": name}, headers=owner_h)).json()
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/companies",
+            json={"company_ids": [company_id]},
+            headers=owner_h,
+        )
+    ).status_code == 204
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/memberships",
+            json={"membership_ids": [str(membership_id)]},
+            headers=owner_h,
+        )
+    ).status_code == 204
+
+
+async def _folded_recording(c, owner_h, t, monkeypatch, *, company_id: str) -> tuple[dict, str]:  # noqa: ANN001
+    """A meeting on ``company_id`` run through the worker, and the id of its folded audio."""
+    meeting = await _record(c, owner_h, company_id=company_id)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+    )
+    await _run(t.org.id, meeting["id"])
+    detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=owner_h)).json()
+    assert detail["status"] == "review" and detail["audio_file_id"], detail
+    return meeting, detail["audio_file_id"]
+
+
+async def test_the_recording_reads_exactly_when_the_meeting_does(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """``meeting`` is a record-gated file host: the bytes, the thumbnail route and the file
+    list answer the meeting's own read key and then its horizon — never only the tenant.
+
+    Before this the audio was a ``files`` row on a host nobody had gated, so any signed-in
+    member holding the id could pull the recording of a meeting they could not open.
+    """
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    t = await make_tenant("meet-gate")
+    owner_h = await auth_cookie(t.user)
+    reader, _ = await _staff(t, "reader-gate@example.com")
+    scoped, scoped_mid = await _staff(t, "scoped-gate@example.com")
+    outsider, outsider_mid = await _staff(t, "outsider-gate@example.com")
+    reader_h = await auth_cookie(reader, t.org.id)
+    scoped_h = await auth_cookie(scoped, t.org.id)
+    outsider_h = await auth_cookie(outsider, t.org.id)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=owner_h)
+        alpha = (await c.post("/api/v1/companies", json={"name": "Alpha"}, headers=owner_h)).json()
+        beta = (await c.post("/api/v1/companies", json={"name": "Beta"}, headers=owner_h)).json()
+        # ``scoped`` is a member restricted to Beta; the meeting will be Alpha's.
+        await _scope_to(c, owner_h, company_id=beta["id"], membership_id=scoped_mid, name="Beta")
+        # ``outsider`` is unrestricted and holds a role with no meetings key at all.
+        role = await c.post(
+            "/api/v1/roles",
+            json={
+                "key": "archivaris",
+                "name_i18n": {"en": "Archivist"},
+                "permissions": ["companies.company.read"],
+            },
+            headers=owner_h,
+        )
+        assert role.status_code in (200, 201), role.text
+        assert (
+            await c.put(
+                f"/api/v1/members/{outsider_mid}/roles",
+                json={"role_ids": [role.json()["id"]]},
+                headers=owner_h,
+            )
+        ).status_code == 200
+
+        meeting, audio_id = await _folded_recording(
+            c, owner_h, t, monkeypatch, company_id=alpha["id"]
+        )
+        record = f"/api/v1/meetings/{meeting['id']}"
+        audio = f"/api/v1/files/{audio_id}"
+        listing = f"/api/v1/files?entity_type=meeting&entity_id={meeting['id']}"
+
+        # Control: a colleague who may open the meeting gets the recording and its listing.
+        assert (await c.get(record, headers=reader_h)).status_code == 200
+        assert (await c.get(audio, headers=reader_h)).status_code == 200
+        assert [f["id"] for f in (await c.get(listing, headers=reader_h)).json()] == [audio_id]
+
+        # Outside the horizon: the meeting is a 404, and so are its bytes and its listing.
+        assert (await c.get(record, headers=scoped_h)).status_code == 404
+        assert (await c.get(audio, headers=scoped_h)).status_code == 404
+        assert (await c.get(f"{audio}/thumbnail", headers=scoped_h)).status_code == 404
+        assert (await c.get(listing, headers=scoped_h)).json() == []
+
+        # Without the key: the route refuses, and the bytes answer the record's own 404 — a
+        # tenant-scoped row is not a readable one.
+        assert (await c.get(record, headers=outsider_h)).status_code == 403
+        assert (await c.get(audio, headers=outsider_h)).status_code == 404
+        assert (await c.get(f"{audio}/thumbnail", headers=outsider_h)).status_code == 404
+        assert (await c.get(listing, headers=outsider_h)).json() == []
+
+
+async def test_a_client_never_reads_a_meeting_even_holding_the_key(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """``Meeting.__portal_horizon_clause__`` is nothing: a client scoped to the meeting's own
+    company, whose tenant has granted the ``client`` role the read key, still gets an empty
+    list, a 404 on every id, and no recording. The confirmed contact moment is what a client
+    is owed, and ``interactions`` serves it under its own rules (docs/MEETINGS.md)."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    t = await make_tenant("meet-portal")
+    owner_h = await auth_cookie(t.user)
+    guest, guest_mid = await _staff(t, "client-portal@example.com", role="client")
+    guest_h = await auth_cookie(guest, t.org.id)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=owner_h)
+        alpha = (await c.post("/api/v1/companies", json={"name": "Alpha"}, headers=owner_h)).json()
+        await _scope_to(c, owner_h, company_id=alpha["id"], membership_id=guest_mid, name="Alpha")
+        roles = (await c.get("/api/v1/roles", headers=owner_h)).json()
+        client_role = next(r for r in roles if r["key"] == "client")
+        granted = await c.patch(
+            f"/api/v1/roles/{client_role['id']}",
+            json={"permissions": [*client_role["permissions"], "meetings.meeting.read"]},
+            headers=owner_h,
+        )
+        assert granted.status_code == 200, granted.text
+
+        meeting, audio_id = await _folded_recording(
+            c, owner_h, t, monkeypatch, company_id=alpha["id"]
+        )
+
+        listed = await c.get("/api/v1/meetings", headers=guest_h)
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["items"] == [] and listed.json()["total"] == 0
+        assert (
+            await c.get("/api/v1/meetings", params={"company_id": alpha["id"]}, headers=guest_h)
+        ).json()["total"] == 0
+        assert (
+            await c.get(f"/api/v1/meetings/{meeting['id']}", headers=guest_h)
+        ).status_code == 404
+        assert (
+            await c.get(f"/api/v1/meetings/{meeting['id']}/status", headers=guest_h)
+        ).status_code == 404
+        assert (await c.get(f"/api/v1/files/{audio_id}", headers=guest_h)).status_code == 404
+        assert (
+            await c.get(
+                f"/api/v1/files?entity_type=meeting&entity_id={meeting['id']}", headers=guest_h
+            )
+        ).json() == []
+        # Recording was already refused outright, and stays so.
+        assert (
+            await c.post(
+                "/api/v1/meetings",
+                json={"title": "x", "company_id": alpha["id"], "participants_informed": True},
+                headers=guest_h,
+            )
+        ).status_code == 403

@@ -17,6 +17,7 @@ import uuid
 from typing import BinaryIO
 
 from app.config import settings
+from app.core.activity.registry import read_permission_for
 from app.core.events import emit
 from app.core.scope import entity_visible
 from app.core.storage import blobs
@@ -45,7 +46,15 @@ PORTAL_GATED_ENTITY_TYPES = frozenset({"task", "project", "company"})
 #: client's group, a portal login of another client. Answered by ``entity_visible``, which
 #: carries the model's own horizon and portal clause, so this list never has to restate either.
 #: A closed set, like the one above: the generic attachment hosts keep their own rules.
-RECORD_GATED_ENTITY_TYPES = frozenset({"invoice"})
+#:
+#: A meeting's recording is the second member: the audio is a verbatim record of what people
+#: said in a room, so it reads for whoever may open the meeting — its horizon, its portal
+#: clause (a client never) — and for nobody else. "Whoever may open the record" also means
+#: holding the record's own read permission, which ``entity_visible`` does not ask (it answers
+#: the horizon question only): a host that registered a read key on its trail
+#: (``AuditableMixin.__activity_read_permission__``) has it asked here too, because the key that
+#: gates reading a record's history is the key that gates reading the record.
+RECORD_GATED_ENTITY_TYPES = frozenset({"invoice", "meeting"})
 
 logger = logging.getLogger("schakl.storage")
 
@@ -251,15 +260,25 @@ class FileService:
             return stored.client_visible
         return True
 
-    async def record_may_read_serving(self, stored: StoredFile) -> bool:
-        """The serve-time answer for a record-gated host (``RECORD_GATED_ENTITY_TYPES``):
-        the file reads when its record does, and a file on such a host that names no record
-        reads for nobody — there is no record to be visible."""
-        if stored.entity_type not in RECORD_GATED_ENTITY_TYPES:
+    async def record_may_read(self, entity_type: str, entity_id: uuid.UUID | None) -> bool:
+        """The record-gated answer (``RECORD_GATED_ENTITY_TYPES``), for the list and the bytes
+        alike: the files read when the record does. A host outside the set answers ``True``
+        here and keeps its own rules; on one inside it, a file that names no record reads for
+        nobody (there is no record to be visible), the caller must hold the record's declared
+        read permission where the module registered one, and the record itself must be inside
+        the caller's horizon — the model's own clause, the portal one for a client."""
+        if entity_type not in RECORD_GATED_ENTITY_TYPES:
             return True
-        if stored.entity_id is None:
+        if entity_id is None:
             return False
-        return await entity_visible(self.ctx, stored.entity_type, stored.entity_id)
+        permission = read_permission_for(entity_type)
+        if permission is not None and not self.ctx.can(permission):
+            return False
+        return await entity_visible(self.ctx, entity_type, entity_id)
+
+    async def record_may_read_serving(self, stored: StoredFile) -> bool:
+        """:meth:`record_may_read` for one stored file — the serve-time call."""
+        return await self.record_may_read(stored.entity_type, stored.entity_id)
 
     async def portal_may_read_serving(self, stored: StoredFile) -> bool:
         """The serve-time answer: :meth:`portal_may_read`, plus the body-content rule.

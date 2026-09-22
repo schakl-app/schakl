@@ -38,7 +38,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -88,6 +88,26 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
         Index("ix_meetings_org_occurred", "org_id", "occurred_at"),
         Index("ix_meetings_org_status", "org_id", "status"),
     )
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The rule an **external (client) login** reads meetings by (§15, #266): none.
+
+        The column-matched horizon would hand a client every meeting on their own companies,
+        *and* every meeting attached to no company at all (a NULL is "not company data" for
+        staff). Neither is theirs: a transcript is a verbatim record of what the agency's people
+        said in the room, and a draft is prose a model wrote that nobody has confirmed yet
+        (``docs/MEETINGS.md``). What a client is owed is the *confirmed* contact moment, which
+        the interactions module already serves under its own rules.
+
+        It lives on the model so every path answers the same — the list and its total, the
+        detail, the polled status, the company panel, and the two reference seams
+        (``entity_visible``, which gates the recording's bytes now that ``meeting`` is a
+        record-gated file host, and ``app/core/directory.py``). Stated as a clause rather
+        than as an ``is_portal`` refusal in each read, because a refusal in seven places is
+        the #285 shape: one of them forgets.
+        """
+        return false()
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     kind: Mapped[str] = mapped_column(

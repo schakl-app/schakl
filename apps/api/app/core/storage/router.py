@@ -284,9 +284,14 @@ async def list_files(
     # special case above predates the registry and stays as the cheaper direct answer.
     if not await entity_visible(ctx, entity_type, entity_id):
         return []
-    rows = await FileService(ctx).list_for(
-        entity_type, entity_id, include_inline=include_inline
-    )
+    service = FileService(ctx)
+    # A record-gated host (an invoice's original, a meeting's recording) lists exactly as it
+    # serves: the record's own read key and its portal clause, never only the horizon — a
+    # listing that names a file the fetch then refuses is a control that only refuses (#253),
+    # and a listing the fetch would *not* refuse is the bug.
+    if not await service.record_may_read(entity_type, entity_id):
+        return []
+    rows = await service.list_for(entity_type, entity_id, include_inline=include_inline)
     return [StoredFileRead.model_validate(row) for row in rows]
 
 
