@@ -2,6 +2,107 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.49.0 — 2026-09-22
+
+The marketing dashboard and the monthly report can now show a client's visibility in AI search
+from SE Ranking: brand presence, link presence, average position and AI opportunity traffic, for
+last month against the month before. The leads dashboard from v0.48.0 is easier to read and its
+filters work as expected. Projects made in schakl now reach Timeon. Reports get their written
+paragraphs back, and Cloudflare redirect and Pages errors now say which token permission is missing.
+
+One migration, `c8a3f5d1e7b2` (`marketing_add_ai_search_overview`, revises `b7e3c9d14f6a`):
+two nullable JSONB columns (`ai_search` on the marketing settings and on the per-client
+settings), an optional second encrypted SE Ranking key, and a new table,
+`marketing_ai_search_snapshots`. It only adds, so it is safe to roll back, and the feature stays
+off until an agency switches it on. No new permission keys. New endpoints:
+`GET /marketing/settings/seranking/check` (`marketing.link.manage`),
+`GET /marketing/companies/{id}/ai-search` (`marketing.metrics.read`), and
+`POST …/ai-search/refresh`, `PUT …/ai-search/settings` and `POST …/ai-search/brand`
+(`marketing.link.manage`). The Timeon sync request accepts an optional `prefer`
+(`schakl` / `timeon`). Two new optional environment variables with production defaults:
+`SCHAKL_SERANKING_API4_URL` and `SCHAKL_SERANKING_API_V1_URL`. New report section key:
+`marketing.ai_search_overview`. The public API reference and the typed client are regenerated.
+
+### Marketing
+
+- **SE Ranking AI Search overview.** It reads the last complete month per client, stores it, and
+  compares it with the month before. It is drawn on the client's marketing dashboard and printed
+  as its own report chapter: tiles with month-over-month badges, a six-month chart, and a table
+  per engine when more than one engine is read. Engines, country database and scope are house
+  defaults in Instellingen → Marketing, and each client can differ from them. Target and brand
+  are per client and are filled in automatically until somebody types one.
+- **It costs units, so it is off by default.** Each read spends 800 of the agency's SE Ranking
+  units per engine choice per client per month, and every control that spends them shows the
+  price. A paid read is claimed in the database first, so the same month is never paid for twice.
+  A refused read keeps the month already stored.
+- **A second SE Ranking key.** SE Ranking issues a separate token for its Data API. It is optional:
+  leave it empty and the existing key is used. "Controleer sleutels" asks each API with the key
+  it would get and reports the plan's units. The check is free.
+- **What the live API actually answers.** SE Ranking never sends a "previous" figure, so the month
+  before comes from the monthly series, or else from the month stored a month ago. An engine with
+  no data answers position 0, which is now read as "no position" instead of better than first.
+  A site SE Ranking does not know is shown as a sentence ("geen gegevens"), not as dashes.
+- **What a client sees.** A portal login sees the figures and nothing about the agency's setup:
+  no refusals, no vendor name. A missing key or target reads as "off".
+- **KPI badges pick their colour from the metric.** A figure where lower is better (average
+  position, including on the rankings tiles) no longer shows an improvement in red.
+- **The leads dashboard reads as sections.** Each part is a white section with tinted stat tiles,
+  half-width widgets pair up so there are no empty gaps, and the spacing is tighter.
+- **Leads filters work.** Clicking an error reason used to filter the whole page, which zeroed
+  every tile. Now only dimensions that every row carries can filter, and the API says which ones
+  they are (`LeadProfile.filter_dimensions`, `LeadWidget.filterable`). A filter keeps all of its
+  options after you pick one, and a section says "Bijwerken…" while the filtered data loads.
+- "via <name>" is gone from the marketing blocks. It stays only next to a broken connection,
+  where it tells you who to ask.
+
+### Reporting
+
+- **The written paragraphs are back.** Larger reports came back with no text: the model's
+  token budget was too small and it spent all of it on reasoning. The budget is now 16k (6k for
+  rewriting a section). An answer that is cut off now warns `ai_truncated` instead of an
+  unexplained `ai_empty`.
+- **The text no longer repeats the tables.** The prose used to read
+  `er waren "6.938" vertoningen en "1.385" kliks…`. Now the prompt says the tables already carry
+  the numbers, quotation marks around numbers are removed, and a passage that still lists a table
+  raises `many_figures`.
+- A report only asks for the data it will print, so SE Ranking's AI Result Tracker (refused for
+  most plans) is only called when the report has an AI search chapter.
+- Where the AI search chapter leads the cover, the cover's "vergeleken met" names the month
+  before instead of the report's own period.
+
+### Timeon
+
+- **Projects made in schakl now reach Timeon.** The settings offered "push" and "two-way" for
+  projects, but nothing ever wrote a project to Timeon, so hours booked on a new schakl project
+  went over with no project attached. The sync now pairs projects by stored link first and by
+  name second (a rename no longer creates a duplicate). It creates open projects in Timeon with
+  their budget, and keeps the name, open/closed status, billable default and budget in step
+  field by field.
+- When a field differs and there is no record of the two sides ever agreeing, a manual two-way
+  connection reports it and asks. `prefer` settles it for one run and never touches hours.
+- A euro budget pulled from Timeon used to be read as seconds. It is now read in euros.
+- Both buttons on /timeon now actually sync projects. Before, a manual press never created a
+  project in either direction.
+
+### Cloudflare
+
+- **The first redirect on a zone works again.** Cloudflare started refusing the old request body
+  ("unknown field \"kind\""). The body is now just `{"rules": [...]}`.
+- **A refused write says what to fix.** A 403 on a DNS, redirect or Pages write now names the
+  token permission to add, instead of only "this token may not".
+
+### Upgrade notes
+
+- Run the migration as usual. It only adds, and the entrypoint applies it unattended.
+- **SE Ranking AI Search stays off after the upgrade.** No units are spent until an agency
+  switches it on in Instellingen → Marketing.
+- **Timeon connections with projects set to push or two-way, and "create missing projects" on,
+  will start creating projects in Timeon** on the first run after the upgrade: every open schakl
+  project, under a client Timeon knows, that has no Timeon project with the same name. If that is
+  not wanted, turn the switch off or check the plan on /timeon before the next scheduled run.
+  This path has not yet run against a live Timeon organisation; `docs/TIMEON.md` §5a lists what
+  to check first.
+
 ## v0.48.0 — 2026-09-17
 
 A client's leads now have a dashboard of their own: form requests, calls and e-mail clicks from
