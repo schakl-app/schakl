@@ -477,6 +477,18 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["reporting.settings.manage"],
     module: "reporting",
   },
+  {
+    // The consent statement before a recording, the minutes document and the house rules the
+    // minutes are written to — org-wide, so Instellingen (docs/UX.md, principle 6).
+    key: "meetings",
+    href: "/settings/meetings",
+    titleKey: "settings.meetings.title",
+    subtitleKey: "settings.meetings.subtitle",
+    keywordsKey: "settings.search.meetings",
+    group: "modules",
+    permissions: ["meetings.settings.manage"],
+    module: "meetings",
+  },
 
   // --- Integraties ------------------------------------------------------- //
   {

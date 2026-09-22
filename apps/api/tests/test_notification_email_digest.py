@@ -14,6 +14,7 @@ from app.core.models import Org
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications import external
 from app.modules.notifications.channel_admin import normalize_channel_input
+from app.modules.notifications.defaults import EMAIL_DEFAULT_ON_EVENTS
 from app.modules.notifications.models import Notification, NotificationDelivery
 from tests.conftest import auth_cookie, leave_workday, make_tenant
 from tests.test_notification_channels import _member
@@ -80,7 +81,15 @@ async def test_email_matrix_default_off_and_per_event_override(client_for) -> No
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         matrix = (await c.get("/api/v1/notifications/preferences", headers=headers)).json()
-        assert all(row["email_enabled"] is False for row in matrix["events"])
+        # …except the few events that mail by their own default (``EMAIL_DEFAULT_ON_EVENTS``):
+        # the minutes somebody recorded are ready, which they are waiting for away from a desk.
+        assert all(
+            row["email_enabled"] is False
+            for row in matrix["events"]
+            if row["event_type"] not in EMAIL_DEFAULT_ON_EVENTS
+        )
+        ready = next(r for r in matrix["events"] if r["event_type"] == "meeting.ready")
+        assert ready["email_enabled"] is True and ready["email_source"] == "default"
         assert matrix["email"]["source"] == "default"
 
         saved = await c.put(

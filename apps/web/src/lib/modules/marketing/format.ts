@@ -223,9 +223,19 @@ export function periodLabel(window: { start: string; end: string }): string {
   return fmtPeriod(start, end);
 }
 
-/** The span a payload's deltas were measured against. */
-export function comparePeriodLabel(window: Pick<CompareWindow, "start" | "end">): string {
-  return periodLabel(window);
+/**
+ * The span a payload's deltas were measured against, said in words *and* dates.
+ *
+ * The dates alone ("23 aug – 21 sep 2025") were checkable but left the reader to work out that
+ * this was last year, which is the one fact a percentage beside an Ads account's own screen
+ * needs stated: "dezelfde periode vorig jaar (23 aug – 21 sep 2025)". A window without a mode
+ * (an old payload) still gets its dates.
+ */
+export function comparePeriodLabel(
+  window: Pick<CompareWindow, "start" | "end"> & { mode?: ComparePeriod | null },
+): string {
+  const period = periodLabel(window);
+  return window.mode ? t(`marketing.compare.span.${window.mode}`, { period }) : period;
 }
 
 /** The span a payload's numbers themselves cover (#316) — what the picker's summary names. */

@@ -9372,6 +9372,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meeting Policy
+         * @description What the recorder asks before it records: readable by whoever may record.
+         */
+        get: operations["meeting_policy_api_v1_meetings_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's meetings settings: the consent statement, the minutes document, the house
+         *     writing instructions. No saved row means the defaults.
+         */
+        get: operations["get_settings_api_v1_meetings_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_meetings_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/settings/designs/{design}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Design Source
+         * @description A shipped design's own HTML and CSS, to start a custom minutes template from.
+         */
+        get: operations["design_source_api_v1_meetings_settings_designs__design__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/settings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Settings
+         * @description Render an unsaved design over the org's latest minuted meeting — the editor's preview.
+         */
+        post: operations["preview_settings_api_v1_meetings_settings_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/settings/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Section Catalog
+         * @description Every chapter a minutes document can carry, with the org's default for each.
+         */
+        get: operations["section_catalog_api_v1_meetings_settings_sections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}": {
         parameters: {
             query?: never;
@@ -9389,6 +9491,49 @@ export interface paths {
         head?: never;
         /** Update Meeting */
         patch: operations["update_meeting_api_v1_meetings__meeting_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/ai/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Meeting With Ai
+         * @description One typed instruction, applied to the meeting as the caller: the title, client, project,
+         *     kind and date, the roster and its speaker labels, and — while under review — every part of
+         *     the minutes. The answer is a diff; what the instruction did not mention stays.
+         */
+        post: operations["revise_meeting_with_ai_api_v1_meetings__meeting_id__ai_revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/ai/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe Revise Instruction
+         * @description Speech to text for the revise box: an instruction spoken instead of typed. Nothing is
+         *     written; the words come back to be read first.
+         */
+        post: operations["transcribe_revise_instruction_api_v1_meetings__meeting_id__ai_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/meetings/{meeting_id}/audio": {
@@ -9491,6 +9636,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/participants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Participants
+         * @description Who was in the meeting — a colleague, a contact of the client, or a name — and which
+         *     speaker label (S1, S2 …) each of them is. Replaces the whole roster.
+         */
+        put: operations["set_participants_api_v1_meetings__meeting_id__participants_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meeting Pdf
+         * @description The minutes as a PDF, with the chapters the caller ticked (the transcript is off unless
+         *     asked for). A read, so it survives an expired licence.
+         */
+        get: operations["meeting_pdf_api_v1_meetings__meeting_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Meeting
+         * @description The minutes document as HTML — the same artefact the PDF prints.
+         */
+        get: operations["preview_meeting_api_v1_meetings__meeting_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/redraft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redraft Meeting
+         * @description Draft the minutes again over the transcript already here — after naming the speakers,
+         *     so the action items land on the people who took them on. No new transcription.
+         */
+        post: operations["redraft_meeting_api_v1_meetings__meeting_id__redraft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/retry": {
         parameters: {
             query?: never;
@@ -9502,26 +9730,6 @@ export interface paths {
         put?: never;
         /** Retry Meeting */
         post: operations["retry_meeting_api_v1_meetings__meeting_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/meetings/{meeting_id}/speakers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Speakers
-         * @description Name the provider's speaker labels — "S2 is Jan".
-         */
-        put: operations["set_speakers_api_v1_meetings__meeting_id__speakers_put"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9540,6 +9748,27 @@ export interface paths {
          * @description The one column the detail page polls while a worker holds the row.
          */
         get: operations["meeting_status_api_v1_meetings__meeting_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meeting Transcript
+         * @description The transcript, whole: as JSON (every line with its speaker's name and the seconds it
+         *     was said at — what an agent reads), or as a `.txt`, `.md`, `.srt` or `.vtt` file.
+         */
+        get: operations["meeting_transcript_api_v1_meetings__meeting_id__transcript_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -26879,6 +27108,8 @@ export interface components {
             language?: string | null;
             /** Occurred At */
             occurred_at?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
             /**
              * Participants Informed
              * @default false
@@ -26891,6 +27122,16 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * MeetingDesignSource
+         * @description A shipped design's own HTML and CSS, to branch a custom one from.
+         */
+        MeetingDesignSource: {
+            /** Css */
+            css: string;
+            /** Html */
+            html: string;
+        };
         /** MeetingDetail */
         MeetingDetail: {
             /**
@@ -26898,6 +27139,8 @@ export interface components {
              * @default 0
              */
             action_item_count: number;
+            /** Audio Content Type */
+            audio_content_type?: string | null;
             /** Audio File Id */
             audio_file_id?: string | null;
             /**
@@ -26931,6 +27174,13 @@ export interface components {
              * @default 0
              */
             decision_count: number;
+            /**
+             * Diarized
+             * @default false
+             */
+            diarized: boolean;
+            /** Document Sections */
+            document_sections?: string[];
             /** Duration Seconds */
             duration_seconds?: number | null;
             /** Error Key */
@@ -26955,6 +27205,8 @@ export interface components {
             owner_name?: string | null;
             /** Owner User Id */
             owner_user_id?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
             /** Participants Informed At */
             participants_informed_at?: string | null;
             /** Project Id */
@@ -27000,6 +27252,80 @@ export interface components {
             items: components["schemas"]["MeetingRow"][];
             /** Total */
             total?: number | null;
+        };
+        /**
+         * MeetingParticipant
+         * @description One person in the room.
+         *
+         *     Exactly one of ``user_id`` (a colleague) / ``contact_id`` (a contact of the client) may be
+         *     set; neither means somebody known by name alone. ``speaker`` is the provider's label this
+         *     person turned out to be (``S2``) — filled in after the transcript is back, and the one
+         *     thing the review screen changes about a participant.
+         */
+        MeetingParticipant: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Name */
+            name: string;
+            /** Speaker */
+            speaker?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * MeetingParticipants
+         * @description The whole roster, replaced: who was there and which speaker label each one is.
+         */
+        MeetingParticipants: {
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
+        };
+        /**
+         * MeetingPolicy
+         * @description What the recorder needs to know before it records: whether the consent statement is
+         *     asked for, and how long the audio is kept. Readable by whoever may record.
+         */
+        MeetingPolicy: {
+            /**
+             * Audio Retention Days
+             * @default 30
+             */
+            audio_retention_days: number;
+            /**
+             * Consent Required
+             * @default true
+             */
+            consent_required: boolean;
+        };
+        /**
+         * MeetingReviseRequest
+         * @description One typed instruction against one meeting — "zet de klant op Nova Fietsen, haal het
+         *     tweede besluit weg en geef Sanne het eerste actiepunt". The words are the caller's own.
+         */
+        MeetingReviseRequest: {
+            /** Instruction */
+            instruction: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * MeetingReviseResult
+         * @description What the revision did, and the meeting as it now stands (the task revise's shape).
+         */
+        MeetingReviseResult: {
+            /** Changed */
+            changed?: string[];
+            meeting: components["schemas"]["MeetingDetail"];
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** MeetingRow */
         MeetingRow: {
@@ -27050,21 +27376,116 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** MeetingSectionCatalogEntry */
+        MeetingSectionCatalogEntry: {
+            /** Default */
+            default: boolean;
+            /** Key */
+            key: string;
+            /** Title Key */
+            title_key: string;
+        };
+        /**
+         * MeetingSettingsPreviewRequest
+         * @description An unsaved design, for the settings screen's live preview — the reporting editor's
+         *     shape: the document fields only, so a preview never 422s on a field it does not draw.
+         */
+        MeetingSettingsPreviewRequest: {
+            /** Document Accent Color */
+            document_accent_color?: string | null;
+            /**
+             * Document Avatars
+             * @default true
+             */
+            document_avatars: boolean;
+            /** Document Cover File Id */
+            document_cover_file_id?: string | null;
+            /** Document Custom Css */
+            document_custom_css?: string | null;
+            /** Document Custom Html */
+            document_custom_html?: string | null;
+            /**
+             * Document Design
+             * @default standard
+             */
+            document_design: string;
+            /** Document Footer Text */
+            document_footer_text?: string | null;
+            /** Document Sections */
+            document_sections?: string[] | null;
+        };
+        /**
+         * MeetingSettingsRead
+         * @description The org's meetings settings — the defaults where no row exists.
+         */
+        MeetingSettingsRead: {
+            /** Ai Instructions */
+            ai_instructions?: string | null;
+            /**
+             * Audio Retention Days
+             * @default 30
+             */
+            audio_retention_days: number;
+            /**
+             * Consent Required
+             * @default true
+             */
+            consent_required: boolean;
+            /** Document Accent Color */
+            document_accent_color?: string | null;
+            /**
+             * Document Avatars
+             * @default true
+             */
+            document_avatars: boolean;
+            /** Document Cover File Id */
+            document_cover_file_id?: string | null;
+            /** Document Custom Css */
+            document_custom_css?: string | null;
+            /** Document Custom Html */
+            document_custom_html?: string | null;
+            /**
+             * Document Design
+             * @default standard
+             */
+            document_design: string;
+            /** Document Footer Text */
+            document_footer_text?: string | null;
+            /** Document Sections */
+            document_sections?: string[];
+        };
+        /**
+         * MeetingSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written (§18's pair —
+         *     absent means leave alone, an explicit ``null`` clears where the column is nullable).
+         */
+        MeetingSettingsUpdate: {
+            /** Ai Instructions */
+            ai_instructions?: string | null;
+            /** Consent Required */
+            consent_required?: boolean | null;
+            /** Document Accent Color */
+            document_accent_color?: string | null;
+            /** Document Avatars */
+            document_avatars?: boolean | null;
+            /** Document Cover File Id */
+            document_cover_file_id?: string | null;
+            /** Document Custom Css */
+            document_custom_css?: string | null;
+            /** Document Custom Html */
+            document_custom_html?: string | null;
+            /** Document Design */
+            document_design?: string | null;
+            /** Document Footer Text */
+            document_footer_text?: string | null;
+            /** Document Sections */
+            document_sections?: string[] | null;
+        };
         /**
          * MeetingSource
          * @enum {string}
          */
         MeetingSource: "microphone" | "tab" | "upload";
-        /**
-         * MeetingSpeakers
-         * @description The reviewer's names for the provider's labels: ``{"S1": "Jan de Vries"}``.
-         */
-        MeetingSpeakers: {
-            /** Speakers */
-            speakers?: {
-                [key: string]: string;
-            };
-        };
         /**
          * MeetingStatus
          * @enum {string}
@@ -27083,6 +27504,22 @@ export interface components {
              * Format: date-time
              */
             status_at: string;
+        };
+        /**
+         * MeetingTranscribeRequest
+         * @description A recorded instruction for the revise box (#382's transport, one record over) — a
+         *     distinct type on purpose, because the two services ask for different permissions.
+         */
+        MeetingTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
         };
         /**
          * MeetingUpdate
@@ -27443,6 +27880,8 @@ export interface components {
             description?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Owner Contact Id */
+            owner_contact_id?: string | null;
             /** Owner Label */
             owner_label?: string | null;
             /** Quote */
@@ -56776,6 +57215,163 @@ export interface operations {
             };
         };
     };
+    meeting_policy_api_v1_meetings_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingPolicy"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_meetings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_meetings_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_source_api_v1_meetings_settings_designs__design__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                design: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDesignSource"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_settings_api_v1_meetings_settings_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingSettingsPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    section_catalog_api_v1_meetings_settings_sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingSectionCatalogEntry"][];
+                };
+            };
+        };
+    };
     get_meeting_api_v1_meetings__meeting_id__get: {
         parameters: {
             query?: never;
@@ -56858,6 +57454,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_meeting_with_ai_api_v1_meetings__meeting_id__ai_revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingReviseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingReviseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_revise_instruction_api_v1_meetings__meeting_id__ai_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */
@@ -57044,7 +57710,110 @@ export interface operations {
             };
         };
     };
-    retry_meeting_api_v1_meetings__meeting_id__retry_post: {
+    set_participants_api_v1_meetings__meeting_id__participants_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingParticipants"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meeting_pdf_api_v1_meetings__meeting_id__pdf_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated chapters; absent = the org's defaults */
+                sections?: string | null;
+            };
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_meeting_api_v1_meetings__meeting_id__preview_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated chapters; absent = the org's defaults */
+                sections?: string | null;
+            };
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redraft_meeting_api_v1_meetings__meeting_id__redraft_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -57075,7 +57844,7 @@ export interface operations {
             };
         };
     };
-    set_speakers_api_v1_meetings__meeting_id__speakers_put: {
+    retry_meeting_api_v1_meetings__meeting_id__retry_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -57084,11 +57853,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MeetingSpeakers"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -57128,6 +57893,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meeting_transcript_api_v1_meetings__meeting_id__transcript_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

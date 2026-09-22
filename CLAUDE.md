@@ -2124,7 +2124,48 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   confirming; the words stay). Confirm writes the interaction and the tasks through those
   modules' own services as the reviewer, and a task the tasks module refuses is *reported* on the
   result rather than failing the minutes (§18). `meeting_assist` is its own `AI_FEATURES` key for
-  #327's reason — a meeting is mostly other people's words.
+  #327's reason — a meeting is mostly other people's words. Its first live meeting found the
+  fifth rule: **a roster is a list of people, and a label is a property of a person**.
+  `speakers = {"S2": "Jan"}` could say what a label was and never who was in the room, so an
+  action item had nobody to be grounded in; `meetings.participants` names a colleague, a
+  client's contact or a name — asked *before* the recording, paired with the labels in review —
+  and the model reads a `PARTICIPANTS` block whose "who said it" is "who took it on".
+  `owner_contact_id` is grounded in it, the minutes print action items **by side and then by
+  person** (*Voor ons* / *Voor de klant* / *Overig*), confirm puts the contacts on the contact
+  moment's roster and makes a contact's ticked promise a task assigned to *them*, and
+  `POST /redraft` rewrites the minutes over the same transcript once the speakers are named,
+  at no audio cost. Its sibling: **a model that answers text only must be named before the
+  recording, not discovered after it** — the instance's `gpt-transcribe` labels nobody, so
+  `speech_diarize` rides `/meta/me` beside `speech` and the recorder says so above the button.
+  Its sixth rule is about who may listen: **a recording reads exactly when its record does,
+  and a client never reads one.** The audio was a `files` row on a host nobody had gated, so
+  any signed-in member holding the id — a portal login included — could fetch it while the
+  meeting itself was behind `meetings.meeting.read` and the horizon. `meeting` is a
+  record-gated host now, and a record-gated read asks the record's own key (the one its trail
+  registered) before `entity_visible` asks the horizon; `Meeting.__portal_horizon_clause__` is
+  `false()` and the service hands a portal login the portal repository, so a client gets an
+  empty list and a 404 by construction rather than by seven reads each remembering.
+- **The minutes are a document with chapters, and the file server answers byte ranges**
+  (`meetings/render/`, `meetings/settings.py`, `docs/MEETINGS.md`). Four things, one rule each.
+  **A download ticks its chapters; the org sets the defaults; the transcript is off unless asked
+  for** — `GET /meetings/{id}/pdf?sections=` prints the same HTML `…/preview` serves, through the
+  shared document engine and a design in the reporting register (a heading strip per chapter that
+  bleeds to the paper's edge, participants as chips with a colleague's own uploaded picture and
+  initials otherwise, action items under the person who owns them), and Instellingen →
+  Vergaderingen holds the design, the default chapters, the house writing rules the minutes model
+  reads as a *style*, and whether the recorder asks for the consent statement at all (on by
+  default; off drops the checkbox and the refusal together). **"The recording will not play on my
+  phone" was the file server**: iOS Safari probes a media URL with `Range: bytes=0-1` and plays
+  nothing from a server that answers `200` and the whole file, so `GET /files/{id}` answers `206`
+  now — for every stored file — and the page asks `canPlayType` before drawing a player, because
+  Safari plays no WebM and every Chrome-made recording is one. **A transcript is one route for the
+  export button and the agent** (`GET …/transcript`, JSON by default, `txt|md|srt|vtt` as a file),
+  plus three curated read tools behind `meetings.meeting.read` in both places the rule must hold.
+  And **the recorder is told when the minutes are ready** (`meeting.ready`, the one event that
+  mails by its own default — the person waiting recorded from a phone and left the room). The AI
+  box on the meeting page is the task revise's shape one record over: a colleague's words applied
+  as them, ids grounded in the document, a confirmed meeting's minutes untouched whatever the
+  answer says.
 
 ## 11. Working agreement (for Claude Code)
 

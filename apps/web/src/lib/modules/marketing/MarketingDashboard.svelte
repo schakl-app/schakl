@@ -351,7 +351,14 @@
        September. Both are answered by naming the resolved dates (#316), which is also the only
        way a shared link can be checked by whoever receives it. -->
   <p class="mb-3 text-xs text-text-muted">
-    {t("marketing.period.caption", { period: currentPeriod })}
+    <!-- And what every percentage below is measured against, in words: a delta read beside the
+         Ads account's own screen is only comparable once it says it is year over year. -->
+    {comparedPeriod
+      ? t("marketing.period.caption_compared", {
+          period: currentPeriod,
+          compared: comparedPeriod,
+        })
+      : t("marketing.period.caption", { period: currentPeriod })}
   </p>
 {/if}
 

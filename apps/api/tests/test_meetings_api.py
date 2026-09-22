@@ -38,6 +38,7 @@ def _no_queue(monkeypatch) -> None:
 
     monkeypatch.setattr("app.modules.meetings.service.enqueue", _queued)
 
+
 SETTINGS_BODY = {
     "provider": "anthropic",
     "api_key": "sk-test-super-secret-123",
@@ -463,3 +464,449 @@ async def test_the_list_is_two_statements_however_many_rows(
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+# --- the roster --------------------------------------------------------------------- #
+def _minutes_with_contact(staff_id: str, contact_id: str) -> dict:
+    minutes = _minutes(staff_id)
+    minutes["action_items"][1] = {
+        "title": "Nieuw logo sturen",
+        "quote": "Jan van de klant stuurt het nieuwe logo nog deze week",
+        "owner_contact_id": contact_id,
+        "at": 16,
+    }
+    return minutes
+
+
+async def _contact(c, headers, company_id: str, first: str, last: str) -> str:  # noqa: ANN001
+    res = await c.post(
+        "/api/v1/contacts",
+        json={"first_name": first, "last_name": last, "company_ids": [company_id]},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["id"]
+
+
+async def test_participants_are_people_and_a_contacts_promise_becomes_their_task(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The roster names a colleague, a contact and a stranger; the labels are paired in review;
+    the model is shown the PARTICIPANTS block and grounds ``owner_contact_id`` in it; confirm
+    puts the contact on the contact moment and makes their ticked promise a task assigned to
+    *them* — and the minutes print by side, then by person."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
+    t = await make_tenant("meet-roster")
+    headers = await auth_cookie(t.user)
+    seen_prompts: list[str] = []
+
+    def _capturing(events):  # noqa: ANN001, ANN202
+        async def fake(config, **kwargs) -> AsyncIterator[AIEvent]:  # noqa: ANN001, ANN003
+            seen_prompts.append(kwargs.get("system") or "")
+            for event in events:
+                yield event
+
+        return fake
+
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        jan = await _contact(c, headers, company["id"], "Jan", "de Vries")
+        created = await c.post(
+            "/api/v1/meetings",
+            json={
+                "title": "Kick-off homepage",
+                "company_id": company["id"],
+                "participants_informed": True,
+                "participants": [
+                    {"name": "Jan de Vries", "contact_id": jan},
+                    {"name": "Piet (drukker)"},
+                ],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        roster = created.json()["participants"]
+        # The recorder is in the room by definition, first.
+        assert roster[0]["user_id"] == str(t.user.id) and roster[0]["name"]
+        assert [p["name"] for p in roster[1:]] == ["Jan de Vries", "Piet (drukker)"]
+        meeting_id = created.json()["id"]
+        for seq in range(2):
+            raw = WEBM_HEADER if seq == 0 else b"\x01" * 300
+            await c.post(
+                f"/api/v1/meetings/{meeting_id}/chunks",
+                json={"seq": seq, "audio": _B64(raw)},
+                headers=headers,
+            )
+        await c.post(
+            f"/api/v1/meetings/{meeting_id}/finish", json={"duration_seconds": 20}, headers=headers
+        )
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _capturing(_submit(**_minutes_with_contact(str(t.user.id), jan))),
+        )
+        await _run(t.org.id, meeting_id)
+        detail = (await c.get(f"/api/v1/meetings/{meeting_id}", headers=headers)).json()
+        assert detail["status"] == "review" and detail["diarized"] is True
+        assert f"Jan de Vries\tcontact\t{jan}" in seen_prompts[-1]
+        theirs = detail["minutes"]["action_items"][1]
+        assert theirs["owner_contact_id"] == jan and theirs["create_task"] is False
+
+        # Pair the labels with the people. A label names one person: S3 twice is refused.
+        roster = detail["participants"]
+        roster[0]["speaker"], roster[1]["speaker"], roster[2]["speaker"] = "S1", "S3", "S3"
+        res = await c.put(
+            f"/api/v1/meetings/{meeting_id}/participants",
+            json={"participants": roster},
+            headers=headers,
+        )
+        assert res.status_code == 422
+        assert res.json()["error"]["fields"]["participants"] == "meetings.error.speaker_twice"
+        roster[2]["speaker"] = "S2"
+        res = await c.put(
+            f"/api/v1/meetings/{meeting_id}/participants",
+            json={"participants": roster},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["speakers"] == {
+            "S1": roster[0]["name"],
+            "S3": "Jan de Vries",
+            "S2": "Piet (drukker)",
+        }
+
+        # A contact this caller may not see is refused through the directory seam.
+        other = await make_tenant("meet-roster-b")
+        other_headers = await auth_cookie(other.user)
+        async with client_for(other.host) as cb:
+            await cb.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=other_headers)
+            company_b = (
+                await cb.post("/api/v1/companies", json={"name": "Elders"}, headers=other_headers)
+            ).json()
+            stranger = await _contact(cb, other_headers, company_b["id"], "Karel", "Vreemd")
+        res = await c.put(
+            f"/api/v1/meetings/{meeting_id}/participants",
+            json={"participants": [*roster, {"name": "Karel", "contact_id": stranger}]},
+            headers=headers,
+        )
+        assert res.status_code == 422, res.text
+
+        # The reviewer ticks the client's promise: it becomes the client's task.
+        minutes = detail["minutes"]
+        minutes["action_items"][1]["create_task"] = True
+        res = await c.post(
+            f"/api/v1/meetings/{meeting_id}/confirm", json={"minutes": minutes}, headers=headers
+        )
+        assert res.status_code == 200, res.text
+        result = res.json()
+        assert len(result["task_ids"]) == 2 and result["skipped"] == []
+        interaction = (
+            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+        ).json()
+        assert [x["id"] for x in interaction["contacts"]] == [jan]
+        body = interaction["body_text"]
+        assert body.index("## Aanwezig") < body.index("Jan de Vries, Piet (drukker)")
+        assert body.index("### Voor ons") < body.index("- Homepageteksten aanleveren")
+        assert (
+            body.index("### Voor de klant")
+            < body.index("**Jan de Vries**")
+            < body.index("- Nieuw logo sturen")
+        )
+        logo = (await c.get(f"/api/v1/tasks/{result['task_ids'][1]}", headers=headers)).json()
+        assert logo["title"] == "Nieuw logo sturen"
+        assert logo["assignee_contact_id"] == jan and logo["assignee_user_id"] is None
+
+
+async def test_redraft_writes_the_minutes_again_without_transcribing(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """After the speakers are named the draft is written again over the stored transcript: the
+    provider's transcription is *not* called, the new prompt carries the labels, the row ends on
+    review again. A row with a legacy ``speakers`` map still reads as a roster."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
+    t = await make_tenant("meet-redraft")
+    headers = await auth_cookie(t.user)
+    prompts: list[str] = []
+
+    def _capturing(events):  # noqa: ANN001, ANN202
+        async def fake(config, **kwargs) -> AsyncIterator[AIEvent]:  # noqa: ANN001, ANN003
+            prompts.append(kwargs.get("system") or "")
+            for event in events:
+                yield event
+
+        return fake
+
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        meeting = await _record(c, headers, company_id=company["id"])
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _capturing(_submit(**_minutes(str(t.user.id))))
+        )
+        await _run(t.org.id, meeting["id"])
+        assert "S2\t" not in prompts[-1]
+
+        # The legacy shape: a row written before the roster existed.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = await session.get(Meeting, uuid.UUID(meeting["id"]))
+            row.participants = None
+            row.speakers = {"S2": "Sanne"}
+            await session.commit()
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["participants"] == [
+            {"name": "Sanne", "user_id": None, "contact_id": None, "speaker": "S2"}
+        ]
+        assert detail["speakers"] == {"S2": "Sanne"}
+
+        async def never(config, clip, **kwargs):  # noqa: ANN001, ANN003
+            raise AssertionError("a redraft must not transcribe again")
+
+        monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", never)
+        res = await c.post(f"/api/v1/meetings/{meeting['id']}/redraft", headers=headers)
+        assert res.status_code == 200 and res.json()["status"] == "queued"
+        async with async_session_maker() as session:
+            org = await session.get(Org, t.org.id)
+            await set_current_org(session, org.id)
+            await run_pipeline(session, org, uuid.UUID(meeting["id"]), stage="minutes")
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review", detail
+        assert "S2\tSanne\tother\t-" in prompts[-1]
+        # The audio was metered once: the redraft spent none.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        usage = (
+            (await session.execute(select(AIUsage).where(AIUsage.org_id == t.org.id)))
+            .scalars()
+            .all()
+        )
+        assert len([u for u in usage if u.audio_seconds]) == 1
+
+
+async def test_the_capability_says_whether_the_speech_model_labels_speakers(client_for) -> None:
+    """``speech_diarize`` rides ``/meta/me`` beside ``speech``: Voxtral labels, a text-only
+    OpenAI model does not — and the recorder reads it before a minute is recorded."""
+    from app.core.ai.service import invalidate_features_cache
+
+    t = await make_tenant("meet-diarize-cap")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        invalidate_features_cache(t.org.id)
+        features = (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
+        assert "speech" in features and "speech_diarize" in features
+
+        await c.put(
+            "/api/v1/ai/settings",
+            json={
+                **SETTINGS_BODY,
+                "speech_provider": "openai",
+                "speech_api_key": "sk-speech",
+                "speech_model": "gpt-transcribe",
+            },
+            headers=headers,
+        )
+        invalidate_features_cache(t.org.id)
+        features = (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
+        assert "speech" in features and "speech_diarize" not in features
+
+        await c.put(
+            "/api/v1/ai/settings",
+            json={
+                **SETTINGS_BODY,
+                "speech_provider": "openai",
+                "speech_api_key": "sk-speech",
+                "speech_model": "gpt-4o-transcribe-diarize",
+            },
+            headers=headers,
+        )
+        invalidate_features_cache(t.org.id)
+        assert (
+            "speech_diarize"
+            in (await c.get("/api/v1/meta/me", headers=headers)).json()["ai_features"]
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Who may see a meeting (§15): the key, the horizon, and the portal — for the record and for
+# its recording alike.
+# --------------------------------------------------------------------------- #
+async def _staff(t, email: str, *, role: str = "member") -> tuple[User, uuid.UUID]:  # noqa: ANN001
+    """A second login in ``t``'s org, holding the seeded ``role``; returns it with its
+    membership id, which is what a company group and a role set are keyed on."""
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        membership = await add_membership(session, t.org.id, user.id, role=role)
+        membership_id = membership.id
+        await session.commit()
+    return user, membership_id
+
+
+async def _scope_to(c, owner_h, *, company_id: str, membership_id: uuid.UUID, name: str) -> None:  # noqa: ANN001
+    """Restrict one membership to a company group holding exactly ``company_id``."""
+    group = (await c.post("/api/v1/companies/groups", json={"name": name}, headers=owner_h)).json()
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/companies",
+            json={"company_ids": [company_id]},
+            headers=owner_h,
+        )
+    ).status_code == 204
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/memberships",
+            json={"membership_ids": [str(membership_id)]},
+            headers=owner_h,
+        )
+    ).status_code == 204
+
+
+async def _folded_recording(c, owner_h, t, monkeypatch, *, company_id: str) -> tuple[dict, str]:  # noqa: ANN001
+    """A meeting on ``company_id`` run through the worker, and the id of its folded audio."""
+    meeting = await _record(c, owner_h, company_id=company_id)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+    )
+    await _run(t.org.id, meeting["id"])
+    detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=owner_h)).json()
+    assert detail["status"] == "review" and detail["audio_file_id"], detail
+    return meeting, detail["audio_file_id"]
+
+
+async def test_the_recording_reads_exactly_when_the_meeting_does(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """``meeting`` is a record-gated file host: the bytes, the thumbnail route and the file
+    list answer the meeting's own read key and then its horizon — never only the tenant.
+
+    Before this the audio was a ``files`` row on a host nobody had gated, so any signed-in
+    member holding the id could pull the recording of a meeting they could not open.
+    """
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    t = await make_tenant("meet-gate")
+    owner_h = await auth_cookie(t.user)
+    reader, _ = await _staff(t, "reader-gate@example.com")
+    scoped, scoped_mid = await _staff(t, "scoped-gate@example.com")
+    outsider, outsider_mid = await _staff(t, "outsider-gate@example.com")
+    reader_h = await auth_cookie(reader, t.org.id)
+    scoped_h = await auth_cookie(scoped, t.org.id)
+    outsider_h = await auth_cookie(outsider, t.org.id)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=owner_h)
+        alpha = (await c.post("/api/v1/companies", json={"name": "Alpha"}, headers=owner_h)).json()
+        beta = (await c.post("/api/v1/companies", json={"name": "Beta"}, headers=owner_h)).json()
+        # ``scoped`` is a member restricted to Beta; the meeting will be Alpha's.
+        await _scope_to(c, owner_h, company_id=beta["id"], membership_id=scoped_mid, name="Beta")
+        # ``outsider`` is unrestricted and holds a role with no meetings key at all.
+        role = await c.post(
+            "/api/v1/roles",
+            json={
+                "key": "archivaris",
+                "name_i18n": {"en": "Archivist"},
+                "permissions": ["companies.company.read"],
+            },
+            headers=owner_h,
+        )
+        assert role.status_code in (200, 201), role.text
+        assert (
+            await c.put(
+                f"/api/v1/members/{outsider_mid}/roles",
+                json={"role_ids": [role.json()["id"]]},
+                headers=owner_h,
+            )
+        ).status_code == 200
+
+        meeting, audio_id = await _folded_recording(
+            c, owner_h, t, monkeypatch, company_id=alpha["id"]
+        )
+        record = f"/api/v1/meetings/{meeting['id']}"
+        audio = f"/api/v1/files/{audio_id}"
+        listing = f"/api/v1/files?entity_type=meeting&entity_id={meeting['id']}"
+
+        # Control: a colleague who may open the meeting gets the recording and its listing.
+        assert (await c.get(record, headers=reader_h)).status_code == 200
+        assert (await c.get(audio, headers=reader_h)).status_code == 200
+        assert [f["id"] for f in (await c.get(listing, headers=reader_h)).json()] == [audio_id]
+
+        # Outside the horizon: the meeting is a 404, and so are its bytes and its listing.
+        assert (await c.get(record, headers=scoped_h)).status_code == 404
+        assert (await c.get(audio, headers=scoped_h)).status_code == 404
+        assert (await c.get(f"{audio}/thumbnail", headers=scoped_h)).status_code == 404
+        assert (await c.get(listing, headers=scoped_h)).json() == []
+
+        # Without the key: the route refuses, and the bytes answer the record's own 404 — a
+        # tenant-scoped row is not a readable one.
+        assert (await c.get(record, headers=outsider_h)).status_code == 403
+        assert (await c.get(audio, headers=outsider_h)).status_code == 404
+        assert (await c.get(f"{audio}/thumbnail", headers=outsider_h)).status_code == 404
+        assert (await c.get(listing, headers=outsider_h)).json() == []
+
+
+async def test_a_client_never_reads_a_meeting_even_holding_the_key(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """``Meeting.__portal_horizon_clause__`` is nothing: a client scoped to the meeting's own
+    company, whose tenant has granted the ``client`` role the read key, still gets an empty
+    list, a 404 on every id, and no recording. The confirmed contact moment is what a client
+    is owed, and ``interactions`` serves it under its own rules (docs/MEETINGS.md)."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    t = await make_tenant("meet-portal")
+    owner_h = await auth_cookie(t.user)
+    guest, guest_mid = await _staff(t, "client-portal@example.com", role="client")
+    guest_h = await auth_cookie(guest, t.org.id)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=owner_h)
+        alpha = (await c.post("/api/v1/companies", json={"name": "Alpha"}, headers=owner_h)).json()
+        await _scope_to(c, owner_h, company_id=alpha["id"], membership_id=guest_mid, name="Alpha")
+        roles = (await c.get("/api/v1/roles", headers=owner_h)).json()
+        client_role = next(r for r in roles if r["key"] == "client")
+        granted = await c.patch(
+            f"/api/v1/roles/{client_role['id']}",
+            json={"permissions": [*client_role["permissions"], "meetings.meeting.read"]},
+            headers=owner_h,
+        )
+        assert granted.status_code == 200, granted.text
+
+        meeting, audio_id = await _folded_recording(
+            c, owner_h, t, monkeypatch, company_id=alpha["id"]
+        )
+
+        listed = await c.get("/api/v1/meetings", headers=guest_h)
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["items"] == [] and listed.json()["total"] == 0
+        assert (
+            await c.get("/api/v1/meetings", params={"company_id": alpha["id"]}, headers=guest_h)
+        ).json()["total"] == 0
+        assert (
+            await c.get(f"/api/v1/meetings/{meeting['id']}", headers=guest_h)
+        ).status_code == 404
+        assert (
+            await c.get(f"/api/v1/meetings/{meeting['id']}/status", headers=guest_h)
+        ).status_code == 404
+        assert (await c.get(f"/api/v1/files/{audio_id}", headers=guest_h)).status_code == 404
+        assert (
+            await c.get(
+                f"/api/v1/files?entity_type=meeting&entity_id={meeting['id']}", headers=guest_h
+            )
+        ).json() == []
+        # Recording was already refused outright, and stays so.
+        assert (
+            await c.post(
+                "/api/v1/meetings",
+                json={"title": "x", "company_id": alpha["id"], "participants_informed": True},
+                headers=guest_h,
+            )
+        ).status_code == 403

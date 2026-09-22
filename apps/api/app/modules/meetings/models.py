@@ -20,6 +20,12 @@ Shape decisions:
   not the e-mail one (#327): a colleague pressed record and a colleague presses confirm.
 - **The owner is snapshotted** (``owner_name``, #64): the colleague who recorded it keeps their
   name on the minutes after they leave.
+- **The roster is a list of people, not a map of labels.** ``participants`` names who was there
+  — a colleague by ``user_id``, a client's contact by ``contact_id``, anyone else by name — and
+  a provider's speaker label (``S2``) is a *property of a participant*, filled in once the
+  transcript is back. The other way round (``speakers = {"S2": "Jan"}``, the first shape) could
+  say who a label was and never who was in the room, so an action item had nobody to be
+  grounded in and a client's promise could not become a task assigned to that client.
 - **``participants_informed_at`` is a statement, not a checkbox.** Recording a conversation you
   take part in is legal here; *not telling the others* is not (AVG art. 13, and Sr 139a/b for a
   secret one), so the API refuses to open a recording until the person stated they did.
@@ -32,7 +38,18 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -82,6 +99,26 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
         Index("ix_meetings_org_occurred", "org_id", "occurred_at"),
         Index("ix_meetings_org_status", "org_id", "status"),
     )
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The rule an **external (client) login** reads meetings by (§15, #266): none.
+
+        The column-matched horizon would hand a client every meeting on their own companies,
+        *and* every meeting attached to no company at all (a NULL is "not company data" for
+        staff). Neither is theirs: a transcript is a verbatim record of what the agency's people
+        said in the room, and a draft is prose a model wrote that nobody has confirmed yet
+        (``docs/MEETINGS.md``). What a client is owed is the *confirmed* contact moment, which
+        the interactions module already serves under its own rules.
+
+        It lives on the model so every path answers the same — the list and its total, the
+        detail, the polled status, the company panel, and the two reference seams
+        (``entity_visible``, which gates the recording's bytes now that ``meeting`` is a
+        record-gated file host, and ``app/core/directory.py``). Stated as a clause rather
+        than as an ``is_portal`` refusal in each read, because a refusal in seven places is
+        the #285 shape: one of them forgets.
+        """
+        return false()
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     kind: Mapped[str] = mapped_column(
@@ -136,8 +173,16 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     # "parts": n}``; ``transcript_text`` the same words flat, for the search box and the prompt.
     transcript: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: The reviewer's names for the provider's speaker labels: ``{"S1": "Jan de Vries"}``.
+    #: The first shape of the roster — the reviewer's names for the provider's labels,
+    #: ``{"S1": "Jan de Vries"}``. Kept for the rows already written; read as a name-only roster
+    #: where ``participants`` is ``NULL``, never written any more.
     speakers: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Who was in the room: ``[{"name", "user_id", "contact_id", "speaker"}]`` — a colleague
+    #: (``user_id``), a contact of the client (``contact_id``) or somebody with only a name, each
+    #: optionally holding the provider's speaker label they turned out to be. Stated *before* the
+    #: recording where the person knows it, corrected in review, and what the minutes' "who took
+    #: this on" is grounded in (``minutes.py``).
+    participants: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     #: The drafted minutes and the reviewer's edits to them (``minutes.MinutesDraft``).
     minutes: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
@@ -149,3 +194,70 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     #: ids are all the detail page needs to link them.
     task_ids: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+#: The sections a minutes document can carry, in print order. ``transcript`` is the one that
+#: is off unless asked for: it is the longest thing on the record and the one a reader of the
+#: minutes least often wants on paper.
+DOCUMENT_SECTIONS: tuple[str, ...] = (
+    "participants",
+    "summary",
+    "topics",
+    "decisions",
+    "action_items",
+    "open_questions",
+    "evidence",
+    "transcript",
+)
+DEFAULT_DOCUMENT_SECTIONS: tuple[str, ...] = (
+    "participants",
+    "summary",
+    "topics",
+    "decisions",
+    "action_items",
+    "open_questions",
+)
+
+
+class MeetingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Org-wide meetings settings (one row per org, absent = the defaults).
+
+    Three things live here. **Whether the recorder asks for the consent statement**
+    (``consent_required``): on by default — the API refuses to open a recording nobody was told
+    about — and off for an agency whose own procedure already covers it, so the checkbox and
+    the refusal go together. **What the minutes document looks like** (``document_*``): the
+    design, the accent, the cover, the closing line, which sections a download ticks by default,
+    and a tenant's own Jinja where they bring one — the reporting template's shape, one row
+    rather than a library, because a meeting has one audience. And **the agency's own writing
+    instructions for the minutes** (``ai_instructions``): the editorial half of the prompt is
+    the tenant's, exactly as a report tone is (#300), and it reaches the model inside the
+    system prompt's rules block — a house rule, never a fact about one meeting.
+    """
+
+    __tablename__ = "meeting_settings"
+    __table_args__ = (UniqueConstraint("org_id", name="uq_meeting_settings_org"),)
+
+    consent_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    document_design: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="standard", server_default="standard"
+    )
+    #: Overrides ``org_settings.primary_color`` for this document family only. NULL = brand.
+    document_accent_color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: A stored file, never a URL: the renderer's fetcher answers ``data:`` and nothing else.
+    document_cover_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("files.id", ondelete="SET NULL"), nullable=True
+    )
+    document_footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Which sections a download ticks before the person changes anything.
+    document_sections: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    #: Whether a participant's profile picture is drawn beside their name where one is known.
+    document_avatars: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    document_custom_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_custom_css: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)

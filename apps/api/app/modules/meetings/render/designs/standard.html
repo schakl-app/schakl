@@ -1,0 +1,16 @@
+{#
+  The shipped minutes design: a title block, who was there, the summary, then a section per
+  chapter the download ticked — and the transcript as an appendix on its own page.
+
+  Kept as a thin wrapper around `standard.body.html` so that "start from this design" hands a
+  tenant the *same* file this renders from, which is what makes what they get what they saw.
+#}
+{% extends "_shell.html" %}
+
+{% block design_css %}
+{% include "standard.css" %}
+{% endblock %}
+
+{% block body %}
+{% include "standard.body.html" %}
+{% endblock %}

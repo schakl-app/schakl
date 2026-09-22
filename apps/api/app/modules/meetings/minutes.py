@@ -6,9 +6,16 @@ they confirm — so the vocabulary is the whole minutes document. Three things s
 strict as everywhere else, and the third is new.
 
 **An id is grounded in the shortlist.** ``assignee_user_id`` must be a staff id the model was
-shown (``candidates.gather``'s members block); anything else is dropped and the item keeps its
-``owner_label`` — a misheard name comes back as *nobody assigned*, never as a colleague who was
-not in the room.
+shown (``candidates.gather``'s members block) and ``owner_contact_id`` a contact id from the
+meeting's own participants; anything else is dropped and the item keeps its ``owner_label`` —
+a misheard name comes back as *nobody assigned*, never as a colleague who was not in the room
+or a contact who was not at the table.
+
+**Who took it on is read off who said it.** The participants block pairs each speaker label
+with a person and a side (staff / the client / other), so "ik pak dat op" under S2 is an item
+for S2's person — and because a client's contact is a person here too, a client's promise is
+minuted *under that contact* and can become a task assigned to them, rather than a free-text
+"Jan (klant)" nobody can chase.
 
 **A date is bounded.** A due date resolves against the org's calendar, which the prompt states
 with its weekdays (``intake_ai.calendar_line``'s lesson: weekday arithmetic is ours), inside the
@@ -127,12 +134,20 @@ SUBMIT_MINUTES = ToolDef(
                         "assignee_user_id": {
                             "type": ["string", "null"],
                             "description": "The staff member who took it on, from the STAFF "
-                            "list, by id. Null when it is not one of them.",
+                            "list (or a PARTICIPANTS row of kind staff), by id. Null when it "
+                            "is not one of them.",
+                        },
+                        "owner_contact_id": {
+                            "type": ["string", "null"],
+                            "description": "The client's contact who took it on, from the "
+                            "PARTICIPANTS list (kind contact), by id. Null when it is not one "
+                            "of them.",
                         },
                         "owner_label": {
                             "type": ["string", "null"],
-                            "description": "Who took it on when it is not a staff member — "
-                            "the client's name as spoken.",
+                            "description": "Who took it on when it is neither a staff member "
+                            "nor a listed contact — the name as spoken, with their side "
+                            'in brackets, e.g. "Jan (klant)".',
                         },
                         "due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
                         "quote": {"type": "string"},
@@ -162,11 +177,17 @@ def system_prompt(
     locale: str,
     agency: str,
     staff: str,
-    speakers: dict[str, str],
+    participants: str,
+    house_rules: str | None = None,
 ) -> str:
     """The minutes prompt. Written for a transcript: long, unpunctuated in places, with the
-    recogniser's guess at every name and a speaker label instead of a person."""
-    named = ", ".join(f"{label} = {name}" for label, name in speakers.items() if name)
+    recogniser's guess at every name and a speaker label instead of a person.
+
+    ``house_rules`` is the agency's own writing instruction (Instellingen → Vergaderingen):
+    the editorial half of the prompt is the tenant's, as a report tone is (#300). It sits
+    among the rules as a *style* instruction and never outranks the grounding rules above it —
+    a house rule cannot ask for a decision the transcript does not contain.
+    """
     parts = [
         f"You write the minutes of a meeting for {agency}, an agency, from a transcript of "
         "the recording. You create nothing yourself — you submit one draft that a colleague "
@@ -175,15 +196,17 @@ def system_prompt(
         f"Write every sentence you produce in {prompts.language_name(locale)}, whatever "
         "language was spoken.",
         "The transcript was produced by a speech recogniser. Names are its guess and may be "
-        "wrong; speaker labels (S1, S2 …) are positions, not people"
-        + (f" — except these, which the reviewer named: {named}." if named else ".")
-        + " Where a speaker introduces themselves or is addressed by name, use that name.",
+        "wrong; speaker labels (S1, S2 …) are positions, not people — except where the "
+        "PARTICIPANTS list below pairs a label with a person. Where a speaker introduces "
+        "themselves or is addressed by name, use that name.",
         # Point of view: the e-mail enrichment's lesson (docs/AI.md, "Whose task it is").
         f"Point of view: the minutes are {agency}'s. An action item is something a named "
-        "person committed to do. When it is one of the agency's staff, set assignee_user_id "
-        "from the STAFF list; when it is the client or a third party, leave assignee_user_id "
-        "null and put their name in owner_label. Never assign the client's promise to a "
-        "colleague.",
+        "person committed to do — usually the speaker who said they would. When that person "
+        "is one of the agency's staff, set assignee_user_id (STAFF list, or a PARTICIPANTS row "
+        "of kind staff); when it is one of the client's contacts in PARTICIPANTS, set "
+        "owner_contact_id; when it is anybody else, leave both null and put their name and "
+        "side in owner_label. Never assign the client's promise to a colleague, and never "
+        "the other way round.",
         "Rules:\n"
         "- A decision is something the participants agreed, not something one of them "
         "proposed. An action item has an owner or a clear 'we'. What was merely discussed "
@@ -196,6 +219,17 @@ def system_prompt(
         "- Do not restate the whole meeting in the summary, do not list who attended, and do "
         "not write that something was not discussed.",
     ]
+    if house_rules and house_rules.strip():
+        parts.append(
+            "The agency's own house rules for its minutes — a style to follow, never a "
+            f"licence to add anything the transcript does not say:\n{house_rules.strip()[:4000]}"
+        )
+    if participants:
+        parts.append(
+            "PARTICIPANTS (label\tname\tkind\tid) — who was in the meeting, which speaker "
+            "label they turned out to be ('-' when not yet known), whether they are the "
+            f"agency's staff, the client's contact or somebody else, and their id:\n{participants}"
+        )
     if staff:
         parts.append(
             "STAFF (id\tname) — the agency's own people, the only valid values for "
@@ -308,13 +342,31 @@ def _due(value: Any, *, today: date) -> date | None:
     return None
 
 
-def _staff_id(value: Any, allowed: set[str]) -> uuid.UUID | None:
+def _grounded_id(value: Any, allowed: set[str]) -> uuid.UUID | None:
+    """An id the model was shown, or nothing — never an id it produced."""
     if not isinstance(value, str) or value.strip().lower() not in allowed:
         return None
     try:
         return uuid.UUID(value.strip())
     except ValueError:
         return None
+
+
+def participants_block(participants: list[Any]) -> tuple[str, set[str]]:
+    """The PARTICIPANTS lines for the prompt, and the contact ids an ``owner_contact_id`` may
+    name. A participant with a staff id widens nothing: the STAFF list already holds them."""
+    lines: list[str] = []
+    contact_ids: set[str] = set()
+    for p in participants:
+        if p.user_id is not None:
+            kind, ident = "staff", str(p.user_id)
+        elif p.contact_id is not None:
+            kind, ident = "contact", str(p.contact_id)
+            contact_ids.add(ident.lower())
+        else:
+            kind, ident = "other", "-"
+        lines.append(f"{p.speaker or '-'}\t{p.name}\t{kind}\t{ident}")
+    return "\n".join(lines), contact_ids
 
 
 def draft_from_call(
@@ -324,8 +376,10 @@ def draft_from_call(
     staff_ids: set[str],
     today: date,
     duration: int | None,
+    contact_ids: set[str] | None = None,
 ) -> MinutesDraft:
     """Every field re-derived from the model's one call; nothing passed through."""
+    contact_ids = contact_ids or set()
     haystack = normalise(transcript_text)
 
     topics: list[MinutesTopic] = []
@@ -368,19 +422,23 @@ def draft_from_call(
             if not title:
                 continue
             quote = _text(entry.get("quote"), _QUOTE_CHARS)
-            assignee = _staff_id(entry.get("assignee_user_id"), staff_ids)
+            contact = _grounded_id(entry.get("owner_contact_id"), contact_ids)
+            # A contact outranks a colleague on one item: the model naming both is the
+            # "never assign the client's promise to a colleague" rule half-obeyed.
+            assignee = None if contact else _grounded_id(entry.get("assignee_user_id"), staff_ids)
             items.append(
                 MinutesActionItem(
                     title=title,
                     description=_text(entry.get("description"), 4000),
                     assignee_user_id=assignee,
+                    owner_contact_id=contact,
                     owner_label=_text(entry.get("owner_label"), 255),
                     due_date=_due(entry.get("due_date"), today=today),
                     at=_seconds(entry.get("at"), duration=duration),
                     quote=quote,
                     verified=quote_found(quote, haystack),
                     # A client's promise is minuted, not put on our board; the reviewer may
-                    # still tick it (someone has to chase it).
+                    # still tick it (it then becomes a task assigned to that contact).
                     create_task=assignee is not None,
                 )
             )
@@ -411,19 +469,27 @@ async def draft_minutes(
     kind: str,
     segments: list[dict[str, Any]],
     transcript_text: str,
-    speakers: dict[str, str],
+    participants: list[Any],
     candidates: ParseCandidates,
     today: date,
     now: datetime | None,
     locale: str,
     agency: str,
     duration: int | None,
+    house_rules: str | None = None,
 ) -> MinutesDraft:
     """One transcript into one draft. Raises ``AppError`` on a provider failure (the caller —
     the worker — turns it into the row's ``failed`` state)."""
     staff = "\n".join(f"{m['id']}\t{m['name']}" for m in candidates.members)
+    roster, contact_ids = participants_block(participants)
     system = system_prompt(
-        today=today, now=now, locale=locale, agency=agency, staff=staff, speakers=speakers
+        today=today,
+        now=now,
+        locale=locale,
+        agency=agency,
+        staff=staff,
+        participants=roster,
+        house_rules=house_rules,
     )
     document, cut = transcript_document(
         title=title, occurred_at=occurred_at, kind=kind, segments=segments, text=transcript_text
@@ -453,6 +519,7 @@ async def draft_minutes(
         staff_ids=candidates.member_ids(),
         today=today,
         duration=duration,
+        contact_ids=contact_ids,
     )
     draft.truncated = truncated
     draft.partial_input = cut
@@ -466,6 +533,7 @@ __all__ = [
     "draft_from_call",
     "draft_minutes",
     "normalise",
+    "participants_block",
     "quote_found",
     "system_prompt",
     "transcript_document",

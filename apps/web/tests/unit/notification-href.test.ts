@@ -31,6 +31,7 @@ const API_ENTITY_TYPES = [
   "interaction",
   "snelstart_account",
   "task_intake",
+  "meeting",
 ] as const;
 
 const ID = "11111111-2222-3333-4444-555555555555";

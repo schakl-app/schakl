@@ -2,6 +2,99 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.51.0 — 2026-09-22
+
+The meetings module gets its second release: the minutes leave the app as a PDF with chapters
+the reader ticks, a meeting names the people in the room rather than a speaker label, the
+recorder is told when the minutes are ready, and a recording is now readable by exactly the
+people who may read the meeting. The marketing tab compares Google Ads conversions only once
+Google has finished counting them, and says in words that every delta is year over year.
+
+Two migrations, in order, both additive: `e5a8c3d7f1b2` (`meetings_add_participants`, revises
+`d4e7f2a9c1b6`) adds one nullable JSONB column to `meetings`; `f1b6d3a8c2e4`
+(`meetings_add_settings`, the new head) adds the `meeting_settings` table. One new permission
+key, `meetings.settings.manage` (admin by default), behind the new Instellingen → Vergaderingen
+screen. New endpoints under `/meetings`: `GET`/`PUT /settings`, `POST /settings/preview`,
+`GET /settings/sections`, `GET /settings/designs/{design}/source`, `GET /policy`,
+`PUT /{id}/participants`, `POST /{id}/redraft`, `GET /{id}/transcript`, `GET /{id}/preview`,
+`GET /{id}/pdf`, `POST /{id}/ai/revise` and `POST /{id}/ai/transcribe`. `PUT /{id}/speakers` is
+gone: the participants route carries the labels now, so the generated `set_speakers` MCP tool is
+replaced by `set_participants`. Three curated MCP tools: `meetings.find`, `meetings.transcript`
+and `meetings.minutes`. A new notification event, `meeting.ready`, which mails by default.
+`GET /files/{id}` answers HTTP byte ranges for every stored file. `/meta/me` carries
+`speech_diarize`. No new environment variables. The public API reference and the typed client
+are regenerated.
+
+### Meetings
+
+- **The minutes as a document.** `GET /meetings/{id}/pdf` prints the same page the preview
+  shows, through the shared document engine: the tenant's logo and the client's, a heading strip
+  per chapter, participants as chips with a colleague's own picture, decisions numbered with
+  their evidence, action items under the person who owns them, and the transcript as an appendix
+  on its own page. The export dialog ticks chapters per download; the transcript is off unless
+  asked for.
+- **Instellingen → Vergaderingen.** The default chapters, the design, accent colour, header image
+  and closing line, a tenant's own Jinja and CSS (validated on save), the house writing rules the
+  minutes model reads as a style, and whether the recorder asks for the consent statement at all
+  (on by default; off drops the checkbox and the refusal together).
+- **A roster instead of a label map.** A meeting names its participants before the recording (a
+  colleague, a client's contact person or a bare name) and pairs them with the speaker labels in
+  review. Action items are printed by side and then by person (Voor ons / Voor de klant /
+  Overig); confirming puts the contacts on the contact moment's roster and turns a contact's
+  ticked promise into a task assigned to that contact. Redraft rewrites the minutes over the same
+  transcript once the speakers are named, at no audio cost.
+- **A model that labels nobody says so before you press record.** The recorder warns when the
+  configured speech model (such as `gpt-transcribe`) returns text without speakers, the review
+  screen names the model, and Instellingen → AI says which models label speakers.
+- **The transcript travels.** `GET /meetings/{id}/transcript` answers JSON by default and `txt`,
+  `md`, `srt` or `vtt` as a file, for the export button and for an agent alike.
+- **Told when it is ready.** The recorder gets a `meeting.ready` notification when the minutes
+  are drafted, in the app at once and by mail by default: the person waiting recorded from a
+  phone and left the room.
+- **The AI box on the meeting page.** "Voeg een actiepunt toe voor Jan, deadline vrijdag" is
+  applied through the service as the colleague who typed it, every id grounded in the document,
+  and a confirmed meeting's minutes are never touched.
+- **Plays on a phone.** iOS Safari probes a media URL with a byte range and plays nothing from a
+  server that answers the whole file; the file server answers `206` now, and the page checks
+  `canPlayType` before drawing a player because Safari plays no WebM.
+- On the client hub, the "nog niets" chip opens the recorder only for a viewer who may record;
+  a reader gets the unfolding panel instead of a redirect back.
+
+### Marketing
+
+- **Ads conversions settle before they are compared.** Google credits a conversion to the click's
+  day for up to thirty days, and both nightly Ads mirrors re-pulled only the last seven, so a
+  year-over-year comparison set an unfinished month against a finished one. The re-pull reaches
+  thirty days now for Google Ads; the other sources keep a week.
+- **Every delta says what it compares.** Captions read "vergeleken met dezelfde periode vorig
+  jaar (23 aug – 21 sep 2025)", the dashboard's period line names it in view mode too, and a KPI
+  tile prints the figure it was measured against.
+- The impression-share widget says what it shows: missed ad impressions per campaign, split into
+  shown, missed because the rank was too low and missed because the budget ran out, with a note
+  saying which of the two more budget fixes.
+
+### Security
+
+- **A recording reads exactly when its meeting does.** The folded audio was a file on a host
+  nobody had gated, so any signed-in member of the tenant holding its id could fetch it (a member
+  restricted to another company group, a role without a meetings key, a portal login) while the
+  meeting itself was behind `meetings.meeting.read` and the company horizon. The file list, the
+  bytes and the thumbnail now ask the meeting's own read permission and horizon first. A portal
+  login gets an empty meetings list and a 404 on every id by construction; the confirmed contact
+  moment is what a client is owed.
+
+### Upgrade notes
+
+- Both migrations only add; `alembic upgrade head` runs unattended as usual.
+- `meetings.settings.manage` is granted to `admin` on startup by the permission reconciler;
+  grant it to other roles by hand.
+- Any script or MCP client that called `PUT /meetings/{id}/speakers` must move to
+  `PUT /meetings/{id}/participants`; a meeting stored without participants keeps working and can
+  be given its roster in review.
+- `meeting.ready` mails by default. A person switches it off in their own notification
+  preferences; the org default lives under Instellingen → Meldingen.
+- Nothing to configure for the Ads change: the next nightly sync re-reads the last thirty days.
+
 ## v0.50.0 — 2026-09-22
 
 A new module records a meeting, transcribes it and drafts the minutes into a contact moment and

@@ -390,6 +390,19 @@ async def test_nightly_resumes_incomplete_backfill(client_for, monkeypatch) -> N
     ), "nightly sync should re-enqueue the incomplete backfill"
 
 
+def test_nightly_repull_reaches_the_ads_conversion_window() -> None:
+    """Ads conversions land on the click's day for up to 30 days, so the nightly re-pull for an
+    Ads link reaches back that far; the other sources keep their week. A seven-day re-pull froze
+    each Ads day short of what Google later reported, against a year-ago window that had long
+    settled — every year-over-year conversion figure read low."""
+    from app.modules.marketing.jobs import trailing_start
+
+    end = date(2026, 9, 21)
+    assert trailing_start(end, "gads") == date(2026, 8, 23)
+    assert trailing_start(end, "ga4") == date(2026, 9, 15)
+    assert trailing_start(end, "gsc") == date(2026, 9, 15)
+
+
 async def test_key_events_visibility_toggle(client_for) -> None:
     """The per-client toggle hides GA4 key events / conversions from the panel, tab and overview
     server-side while other metrics stay, records the flip on the client's trail, and round-trips

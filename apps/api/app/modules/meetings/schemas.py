@@ -6,10 +6,38 @@ import datetime as dt
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.ai.audio import MAX_ENCODED_CHARS
-from app.modules.meetings.models import MeetingKind, MeetingSource, MeetingStatus
+from app.core.ai.schemas import TimeTranscribeRequest
+from app.modules.meetings.models import (
+    DEFAULT_DOCUMENT_SECTIONS,
+    DOCUMENT_SECTIONS,
+    MeetingKind,
+    MeetingSource,
+    MeetingStatus,
+)
+
+
+class MeetingParticipant(BaseModel):
+    """One person in the room.
+
+    Exactly one of ``user_id`` (a colleague) / ``contact_id`` (a contact of the client) may be
+    set; neither means somebody known by name alone. ``speaker`` is the provider's label this
+    person turned out to be (``S2``) — filled in after the transcript is back, and the one
+    thing the review screen changes about a participant.
+    """
+
+    name: str = Field(min_length=1, max_length=255)
+    user_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+    speaker: str | None = Field(default=None, max_length=20)
+
+    @model_validator(mode="after")
+    def _one_identity(self) -> MeetingParticipant:
+        if self.user_id is not None and self.contact_id is not None:
+            raise ValueError("meetings.error.participant_two_identities")
+        return self
 
 
 class MeetingCreate(BaseModel):
@@ -25,6 +53,9 @@ class MeetingCreate(BaseModel):
     #: The person states they told the other participants the meeting is being recorded and
     #: what for. Refused when false — the API does not open a recording nobody was told about.
     participants_informed: bool = False
+    #: Who is in the room, where the person knows it before pressing record. The recorder is
+    #: added by the service when absent; the labels are filled in after transcription.
+    participants: list[MeetingParticipant] = Field(default_factory=list, max_length=50)
 
 
 class MeetingUpdate(BaseModel):
@@ -58,10 +89,10 @@ class MeetingFinish(BaseModel):
     duration_seconds: int | None = Field(default=None, ge=0, le=24 * 3600)
 
 
-class MeetingSpeakers(BaseModel):
-    """The reviewer's names for the provider's labels: ``{"S1": "Jan de Vries"}``."""
+class MeetingParticipants(BaseModel):
+    """The whole roster, replaced: who was there and which speaker label each one is."""
 
-    speakers: dict[str, str] = Field(default_factory=dict)
+    participants: list[MeetingParticipant] = Field(default_factory=list, max_length=50)
 
 
 # --- the minutes ------------------------------------------------------------------------ #
@@ -79,7 +110,11 @@ class MinutesActionItem(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     #: A colleague from the org's staff shortlist — grounded, never guessed (#382).
     assignee_user_id: uuid.UUID | None = None
-    #: Who was named when it is not one of us: "Jan (klant)". Free text, display only.
+    #: A contact of the client who took it on — grounded in the meeting's participants. On
+    #: confirm a ticked item becomes a task *assigned to that contact* (``assignee_contact_id``,
+    #: #273), the "waiting on the client" shape, never a colleague's task wearing their name.
+    owner_contact_id: uuid.UUID | None = None
+    #: Who was named when it is neither: "Jan (leverancier)". Free text, display only.
     owner_label: str | None = Field(default=None, max_length=255)
     due_date: dt.date | None = None
     at: float | None = Field(default=None, ge=0)
@@ -158,12 +193,21 @@ class MeetingDetail(MeetingRow):
     participants_informed_at: dt.datetime | None = None
     chunks_received: int = 0
     audio_file_id: uuid.UUID | None = None
+    #: The recording's container, so a browser can say *before* pressing play whether it can
+    #: play it (Safari on iOS plays no WebM) rather than drawing a dead control.
+    audio_content_type: str | None = None
     segments: list[TranscriptSegment] = Field(default_factory=list)
     transcript_text: str | None = None
     #: Which transcription produced the words, and in how many parts — a split recording keeps
     #: one set of speaker labels per part, which the screen says beside the labels.
     transcript_model: str | None = None
     transcript_parts: int = 0
+    #: Whether the transcript labels speakers at all. ``False`` with a transcript means the
+    #: speech model answered text only (``gpt-4o-transcribe``, ``gpt-transcribe``, whisper), and
+    #: the screen says so by name rather than drawing an empty speaker list.
+    diarized: bool = False
+    participants: list[MeetingParticipant] = Field(default_factory=list)
+    #: Derived from ``participants``: label → name, for the transcript's lines.
     speakers: dict[str, str] = Field(default_factory=dict)
     minutes: MinutesDraft | None = None
     interaction_id: uuid.UUID | None = None
@@ -172,6 +216,9 @@ class MeetingDetail(MeetingRow):
     #: The reviewer may write the draft and confirm it: the two keys the screen mirrors.
     can_write: bool = False
     can_delete: bool = False
+    #: The sections a download of this meeting ticks by default (the org's settings, minus
+    #: the ones this meeting has nothing for).
+    document_sections: list[str] = Field(default_factory=list)
 
 
 class MeetingStatusRead(BaseModel):
@@ -188,3 +235,123 @@ class MeetingConfirmResult(BaseModel):
     #: Action items the reviewer ticked that could not become a task, with the field the
     #: refusal named — reported, never raised, so the minutes still land (§18's split).
     skipped: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# --- org settings ------------------------------------------------------------------------ #
+class MeetingSettingsRead(BaseModel):
+    """The org's meetings settings — the defaults where no row exists."""
+
+    consent_required: bool = True
+    document_design: str = "standard"
+    document_accent_color: str | None = None
+    document_cover_file_id: uuid.UUID | None = None
+    document_footer_text: str | None = None
+    document_sections: list[str] = Field(default_factory=lambda: list(DEFAULT_DOCUMENT_SECTIONS))
+    document_avatars: bool = True
+    document_custom_html: str | None = None
+    document_custom_css: str | None = None
+    ai_instructions: str | None = None
+    #: Stated on the recorder and on the settings screen; the sweep reads the constant.
+    audio_retention_days: int = 30
+
+
+class MeetingSettingsUpdate(BaseModel):
+    """A **partial** update: only the fields present in the body are written (§18's pair —
+    absent means leave alone, an explicit ``null`` clears where the column is nullable)."""
+
+    consent_required: bool | None = None
+    document_design: str | None = Field(default=None, max_length=32)
+    document_accent_color: str | None = Field(default=None, max_length=16)
+    document_cover_file_id: uuid.UUID | None = None
+    document_footer_text: str | None = Field(default=None, max_length=2000)
+    document_sections: list[str] | None = Field(default=None, max_length=20)
+    document_avatars: bool | None = None
+    document_custom_html: str | None = None
+    document_custom_css: str | None = None
+    ai_instructions: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("document_sections")
+    @classmethod
+    def _known_sections(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        unknown = [key for key in value if key not in DOCUMENT_SECTIONS]
+        if unknown:
+            raise ValueError("meetings.error.unknown_section")
+        return list(dict.fromkeys(value))
+
+
+class MeetingSettingsPreviewRequest(BaseModel):
+    """An unsaved design, for the settings screen's live preview — the reporting editor's
+    shape: the document fields only, so a preview never 422s on a field it does not draw."""
+
+    document_design: str = Field(default="standard", max_length=32)
+    document_accent_color: str | None = Field(default=None, max_length=16)
+    document_cover_file_id: uuid.UUID | None = None
+    document_footer_text: str | None = Field(default=None, max_length=2000)
+    document_sections: list[str] | None = None
+    document_avatars: bool = True
+    document_custom_html: str | None = None
+    document_custom_css: str | None = None
+
+
+class MeetingDesignSource(BaseModel):
+    """A shipped design's own HTML and CSS, to branch a custom one from."""
+
+    html: str
+    css: str
+
+
+class MeetingPolicy(BaseModel):
+    """What the recorder needs to know before it records: whether the consent statement is
+    asked for, and how long the audio is kept. Readable by whoever may record."""
+
+    consent_required: bool = True
+    audio_retention_days: int = 30
+
+
+class MeetingSectionCatalogEntry(BaseModel):
+    key: str
+    title_key: str
+    #: Ticked by default on a download, per the org's settings.
+    default: bool
+
+
+# --- the transcript as a file ------------------------------------------------------------ #
+class MeetingTranscript(BaseModel):
+    """The words, whole: every segment with its speaker resolved to a name where the roster
+    names one, and the flat text — what an agent reads and what a `.txt` export prints."""
+
+    meeting_id: uuid.UUID
+    title: str
+    occurred_at: dt.datetime
+    language: str | None = None
+    model: str | None = None
+    parts: int = 0
+    diarized: bool = False
+    speakers: dict[str, str] = Field(default_factory=dict)
+    segments: list[TranscriptSegment] = Field(default_factory=list)
+    text: str = ""
+
+
+# --- changed in words ---------------------------------------------------------------------- #
+class MeetingReviseRequest(BaseModel):
+    """One typed instruction against one meeting — "zet de klant op Nova Fietsen, haal het
+    tweede besluit weg en geef Sanne het eerste actiepunt". The words are the caller's own."""
+
+    instruction: str = Field(min_length=1, max_length=4000)
+    override_budget: bool = False
+
+
+class MeetingReviseResult(BaseModel):
+    """What the revision did, and the meeting as it now stands (the task revise's shape)."""
+
+    meeting: MeetingDetail
+    summary: str | None = None
+    changed: list[str] = Field(default_factory=list)
+    truncated: bool = False
+
+
+class MeetingTranscribeRequest(TimeTranscribeRequest):
+    """A recorded instruction for the revise box (#382's transport, one record over) — a
+    distinct type on purpose, because the two services ask for different permissions."""

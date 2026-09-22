@@ -417,14 +417,19 @@
               {fmtMetric(key, kpi.current, src.currency)}
             </p>
             {#if delta}
-              <!-- The period, not the mode: a delta whose denominator is named can be checked. -->
-              <p class="text-xs tabular-nums {deltaClass(delta.tone)}">
+              <!-- The figure it was measured against, not only the percentage: "−20,6% t.o.v.
+                   € 1.211,73" can be held beside the Ads account's own screen and checked, and
+                   the span that figure covers is on the title and in the caption above. -->
+              <p
+                class="text-xs tabular-nums {deltaClass(delta.tone)}"
+                title={comparedPeriod
+                  ? t("marketing.compare.caption", { period: comparedPeriod })
+                  : undefined}
+              >
                 {delta.text}
-                {#if comparedPeriod}
-                  <span class="text-text-muted">
-                    {t("marketing.vs_period", { period: comparedPeriod })}
-                  </span>
-                {/if}
+                <span class="text-text-muted">
+                  {t("marketing.vs_value", { value: fmtMetric(key, kpi.previous, src.currency) })}
+                </span>
               </p>
             {/if}
             {#if hint}

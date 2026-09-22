@@ -104,6 +104,8 @@ ENTITY_ID_KEY: dict[str, str] = {
     # Ingested directly by the nightly sync (#377), which is the only thing that can know a
     # sync failed; the bus handler exists for completeness, like the gmail feed's above.
     "snelstart.sync.failed": "account_id",
+    # Emitted by the meetings worker the moment a draft lands on ``review``.
+    "meeting.ready": "meeting_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}

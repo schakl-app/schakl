@@ -2,7 +2,9 @@
 
 * ``meetings_process`` — one meeting: fold the pieces into the recording, transcribe it (in as
   many requests as the tenant's speech provider takes, ``pipeline.py``), draft the minutes
-  (``minutes.py``). Enqueued by ``finish`` and by ``retry``.
+  (``minutes.py``). Enqueued by ``finish`` and by ``retry``; with ``stage="minutes"`` (the
+  reviewer's *redraft*, after naming the speakers) it starts at the draft over the transcript
+  already on the row and spends no audio.
 * ``meetings_reap_stale`` — every quarter of an hour, per org. A row a worker claimed and never
   released — the process is not there any more — is failed, so the screen stops saying "bezig"
   (the #300 rule, the interactions module's shape).
@@ -32,6 +34,7 @@ from app.core.ai.candidates import gather as gather_candidates
 from app.core.ai.providers import AIProviderError
 from app.core.ai.service import AIService
 from app.core.entitlements.service import sku_cron_enabled
+from app.core.events import emit
 from app.core.jobs import run_per_org, system_context
 from app.core.models import Org, OrgStatus
 from app.core.storage.backend import storage_for
@@ -54,7 +57,8 @@ from app.modules.meetings.pipeline import (
     fold_chunks,
     transcribe_recording,
 )
-from app.modules.meetings.service import CHUNK_PREFIX, drop_audio, org_locale
+from app.modules.meetings.service import CHUNK_PREFIX, drop_audio, org_locale, participants_of
+from app.modules.meetings.settings import load_settings
 
 logger = logging.getLogger("schakl.meetings")
 
@@ -63,6 +67,9 @@ logger = logging.getLogger("schakl.meetings")
 STALE_AFTER_MINUTES = 90
 #: How long a confirmed meeting keeps its audio. Stated on the recording screen.
 AUDIO_RETENTION_DAYS = 30
+#: The notification the colleague who recorded it gets when the draft lands on ``review``
+#: (registered in ``notifications/events.py``; ``MEETING_READY`` there must match).
+READY_EVENT = "meeting.ready"
 
 
 async def _licensed() -> bool:
@@ -168,8 +175,16 @@ async def _fold(ctx, session: AsyncSession, row: Meeting) -> tuple[bytes, str]: 
     return data, extension
 
 
-async def run_pipeline(session: AsyncSession, org: Org, meeting_id: uuid.UUID) -> None:
-    """The whole run for one meeting, ending on ``review`` or ``failed``. Never raises."""
+async def run_pipeline(
+    session: AsyncSession, org: Org, meeting_id: uuid.UUID, *, stage: str = "full"
+) -> None:
+    """The whole run for one meeting, ending on ``review`` or ``failed``. Never raises.
+
+    ``stage="minutes"`` skips the fold and the transcription and drafts over the transcript the
+    row already holds — the reviewer named the speakers and wants the draft to say who took
+    what on, and re-transcribing for that would spend audio to answer a question the words
+    already answer.
+    """
     # Plain values, read once: a rollback on the error path expires every loaded object, and
     # an expired attribute read is a lazy load — sync IO the async session refuses.
     org_id = org.id
@@ -178,43 +193,57 @@ async def run_pipeline(session: AsyncSession, org: Org, meeting_id: uuid.UUID) -
         logger.info("meetings: %s is not queued; standing down", meeting_id)
         return
     ctx = system_context(org, session)
-    await _set_status(session, org_id, row, MeetingStatus.TRANSCRIBING.value)
     service = AIService(ctx)
     try:
-        config = await service.speech_config(FEATURE)
-        await service.ensure_audio_budget()
-        data, extension = await _fold(ctx, session, row)
-        language, duration_hint = row.language, row.duration_seconds
-        # --- the words: outside any transaction ------------------------------------- #
-        await session.commit()
-        try:
-            transcribed = await transcribe_recording(
-                config,
-                data,
-                extension,
-                language=language,
-                duration_seconds=duration_hint,
+        if stage == "minutes" and (row.transcript_text or "").strip():
+            transcript = dict(row.transcript or {})
+            segments = [s for s in (transcript.get("segments") or []) if isinstance(s, dict)]
+            text = row.transcript_text or ""
+            parts = int(transcript.get("parts") or 1)
+            speech_model = transcript.get("model")
+        else:
+            await _set_status(session, org_id, row, MeetingStatus.TRANSCRIBING.value)
+            config = await service.speech_config(FEATURE)
+            await service.ensure_audio_budget()
+            data, extension = await _fold(ctx, session, row)
+            language, duration_hint = row.language, row.duration_seconds
+            # --- the words: outside any transaction --------------------------------- #
+            await session.commit()
+            try:
+                transcribed = await transcribe_recording(
+                    config,
+                    data,
+                    extension,
+                    language=language,
+                    duration_seconds=duration_hint,
+                )
+            except AIProviderError as exc:
+                logger.warning("meetings: transcription failed for %s: %s", meeting_id, exc)
+                raise AppError(
+                    "ai_provider_error", "errors.ai_provider_error", status_code=502
+                ) from exc
+            await set_current_org(session, org_id)
+            row = await _load(session, org_id, meeting_id)
+            if row is None:
+                return
+            segments, text, parts = transcribed.segments, transcribed.text, transcribed.parts
+            speech_model = config.model
+            row.transcript = {
+                "segments": segments,
+                "model": speech_model,
+                "parts": parts,
+                # Stated on the row: a transcript with no labels is a *model* that answers
+                # text only, and the screen names it rather than drawing an empty roster.
+                "diarized": any(s.get("speaker") for s in segments),
+            }
+            row.transcript_text = text or None
+            if transcribed.seconds and not row.duration_seconds:
+                row.duration_seconds = transcribed.seconds
+            await service.record_usage(
+                FEATURE, config.model, 0, 0, audio_seconds=transcribed.seconds
             )
-        except AIProviderError as exc:
-            logger.warning("meetings: transcription failed for %s: %s", meeting_id, exc)
-            raise AppError(
-                "ai_provider_error", "errors.ai_provider_error", status_code=502
-            ) from exc
-        await set_current_org(session, org_id)
-        row = await _load(session, org_id, meeting_id)
-        if row is None:
-            return
-        row.transcript = {
-            "segments": transcribed.segments,
-            "model": config.model,
-            "parts": transcribed.parts,
-        }
-        row.transcript_text = transcribed.text or None
-        if transcribed.seconds and not row.duration_seconds:
-            row.duration_seconds = transcribed.seconds
-        await service.record_usage(FEATURE, config.model, 0, 0, audio_seconds=transcribed.seconds)
         await _set_status(session, org_id, row, MeetingStatus.SUMMARISING.value)
-        if not (transcribed.text or "").strip():
+        if not (text or "").strip():
             raise AppError("meetings_no_speech", "meetings.error.no_speech", status_code=422)
         # --- the minutes --------------------------------------------------------------- #
         chat = await service.config_for(FEATURE)
@@ -223,37 +252,67 @@ async def run_pipeline(session: AsyncSession, org: Org, meeting_id: uuid.UUID) -
         zone = await org_zoneinfo(session, org_id)
         today = await org_today(session, org_id)
         locale = await org_locale(ctx)
+        house_rules = (await load_settings(session, org_id)).ai_instructions
         draft = await draft_minutes(
             service,
             title=row.title,
             occurred_at=row.occurred_at,
             kind=row.kind,
-            segments=list(transcribed.segments),
-            transcript_text=transcribed.text,
-            speakers=dict(row.speakers or {}),
+            segments=list(segments),
+            transcript_text=text,
+            participants=participants_of(row),
             candidates=candidates,
             today=today,
             now=datetime.now(zone),
             locale=locale,
             agency=await _agency_name(session, org),
             duration=row.duration_seconds,
+            house_rules=house_rules,
         )
         # ``complete`` released and re-bound the session; the row object is still ours.
         row = await _load(session, org_id, meeting_id) or row
         row.minutes = draft.model_dump(mode="json")
         row.transcript = {
-            "segments": transcribed.segments,
-            "model": config.model,
-            "parts": transcribed.parts,
+            "segments": segments,
+            "model": speech_model,
+            "parts": parts,
+            "diarized": any(s.get("speaker") for s in segments),
             "chat_model": chat.model,
         }
-        await _set_status(session, org_id, row, MeetingStatus.REVIEW.value)
+        row.status = MeetingStatus.REVIEW.value
+        row.status_at = datetime.now(UTC)
+        row.error_key = None
+        # Told before the commit, so the row's state and the sentence about it land together:
+        # the colleague who pressed record is the one waiting, and a worker has no actor to
+        # exclude, so they are named outright. Deduped per run, not per meeting — a redraft is
+        # a second draft, and hearing it is done is the point of asking for one.
+        await _notify_ready(ctx, row, draft)
+        await _commit(session, org_id)
     except AppError as exc:
         logger.warning("meetings: %s failed: %s", meeting_id, exc.message_key)
         await _fail(session, org_id, meeting_id, exc.message_key)
     except Exception:
         logger.exception("meetings: pipeline crashed for %s", meeting_id)
         await _fail(session, org_id, meeting_id, "meetings.error.failed")
+
+
+async def _notify_ready(ctx, row: Meeting, draft) -> None:  # noqa: ANN001
+    """The recorder is told their minutes are ready to review — in the app and, by this
+    event's own default, by mail (``notifications/defaults.EMAIL_DEFAULT_ON_EVENTS``)."""
+    if row.owner_user_id is None:
+        return
+    await emit(
+        READY_EVENT,
+        ctx,
+        {
+            "meeting_id": row.id,
+            "title": row.title,
+            "decisions": len(draft.decisions),
+            "action_items": len(draft.action_items),
+            "_recipients": [row.owner_user_id],
+            "_dedup_key": f"meeting-ready:{row.id}:{int(row.status_at.timestamp())}",
+        },
+    )
 
 
 async def _fail(
@@ -272,13 +331,16 @@ async def _fail(
 async def _agency_name(session: AsyncSession, org: Org) -> str:
     from app.core.models import OrgSettings
 
-    brand = await session.scalar(
-        select(OrgSettings.brand_name).where(OrgSettings.org_id == org.id)
-    )
+    brand = await session.scalar(select(OrgSettings.brand_name).where(OrgSettings.org_id == org.id))
     return brand or org.name or "the agency"
 
 
-async def meetings_process(ctx: dict, org_id: str, meeting_id: str) -> None:  # noqa: ARG001
+async def meetings_process(
+    ctx: dict,  # noqa: ARG001
+    org_id: str,
+    meeting_id: str,
+    stage: str = "full",
+) -> None:
     if not await _licensed():
         logger.info("meetings: sku not writable; %s not processed", meeting_id)
         return
@@ -287,7 +349,7 @@ async def meetings_process(ctx: dict, org_id: str, meeting_id: str) -> None:  # 
         if org is None:
             return
         await set_current_org(session, org.id)
-        await run_pipeline(session, org, uuid.UUID(meeting_id))
+        await run_pipeline(session, org, uuid.UUID(meeting_id), stage=stage)
 
 
 async def _reap_org(org: Org, session: AsyncSession) -> None:
@@ -348,6 +410,7 @@ async def meetings_sweep_audio(ctx: dict) -> None:  # noqa: ARG001
 
 __all__ = [
     "AUDIO_RETENTION_DAYS",
+    "READY_EVENT",
     "STALE_AFTER_MINUTES",
     "meetings_process",
     "meetings_reap_stale",

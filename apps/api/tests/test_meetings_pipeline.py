@@ -252,3 +252,102 @@ def test_the_document_is_data_and_says_when_it_was_cut() -> None:
         text="alleen tekst",
     )
     assert not cut and '"alleen tekst"' in short
+
+
+# --- the roster --------------------------------------------------------------------- #
+def test_an_owner_is_grounded_in_the_participants_and_a_contact_outranks_a_colleague() -> None:
+    """``owner_contact_id`` may only name a contact the PARTICIPANTS block showed the model; an
+    item naming both a colleague and a contact is the client's (the "never assign the client's
+    promise to a colleague" rule half-obeyed by the model, finished here)."""
+    from app.modules.meetings.minutes import participants_block
+    from app.modules.meetings.schemas import MeetingParticipant
+
+    staff, contact, stranger = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    roster, contact_ids = participants_block(
+        [
+            MeetingParticipant(name="Sanne", user_id=staff, speaker="S1"),
+            MeetingParticipant(name="Jan de Vries", contact_id=contact, speaker="S2"),
+            MeetingParticipant(name="Piet (leverancier)"),
+        ]
+    )
+    assert roster.splitlines() == [
+        f"S1\tSanne\tstaff\t{staff}",
+        f"S2\tJan de Vries\tcontact\t{contact}",
+        "-\tPiet (leverancier)\tother\t-",
+    ]
+    assert contact_ids == {str(contact)}
+    transcript = "Jan stuurt het logo en Sanne levert de teksten woensdag aan"
+    draft = draft_from_call(
+        {
+            "summary": "x",
+            "action_items": [
+                {"title": "Logo", "quote": "Jan stuurt het logo", "owner_contact_id": str(contact)},
+                {
+                    "title": "Beide genoemd",
+                    "quote": "Sanne levert de teksten woensdag aan",
+                    "owner_contact_id": str(contact),
+                    "assignee_user_id": str(staff),
+                },
+                {
+                    "title": "Onbekende contactpersoon",
+                    "quote": "Sanne levert de teksten woensdag aan",
+                    "owner_contact_id": str(stranger),
+                    "owner_label": "Karel (klant)",
+                },
+            ],
+        },
+        transcript_text=transcript,
+        staff_ids={str(staff)},
+        today=date(2026, 9, 22),
+        duration=None,
+        contact_ids=contact_ids,
+    )
+    logo, both, unknown = draft.action_items
+    assert logo.owner_contact_id == contact and logo.create_task is False
+    assert both.owner_contact_id == contact and both.assignee_user_id is None
+    assert unknown.owner_contact_id is None and unknown.owner_label == "Karel (klant)"
+
+
+def test_the_minutes_print_the_action_items_by_side_and_then_by_person() -> None:
+    from app.modules.meetings.schemas import MeetingParticipant, MinutesActionItem, MinutesDraft
+    from app.modules.meetings.service import group_action_items, render_minutes
+
+    staff, contact = uuid.uuid4(), uuid.uuid4()
+    items = [
+        MinutesActionItem(title="Logo sturen", quote="q", owner_contact_id=contact),
+        MinutesActionItem(title="Teksten", quote="q", assignee_user_id=staff),
+        MinutesActionItem(title="Offerte drukker", quote="q", owner_label="Piet (drukker)"),
+        MinutesActionItem(title="Foto's aanleveren", quote="q", owner_contact_id=contact),
+        MinutesActionItem(title="Niemand", quote="q"),
+    ]
+    grouped = group_action_items(items)
+    assert [side for side, _ in grouped] == ["agency", "client", "other"]
+    client_groups = dict(grouped)["client"]
+    assert [key for key, _ in client_groups] == [f"c:{contact}"]
+    assert [i.title for i in client_groups[0][1]] == ["Logo sturen", "Foto's aanleveren"]
+    other = dict(grouped)["other"]
+    assert [key for key, _ in other] == ["n:piet (drukker)", None]
+
+    body = render_minutes(
+        MinutesDraft(summary="Kort.", action_items=items),
+        locale="nl",
+        participants=[
+            MeetingParticipant(name="Sanne", user_id=staff, speaker="S1"),
+            MeetingParticipant(name="Jan de Vries", contact_id=contact, speaker="S2"),
+        ],
+        names={f"u:{staff}": "Sanne", f"c:{contact}": "Jan de Vries"},
+    )
+    assert (
+        body.index("## Aanwezig")
+        < body.index("Sanne, Jan de Vries")
+        < body.index("## Samenvatting")
+    )
+    ours, theirs, rest = (
+        body.index("### Voor ons"),
+        body.index("### Voor de klant"),
+        body.index("### Overig"),
+    )
+    assert ours < theirs < rest
+    assert ours < body.index("**Sanne**") < body.index("- Teksten") < theirs
+    assert theirs < body.index("**Jan de Vries**") < body.index("- Logo sturen") < rest
+    assert rest < body.index("**Piet (drukker)**") < body.index("- Niemand")

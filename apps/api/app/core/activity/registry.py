@@ -34,5 +34,9 @@ def is_auditable(entity_type: str) -> bool:
 
 def read_permission_for(entity_type: str) -> str | None:
     """The permission a caller must hold to read this entity type's trail, if the module declared
-    one. ``None`` means the type opted in without a read gate (fall back to ``activity.read``)."""
+    one. ``None`` means the type opted in without a read gate (fall back to ``activity.read``).
+
+    It is the record's own read key, which is why the storage core asks it too for a
+    record-gated file host (``RECORD_GATED_ENTITY_TYPES``): a meeting's recording reads for
+    whoever may read the meeting, and that is one key declared in one place."""
     return _READ_PERMISSION.get(entity_type)
