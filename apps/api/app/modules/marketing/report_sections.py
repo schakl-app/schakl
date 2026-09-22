@@ -1320,6 +1320,12 @@ async def _ai_search_overview(
     for block in overview.engines:
         if block.metrics and block.data_month == month:
             usable.append(block)
+        elif block.no_data:
+            # SE Ranking holds no AI answers for this domain here: a fact for the agency (the
+            # target or the country may be wrong), never a chapter of dashes for the client.
+            notes.append(
+                {"code": "reporting.warning.seranking_ai_overview_no_data", "detail": block.engine}
+            )
         elif block.status in ("denied", "insufficient", "failed"):
             notes.append(
                 {

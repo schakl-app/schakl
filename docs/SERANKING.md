@@ -12,7 +12,8 @@
 
 One call: `GET /v1/ai-search/overview/…/time-series` for a **target** (a domain, a host or a
 URL), a **country database** (`source`, alpha-2) and a **brand**. It answers a `summary` of
-four figures, each as `current` / `previous`, and five monthly `time_series`.
+four figures, each as `current` / `previous` (the live API leaves `previous` null — §10), and
+five monthly `time_series` streams.
 
 SE Ranking tracks a large, fixed set of prompts per country and re-runs it monthly. Every figure
 below is therefore **a sample of AI search, not all of it**, and always describes a whole month.
@@ -70,7 +71,7 @@ rather than assumed away:
 |---|---|---|
 | the month asked about (the ordinary case) | `summary` as given; `data_month = period_month` | "augustus 2026 · vergeleken met juli 2026" |
 | an **older** month (not published yet) | `summary` as given; `data_month` = that older month | the figures, **labelled with the month they are**, and "SE Ranking heeft augustus nog niet gepubliceerd". Re-asked weekly — it costs a full read to find out. The **report** withholds the chapter and says why on the run's warnings: July's figures under an August cover would be the one number on the document from another month. |
-| the month **still running** | link presence and position are **re-read from the series** for the month asked about and the one before it; brand presence and opportunity traffic, which have no series, keep what SE Ranking called `previous` as their value and have **no comparison** | the figures for the month asked about, a note saying two of them have no comparison, `realigned: true` on the payload |
+| the month **still running** | link presence and position are **re-read from the series** for the month asked about and the one before it; brand presence and opportunity traffic, which have no series, keep what SE Ranking called `previous` as their value — which the live API leaves null, so in practice they are **blank** for that month | the figures for the month asked about, a note saying two of them are missing, `realigned: true` on the payload |
 
 SE Ranking's own `change_absolute` / `change_percent` are **not read**: their sign convention
 differs per metric (a position that improved from 9,2 to 8,5 arrives as `+0.7`), and after a
@@ -245,6 +246,41 @@ reshapes the answer — so it confirms the contract and the units, not our JSON 
   percentage — never the ±100 % a division would invent.
 - The subscription document carries `units_limit` / `units_left` and the misspelt
   `expiraton_date`, exactly as item 1 assumes.
+
+**What a direct run of the adapter's own calls settled** (2026-09-22, `curl` against
+`api.seranking.com` with breik.'s Data API key — raw JSON, so these *are* our JSON paths):
+
+- **The two keys are two keys.** The Data API key (a UUID) answers `/account/subscription` and is
+  refused by the project API (`403 {"message":"No token"}`); the project key (40 hex characters)
+  lists the sites and is refused by the Data API (`401`, `error_description` "Authentication
+  failed …"). Both read as `denied` — §2's second key is not optional for breik., it is required.
+- Items 1, 2 and 4 hold: `subscription_info` carries `units_limit` / `units_left` /
+  `expiraton_date`; the aggregate path answers; `time_series[].date` is `YYYY-MM`, **fifteen**
+  months of it, not five.
+- **`previous` is null on every figure**, for a target read before as much as for a new one, and
+  `change_percent` is then `100`. So the month before is *never* the vendor's: link presence and
+  position take it from the series in every case (`parse_overview`), and brand presence and
+  opportunity traffic — which have no series — take it from the month **this instance stored**
+  a month earlier (`_block`), or have no comparison. Before this was found, the ordinary case
+  compared nothing at all.
+- **Item 3 has no single answer: the newest month is per target.** On the 22nd, `breik.nl`'s
+  newest point was 2026-09 (so it is realigned, and brand presence / opportunity traffic are
+  blank for August — the vendor publishes them for the newest month only) while `alga.nl`'s was
+  2026-08 (the ordinary row). Reading early in the month is what keeps all four figures; since
+  the dashboard reads lazily, the first view after the 1st usually does.
+- **Only AI Overviews has a series in the NL database.** `ai-mode`, `chatgpt`, `perplexity`
+  and `gemini` answer either `no_index: true` with every figure null (a small site), or presence
+  counts with an **empty** series and `average_position: 0` (bol.com). `0` is read as *no
+  position* (`aisearch._rank`), and `no_index` is stored as `no_data` — said in words on the
+  dashboard, a warning on the report run, and no section for a client. An engine name the API
+  does not know (`bogus`) is answered the same way, `200` + `no_index`, never a 400. For a Dutch
+  client, `all` (which equals `ai-overview` there) is the useful choice.
+- **Item 7: `scope` changes nothing.** `breik.nl` / `base_domain` and `www.breik.nl` / `domain`
+  answered byte-identical figures. A changed scope still costs a re-read (it is part of the
+  snapshot key) for the same numbers.
+- The overview answers `brand` and `brand_origin` itself, so item 6's `discover-brand`
+  (`["breik"]`, `["ALGA"]` — it does name small Dutch domains) is the same attribution the read
+  would have made silently.
 
 The day a key is in the instance, check, in this order — the first is free:
 

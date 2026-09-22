@@ -526,7 +526,11 @@ class AiSearchService:
                     continue
                 row.status = STATUS_OK
                 row.data_month = parsed.data_month
-                row.summary = {"metrics": parsed.summary, "realigned": parsed.realigned}
+                row.summary = {
+                    "metrics": parsed.summary,
+                    "realigned": parsed.realigned,
+                    "no_data": parsed.no_data,
+                }
                 row.time_series = parsed.series
                 row.units = UNITS_OVERVIEW
             else:
@@ -759,22 +763,43 @@ def _block(
         )
     stored = figures.summary or {}
     metrics_blob = stored.get("metrics") or {}
+    data_month = figures.data_month or figures.period_month
+    compare_month = previous_month(data_month)
+    # SE Ranking's summary never carries a "previous" (docs/SERANKING.md §10), and two of the
+    # four figures have no series to take one from — so the month before is the one *we* stored,
+    # where we did. Same brand, target and engine by construction: ``rows`` is already narrowed.
+    earlier = next(
+        (
+            row
+            for row in of_engine
+            if row.status == STATUS_OK
+            and row is not figures
+            and (row.data_month or row.period_month) == compare_month
+        ),
+        None,
+    )
+    earlier_blob = ((earlier.summary or {}).get("metrics") or {}) if earlier else {}
     metrics: list[AiSearchMetric] = []
     for key in METRICS:
         pair = metrics_blob.get(key) or {}
-        moved = change(key, pair.get("current"), pair.get("previous"))
+        previous = pair.get("previous")
+        if previous is None:
+            previous = (earlier_blob.get(key) or {}).get("current")
+        moved = change(key, pair.get("current"), previous)
         metrics.append(
             AiSearchMetric(
                 key=key,  # type: ignore[arg-type]
                 current=pair.get("current"),
-                previous=pair.get("previous"),
+                previous=previous,
                 change_absolute=moved["absolute"],
                 change_percent=moved["percent"],
                 direction=moved["direction"],
                 verdict=moved["verdict"],
             )
         )
-    data_month = figures.data_month or figures.period_month
+    no_data = bool(stored.get("no_data"))
+    if no_data and portal:
+        return None
     return AiSearchEngineBlock(
         engine=engine,  # type: ignore[arg-type]
         # The figures shown are good; what is reported is how the *asked-about* month went, so
@@ -783,8 +808,8 @@ def _block(
         status=STATUS_OK if portal or figures is current else status,
         period_month=period,
         data_month=data_month,
-        compare_month=previous_month(data_month),
-        metrics=metrics,
+        compare_month=compare_month,
+        metrics=[] if no_data else metrics,
         series={
             stream: [
                 AiSearchPoint(month=point["month"], value=point["value"])
@@ -795,4 +820,5 @@ def _block(
         },
         fetched_at=figures.fetched_at,
         realigned=bool(stored.get("realigned")),
+        no_data=no_data,
     )

@@ -15643,6 +15643,11 @@ export interface components {
             /** Metrics */
             metrics?: components["schemas"]["AiSearchMetric"][];
             /**
+             * No Data
+             * @default false
+             */
+            no_data: boolean;
+            /**
              * Period Month
              * Format: date
              */

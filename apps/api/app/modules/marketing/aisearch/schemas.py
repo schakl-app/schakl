@@ -93,6 +93,9 @@ class AiSearchEngineBlock(BaseModel):
     #: The figures were re-read from the monthly series because SE Ranking's newest point was
     #: the month still running; brand presence and opportunity traffic then have no comparison.
     realigned: bool = False
+    #: SE Ranking holds no AI answers for this target in this country database — a state the
+    #: screen says in words, never four empty tiles (``metrics`` is then empty).
+    no_data: bool = False
 
 
 class AiSearchOverview(BaseModel):

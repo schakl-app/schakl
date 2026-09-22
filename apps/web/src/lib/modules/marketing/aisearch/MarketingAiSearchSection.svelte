@@ -613,6 +613,15 @@
             {t(isPortal ? "marketing.ai_search.realigned_portal" : "marketing.ai_search.realigned")}
           </p>
         {/if}
+      {:else if block.no_data}
+        <!-- SE Ranking has no AI answers for this site here: said as a fact about the domain and
+             the country, never as four dashes that read like "invisible in AI". -->
+        <p class="text-sm text-text-muted" data-testid="ai-search-no-data">
+          {t("marketing.ai_search.no_data", {
+            target: overview.settings.target,
+            country: overview.settings.source.toUpperCase(),
+          })}
+        </p>
       {:else if !statusKey(block.status)}
         <p class="text-sm text-text-muted">{t("marketing.ai_search.empty")}</p>
       {/if}

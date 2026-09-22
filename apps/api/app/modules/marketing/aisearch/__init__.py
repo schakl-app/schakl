@@ -258,6 +258,16 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _rank(value: float | None) -> float | None:
+    """A position as SE Ranking sends one: ``0`` is its word for *no position*, not first place.
+
+    Measured on the live API (docs/SERANKING.md §10): an engine read with no series — ChatGPT or
+    Perplexity for a Dutch domain — answers ``average_position: 0`` beside non-zero presence
+    counts. Printed, that is "position 0", which reads as better than first.
+    """
+    return value if value is not None and value > 0 else None
+
+
 @dataclass(frozen=True)
 class ParsedOverview:
     """One answer, aligned to the month it is about."""
@@ -272,6 +282,9 @@ class ParsedOverview:
     #: ``summary`` was re-read from the series because the vendor's newest point was the month
     #: still running — so the two figures with no series have no "previous" to compare with.
     realigned: bool = False
+    #: SE Ranking holds no AI answers for this target in this country database (its own
+    #: ``no_index``, or an answer with no figure and no series at all). A state, not four zeros.
+    no_data: bool = False
 
 
 def _series(body: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -285,6 +298,8 @@ def _series(body: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             if not isinstance(point, dict):
                 continue
             month, value = month_of(point.get("date")), _number(point.get("value"))
+            if stream in LOWER_IS_BETTER:
+                value = _rank(value)
             if month is not None and value is not None:
                 points[month] = value
         if points:
@@ -309,22 +324,39 @@ def parse_overview(body: dict[str, Any], expected: date) -> ParsedOverview:
     vendor: dict[str, dict[str, float | None]] = {}
     for metric in METRICS:
         entry = raw.get(metric) if isinstance(raw.get(metric), dict) else {}
-        vendor[metric] = {
-            "current": _number(entry.get("current")),
-            "previous": _number(entry.get("previous")),
-        }
+        current, previous = _number(entry.get("current")), _number(entry.get("previous"))
+        if metric in LOWER_IS_BETTER:
+            current, previous = _rank(current), _rank(previous)
+        vendor[metric] = {"current": current, "previous": previous}
 
+    no_data = bool(body.get("no_index")) or (
+        not series and all(pair["current"] is None for pair in vendor.values())
+    )
     months = [month_of(p["month"]) for points in series.values() for p in points]
     latest = max((m for m in months if m is not None), default=None)
     if latest is None or latest <= expected:
         # The ordinary case (latest == expected), and the lagging one (latest < expected): the
-        # vendor's two values are the vendor's two newest months, and that is what they are
-        # served as.
-        return ParsedOverview(data_month=latest or expected, summary=vendor, series=series)
+        # vendor's values are the vendor's newest month, and that is what they are served as.
+        # Its ``previous`` is null on every live answer seen so far — so a figure that has a
+        # series takes the month before from the series, or no tile would ever show a change.
+        data_month = latest or expected
+        before = previous_month(data_month).strftime("%Y-%m")
+        summary: dict[str, dict[str, float | None]] = {}
+        for metric in METRICS:
+            pair = dict(vendor[metric])
+            by_month = {p["month"]: p["value"] for p in series.get(metric, [])}
+            if pair["current"] is None:
+                pair["current"] = by_month.get(data_month.strftime("%Y-%m"))
+            if pair["previous"] is None:
+                pair["previous"] = by_month.get(before)
+            summary[metric] = pair
+        return ParsedOverview(
+            data_month=data_month, summary=summary, series=series, no_data=no_data
+        )
 
     # The vendor's newest point is a month we did not ask about — the one still running.
     before = previous_month(expected)
-    summary: dict[str, dict[str, float | None]] = {}
+    summary = {}
     for metric in METRICS:
         if metric in series:
             by_month = {p["month"]: p["value"] for p in series[metric]}
@@ -341,7 +373,9 @@ def parse_overview(body: dict[str, Any], expected: date) -> ParsedOverview:
                 "current": vendor[metric]["previous"] if is_next else None,
                 "previous": None,
             }
-    return ParsedOverview(data_month=expected, summary=summary, series=series, realigned=True)
+    return ParsedOverview(
+        data_month=expected, summary=summary, series=series, realigned=True, no_data=no_data
+    )
 
 
 def change(metric: str, current: float | None, previous: float | None) -> dict[str, Any]:

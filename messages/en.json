@@ -7779,7 +7779,7 @@
   "marketing.ai_search.was": "was {value}",
   "marketing.ai_search.no_previous": "No earlier month to compare with",
   "marketing.ai_search.lagging": "SE Ranking has not published {asked} yet. These are the figures for {month}.",
-  "marketing.ai_search.realigned": "SE Ranking's newest figures cover the month still running, so link presence and position were read from the monthly series for the month shown. Brand presence and opportunity traffic have no series and so no comparison.",
+  "marketing.ai_search.realigned": "SE Ranking's newest figures cover the month still running, so link presence and position were read from the monthly series for the month shown. Brand presence and opportunity traffic are only published for the newest month, so they are missing for this one.",
   "marketing.ai_search.empty": "SE Ranking returned no figures for this site.",
   "marketing.ai_search.subject": "Brand “{brand}” · {target} · database {country}",
   "marketing.ai_search.subject_no_brand": "{target} · database {country} · brand determined by SE Ranking",
@@ -7893,6 +7893,8 @@
   "marketing.ai_search.kept": "The figures already stored were kept.",
   "marketing.ai_search.help.source_portal": "A large, fixed set of prompts per country is tracked across ChatGPT, Perplexity, Gemini and Google's AI Overviews and AI Mode, and refreshed monthly. The figures are therefore a sample of AI search, not all of it, and always describe a whole month. “All engines together” is a combined figure, not the engines added up: one prompt answered by three engines counts once.",
   "marketing.ai_search.lagging_portal": "The figures for {asked} are not available yet. These are the figures for {month}.",
-  "marketing.ai_search.realigned_portal": "Brand mentions and opportunity traffic have no comparison this month.",
-  "marketing.ai_search.subject_no_brand_portal": "{target} · database {country}"
+  "marketing.ai_search.realigned_portal": "Brand mentions and opportunity traffic are not available for this month.",
+  "marketing.ai_search.subject_no_brand_portal": "{target} · database {country}",
+  "reporting.warning.seranking_ai_overview_no_data": "AI search visibility is missing: SE Ranking has no AI answers for this domain in the chosen country database. Check the domain and the country in the client's AI search settings.",
+  "marketing.ai_search.no_data": "SE Ranking has no AI answers for {target} in the {country} database. Check the domain and the country: a small site often does not appear yet, and an engine other than AI Overviews is not tracked for every country."
 }

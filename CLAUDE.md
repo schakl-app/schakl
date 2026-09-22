@@ -2042,7 +2042,17 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   mismatch the chapter's own caption was written to prevent, one page earlier
   (`cover_compare_label`). One live read through SE Ranking's own connector confirmed the
   aggregate path and that both presence figures are counts; its contract also says `scope` is
-  ignored on this endpoint, which `docs/SERANKING.md` §10 now lists as a thing to measure.
+  ignored on this endpoint, which `docs/SERANKING.md` §10 now lists as a thing to measure. The
+  first run of the adapter's own calls against a live key (§10's checklist) found the
+  documented shape and the real one disagree in four places, and the lesson is the OXXA one:
+  **a parse written from a document is a hypothesis until a real body has been fed to it**.
+  `previous` is null on every live answer, so the ordinary case compared *nothing* — link
+  presence and position now take the month before from the series and the two figures without
+  one from the month this instance stored; an engine with no series answers
+  `average_position: 0`, which is *no position* and would have printed as better than first;
+  and a site SE Ranking does not know (or an engine it does not track for NL — all but AI
+  Overviews) is `200` + `no_index` with every figure null, now the `no_data` state rather than
+  four dashes that read as "invisible in AI". The fixtures are the live bodies, trimmed.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

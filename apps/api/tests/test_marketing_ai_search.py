@@ -106,6 +106,8 @@ class _FakeSeRanking:
         self.brands: list[str] = ["Acme"]
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.keys: list[str] = []
+        #: A body to answer the overview with instead of the documented shape — a live one.
+        self.body: dict[str, Any] | None = None
 
     def paid(self) -> list[tuple[str, dict[str, Any]]]:
         return [call for call in self.calls if "/ai-search/overview/" in call[0]]
@@ -132,7 +134,7 @@ class _FakeSeRanking:
         if url.endswith("/ai-search/discover-brand"):
             return _Response({"brands": self.brands})
         if "/ai-search/overview/" in url:
-            return _Response(_body(self.latest))
+            return _Response(self.body if self.body is not None else _body(self.latest))
         return _Response({}, 404)
 
 
@@ -187,6 +189,62 @@ def test_a_position_that_fell_is_a_down_arrow_and_good_news() -> None:
     assert (grew["direction"], grew["verdict"], grew["percent"]) == ("up", "good", 11.1)
     # No previous value is no comparison — never a change of 100 %.
     assert change("brand_presence", 50, None)["percent"] is None
+
+
+# --- the shapes the live Data API actually answers (docs/SERANKING.md §10, 2026-09-22) -------- #
+def _live(latest: date, *, months: int = 3, summary: dict[str, Any] | None = None) -> dict:
+    """An overview body as ``api.seranking.com`` answered it: ``previous`` null on every figure
+    (and the vendor's ``change_percent`` a baseline's 100), series ending at ``latest``."""
+    body = _body(latest, months=months)
+    body["brand"], body["brand_origin"] = "acme", "discovered"
+    for key, entry in body["summary"].items():
+        entry.update(previous=None, change_percent=100, change_absolute=entry["current"])
+        if summary and key in summary:
+            entry["current"] = summary[key]
+    return body
+
+
+def test_a_live_answer_takes_the_month_before_from_the_series() -> None:
+    """SE Ranking never fills ``previous``. Without the series, no tile would ever compare."""
+    parsed = parse_overview(_live(date(2026, 8, 1)), date(2026, 8, 1))
+    assert parsed.summary["link_presence"] == {"current": 120.0, "previous": 110.0}
+    assert parsed.summary["average_position"]["previous"] == pytest.approx(9.2)
+    # No series behind these two: nothing to compare with, and never the vendor's +100 %.
+    assert parsed.summary["brand_presence"] == {"current": 50.0, "previous": None}
+    assert parsed.summary["ai_opportunity_traffic"] == {"current": 2000.0, "previous": None}
+
+
+def test_a_live_answer_for_the_running_month_has_no_brand_presence_for_the_month_asked() -> None:
+    parsed = parse_overview(_live(date(2026, 9, 1)), date(2026, 8, 1))
+    assert parsed.realigned is True
+    assert parsed.summary["link_presence"] == {"current": 110.0, "previous": 100.0}
+    assert parsed.summary["brand_presence"] == {"current": None, "previous": None}
+
+
+def test_position_zero_is_no_position() -> None:
+    """ChatGPT for bol.com, NL database: counts, no series, ``average_position: 0``."""
+    body = _live(date(2026, 8, 1), summary={"average_position": 0})
+    body["time_series"] = {stream: [] for stream in body["time_series"]}
+    parsed = parse_overview(body, date(2026, 8, 1))
+    assert parsed.no_data is False
+    assert parsed.summary["average_position"] == {"current": None, "previous": None}
+    assert parsed.summary["link_presence"]["current"] == 120.0
+
+
+def test_no_index_is_a_state_not_four_empty_figures() -> None:
+    """An engine SE Ranking does not track for this country, or a site it has never seen,
+    answers 200 with ``no_index`` and nulls — which must not read as "invisible in AI"."""
+    body = {
+        "no_index": True,
+        "brand": "acme",
+        "time_series": {"link_presence": [], "average_position": []},
+        "summary": {
+            key: {"current": None, "previous": None} for key in _body(date(2026, 8, 1))["summary"]
+        },
+    }
+    parsed = parse_overview(body, date(2026, 8, 1))
+    assert parsed.no_data is True
+    assert parsed.data_month == date(2026, 8, 1)
 
 
 # --- the settings ----------------------------------------------------------------------------- #
@@ -854,3 +912,58 @@ def test_the_covers_caption_follows_the_tiles_above_it() -> None:
     assert _headline_span([ai], "augustus 2025") == "juli 2026"
     assert _headline_span([], "augustus 2025") == "augustus 2025"
     assert _headline_span([traffic], None) is None
+
+
+async def test_a_domain_se_ranking_has_no_answers_for_is_said_not_drawn(
+    client_for, seranking
+) -> None:
+    t = await make_tenant("ais-noindex")
+    owner = await auth_cookie(t.user)
+    month = expected_month(org_today())
+    seranking.body = {
+        "no_index": True,
+        "time_series": {},
+        "summary": {key: {"current": None} for key in _body(month)["summary"]},
+    }
+    async with client_for(t.host) as c:
+        company_id = await _setup(c, owner)
+        url = f"/api/v1/marketing/companies/{company_id}/ai-search"
+        (block,) = (await c.get(url, headers=owner)).json()["engines"]
+        assert (block["status"], block["no_data"], block["metrics"]) == ("ok", True, [])
+        portal = await _portal_headers(c, owner, company_id, "piet@ais-noindex.test")
+        assert (await c.get(url, headers=portal)).json()["state"] == "off"
+    payload = await _chapter(t.org.id, company_id, month)
+    assert payload == {
+        "withheld": True,
+        "notes": [{"code": "reporting.warning.seranking_ai_overview_no_data", "detail": "all"}],
+    }
+
+
+async def test_brand_presence_is_compared_with_the_month_we_stored_before(
+    client_for, seranking
+) -> None:
+    """The vendor has no ``previous`` and brand presence has no series, so the only month
+    before it there can ever be is the one this instance read a month ago."""
+    t = await make_tenant("ais-ourprev")
+    headers = await auth_cookie(t.user)
+    month = expected_month(org_today())
+    before = previous_month(month)
+    seranking.body = _live(before, summary={"brand_presence": 40})
+    seranking.latest = before
+    async with client_for(t.host) as c:
+        company_id = await _setup(c, headers)
+        url = f"/api/v1/marketing/companies/{company_id}/ai-search"
+        await c.get(url, headers=headers)
+        # That read is last month's, stored under last month.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(update(MarketingAiSearchSnapshot).values(period_month=before))
+            await session.commit()
+        seranking.body = _live(month)
+        (block,) = (await c.get(url, headers=headers)).json()["engines"]
+    by_key = {metric["key"]: metric for metric in block["metrics"]}
+    assert block["data_month"] == month.isoformat()
+    assert (by_key["brand_presence"]["current"], by_key["brand_presence"]["previous"]) == (50, 40)
+    assert by_key["brand_presence"]["change_percent"] == 25.0
+    # The series still wins where there is one.
+    assert by_key["link_presence"]["previous"] == 110

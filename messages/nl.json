@@ -7779,7 +7779,7 @@
   "marketing.ai_search.was": "was {value}",
   "marketing.ai_search.no_previous": "Geen eerdere maand om mee te vergelijken",
   "marketing.ai_search.lagging": "SE Ranking heeft {asked} nog niet gepubliceerd. Dit zijn de cijfers van {month}.",
-  "marketing.ai_search.realigned": "De nieuwste cijfers van SE Ranking gaan over de lopende maand. Links en positie zijn daarom uit de maandreeks gelezen voor de getoonde maand. Merkvermeldingen en potentieel verkeer hebben geen reeks en dus geen vergelijking.",
+  "marketing.ai_search.realigned": "De nieuwste cijfers van SE Ranking gaan over de lopende maand. Links en positie zijn daarom uit de maandreeks gelezen voor de getoonde maand. Merkvermeldingen en potentieel verkeer publiceert SE Ranking alleen voor de nieuwste maand, dus die ontbreken voor deze maand.",
   "marketing.ai_search.empty": "SE Ranking gaf voor deze site geen cijfers terug.",
   "marketing.ai_search.subject": "Merk ‘{brand}’ · {target} · database {country}",
   "marketing.ai_search.subject_no_brand": "{target} · database {country} · merk bepaald door SE Ranking",
@@ -7893,6 +7893,8 @@
   "marketing.ai_search.kept": "De al opgeslagen cijfers zijn behouden.",
   "marketing.ai_search.help.source_portal": "Per land wordt een grote, vaste set prompts gevolgd in ChatGPT, Perplexity, Gemini en de AI-overzichten en AI-modus van Google, en maandelijks ververst. De cijfers zijn dus een steekproef van AI-zoeken, niet alles, en gaan altijd over een hele maand. ‘Alle engines samen’ is een gecombineerd cijfer, geen optelsom van de engines: een prompt die door drie engines wordt beantwoord telt één keer.",
   "marketing.ai_search.lagging_portal": "De cijfers van {asked} zijn nog niet beschikbaar. Dit zijn de cijfers van {month}.",
-  "marketing.ai_search.realigned_portal": "Merkvermeldingen en potentieel verkeer hebben deze maand geen vergelijking.",
-  "marketing.ai_search.subject_no_brand_portal": "{target} · database {country}"
+  "marketing.ai_search.realigned_portal": "Merkvermeldingen en potentieel verkeer zijn voor deze maand niet beschikbaar.",
+  "marketing.ai_search.subject_no_brand_portal": "{target} · database {country}",
+  "reporting.warning.seranking_ai_overview_no_data": "Zichtbaarheid in AI-zoekmachines ontbreekt: SE Ranking heeft voor dit domein geen AI-antwoorden in de gekozen landdatabase. Controleer het domein en het land in de AI-zoekinstellingen van de klant.",
+  "marketing.ai_search.no_data": "SE Ranking heeft geen AI-antwoorden voor {target} in de database van {country}. Controleer het domein en het land: een kleine site komt er vaak nog niet in voor, en andere zoekmachines dan AI Overviews worden niet voor elk land gevolgd."
 }
