@@ -22,6 +22,8 @@ ENTITY_SNELSTART_ACCOUNT = "snelstart_account"
 #: A mail to the task address that could not become a task on its own (the tasks module's
 #: ``task_intake_messages``): the parked-queue row its sender is asked to finish.
 ENTITY_TASK_INTAKE = "task_intake"
+#: A recorded meeting (the meetings module): the row whose minutes the worker drafted.
+ENTITY_MEETING = "meeting"
 
 ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TASK,
@@ -32,6 +34,7 @@ ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_INTERACTION,
     ENTITY_SNELSTART_ACCOUNT,
     ENTITY_TASK_INTAKE,
+    ENTITY_MEETING,
 )
 
 # --- event types ------------------------------------------------------------------------- #
@@ -97,6 +100,11 @@ AUTOMATION_NOTIFY = "automation.notify"
 # as it never having been offered.
 SNELSTART_SYNC_FAILED = "snelstart.sync.failed"
 
+# meetings: the worker finished drafting the minutes of a recording — the colleague who
+# recorded it is asked to review them. Emitted with no actor (a worker has none), so its
+# sentence is a whole one; the constant in ``meetings/jobs.py`` (``READY_EVENT``) must match.
+MEETING_READY = "meeting.ready"
+
 EVENT_TYPES: tuple[str, ...] = (
     TASK_ASSIGNED,
     TASK_UNASSIGNED,
@@ -123,6 +131,7 @@ EVENT_TYPES: tuple[str, ...] = (
     INTERACTION_EMAIL_PENDING,
     INTERACTION_MENTIONED,
     SNELSTART_SYNC_FAILED,
+    MEETING_READY,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -152,6 +161,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     INTERACTION_EMAIL_PENDING: ENTITY_INTERACTION,
     INTERACTION_MENTIONED: ENTITY_INTERACTION,
     SNELSTART_SYNC_FAILED: ENTITY_SNELSTART_ACCOUNT,
+    MEETING_READY: ENTITY_MEETING,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

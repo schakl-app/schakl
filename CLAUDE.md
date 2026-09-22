@@ -2145,6 +2145,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   registered) before `entity_visible` asks the horizon; `Meeting.__portal_horizon_clause__` is
   `false()` and the service hands a portal login the portal repository, so a client gets an
   empty list and a 404 by construction rather than by seven reads each remembering.
+- **The minutes are a document with chapters, and the file server answers byte ranges**
+  (`meetings/render/`, `meetings/settings.py`, `docs/MEETINGS.md`). Four things, one rule each.
+  **A download ticks its chapters; the org sets the defaults; the transcript is off unless asked
+  for** — `GET /meetings/{id}/pdf?sections=` prints the same HTML `…/preview` serves, through the
+  shared document engine and a design in the reporting register (a heading strip per chapter that
+  bleeds to the paper's edge, participants as chips with a colleague's own uploaded picture and
+  initials otherwise, action items under the person who owns them), and Instellingen →
+  Vergaderingen holds the design, the default chapters, the house writing rules the minutes model
+  reads as a *style*, and whether the recorder asks for the consent statement at all (on by
+  default; off drops the checkbox and the refusal together). **"The recording will not play on my
+  phone" was the file server**: iOS Safari probes a media URL with `Range: bytes=0-1` and plays
+  nothing from a server that answers `200` and the whole file, so `GET /files/{id}` answers `206`
+  now — for every stored file — and the page asks `canPlayType` before drawing a player, because
+  Safari plays no WebM and every Chrome-made recording is one. **A transcript is one route for the
+  export button and the agent** (`GET …/transcript`, JSON by default, `txt|md|srt|vtt` as a file),
+  plus three curated read tools behind `meetings.meeting.read` in both places the rule must hold.
+  And **the recorder is told when the minutes are ready** (`meeting.ready`, the one event that
+  mails by its own default — the person waiting recorded from a phone and left the room). The AI
+  box on the meeting page is the task revise's shape one record over: a colleague's words applied
+  as them, ids grounded in the document, a confirmed meeting's minutes untouched whatever the
+  answer says.
 
 ## 11. Working agreement (for Claude Code)
 

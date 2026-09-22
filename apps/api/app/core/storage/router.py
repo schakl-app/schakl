@@ -118,17 +118,90 @@ async def _file_response(
     stream = await _open_stored(stored, ctx)
     filename = stored.filename.replace('"', "")
     cache = "public, max-age=3600" if public else "private, max-age=3600"
+    headers = {
+        "ETag": etag,
+        "Cache-Control": cache,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'{disposition}; filename="{filename}"',
+        # Stated on every response, not only the partial ones: a player asks whether it may
+        # seek *before* it asks for a range, and a server that answers with a whole file to
+        # every question is a server that plays nothing on a phone.
+        "Accept-Ranges": "bytes",
+    }
+    span = _byte_range(request.headers.get("range"), stored.size_bytes)
+    if span is not None:
+        start, end = span
+        if start >= stored.size_bytes:
+            return Response(
+                status_code=416,
+                headers={**headers, "Content-Range": f"bytes */{stored.size_bytes}"},
+            )
+        stream.seek(start)
+        return StreamingResponse(
+            _slice(stream, end - start + 1),
+            status_code=206,
+            media_type=stored.content_type,
+            headers={
+                **headers,
+                "Content-Range": f"bytes {start}-{end}/{stored.size_bytes}",
+                "Content-Length": str(end - start + 1),
+            },
+        )
     return StreamingResponse(
         stream,
         media_type=stored.content_type,
-        headers={
-            "ETag": etag,
-            "Cache-Control": cache,
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": f'{disposition}; filename="{filename}"',
-            "Content-Length": str(stored.size_bytes),
-        },
+        headers={**headers, "Content-Length": str(stored.size_bytes)},
     )
+
+
+def _byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """One ``bytes=start-end`` range, clamped to the file, or ``None`` for the whole file.
+
+    A media element on iOS Safari (and every browser's seek bar) reads a recording as ranges
+    and refuses to play from a server that answers ``200`` + the whole file to ``Range:
+    bytes=0-1`` — which is what "the recording will not play on my phone" was. Only the
+    single-range form is honoured; a multipart range request (nothing here sends one) gets the
+    whole file, which is the answer the spec allows a server that does not do multipart.
+    """
+    if not header or not header.lower().startswith("bytes="):
+        return None
+    spec = header[6:].strip()
+    if "," in spec or "-" not in spec:
+        return None
+    first, _, last = spec.partition("-")
+    try:
+        if first == "":
+            # ``bytes=-500``: the last 500 bytes.
+            tail = int(last)
+            if tail <= 0:
+                return None
+            return max(0, size - tail), size - 1
+        start = int(first)
+        # An open-ended range past the end keeps its start: the caller answers 416 for
+        # ``start >= size``, so a player that asked for byte 99999 of a shorter file is told
+        # so rather than handed the beginning again.
+        end = int(last) if last else max(size - 1, start)
+    except ValueError:
+        return None
+    if start < 0 or end < start:
+        return None
+    return start, min(end, max(size - 1, start))
+
+
+def _slice(stream, remaining: int):  # noqa: ANN001, ANN202 — a file-like from the backend
+    """Yield exactly ``remaining`` bytes from the stream's current position, then close it."""
+    try:
+        chunk_size = 64 * 1024
+        while remaining > 0:
+            chunk = stream.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
 
 
 @router.post(

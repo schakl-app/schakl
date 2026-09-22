@@ -19,6 +19,7 @@ from app.modules.meetings.jobs import (
     meetings_reap_stale,
     meetings_sweep_audio,
 )
+from app.modules.meetings.mcp import MEETING_MCP_TOOLS
 from app.modules.meetings.panels import meetings_company_panel
 from app.modules.meetings.permissions import MEETING_PERMISSIONS
 from app.modules.meetings.router import router
@@ -34,6 +35,9 @@ module = ModuleDescriptor(
     sku="meetings",
     panels=[meetings_company_panel],
     permissions=MEETING_PERMISSIONS,
+    # Curated read tools beside the generated route tools (§12): the register, the
+    # words, the minutes — what an agent asks about a meeting.
+    mcp_tools=MEETING_MCP_TOOLS,
     # The pipeline runs in the worker: minutes of provider time per meeting, and nobody is
     # waiting on a request for it.
     worker_functions=[meetings_process],

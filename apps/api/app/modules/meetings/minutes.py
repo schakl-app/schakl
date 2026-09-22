@@ -178,9 +178,16 @@ def system_prompt(
     agency: str,
     staff: str,
     participants: str,
+    house_rules: str | None = None,
 ) -> str:
     """The minutes prompt. Written for a transcript: long, unpunctuated in places, with the
-    recogniser's guess at every name and a speaker label instead of a person."""
+    recogniser's guess at every name and a speaker label instead of a person.
+
+    ``house_rules`` is the agency's own writing instruction (Instellingen → Vergaderingen):
+    the editorial half of the prompt is the tenant's, as a report tone is (#300). It sits
+    among the rules as a *style* instruction and never outranks the grounding rules above it —
+    a house rule cannot ask for a decision the transcript does not contain.
+    """
     parts = [
         f"You write the minutes of a meeting for {agency}, an agency, from a transcript of "
         "the recording. You create nothing yourself — you submit one draft that a colleague "
@@ -212,6 +219,11 @@ def system_prompt(
         "- Do not restate the whole meeting in the summary, do not list who attended, and do "
         "not write that something was not discussed.",
     ]
+    if house_rules and house_rules.strip():
+        parts.append(
+            "The agency's own house rules for its minutes — a style to follow, never a "
+            f"licence to add anything the transcript does not say:\n{house_rules.strip()[:4000]}"
+        )
     if participants:
         parts.append(
             "PARTICIPANTS (label\tname\tkind\tid) — who was in the meeting, which speaker "
@@ -464,13 +476,20 @@ async def draft_minutes(
     locale: str,
     agency: str,
     duration: int | None,
+    house_rules: str | None = None,
 ) -> MinutesDraft:
     """One transcript into one draft. Raises ``AppError`` on a provider failure (the caller —
     the worker — turns it into the row's ``failed`` state)."""
     staff = "\n".join(f"{m['id']}\t{m['name']}" for m in candidates.members)
     roster, contact_ids = participants_block(participants)
     system = system_prompt(
-        today=today, now=now, locale=locale, agency=agency, staff=staff, participants=roster
+        today=today,
+        now=now,
+        locale=locale,
+        agency=agency,
+        staff=staff,
+        participants=roster,
+        house_rules=house_rules,
     )
     document, cut = transcript_document(
         title=title, occurred_at=occurred_at, kind=kind, segments=segments, text=transcript_text

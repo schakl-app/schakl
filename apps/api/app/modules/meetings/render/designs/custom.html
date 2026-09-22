@@ -1,0 +1,18 @@
+{#
+  The shell a tenant's own minutes template renders inside.
+
+  Their Jinja produced `custom_body` against the same context the shipped design gets; what
+  they do not have to re-derive is the page geometry and the palette. `custom_body` is
+  already-rendered output from the *sandboxed* environment, which autoescaped every value it
+  interpolated — it is markup by the time it arrives here and is emitted with `| safe`.
+#}
+{% extends "_shell.html" %}
+
+{# Deliberately no design CSS: a custom template's stylesheet is the tenant's own, prefilled
+   from the shipped design's source. Layering the shipped one underneath would mean the author
+   gets every rule twice and cannot remove one. #}
+{% block design_css %}{% endblock %}
+
+{% block body %}
+{{ custom_body | safe }}
+{% endblock %}

@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.notifications.defaults import (
     DEFAULT_DIGEST_TIME,
     DEFAULT_DUE_SOON_DAYS,
+    EMAIL_DEFAULT_ON_EVENTS,
     ResolvedPref,
     default_event_pref,
 )
@@ -402,7 +403,10 @@ async def resolve_email_for_recipients(
     buckets = await _load(
         session, org_id, channel=CHANNEL_EMAIL, event_types=[event_type], user_ids=list(user_ids)
     )
-    return {uid: _merge_implicit(event_type, uid, buckets, off=EMAIL_PREF_OFF) for uid in user_ids}
+    return {
+        uid: _merge_implicit(event_type, uid, buckets, off=_email_default(event_type))
+        for uid in user_ids
+    }
 
 
 async def effective_email_matrix(
@@ -420,10 +424,18 @@ async def effective_email_matrix(
         user_ids=[user_id] if user_id is not None else [],
     )
     events = {
-        event: _merge_implicit(event, user_id, buckets, off=EMAIL_PREF_OFF)
+        event: _merge_implicit(event, user_id, buckets, off=_email_default(event))
         for event in EVENT_TYPES
     }
     return events, _scope_schedule(user_id, buckets)
+
+
+def _email_default(event_type: str) -> ResolvedPref:
+    """The e-mail rule before anyone has said anything: silent, except for the few events
+    that mail by default (``defaults.EMAIL_DEFAULT_ON_EVENTS``), which mail at once."""
+    if event_type in EMAIL_DEFAULT_ON_EVENTS:
+        return replace(EMAIL_PREF_OFF, enabled=True, digest=DIGEST_IMMEDIATE, digest_time=None)
+    return EMAIL_PREF_OFF
 
 
 # --------------------------------------------------------------------------- #

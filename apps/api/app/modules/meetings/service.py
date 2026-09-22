@@ -53,10 +53,12 @@ from app.modules.meetings.schemas import (
     MeetingParticipant,
     MeetingRow,
     MeetingStatusRead,
+    MeetingTranscript,
     MeetingUpdate,
     MinutesDraft,
     TranscriptSegment,
 )
+from app.modules.meetings.settings import load_settings
 
 logger = logging.getLogger("schakl.meetings")
 
@@ -182,12 +184,16 @@ class MeetingService:
             except ValueError:  # a draft stored by an older shape: the screen says "none"
                 minutes = None
         participants = participants_of(row)
+        settings = await load_settings(self.ctx.session, self.ctx.org.id)
         return MeetingDetail(
             **base.model_dump(),
             language=row.language,
             participants_informed_at=row.participants_informed_at,
             chunks_received=row.chunks_received,
             audio_file_id=row.audio_file_id,
+            audio_content_type=(
+                CONTENT_TYPES.get(row.audio_format or "") if row.audio_file_id else None
+            ),
             segments=segments,
             transcript_text=row.transcript_text,
             transcript_model=transcript.get("model"),
@@ -201,6 +207,26 @@ class MeetingService:
             confirmed_at=row.confirmed_at,
             can_write=self.ctx.can("meetings.meeting.write"),
             can_delete=self.ctx.can("meetings.meeting.delete"),
+            document_sections=document_sections_for(row, settings.document_sections),
+        )
+
+    async def transcript(self, meeting_id: uuid.UUID) -> MeetingTranscript:
+        """The words whole, every label resolved to a name — one shape for an agent and for
+        the four file formats (``transcript.py``)."""
+        self.ctx.require("meetings.meeting.read")
+        row = await self.repo.get_or_404(meeting_id)
+        detail = await self._detail(row)
+        return MeetingTranscript(
+            meeting_id=row.id,
+            title=row.title,
+            occurred_at=row.occurred_at,
+            language=row.language,
+            model=detail.transcript_model,
+            parts=detail.transcript_parts,
+            diarized=detail.diarized,
+            speakers=detail.speakers,
+            segments=detail.segments,
+            text=row.transcript_text or "",
         )
 
     async def status(self, meeting_id: uuid.UUID) -> MeetingStatusRead:
@@ -229,7 +255,11 @@ class MeetingService:
         if self.ctx.is_portal:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         await self._require_feature()
-        if not data.participants_informed:
+        # The statement is asked for unless the org switched it off (Instellingen →
+        # Vergaderingen): an agency whose own procedure covers it drops the checkbox and the
+        # refusal together, never one without the other.
+        settings = await load_settings(self.ctx.session, self.ctx.org.id)
+        if settings.consent_required and not data.participants_informed:
             raise AppError(
                 "validation",
                 "errors.validation",
@@ -260,7 +290,7 @@ class MeetingService:
             project_id=data.project_id,
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
-            participants_informed_at=now,
+            participants_informed_at=now if data.participants_informed else None,
             participants=[p.model_dump(mode="json") for p in participants],
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
@@ -733,6 +763,23 @@ def participants_of(row: Meeting) -> list[MeetingParticipant]:
     ]
 
 
+def document_sections_for(row: Meeting, defaults: list[str]) -> list[str]:
+    """The org's default sections, minus the ones this meeting has nothing for — a ticked box
+    for an empty chapter is a control that draws a heading over nothing."""
+    minutes = row.minutes or {}
+    present = {
+        "participants": bool(participants_of(row)),
+        "summary": bool((minutes.get("summary") or "").strip()),
+        "topics": bool(minutes.get("topics")),
+        "decisions": bool(minutes.get("decisions")),
+        "action_items": bool(minutes.get("action_items")),
+        "open_questions": bool(minutes.get("open_questions")),
+        "evidence": bool(minutes.get("decisions") or minutes.get("action_items")),
+        "transcript": bool((row.transcript_text or "").strip()),
+    }
+    return [key for key in defaults if present.get(key, True)]
+
+
 def speaker_names(participants: list[MeetingParticipant]) -> dict[str, str]:
     """Label → name, the transcript's own lookup."""
     return {p.speaker: p.name for p in participants if p.speaker}
@@ -854,6 +901,7 @@ __all__ = [
     "MeetingService",
     "MeetingSource",
     "chunk_content_id",
+    "document_sections_for",
     "drop_audio",
     "group_action_items",
     "participants_of",

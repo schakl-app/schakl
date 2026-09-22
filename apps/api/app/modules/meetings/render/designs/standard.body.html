@@ -1,0 +1,200 @@
+{#
+  The body of the shipped minutes design — and the file "start from this design" hands a tenant
+  who wants their own. It renders against the context in `render/context.py`: strings and
+  lists, never rows.
+
+  One rule runs through it: **a chapter that was not ticked, or has nothing in it, is not
+  printed** — no heading over an empty list, no apology.
+#}
+
+{# One person, everywhere: a picture where one is known, initials in the accent otherwise. #}
+{% macro avatar(person, size) %}
+  {% if person.avatar %}
+    <img class="avatar {{ size }}" src="{{ person.avatar }}" alt="" />
+  {% else %}
+    <span class="avatar {{ size }} initials">{{ person.initials }}</span>
+  {% endif %}
+{% endmacro %}
+
+{# Where in the recording a claim was made, and the words it rests on. #}
+{% macro evidence(item) %}
+  {% if item.quote or not item.verified %}
+    <p class="evidence">
+      {% if not item.verified %}<span class="flag">{{ labels.unverified }}</span>{% endif %}
+      {% if item.at_label %}<span class="clock">{{ item.at_label }}</span>{% endif %}
+      {% if item.quote %}<span class="quote">“{{ item.quote }}”</span>{% endif %}
+    </p>
+  {% endif %}
+{% endmacro %}
+
+<header class="head">
+  <div class="brand-bar">
+    <div class="brand-cell">
+      {% if logo %}
+        <img class="agency" src="{{ logo }}" alt="{{ brand_name }}" />
+      {% else %}
+        <span class="wordmark">{{ brand_name }}</span>
+      {% endif %}
+    </div>
+    <div class="brand-cell right">
+      {% if client_logo %}
+        <img class="client" src="{{ client_logo }}" alt="{{ client }}" />
+      {% elif client %}
+        <span class="client-name">{{ client }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="hero{% if cover %} with-cover{% endif %}">
+    {% if cover %}<img class="cover" src="{{ cover }}" alt="" />{% endif %}
+    <div class="hero-text">
+      <p class="eyebrow">{{ labels.eyebrow }} · {{ kind_label }}</p>
+      <h1>{{ title }}</h1>
+    </div>
+  </div>
+
+  <table class="meta">
+    <tr>
+      <td>
+        <span class="k">{{ labels.when }}</span>
+        <span class="v">{{ occurred_label }}</span>
+      </td>
+      {% if duration_label %}
+        <td><span class="k">{{ labels.duration }}</span><span class="v">{{ duration_label }}</span></td>
+      {% endif %}
+      {% if client %}
+        <td><span class="k">{{ labels.client }}</span><span class="v">{{ client }}</span></td>
+      {% endif %}
+      {% if project %}
+        <td><span class="k">{{ labels.project }}</span><span class="v">{{ project }}</span></td>
+      {% endif %}
+      {% if owner %}
+        <td><span class="k">{{ labels.recorded_by }}</span><span class="v">{{ owner }}</span></td>
+      {% endif %}
+    </tr>
+  </table>
+</header>
+
+{% if show.participants and participants %}
+  <section class="roster keep">
+    <h2>{{ labels.participants }}</h2>
+    <div class="people">
+      {% for person in participants %}
+        <div class="person">
+          {{ avatar(person, 'md') }}
+          <span class="who">
+            <span class="name">{{ person.name }}</span>
+            <span class="role">{{ person.side_label }}{% if person.speaker %} · {{ person.speaker }}{% endif %}</span>
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% if show.summary and summary_html %}
+  <section class="summary keep">
+    <h2>{{ labels.summary }}</h2>
+    <div class="prose">{{ summary_html }}</div>
+  </section>
+{% endif %}
+
+{% if show.topics and topics %}
+  <section class="section">
+    <h2>{{ labels.topics }}</h2>
+    {% for topic in topics %}
+      <div class="topic keep">
+        <h3>{{ topic.heading }}</h3>
+        <div class="prose">{{ topic.html }}</div>
+      </div>
+    {% endfor %}
+  </section>
+{% endif %}
+
+{% if show.decisions and decisions %}
+  <section class="section">
+    <h2>{{ labels.decisions }}</h2>
+    <ol class="decisions">
+      {% for decision in decisions %}
+        <li class="keep">
+          <span class="num">{{ loop.index }}</span>
+          <div class="body">
+            <p class="text">{{ decision.text }}</p>
+            {{ evidence(decision) }}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+{% endif %}
+
+{% if show.action_items and action_blocks %}
+  <section class="section">
+    <h2>{{ labels.action_items }}</h2>
+    {% for block in action_blocks %}
+      <h3 class="side">{{ block.side_label }}</h3>
+      {% for group in block.groups %}
+        <div class="owner-card keep">
+          <div class="owner">
+            {% if group.owner %}
+              {{ avatar(group.owner, 'sm') }}
+              <span class="owner-name">{{ group.owner.name }}</span>
+            {% else %}
+              <span class="avatar sm initials">?</span>
+              <span class="owner-name muted">{{ labels.nobody }}</span>
+            {% endif %}
+          </div>
+          <ul class="items">
+            {% for item in group.entries %}
+              <li>
+                <div class="item-line">
+                  <span class="item-title">{{ item.title }}</span>
+                  {% if item.due_label %}<span class="chip due">{{ labels.due }} {{ item.due_label }}</span>{% endif %}
+                  {% if item.is_task %}<span class="chip task">{{ labels.task }}</span>{% endif %}
+                </div>
+                {% if item.description_html %}<div class="prose small">{{ item.description_html }}</div>{% endif %}
+                {{ evidence(item) }}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </section>
+{% endif %}
+
+{% if show.open_questions and open_questions %}
+  <section class="section">
+    <h2>{{ labels.open_questions }}</h2>
+    <ul class="questions">
+      {% for question in open_questions %}<li>{{ question }}</li>{% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+<div class="doc-foot">
+  <span>{{ footer_text or brand_name }}</span>
+  <span>{{ status_label }} · {{ labels.generated }} {{ generated_label }}</span>
+</div>
+
+{% if show.transcript and (transcript or transcript_text) %}
+  <section class="section transcript page-break">
+    <h2>{{ labels.transcript }}</h2>
+    {% if transcript_parts > 1 %}
+      <p class="note">{{ labels.parts }}</p>
+    {% endif %}
+    {% if transcript %}
+      <table class="lines">
+        {% for line in transcript %}
+          <tr>
+            <td class="clock">{{ line.at_label }}</td>
+            <td class="speaker">{{ line.speaker }}</td>
+            <td class="words">{{ line.text }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <p class="prose">{{ transcript_text }}</p>
+    {% endif %}
+  </section>
+{% endif %}

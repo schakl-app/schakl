@@ -23,6 +23,7 @@
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Check from "@lucide/svelte/icons/check";
+  import Download from "@lucide/svelte/icons/download";
   import Plus from "@lucide/svelte/icons/plus";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Sparkles from "@lucide/svelte/icons/sparkles";
@@ -31,6 +32,8 @@
 
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";
+  import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
   import { fmtDateTime } from "$lib/core/format";
   import { t, tn } from "$lib/core/i18n";
   import { pollWhile } from "$lib/core/poll.svelte";
@@ -53,6 +56,8 @@
     kindLabel,
     sourceLabel,
   } from "$lib/modules/meetings/format";
+  import MeetingAIRevise from "$lib/modules/meetings/MeetingAIRevise.svelte";
+  import MeetingExportDialog from "$lib/modules/meetings/MeetingExportDialog.svelte";
   import MeetingStatusPill from "$lib/modules/meetings/MeetingStatusPill.svelte";
   import ParticipantsEditor, {
     type Participant,
@@ -77,6 +82,7 @@
   let confirmOpen = $state(false);
   let confirmDelete = $state(false);
   let confirmAudio = $state(false);
+  let exportOpen = $state(false);
 
   // The worker owns the row for a while: ask again until it does not (`pollWhile`'s rule).
   pollWhile(
@@ -327,6 +333,58 @@
 
   const canWrite = $derived(meeting.can_write);
   const reviewing = $derived(meeting.status === "review" && canWrite);
+  const hasTranscript = $derived(segments.length > 0 || !!meeting.transcript_text);
+  // The document exists once there is something to print: minutes, or at least the words.
+  const exportable = $derived(
+    !inFlight(meeting.status) &&
+      meeting.status !== "recording" &&
+      (!!meeting.minutes || hasTranscript),
+  );
+  // The AI box: a colleague's own words over this meeting, applied as them (off means
+  // invisible, #126 — the host draws it only where the press can work).
+  const canRevise = $derived(
+    canWrite &&
+      aiEnabled(page.data.user, "meeting_assist") &&
+      !inFlight(meeting.status) &&
+      meeting.status !== "recording",
+  );
+
+  /**
+   * Before the model reads the meeting, the reviewer's unsaved edits are saved — the box must
+   * change what the reader sees, not the draft as it was ten keystrokes ago.
+   */
+  async function saveDraftFirst(): Promise<boolean> {
+    if (!reviewing || !draft) return true;
+    const res = await fetch(`/api/v1/meetings/${meeting.id}/minutes`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    });
+    return res.ok;
+  }
+  /** The row was rewritten under the page: re-read it and re-seed the copies the editors hold. */
+  async function onRevised(): Promise<void> {
+    draftFor = null;
+    participantsFor = null;
+    await invalidate("meetings:meeting");
+  }
+
+  /**
+   * Can *this* browser play the recording? Safari on iOS plays no WebM, which is what every
+   * Chrome-made recording is — and a dead player looks exactly like a broken one. Asked of the
+   * element itself, after mount; a "maybe" counts as yes (the element decides on play).
+   */
+  let audioPlayable = $state(true);
+  $effect(() => {
+    const type = meeting.audio_content_type;
+    if (!type || typeof document === "undefined") {
+      audioPlayable = true;
+      return;
+    }
+    const probe = document.createElement("audio");
+    audioPlayable = probe.canPlayType(type) !== "";
+  });
+  const audioTypeLabel = $derived((meeting.audio_content_type ?? "").split("/")[1] ?? "");
   const inputClass =
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const smallInput = `${inputClass} py-1.5`;
@@ -447,6 +505,12 @@
     </p>
   </div>
   <div class="flex flex-wrap items-center gap-2">
+    {#if exportable}
+      <Button type="button" variant="secondary" onclick={() => (exportOpen = true)}>
+        <Download size={15} />
+        {t("meetings.export.button")}
+      </Button>
+    {/if}
     {#if meeting.status === "failed" && canWrite}
       <form method="POST" action="?/retry" use:enhance={busy.keep("retry")}>
         <Button type="submit" variant="secondary" loading={busy.is("retry")}>
@@ -595,6 +659,9 @@
           </ul>
         {/if}
       </Card>
+      {#if canRevise}
+        <MeetingAIRevise meetingId={meeting.id} onapplied={onRevised} />
+      {/if}
     </div>
     <div class="space-y-6">
       {@render transcriptPanel(false)}
@@ -849,6 +916,9 @@
           </form>
         </Card>
       {/if}
+      {#if canRevise}
+        <MeetingAIRevise meetingId={meeting.id} before={saveDraftFirst} onapplied={onRevised} />
+      {/if}
       {@render transcriptPanel(reviewing)}
     </div>
   </div>
@@ -861,9 +931,29 @@
        the hidden field travels with it so the redraft reads what the screen shows. -->
   {#if meeting.audio_file_id}
     <Card kind="panel" title={t("meetings.review.recording")}>
-      <audio controls preload="none" class="w-full" src={`/api/v1/files/${meeting.audio_file_id}`}
-      ></audio>
-      <p class="mt-2 text-xs text-text-muted">{t("meetings.review.recording_hint")}</p>
+      {#if audioPlayable}
+        <!-- `metadata`, not `none`: a phone's player shows its length before the first tap,
+             and the API answers byte ranges, so the read is a few kilobytes. -->
+        <audio controls preload="metadata" class="w-full">
+          <source
+            src={`/api/v1/files/${meeting.audio_file_id}`}
+            type={meeting.audio_content_type ?? undefined}
+          />
+        </audio>
+      {:else}
+        <p class="text-sm text-text">
+          {t("meetings.review.audio_unplayable", { type: audioTypeLabel })}
+        </p>
+      {/if}
+      <p class="mt-2 text-xs text-text-muted">
+        {t("meetings.review.recording_hint")}
+        <a
+          href={`/api/v1/files/${meeting.audio_file_id}`}
+          download
+          class="ml-1 text-brand hover:underline"
+          data-sveltekit-reload>{t("meetings.review.download_audio")}</a
+        >
+      </p>
     </Card>
   {/if}
   {#if segments.length || meeting.transcript_text}
@@ -964,6 +1054,13 @@
   confirmLabel={t("meetings.review.confirm")}
   variant="primary"
   onsuccess={() => (confirmOpen = false)}
+/>
+
+<MeetingExportDialog
+  bind:open={exportOpen}
+  meetingId={meeting.id}
+  defaults={meeting.document_sections ?? []}
+  {hasTranscript}
 />
 
 <ConfirmDialog

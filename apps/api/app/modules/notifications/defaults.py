@@ -27,6 +27,7 @@ from app.modules.notifications.events import (
     LEAVE_APPROVED,
     LEAVE_REJECTED,
     LEAVE_REQUESTED,
+    MEETING_READY,
     PROJECT_ASSIGNED,
     SNELSTART_SYNC_FAILED,
     TASK_ASSIGNED,
@@ -76,8 +77,18 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         # arrives tomorrow morning is not a conversation. The narrower audience is what makes
         # this affordable: only the thread's participants get it, never the whole task audience.
         TASK_REPLIED,
+        # The minutes you recorded an hour ago are ready to read: the review is what closes
+        # the loop, and it is the one thing the person is waiting for.
+        MEETING_READY,
     }
 )
+
+#: The few events that **e-mail** by default. E-mail is the channel that leaves the app, so
+#: nothing mails until somebody opts in — except where the sentence is addressed to the one
+#: person who is waiting for it and is most likely no longer at their desk: a colleague who
+#: recorded a meeting from a phone and walked out of the room. Still a default, so an org or a
+#: person switches it off in the matrix like any other row.
+EMAIL_DEFAULT_ON_EVENTS: frozenset[str] = frozenset({MEETING_READY})
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,66 @@
+{#
+  The page every minutes design sits inside: A4 geometry, the type stack, the tenant's palette
+  as custom properties. The reporting shell's twin, one document family over.
+
+  The furniture lives here and not in each design because a tenant's own template renders in
+  this shell too (`custom.html`): "bring your own HTML" means writing the *content* of the
+  minutes, not re-deriving page margins and a colour scale.
+
+  The same HTML is what the browser previews and what WeasyPrint prints, so screen-only
+  affordances go in `@media screen`; nothing is conditional on which consumer asked.
+#}
+<!doctype html>
+<html lang="{{ locale }}">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ title }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 16mm 16mm 20mm 16mm;
+      }
+
+      :root {
+        --accent: {{ accent }};
+        --accent-soft: {{ accent_soft }};
+        --accent-mid: {{ accent_mid }};
+        --ink: #171717;
+        --muted: #737373;
+        --rule: #e5e5e5;
+        --wash: #fafafa;
+        --warn: #b45309;
+        --warn-wash: #fffbeb;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+        font-size: 10pt;
+        line-height: 1.55;
+        color: var(--ink);
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      h1, h2, h3 { font-weight: 700; }
+      p + p { margin-top: 6px; }
+      ul, ol { padding-left: 18px; }
+      strong { font-weight: 700; }
+      a { color: var(--accent); text-decoration: none; }
+
+      .page-break { break-before: page; }
+      .keep { break-inside: avoid; }
+
+      @media screen {
+        body { padding: 16mm; max-width: 210mm; margin: 0 auto; }
+      }
+    </style>
+    <style>{% block design_css %}{% endblock %}</style>
+    {% if custom_css %}<style>{{ custom_css | css }}</style>{% endif %}
+  </head>
+  <body>
+    {% block body %}{% endblock %}
+  </body>
+</html>

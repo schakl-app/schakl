@@ -79,6 +79,8 @@ const HREF_FOR_ENTITY = {
   // Not a record anybody opens (the event says so out loud) — the connection's settings screen
   // is where the failure is diagnosed and the credential re-entered.
   snelstart_account: () => "/settings/snelstart",
+  // The minutes the worker just drafted, on the meeting's own page — which is the review desk.
+  meeting: (item) => `/meetings/${item.entity_id}`,
 } satisfies Record<string, HrefResolver>;
 
 export function notificationHref(item: NotificationLike): string | null {

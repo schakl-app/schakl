@@ -1,0 +1,240 @@
+/* The shipped minutes design.
+ *
+ * The reporting design's register, with every hex that was one agency's brand replaced by the
+ * tenant's own (Golden Rule 4): the accent arrives contrast-corrected against paper, the two
+ * tints are computed from it, and nothing else is coloured. A minutes document is read once
+ * and then searched — for a decision, for one person's action items — so it is built to be
+ * scanned: a numbered decision list, action items under the person who owns them, evidence in
+ * a quieter voice under every claim.
+ *
+ * Layout idioms are the ones WeasyPrint and every browser lay out identically: `display: table`
+ * for anything side by side, inline-block for a chip, absolute positioning nowhere. Flex is
+ * avoided on purpose — the reporting design's `.cover-foot` lesson. */
+
+/* ---- title block ---- */
+.head { margin-bottom: 18px; }
+
+.brand-bar { display: table; width: 100%; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.brand-cell { display: table-cell; vertical-align: middle; }
+.brand-cell.right { text-align: right; }
+.brand-bar img.agency { max-height: 26px; max-width: 140px; }
+.brand-bar img.client { max-height: 34px; max-width: 150px; }
+.brand-bar .wordmark { font-size: 13pt; font-weight: 800; color: var(--accent); }
+.brand-bar .client-name { font-size: 10pt; font-weight: 600; color: var(--muted); }
+
+.hero { margin: 18px 0 14px; }
+.hero.with-cover { border-radius: 6px; overflow: hidden; background: var(--wash); }
+.hero img.cover { display: block; width: 100%; height: 150px; object-fit: cover; }
+.hero.with-cover .hero-text { padding: 14px 18px 16px; }
+.eyebrow {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.hero h1 { font-size: 22pt; line-height: 1.15; letter-spacing: -0.01em; }
+
+/* The facts about the meeting, as a row of small labelled values. A table so the cells share
+ * one baseline whatever the values' lengths — and so a long client name simply takes more of
+ * the row rather than wrapping the row. */
+.meta { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.meta td { padding: 6px 14px 6px 0; vertical-align: top; }
+.meta .k {
+  display: block;
+  font-size: 7pt;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.meta .v { display: block; font-size: 9.5pt; font-weight: 600; }
+
+/* ---- people ---- */
+.avatar {
+  display: inline-block;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  background: var(--accent-mid);
+}
+.avatar.initials {
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-mid);
+}
+.avatar.md { width: 30px; height: 30px; line-height: 28px; font-size: 9pt; }
+.avatar.sm { width: 22px; height: 22px; line-height: 20px; font-size: 7.5pt; }
+
+.roster { margin-bottom: 16px; }
+.people { margin-top: 6px; }
+.person {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 14px 8px 0;
+  white-space: nowrap;
+}
+.person .who { display: inline-block; vertical-align: middle; margin-left: 7px; line-height: 1.25; }
+.person .name { display: block; font-size: 9pt; font-weight: 600; }
+.person .role { display: block; font-size: 7.5pt; color: var(--muted); }
+
+/* ---- summary ---- */
+.summary {
+  margin: 0 0 20px;
+  padding: 14px 18px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+}
+.summary h2 {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.roster h2 {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+/* ---- sections ---- */
+.section { margin: 0 0 22px; }
+/* Every chapter wears the same mark — a heading strip bleeding to the paper's edge — because a
+ * strip one line tall can never be cut by a page break, which is the reporting design's
+ * argument against washing whole sections. The negative margin is the page margin (`@page`,
+ * 16mm) and the screen padding (`_shell.html`, 16mm): one number, on purpose. */
+.section > h2 {
+  font-size: 12.5pt;
+  background: var(--wash);
+  border-left: 3px solid var(--accent);
+  margin: 0 -16mm 12px;
+  padding: 7px 16mm 7px calc(16mm - 3px);
+  break-after: avoid;
+  break-inside: avoid;
+}
+
+.prose p + p { margin-top: 6px; }
+.prose ul, .prose ol { margin: 4px 0 6px; }
+.prose li + li { margin-top: 2px; }
+.prose h1, .prose h2, .prose h3 { font-size: 10pt; margin: 8px 0 3px; }
+.prose.small { font-size: 9pt; color: #333; margin-top: 2px; }
+
+.topic { margin-bottom: 12px; }
+.topic h3 { font-size: 10.5pt; margin-bottom: 3px; }
+
+/* ---- decisions ---- */
+.decisions { list-style: none; padding: 0; }
+.decisions li { display: table; width: 100%; margin-bottom: 9px; }
+.decisions .num {
+  display: table-cell;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 8.5pt;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 24px;
+}
+.decisions .body { display: table-cell; padding-left: 10px; vertical-align: top; }
+.decisions .text { font-weight: 600; line-height: 1.4; padding-top: 3px; }
+
+/* Where a claim was said and the words it rests on: quieter than the claim, never louder. An
+ * unverified one carries an amber flag — kept, marked, never dropped (docs/MEETINGS.md). */
+.evidence { font-size: 8pt; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.evidence .clock {
+  display: inline-block;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 7.5pt;
+  color: var(--accent);
+  margin-right: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.evidence .quote { font-style: italic; }
+.evidence .flag {
+  display: inline-block;
+  background: var(--warn-wash);
+  color: var(--warn);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 7pt;
+  font-weight: 700;
+  margin-right: 5px;
+  font-style: normal;
+}
+
+/* ---- action items ---- */
+h3.side {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 10px 0 6px;
+  break-after: avoid;
+}
+.owner-card {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 9px 12px 8px;
+  margin-bottom: 8px;
+}
+.owner { margin-bottom: 5px; }
+.owner .owner-name { font-size: 9.5pt; font-weight: 700; margin-left: 7px; vertical-align: middle; }
+.owner .owner-name.muted { color: var(--muted); font-weight: 600; }
+.items { list-style: none; padding: 0; }
+.items li { padding: 5px 0 5px 29px; border-top: 1px solid var(--rule); }
+.items li:first-child { border-top: none; }
+.item-title { font-weight: 600; }
+.chip {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 0 6px;
+  font-size: 7.5pt;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.chip.due { background: var(--accent-soft); color: var(--accent); }
+.chip.task { background: var(--wash); color: var(--muted); border: 1px solid var(--rule); }
+
+/* ---- open questions ---- */
+.questions { padding-left: 18px; }
+.questions li { margin-bottom: 4px; }
+
+/* ---- foot ---- */
+.doc-foot {
+  display: table;
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 1.5px solid var(--accent);
+  font-size: 7.5pt;
+  color: var(--muted);
+}
+.doc-foot span { display: table-cell; }
+.doc-foot span + span { text-align: right; }
+
+/* ---- transcript appendix ---- */
+.transcript .note { font-size: 8pt; color: var(--muted); margin-bottom: 8px; }
+.lines { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8.5pt; }
+.lines td { vertical-align: top; padding: 3px 6px 3px 0; }
+.lines tr { break-inside: avoid; }
+.lines .clock {
+  width: 40px;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 7.5pt;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lines .speaker { width: 90px; font-weight: 600; overflow-wrap: anywhere; }
+.lines .words { overflow-wrap: anywhere; }

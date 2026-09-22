@@ -107,6 +107,8 @@ def event_path(event) -> str | None:  # noqa: ANN001
         return f"/leave?request={entity_id}"
     if event.entity_type == "timesheet":
         return "/time"
+    if event.entity_type == "meeting":
+        return f"/meetings/{entity_id}"
     if event.entity_type == "task_intake":
         # The parked mail's own row on the sender's inbox page (href.ts twin).
         return f"/tasks/inbox?open={entity_id}"

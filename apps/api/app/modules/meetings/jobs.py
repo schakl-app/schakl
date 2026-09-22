@@ -34,6 +34,7 @@ from app.core.ai.candidates import gather as gather_candidates
 from app.core.ai.providers import AIProviderError
 from app.core.ai.service import AIService
 from app.core.entitlements.service import sku_cron_enabled
+from app.core.events import emit
 from app.core.jobs import run_per_org, system_context
 from app.core.models import Org, OrgStatus
 from app.core.storage.backend import storage_for
@@ -57,6 +58,7 @@ from app.modules.meetings.pipeline import (
     transcribe_recording,
 )
 from app.modules.meetings.service import CHUNK_PREFIX, drop_audio, org_locale, participants_of
+from app.modules.meetings.settings import load_settings
 
 logger = logging.getLogger("schakl.meetings")
 
@@ -65,6 +67,9 @@ logger = logging.getLogger("schakl.meetings")
 STALE_AFTER_MINUTES = 90
 #: How long a confirmed meeting keeps its audio. Stated on the recording screen.
 AUDIO_RETENTION_DAYS = 30
+#: The notification the colleague who recorded it gets when the draft lands on ``review``
+#: (registered in ``notifications/events.py``; ``MEETING_READY`` there must match).
+READY_EVENT = "meeting.ready"
 
 
 async def _licensed() -> bool:
@@ -247,6 +252,7 @@ async def run_pipeline(
         zone = await org_zoneinfo(session, org_id)
         today = await org_today(session, org_id)
         locale = await org_locale(ctx)
+        house_rules = (await load_settings(session, org_id)).ai_instructions
         draft = await draft_minutes(
             service,
             title=row.title,
@@ -261,6 +267,7 @@ async def run_pipeline(
             locale=locale,
             agency=await _agency_name(session, org),
             duration=row.duration_seconds,
+            house_rules=house_rules,
         )
         # ``complete`` released and re-bound the session; the row object is still ours.
         row = await _load(session, org_id, meeting_id) or row
@@ -272,13 +279,40 @@ async def run_pipeline(
             "diarized": any(s.get("speaker") for s in segments),
             "chat_model": chat.model,
         }
-        await _set_status(session, org_id, row, MeetingStatus.REVIEW.value)
+        row.status = MeetingStatus.REVIEW.value
+        row.status_at = datetime.now(UTC)
+        row.error_key = None
+        # Told before the commit, so the row's state and the sentence about it land together:
+        # the colleague who pressed record is the one waiting, and a worker has no actor to
+        # exclude, so they are named outright. Deduped per run, not per meeting — a redraft is
+        # a second draft, and hearing it is done is the point of asking for one.
+        await _notify_ready(ctx, row, draft)
+        await _commit(session, org_id)
     except AppError as exc:
         logger.warning("meetings: %s failed: %s", meeting_id, exc.message_key)
         await _fail(session, org_id, meeting_id, exc.message_key)
     except Exception:
         logger.exception("meetings: pipeline crashed for %s", meeting_id)
         await _fail(session, org_id, meeting_id, "meetings.error.failed")
+
+
+async def _notify_ready(ctx, row: Meeting, draft) -> None:  # noqa: ANN001
+    """The recorder is told their minutes are ready to review — in the app and, by this
+    event's own default, by mail (``notifications/defaults.EMAIL_DEFAULT_ON_EVENTS``)."""
+    if row.owner_user_id is None:
+        return
+    await emit(
+        READY_EVENT,
+        ctx,
+        {
+            "meeting_id": row.id,
+            "title": row.title,
+            "decisions": len(draft.decisions),
+            "action_items": len(draft.action_items),
+            "_recipients": [row.owner_user_id],
+            "_dedup_key": f"meeting-ready:{row.id}:{int(row.status_at.timestamp())}",
+        },
+    )
 
 
 async def _fail(
@@ -376,6 +410,7 @@ async def meetings_sweep_audio(ctx: dict) -> None:  # noqa: ARG001
 
 __all__ = [
     "AUDIO_RETENTION_DAYS",
+    "READY_EVENT",
     "STALE_AFTER_MINUTES",
     "meetings_process",
     "meetings_reap_stale",

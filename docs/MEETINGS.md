@@ -139,6 +139,70 @@ while the row is in flight.
   file id, a client included, could pull a recording — which for the most sensitive blob the
   module holds was the wrong default.
 
+## The minutes as a document, the words as a file
+
+`GET /meetings/{id}/pdf?sections=summary,decisions,…` prints the minutes; `GET …/preview` is the
+same HTML the PDF comes out of (`render/`), which is what the export dialog's "voorbeeld" opens
+and what the settings screen's live preview draws — one artefact, so a preview and a download
+cannot disagree (invoicing's rule, inherited with the shared `app/core/documents` engine). The
+design is the reporting document's register: the tenant's logo and the client's, the accent
+contrast-corrected against paper, a heading strip per chapter that bleeds to the paper's edge
+because a strip one line tall can never be cut by a page break, participants as chips with a
+picture where one is stored (a colleague's own uploaded avatar, read back through the org-scoped
+image loader — an IdP picture is a URL on somebody else's server and is never fetched) and
+initials otherwise, decisions numbered with their evidence in a quieter voice underneath, action
+items under the person who owns them by side, the transcript as an appendix on its own page.
+
+**The chapters are ticked per download** (`DOCUMENT_SECTIONS`: participants, summary, topics,
+decisions, action_items, open_questions, evidence, transcript). The org's defaults live in
+Instellingen → Vergaderingen (`meeting_settings.document_sections`), the row's own
+`document_sections` narrows them to what this meeting has anything for, and the **transcript is
+off unless asked for** — it is the longest thing on the record and the one a reader of the
+minutes least often wants on paper. The *unverified* mark prints whatever was ticked: a claim the
+transcript does not support is a warning the reader needs, not a chapter.
+
+**The transcript is its own route** (`GET /meetings/{id}/transcript`, `transcript.py`): JSON by
+default — every line with the seconds it was said at and the speaker's *name* where the roster
+names one, plus the flat text, which is what an MCP client reads — and `format=txt|md|srt|vtt`
+for a file. One route for the export button and the generated tool, because two routes are two
+answers that drift. Three curated tools ride the `mcp_tools` seam beside it (`mcp.py`):
+`meetings.find`, `meetings.transcript`, `meetings.minutes`, each behind `meetings.meeting.read`
+in both places the rule has to hold (the offer is filtered *and* the service refuses).
+
+**Instellingen → Vergaderingen** (`settings.py`, `meeting_settings`, `meetings.settings.manage`)
+holds three things that are the org's and nobody's else: whether the recorder asks for the
+consent statement (`consent_required`, on by default — off drops the checkbox *and* the refusal
+together, never one without the other, for an agency whose own procedure covers it); the
+document (design, accent, header image, closing line, default chapters, avatars on or off, and a
+tenant's own Jinja + CSS in the shared sandbox, validated at save time so a template that cannot
+render is refused under the editor rather than at somebody's first download); and the agency's
+own **house rules for the minutes** (`ai_instructions`), which reach the model inside the system
+prompt's rules block as a style — never as licence to add what the transcript does not say. The
+recorder reads only `GET /meetings/policy` (whoever may record), never the settings.
+
+**A recording plays on a phone because the file server answers byte ranges.** iOS Safari probes
+a media URL with `Range: bytes=0-1` and refuses to play from a server that answers `200` and the
+whole file, which is what "the recording will not play on my phone" was; `GET /files/{id}`
+answers `206` + `Content-Range` (and `Accept-Ranges` on every response) for any stored file now.
+The other half is the container: Safari plays no WebM, and every Chrome-made recording is one, so
+the page asks the element `canPlayType` first and draws a sentence with a download link instead
+of a dead player (`audio_content_type` on the row).
+
+**The AI box** (`assist.py`, `POST /meetings/{id}/ai/revise`, the task revise's shape) changes a
+meeting in a colleague's own words, applied *as them* through the service an ordinary edit goes
+through: the title, kind, date, client and project; the roster and its speaker labels; and —
+while the minutes are under review — every part of the draft, each addressed by the index the
+document numbered it with. Every id is grounded in what the model was shown, a due date is
+bounded, and a confirmed meeting's minutes are not touched whatever the answer says. The
+reviewer's unsaved draft is saved before the model reads it, so the box changes what the reader
+sees.
+
+**The recorder is told when the minutes are ready** (`meeting.ready`, emitted by the worker the
+moment the draft lands on `review`, deduped per run so a redraft is heard too). Immediate in the
+app, and — the one event that mails by its own default (`EMAIL_DEFAULT_ON_EVENTS`) — by mail,
+because the person waiting for it recorded from a phone and walked out of the room; a person or
+an org switches it off in the matrix like any other row.
+
 ## Costs
 
 A one-hour meeting: about €0.20 of transcription on Voxtral (~€0.35 on `gpt-4o-transcribe`),

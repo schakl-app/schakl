@@ -91,7 +91,9 @@
   const projectPicker = $derived(
     splitProjectOptions(data.projects, { selectedId: projectId, companyId }),
   );
-  const retentionDays = 30;
+  const retentionDays = $derived(data.retentionDays);
+  // Off means the checkbox is not drawn and the API does not refuse (the org's policy).
+  const consentRequired = $derived(data.consentRequired);
 
   /** Leaving mid-recording: stop the capture and drop the half-made row. */
   async function leave() {
@@ -420,21 +422,27 @@
       </div>
     {/if}
 
-    <!-- The one required statement. Not a nicety: the API refuses without it. -->
-    <label class="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
-      <input
-        type="checkbox"
-        name="participants_informed"
-        bind:checked={informed}
-        class="mt-0.5 size-4 rounded border-border"
-      />
-      <span>
-        <span class="block font-medium text-text">{t("meetings.record.informed")}</span>
-        <span class="block text-xs text-text-muted"
-          >{t("meetings.record.informed_hint", { days: String(retentionDays) })}</span
-        >
-      </span>
-    </label>
+    {#if consentRequired}
+      <!-- The one required statement. Not a nicety: the API refuses without it. -->
+      <label class="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+        <input
+          type="checkbox"
+          name="participants_informed"
+          bind:checked={informed}
+          class="mt-0.5 size-4 rounded border-border"
+        />
+        <span>
+          <span class="block font-medium text-text">{t("meetings.record.informed")}</span>
+          <span class="block text-xs text-text-muted"
+            >{t("meetings.record.informed_hint", { days: String(retentionDays) })}</span
+          >
+        </span>
+      </label>
+    {:else}
+      <p class="text-xs text-text-muted">
+        {t("meetings.record.consent_off", { days: String(retentionDays) })}
+      </p>
+    {/if}
 
     {#if fieldError}
       <p class="text-sm text-red-700 dark:text-red-300" role="alert">{t(fieldError)}</p>
