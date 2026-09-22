@@ -35,7 +35,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
 
-  import { deltaClass } from "../format";
+  import { deltaClass, sourceLabel } from "../format";
   import {
     AI_ENGINES,
     AI_SCOPES,
@@ -91,6 +91,10 @@
 
   const busy = new InFlight();
   const canManage = $derived(Boolean(overview?.can_manage) && !isPortal);
+  /** What this reader calls the source every sentence here is about (#446): the tenant's own
+   *  name where they typed one (the API resolves it, a client's substitution included), the
+   *  catalog's otherwise. `SourceMetrics.label` one section up, applied to prose. */
+  const sourceName = $derived(overview?.source_label ?? sourceLabel("seranking"));
   const blocks = $derived(overview?.engines ?? []);
 
   // ---- which engine, which stream ------------------------------------------------------------
@@ -263,6 +267,7 @@
               isPortal
                 ? "marketing.ai_search.help.source_portal"
                 : "marketing.ai_search.help.source",
+              { source: sourceName },
             )}
           </dd>
         </div>
@@ -333,7 +338,7 @@
               class={inputClass}
             />
             <p class="mt-1 text-xs text-text-muted">
-              {t("marketing.ai_search.settings.target_hint")}
+              {t("marketing.ai_search.settings.target_hint", { source: sourceName })}
             </p>
           </div>
           <div>
@@ -349,13 +354,13 @@
               class={inputClass}
             />
             <p class="mt-1 text-xs text-text-muted">
-              {t("marketing.ai_search.settings.brand_hint")}
+              {t("marketing.ai_search.settings.brand_hint", { source: sourceName })}
             </p>
             {#if brandOptions}
               <div class="mt-2 flex flex-wrap items-center gap-1.5" data-testid="ai-brand-options">
                 {#if brandOptions.length === 0}
                   <span class="text-xs text-text-muted">
-                    {t("marketing.ai_search.settings.brand_none")}
+                    {t("marketing.ai_search.settings.brand_none", { source: sourceName })}
                   </span>
                 {/if}
                 {#each brandOptions as option (option)}
@@ -380,7 +385,10 @@
             >
               {busy.is("brand")
                 ? t("marketing.ai_search.settings.brand_looking")
-                : t("marketing.ai_search.settings.brand_lookup", { units: UNITS_BRAND_LOOKUP })}
+                : t("marketing.ai_search.settings.brand_lookup", {
+                    source: sourceName,
+                    units: UNITS_BRAND_LOOKUP,
+                  })}
             </button>
           </div>
           <div class="grid grid-cols-2 gap-3">
@@ -418,7 +426,7 @@
               </select>
             </div>
             <p class="col-span-2 text-xs text-text-muted">
-              {t("marketing.ai_search.settings.source_hint")}
+              {t("marketing.ai_search.settings.source_hint", { source: sourceName })}
             </p>
           </div>
         </div>
@@ -475,14 +483,17 @@
     {/if}
 
     {#if loadError}
-      <p class="text-sm text-red-600 dark:text-red-400">{t(loadError)}</p>
+      <p class="text-sm text-red-600 dark:text-red-400">{t(loadError, { source: sourceName })}</p>
     {:else if overview.state === "off"}
       <!-- Only a manager reaches this branch. Off is the default on purpose: every read spends
            the agency's own units, so switching it on is a decision, and this says what it buys. -->
       <div class="rounded-lg border border-dashed border-border p-4" data-testid="ai-search-off">
         <p class="text-sm text-text">{t("marketing.ai_search.off.body")}</p>
         <p class="mt-1 text-xs text-text-muted">
-          {t("marketing.ai_search.off.cost", { units: fmtNumber(UNITS_PER_ENGINE, 0) })}
+          {t("marketing.ai_search.off.cost", {
+            source: sourceName,
+            units: fmtNumber(UNITS_PER_ENGINE, 0),
+          })}
         </p>
         <div class="mt-3 flex flex-wrap items-center gap-3">
           <button
@@ -499,13 +510,15 @@
       </div>
     {:else if overview.state === "no_key"}
       <p class="text-sm text-text-muted">
-        {t("marketing.ai_search.state.no_key")}
+        {t("marketing.ai_search.state.no_key", { source: sourceName })}
         <a href="/settings/marketing" class="font-medium text-brand hover:underline">
           {t("marketing.ai_search.state.open_settings")}
         </a>
       </p>
     {:else if overview.state === "no_target"}
-      <p class="text-sm text-text-muted">{t("marketing.ai_search.state.no_target")}</p>
+      <p class="text-sm text-text-muted">
+        {t("marketing.ai_search.state.no_target", { source: sourceName })}
+      </p>
     {:else if block}
       {#if blocks.length > 1}
         <div class="mb-4 flex flex-wrap gap-1" role="tablist">
@@ -530,7 +543,7 @@
           class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
           data-testid="ai-search-notice"
         >
-          {t(statusKey(refreshNotice) ?? "", { month: askedMonth })}
+          {t(statusKey(refreshNotice) ?? "", { month: askedMonth, source: sourceName })}
           {t("marketing.ai_search.kept")}
         </p>
       {/if}
@@ -540,7 +553,7 @@
           class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
           data-testid="ai-search-status"
         >
-          {t(statusKey(block.status) ?? "", { month: askedMonth })}
+          {t(statusKey(block.status) ?? "", { month: askedMonth, source: sourceName })}
         </p>
       {/if}
 
@@ -550,6 +563,7 @@
             {t(isPortal ? "marketing.ai_search.lagging_portal" : "marketing.ai_search.lagging", {
               asked: askedMonth,
               month: dataMonth,
+              source: sourceName,
             })}
           </p>
         {/if}
@@ -610,7 +624,12 @@
         {/if}
         {#if block.realigned}
           <p class="mt-2 text-xs text-text-muted">
-            {t(isPortal ? "marketing.ai_search.realigned_portal" : "marketing.ai_search.realigned")}
+            {t(
+              isPortal ? "marketing.ai_search.realigned_portal" : "marketing.ai_search.realigned",
+              {
+                source: sourceName,
+              },
+            )}
           </p>
         {/if}
       {:else if block.no_data}
@@ -618,12 +637,15 @@
              the country, never as four dashes that read like "invisible in AI". -->
         <p class="text-sm text-text-muted" data-testid="ai-search-no-data">
           {t("marketing.ai_search.no_data", {
+            source: sourceName,
             target: overview.settings.target,
             country: overview.settings.source.toUpperCase(),
           })}
         </p>
       {:else if !statusKey(block.status)}
-        <p class="text-sm text-text-muted">{t("marketing.ai_search.empty")}</p>
+        <p class="text-sm text-text-muted">
+          {t("marketing.ai_search.empty", { source: sourceName })}
+        </p>
       {/if}
 
       <!-- Whose mentions, which site, which country: a figure attributed to the wrong brand
@@ -647,11 +669,12 @@
               {
                 target: overview.settings.target,
                 country: overview.settings.source.toUpperCase(),
+                source: sourceName,
               },
             )}
           {/if}
           {#if canManage && overview.brand_origin === "discovered"}
-            <span>· {t("marketing.ai_search.brand_discovered")}</span>
+            <span>· {t("marketing.ai_search.brand_discovered", { source: sourceName })}</span>
           {/if}
         </p>
         {#if canManage}
@@ -691,7 +714,7 @@
           class="mt-2 text-xs text-amber-700 dark:text-amber-300"
           data-testid="ai-search-brand-hint"
         >
-          {t("marketing.ai_search.brand_mismatch", { brand: overview.brand })}
+          {t("marketing.ai_search.brand_mismatch", { source: sourceName, brand: overview.brand })}
         </p>
       {/if}
     {/if}

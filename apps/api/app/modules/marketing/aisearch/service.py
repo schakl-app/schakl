@@ -257,8 +257,15 @@ class AiSearchService:
         company = await self.ctx.repo(Company).get_or_404(company_id)
         can_manage = self.ctx.can(_MANAGE) and not self.ctx.is_portal
 
+        from app.modules.marketing.service import resolve_source_label
+
         org_blob = await self._org_blob()
         company_row = await self._company_row(company_id)
+        # The tenant's name for the source rides every answer, the off/no-key ones included:
+        # each state's sentence names the source, and the name is the tenant's (#446).
+        label = await resolve_source_label(
+            self.ctx.session, self.ctx.org.id, "seranking", portal=self.ctx.is_portal
+        )
         own = company_row.ai_search if company_row else None
         resolved = resolve(org_blob, own)
         latest = expected_month(await org_today(self.ctx.session, self.ctx.org.id))
@@ -285,6 +292,7 @@ class AiSearchService:
                 period_month=period,
                 settings=_read(shown),
                 target_origin=origin,
+                source_label=label,
                 can_manage=can_manage,
                 own=own if can_manage else None,
                 house=_read(parse(org_blob)) if can_manage else None,

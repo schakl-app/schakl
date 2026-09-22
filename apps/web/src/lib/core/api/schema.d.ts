@@ -15745,6 +15745,8 @@ export interface components {
              */
             period_month: string;
             settings: components["schemas"]["AiSearchSettingsRead"];
+            /** Source Label */
+            source_label?: string | null;
             /** State */
             state: string;
             /** Target Origin */

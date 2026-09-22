@@ -97,7 +97,13 @@ export function periodLabel(
 }
 
 /** A warning code + its detail, as one readable line for the review screen. */
-export function warningText(warning: { code: string; detail?: string | null }): string {
-  const base = t(warning.code);
+export function warningText(warning: {
+  code: string;
+  detail?: string | null;
+  source?: string | null;
+}): string {
+  // A run stores the source's name beside the code (the tenant's own word, #446); a run from
+  // before it did falls back to the catalog name, so an old warning keeps reading whole.
+  const base = t(warning.code, { source: warning.source ?? t("reporting.source.seranking") });
   return warning.detail ? `${base} (${warning.detail})` : base;
 }

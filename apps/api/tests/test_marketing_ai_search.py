@@ -809,7 +809,15 @@ async def test_a_month_the_vendor_has_not_published_is_withheld_from_the_report(
     payload = await _chapter(t.org.id, company_id, month)
     assert payload == {
         "withheld": True,
-        "notes": [{"code": "reporting.warning.seranking_ai_overview_lagging", "detail": "all"}],
+        "notes": [
+            {
+                "code": "reporting.warning.seranking_ai_overview_lagging",
+                "detail": "all",
+                # The tenant's word for the source rides the warning (#446); none typed here,
+                # so the catalog name in the org's own language.
+                "source": "SE Ranking",
+            }
+        ],
     }
 
 
@@ -935,7 +943,13 @@ async def test_a_domain_se_ranking_has_no_answers_for_is_said_not_drawn(
     payload = await _chapter(t.org.id, company_id, month)
     assert payload == {
         "withheld": True,
-        "notes": [{"code": "reporting.warning.seranking_ai_overview_no_data", "detail": "all"}],
+        "notes": [
+            {
+                "code": "reporting.warning.seranking_ai_overview_no_data",
+                "detail": "all",
+                "source": "SE Ranking",
+            }
+        ],
     }
 
 
@@ -967,3 +981,64 @@ async def test_brand_presence_is_compared_with_the_month_we_stored_before(
     assert by_key["brand_presence"]["change_percent"] == 25.0
     # The series still wins where there is one.
     assert by_key["link_presence"]["previous"] == 110
+
+
+async def test_every_sentence_names_the_source_by_the_tenants_word(client_for, seranking) -> None:
+    """#446 one section down. An agency selling SE Ranking as "breik. Analytics" read *"merk
+    herkend door SE Ranking"* on the very screen that printed its own name a line above: the
+    section's sentences were written with the vendor's name in them. The overview now carries
+    what this reader calls the source — the tenant's word for everyone, ``None`` for staff
+    where none was typed (the web prints the catalog name), and a client's substitution where
+    the tenant typed nothing — so every sentence in the section can be told which word to use."""
+    t = await make_tenant("ais-label")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id = await _setup(c, owner)
+        url = f"/api/v1/marketing/companies/{company_id}/ai-search"
+        assert (await c.get(url, headers=owner)).json()["source_label"] is None
+        portal = await _portal_headers(c, owner, company_id, "piet@ais-label.test")
+        # No label typed: a client is told what it measures, never who supplies it.
+        assert (await c.get(url, headers=portal)).json()["source_label"] == "Zoekmachineposities"
+
+        saved = await c.put(
+            "/api/v1/marketing/settings",
+            json={"portal_source_labels": {"seranking": "breik. Analytics"}},
+            headers=owner,
+        )
+        assert saved.status_code == 200, saved.text
+        assert (await c.get(url, headers=owner)).json()["source_label"] == "breik. Analytics"
+        assert (await c.get(url, headers=portal)).json()["source_label"] == "breik. Analytics"
+
+
+async def test_a_tracker_the_plan_lacks_is_named_on_the_drill_down_not_blamed_on_the_key(
+    client_for, seranking
+) -> None:
+    """The AI Result Tracker drill-down on a project whose plan has no tracker: the key works
+    (the keyword table on the same link answers), so "the key is refused" sent an agency to
+    re-check a credential that was right. The refusal is named for what it is."""
+    t = await make_tenant("ais-airt")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company_id = await _setup(c, owner, enabled=False)
+        link = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company_id,
+                    "source": "seranking",
+                    "external_id": "5453156",
+                    "display_name": "Acme",
+                },
+                headers=owner,
+            )
+        ).json()
+        seranking.refuse = (401, {"message": "Unauthorized"})
+        res = await c.get(
+            f"/api/v1/marketing/companies/{company_id}/drilldown",
+            params={"link_id": link["id"], "kind": "ai_search", "range_days": 30},
+            headers=owner,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["available"] is False
+        assert body["unavailable_reason"] == "marketing.seranking_ai_search_unavailable"

@@ -165,7 +165,9 @@
   {:else if data && !data.available && !editsLabels}
     <p class="text-sm text-text-muted">
       {t("marketing.drilldown_unavailable", {
-        reason: t(data.unavailable_reason ?? "marketing.no_data"),
+        reason: t(data.unavailable_reason ?? "marketing.no_data", {
+          source: label ?? sourceLabel(source),
+        }),
       })}
     </p>
   {:else if (!data || data.rows.length === 0) && !editsLabels}

@@ -66,10 +66,12 @@ from app.modules.marketing.reportsplit import (
 from app.modules.marketing.service import (
     aggregate,
     org_key_client,
+    org_source_labels,
     resolve_seranking_key,
+    staff_source_name,
 )
 from app.modules.marketing.sources import source_for
-from app.modules.marketing.sources.base import IMPORTED_METRICS
+from app.modules.marketing.sources.base import IMPORTED_METRICS, SourceRefused
 from app.registry import AUDIENCE_BOTH, AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
 
 logger = logging.getLogger("schakl.marketing")
@@ -112,6 +114,10 @@ class GatheredMarketing:
     """Everything the marketing sections need for one client and one period pair."""
 
     links: list[MarketingLink] = field(default_factory=list)
+    #: What this tenant calls SE Ranking (#446), for every warning that names it: the review
+    #: desk prints a stored sentence later, in a screen that holds no labels, so the name is
+    #: resolved here and travels with the note.
+    seranking_name: str = ""
     #: What each section draws one block for, per source (#381). One entry per property under
     #: ``per_website``, or a single entry covering all of them under ``combined``.
     parts: dict[str, list[Part]] = field(default_factory=dict)
@@ -514,9 +520,18 @@ async def _gather_seranking(
     )
     if link is None:
         return
+    out.seranking_name = staff_source_name(
+        MarketingSource.SERANKING.value, await org_source_labels(ctx.session, ctx.org.id)
+    )
     key = await resolve_seranking_key(ctx.session, ctx.org.id)
     if not key:
-        out.notes.append({"code": "reporting.warning.seranking_not_configured", "detail": ""})
+        out.notes.append(
+            {
+                "code": "reporting.warning.seranking_not_configured",
+                "detail": "",
+                "source": out.seranking_name,
+            }
+        )
         return
     adapter = source_for(MarketingSource.SERANKING.value)
     # The audit and the AI-search sections read from SE Ranking whatever the *rankings* setting
@@ -594,7 +609,13 @@ async def _gather_seranking(
                 )
     except Exception as exc:  # noqa: BLE001 — the session itself, not one of its questions
         logger.warning("reporting: SE Ranking session failed for %s: %s", link.id, exc)
-        out.notes.append({"code": "reporting.warning.source_failed", "detail": "seranking"})
+        out.notes.append(
+            {
+                "code": "reporting.warning.source_failed",
+                "detail": "seranking",
+                "source": out.seranking_name,
+            }
+        )
 
 
 async def _seranking_part(
@@ -611,13 +632,16 @@ async def _seranking_part(
         return await awaitable
     except Exception as exc:  # noqa: BLE001 — a report degrades, it never 500s
         status = getattr(getattr(exc, "response", None), "status_code", None)
-        denied = status in (401, 403)
+        # The adapter names an entitlement refusal itself now (the drill-down's fix); read
+        # here as well, or the report would call a plan without the tracker an outage.
+        denied = isinstance(exc, SourceRefused) or status in (401, 403)
         logger.warning("reporting: SE Ranking %s failed (%s): %s", part, status, exc)
         out.notes.append(
             {
                 "code": f"reporting.warning.seranking_{part}_"
                 + ("unavailable" if denied else "failed"),
                 "detail": str(status or ""),
+                "source": out.seranking_name,
             }
         )
         return default
@@ -1312,11 +1336,19 @@ async def _ai_search_overview(
     overview = await AiSearchService(ctx).overview(window.company_id, month=month)
     if overview.state == "off":
         return None
+    # Every warning below names the source, in the tenant's own word for it (#446).
+    name = staff_source_name(
+        MarketingSource.SERANKING.value, await org_source_labels(ctx.session, ctx.org.id)
+    )
     if overview.state != "ready":
         return {
             "withheld": True,
             "notes": [
-                {"code": f"reporting.warning.seranking_ai_overview_{overview.state}", "detail": ""}
+                {
+                    "code": f"reporting.warning.seranking_ai_overview_{overview.state}",
+                    "detail": "",
+                    "source": name,
+                }
             ],
         }
 
@@ -1329,18 +1361,27 @@ async def _ai_search_overview(
             # SE Ranking holds no AI answers for this domain here: a fact for the agency (the
             # target or the country may be wrong), never a chapter of dashes for the client.
             notes.append(
-                {"code": "reporting.warning.seranking_ai_overview_no_data", "detail": block.engine}
+                {
+                    "code": "reporting.warning.seranking_ai_overview_no_data",
+                    "detail": block.engine,
+                    "source": name,
+                }
             )
         elif block.status in ("denied", "insufficient", "failed"):
             notes.append(
                 {
                     "code": f"reporting.warning.seranking_ai_overview_{block.status}",
                     "detail": block.engine,
+                    "source": name,
                 }
             )
         else:
             notes.append(
-                {"code": "reporting.warning.seranking_ai_overview_lagging", "detail": block.engine}
+                {
+                    "code": "reporting.warning.seranking_ai_overview_lagging",
+                    "detail": block.engine,
+                    "source": name,
+                }
             )
     if not usable:
         return {"withheld": True, "notes": notes} if notes else None
