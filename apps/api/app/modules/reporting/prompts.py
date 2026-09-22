@@ -72,10 +72,27 @@ _GROUNDING = (
 #: failure this describes is now unreachable rather than merely discouraged.
 _AS_PRINTED = (
     "Every figure in the document is already written exactly as the report prints it, in the "
-    "reader's own conventions. Quote those strings as they stand — thousands separators, "
-    "decimal commas, percent signs and all — and never reformat, round, convert or recompute "
-    "one. Use the names the document gives things: never write a field name from an analytics "
-    "tool, and never invent a technical name for a measurement that has one here."
+    "reader's own conventions. When you do use a figure, copy it as it stands — thousands "
+    "separators, decimal commas, percent signs and all — and never reformat, round, convert or "
+    "recompute one. Never put quotation marks around a figure. Use the names the document "
+    "gives things: never write a field name from an analytics tool, and never invent a "
+    "technical name for a measurement that has one here."
+)
+
+#: The client document prints every figure in a table or chart right beside the prose. The
+#: first month of real reports read "er waren "6.938" vertoningen en "1.385" kliks…": the
+#: previous wording said *quote the figures*, which a model reads as *use all of them*, and a
+#: product rule outranks a house style's "gebruik cijfers met mate" when the two disagree. So
+#: the product now says the structural fact — the table is already there — and the tone keeps
+#: the say over voice. ``narrative.figure_count`` checks it afterwards (a request is not a
+#: control).
+_PROSE_NOT_TABLE = (
+    "The reader sees every figure in the tables and charts printed right beside your text. "
+    "Your text explains what the figures mean together; it does not repeat them. Use at most "
+    "two figures in a section passage and at most three in the summary, and only where one "
+    "makes the picture clearer. Describe everything else in words: more, fewer, about the "
+    "same, the largest share, a clear rise. Never list percentages of change, never name "
+    "every row, and never write a passage that reads as the table in sentences."
 )
 
 
@@ -129,11 +146,13 @@ def client_system(
         "Your job is to make the overall picture understandable to someone who is not a "
         "marketer. Describe what the figures show as a whole. Do not walk through the table "
         "row by row — the reader has the table.",
-        "Write one flowing passage per section. No headings, no bullet lists, no markdown.",
+        _PROSE_NOT_TABLE,
+        "Write one flowing passage per section, three to five sentences. No headings, no "
+        "bullet lists, no markdown.",
         *_tone_block(tone),
         "Return ONLY a valid JSON object, no markdown and no code fences, with exactly these "
         "keys — every one a plain string:\n"
-        f'- "summary": the opening summary the client reads first, 6 to 8 sentences.\n'
+        f'- "summary": the opening summary the client reads first, 4 to 6 sentences.\n'
         f"{section_lines}",
         "A section whose data is absent from the document gets an empty string. Never invent "
         "a section that is not listed above.",
@@ -217,6 +236,7 @@ def section_system(
         _GROUNDING,
         _AS_PRINTED,
         f"Write only the passage for the section '{section_key}': {brief}",
+        *([] if internal else [_PROSE_NOT_TABLE]),
         "Return the passage as plain text. No JSON, no markdown, no heading, no preamble.",
         *([] if internal else _tone_block(tone)),
         _INJECTION_STANCE,

@@ -41,8 +41,26 @@ FEATURE = "reporting"
 #: one and bounded enough that a runaway payload cannot spend a tenant's whole budget on a
 #: single report.
 MAX_INPUT_CHARS = 60_000
-MAX_OUTPUT_TOKENS = 4096
-MAX_SECTION_TOKENS = 900
+#: The ceiling is the *completion* budget, and on a reasoning model (``gpt-5-mini``, the
+#: default here) the hidden reasoning is paid out of it before a single visible word. At 4096
+#: the thirteen report runs of September 2026 averaged ~3,460 output tokens, so the largest
+#: documents — Klok'uus, with an Ads chapter beside seven marketing ones — spent the whole
+#: budget thinking and came back as an empty string: a report with its tables and no prose,
+#: warned as "no usable narrative" with nothing saying why. Generous on purpose: the prose is
+#: a few thousand tokens, and what the headroom buys is room to think.
+MAX_OUTPUT_TOKENS = 16_000
+MAX_SECTION_TOKENS = 6_000
+
+#: A figure as the document prints it: ``6.938``, ``€ 366``, ``+14,0%``, ``0,9%``, ``00:05``.
+_FIGURE = r"[+\-−]?(?:€\s?)?\d[\d.,:]*(?:\s?%)?"
+#: A figure wrapped in quotation marks — the model obeying "quote the numbers" literally.
+_QUOTED_FIGURE = re.compile(rf"[\"'“”‘’„]({_FIGURE})[\"'“”‘’]")
+_FIGURE_RE = re.compile(rf"(?<![\w-]){_FIGURE}")
+
+#: How many figures a client passage may carry before the reviewer is told. The tables sit
+#: beside the prose; a paragraph with ten numbers in it is the table again, in sentences.
+MAX_FIGURES_PER_PASSAGE = 3
+MAX_FIGURES_IN_SUMMARY = 4
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
@@ -93,6 +111,29 @@ def _flatten(value: Any) -> str:
     if isinstance(value, dict):
         return "\n".join(_flatten(item) for item in value.values() if item)
     return str(value)
+
+
+def unquote_figures(text: str) -> str:
+    """``er waren "6.938" vertoningen`` → ``er waren 6.938 vertoningen``.
+
+    Quotation marks around a number are never the agency's style; they are the model reading
+    "quote the figures as they stand" as an instruction about punctuation. Removing them is
+    safe because the figure itself is untouched.
+    """
+    return _QUOTED_FIGURE.sub(r"\1", text) if text else text
+
+
+def figure_count(text: str) -> int:
+    """How many figures a passage mentions. Years and single digits are not counted — "in
+    2026" and "de 3 kanalen" are words, not the table repeated."""
+    count = 0
+    for match in _FIGURE_RE.finditer(text or ""):
+        figure = match.group(0)
+        digits = re.sub(r"\D", "", figure)
+        if re.fullmatch(r"(19|20)\d\d", figure) or (len(digits) == 1 and "%" not in figure):
+            continue
+        count += 1
+    return count
 
 
 def banned_phrases_used(text: str, banned: list[str]) -> list[str]:
@@ -193,9 +234,19 @@ async def write_narrative(
     finally:
         await service.flush_usage(FEATURE)
 
-    narrative = {key: value for key, value in parse_json_object(text).items() if value}
+    narrative = {
+        key: unquote_figures(value)
+        for key, value in parse_json_object(text).items()
+        if value
+    }
     if not narrative:
-        warnings.append({"code": "reporting.warning.ai_empty", "detail": ""})
+        # "Ran out of room" and "answered nothing usable" are different faults with different
+        # fixes, and on a reasoning model the first one is an empty string too.
+        warnings.append(
+            {"code": "reporting.warning.ai_truncated", "detail": ""}
+            if service.truncated
+            else {"code": "reporting.warning.ai_empty", "detail": ""}
+        )
     banned = (tone or {}).get("banned_phrases") or []
     if not internal:
         for key, value in narrative.items():
@@ -205,6 +256,9 @@ async def write_narrative(
                     {"code": "reporting.warning.banned_phrase",
                      "detail": f"{key}: {', '.join(used)}"}
                 )
+            limit = MAX_FIGURES_IN_SUMMARY if key == "summary" else MAX_FIGURES_PER_PASSAGE
+            if figure_count(value) > limit:
+                warnings.append({"code": "reporting.warning.many_figures", "detail": key})
     return narrative, warnings
 
 
@@ -249,8 +303,14 @@ async def rewrite_section(
         return "", [{"code": "reporting.warning.ai_failed", "detail": str(exc)[:200]}]
     finally:
         await service.flush_usage(FEATURE)
-    cleaned = _FENCE.sub("", (text or "").strip()).strip()
+    cleaned = unquote_figures(_FENCE.sub("", (text or "").strip()).strip())
     warnings: list[dict[str, str]] = []
+    if not cleaned:
+        warnings.append(
+            {"code": "reporting.warning.ai_truncated", "detail": section_key}
+            if service.truncated
+            else {"code": "reporting.warning.ai_empty", "detail": section_key}
+        )
     if not internal:
         used = banned_phrases_used(cleaned, (tone or {}).get("banned_phrases") or [])
         if used:

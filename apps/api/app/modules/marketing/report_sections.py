@@ -578,15 +578,20 @@ async def _gather_seranking(
                         ),
                         default=[],
                     )
-            out.audit = await _seranking_part(
-                out, "audit", adapter.audit(client, link.external_id), default=None
-            )
-            out.ai_search = await _seranking_part(
-                out,
-                "ai",
-                adapter.ai_search(client, link.external_id, window.start, window.end),
-                default=[],
-            )
+            # Only what this document prints (``ReportWindow.sections``). The AI Result
+            # Tracker in particular answers 401 for every project whose plan lacks it, so
+            # asking it for a report with no AI-search chapter warned on every run for nothing.
+            if window.wants("marketing.site_audit"):
+                out.audit = await _seranking_part(
+                    out, "audit", adapter.audit(client, link.external_id), default=None
+                )
+            if window.wants("marketing.ai_search"):
+                out.ai_search = await _seranking_part(
+                    out,
+                    "ai",
+                    adapter.ai_search(client, link.external_id, window.start, window.end),
+                    default=[],
+                )
     except Exception as exc:  # noqa: BLE001 — the session itself, not one of its questions
         logger.warning("reporting: SE Ranking session failed for %s: %s", link.id, exc)
         out.notes.append({"code": "reporting.warning.source_failed", "detail": "seranking"})

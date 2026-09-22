@@ -807,12 +807,12 @@ class CloudflareClient:
             await self.request(
                 "PUT",
                 f"/zones/{zone_id}/rulesets/phases/{REDIRECT_PHASE}/entrypoint",
-                json={
-                    "name": "default",
-                    "kind": "zone",
-                    "phase": REDIRECT_PHASE,
-                    "rules": [rule],
-                },
+                # ``rules`` and nothing else. The entrypoint's phase is in the path and its kind
+                # is implied by the zone; Cloudflare now refuses both in the body with
+                # *"invalid JSON: unknown field "kind""*, which is how every first redirect on a
+                # zone without a ruleset failed while the second-and-later ones (a POST onto an
+                # existing ruleset) kept working.
+                json={"rules": [rule]},
             )
             or {}
         )
