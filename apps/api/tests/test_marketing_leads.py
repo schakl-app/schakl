@@ -246,6 +246,7 @@ class FakeGoogle:
     def __init__(self) -> None:
         self.canned = _canned()
         self.batches: list[list[dict]] = []
+        self.reports: list[dict] = []  # the single ``runReport`` calls (the drill-downs)
         self.parameters = [
             "dienst",
             "formulier_type",
@@ -296,6 +297,7 @@ class FakeGoogle:
                 reports.append(self.canned.get(dims) or _report(list(dims), []))
             return httpx.Response(200, json={"reports": reports})
         if path.endswith(":runReport"):
+            self.reports.append(body)
             dims = tuple(d["name"] for d in body.get("dimensions", []))
             if dims == ("eventName",):
                 return httpx.Response(
@@ -987,6 +989,97 @@ async def test_dashboard_end_to_end_staff_and_client(client_for, fakes) -> None:
         )
         assert cleared.json()["lead_profile"] is None
         assert (await c.get(url, headers=headers)).json()["configured"] is False
+
+
+async def test_the_nightly_warm_reads_every_view_the_tab_opens_on(
+    client_for, fakes, monkeypatch
+) -> None:
+    """The dashboard and the drill-down tables are live GA4 reads behind a day-long key, so
+    the first open of each view used to pay Google's latency. The warm reads every preset and,
+    on the default preset, every single-value filter and every drill-down — through the
+    services, so the keys are the ones the tab reads — and a reader afterwards costs Google
+    nothing."""
+    from app.modules.marketing import jobs
+
+    google, _ads, redis = fakes
+    monkeypatch.setattr("app.modules.marketing.service.get_redis", lambda: redis)
+    # The drill-downs read Google through `MarketingService`, whose `acting_as` has no
+    # transport seam of its own; hand it the same fake the leads half already answers from.
+    from app.integrations.google import client as google_client
+
+    real_acting_as = google_client.acting_as
+    monkeypatch.setattr(
+        google_client,
+        "acting_as",
+        lambda session, org, connection, transport=None: real_acting_as(
+            session, org, connection, transport=google.transport()
+        ),
+    )
+    t = await _connected("leads-warm")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Jachttrans"}, headers=headers)
+        ).json()
+        url = f"/api/v1/marketing/companies/{company['id']}/leads"
+        ga4_link = await _link(c, headers, company["id"], "ga4", "properties/377777674")
+        saved = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"lead_profile": JACHTTRANS},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+
+    # The warm, as the cron runs it: the system inside the org, one transaction.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await jobs._warm_dashboards_org(t.org, session)
+    warmed = len(google.batches)
+    ga4_keys = [k for k in redis.store if k.startswith("schakl:marketing:leads:ga4:")]
+    # One plan per preset, plus one per single-value filter of the default preset.
+    assert len(ga4_keys) > len(jobs.LEADS_WARM_PERIODS)
+    assert warmed >= len(ga4_keys)
+    # And a table per drill-down kind of the GA4 link, on the default period.
+    drill_keys = [k for k in redis.store if k.startswith("schakl:marketing:drill:")]
+    assert {k.split(":")[4] for k in drill_keys} >= {"top_pages", "channels", "devices"}
+    reports = len(google.reports)
+
+    async with client_for(t.host) as c:
+        for period in jobs.LEADS_WARM_PERIODS:
+            res = await c.get(url, params={"period": period}, headers=headers)
+            assert res.status_code == 200, res.text
+            assert res.json()["configured"] is True
+        data = (await c.get(url, headers=headers)).json()
+        assert data["filters"], "the default view offers filters to warm"
+        for control in data["filters"]:
+            for option in control["options"]:
+                res = await c.get(
+                    url,
+                    params={"f": [f"{control['dimension']}:{option['key']}"]},
+                    headers=headers,
+                )
+                assert res.status_code == 200, res.text
+        for kind in ("top_pages", "channels", "devices"):
+            res = await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/drilldown",
+                params={"link_id": ga4_link, "kind": kind, "period": jobs.WARM_DEFAULT_PERIOD},
+                headers=headers,
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["available"] is True
+    # Every one of those views was a Redis hit.
+    assert len(google.batches) == warmed
+    assert len(google.reports) == reports
+
+    # A client with no profile is one read and no key: the warm has nothing to fill.
+    async with client_for(t.host) as c:
+        bare = (
+            await c.post("/api/v1/companies", json={"name": "Nog niet"}, headers=headers)
+        ).json()
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert await jobs.warm_company(t.org, session, uuid.UUID(bare["id"])) == 1
+    assert len(google.batches) == warmed
 
 
 async def test_setup_checks_name_what_the_property_lacks(client_for, fakes) -> None:

@@ -4,6 +4,16 @@ Members manage their **own** entries; managers (owner/admin) may act on another 
 passing ``user_id``. All reads/writes go through the tenant-scoped repository (Golden Rule 1).
 A running timer is the single entry with ``ended_at IS NULL`` for a user; starting a new timer
 auto-stops the current one.
+
+**An entry's clock is an instant, and its calendar day is the org's** (§8). ``started_at`` and
+``ended_at`` are real ``TIMESTAMPTZ`` instants: a naive time a form, an import or an agent
+sends is read as the org's wall clock (:func:`app.core.timezone.as_instant`), an aware one is
+taken as it is, and every "which day / which week / which month" question below is asked in the
+org's zone. They used to be the typed wall clock *stamped as UTC*, which every screen sliced
+straight back off the string — consistent with itself, and wrong for the two writers that do
+not type: the timer stamps the real clock, and an API caller sending ``12:40+02:00`` means
+12:40. Both printed two hours early, and an entry typed at 23:30 fell on the next day in the
+invoicing groupings that already read the column as an instant.
 """
 
 from __future__ import annotations
@@ -11,8 +21,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import DateTime, column, func, select, table, values
 from sqlalchemy import text as sql_text
@@ -22,6 +33,7 @@ from app.core.events import emit
 from app.core.parent import ensure_parent_in_tenant
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
+from app.core.timezone import as_instant, day_start, day_window, org_zoneinfo
 from app.errors import AppError
 from app.modules.time.models import (
     DEFAULT_ENTRY_TYPES,
@@ -118,6 +130,13 @@ class TimeService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
         self.repo = ctx.repo(TimeEntry)
+        self._zone: ZoneInfo | None = None
+
+    async def zone(self) -> ZoneInfo:
+        """The org's zone, read once per service: every day/week/month boundary here is local."""
+        if self._zone is None:
+            self._zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        return self._zone
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
@@ -223,10 +242,15 @@ class TimeService:
     async def create(self, data: TimeEntryCreate) -> TimeEntry:
         self.ctx.require("time.entry.write")
         await self._valid_entry_type(data.entry_type_key)
-        # The entry this draft was for now exists — the draft has served (#44). Times are
-        # wall-clock-as-UTC, so the entry's date *is* the form's date field.
-        await self._clear_draft(data.started_at.date())
+        zone = await self.zone()
         values = data.model_dump()
+        # A naive time is the org's wall clock, an aware one an instant (§8, `as_instant`).
+        values["started_at"] = as_instant(values["started_at"], zone)
+        if values.get("ended_at") is not None:
+            values["ended_at"] = as_instant(values["ended_at"], zone)
+        # The entry this draft was for now exists — the draft has served (#44). The form's date
+        # is the entry's *local* day, which is not the UTC date of the instant after 22:00.
+        await self._clear_draft(values["started_at"].astimezone(zone).date())
         # A time entry's company/project/task FKs must live in this tenant (audit F19).
         for _fk, _tbl in (
             ("company_id", "companies"),
@@ -262,6 +286,10 @@ class TimeService:
         self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
+        zone = await self.zone()
+        for key in ("started_at", "ended_at"):
+            if values.get(key) is not None:
+                values[key] = as_instant(values[key], zone)
         for _fk, _tbl in (
             ("company_id", "companies"),
             ("project_id", "projects"),
@@ -297,7 +325,7 @@ class TimeService:
     ) -> tuple[date, Sequence[TimeEntry], int, int]:
         """A single day's entries (for the calendar day view) + total/billable minutes."""
         uid = self._effective_user_id(user_id)
-        start = datetime.combine(day, time.min, tzinfo=UTC)
+        start = day_start(day, await self.zone())
         entries = await self._entries_between(uid, start, start + timedelta(days=1))
         total = sum(e.minutes for e in entries if not e.is_running)
         billable = sum(e.minutes for e in entries if not e.is_running and e.billable)
@@ -337,15 +365,11 @@ class TimeService:
             stmt = stmt.where(TimeEntry.project_id == project_id)
         if task_id is not None:
             stmt = stmt.where(TimeEntry.task_id == task_id)
-        if date_from is not None:
-            stmt = stmt.where(
-                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
-            )
-        if date_to is not None:
-            stmt = stmt.where(
-                TimeEntry.started_at
-                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
-            )
+        lo, hi = day_window(date_from, date_to, await self.zone())
+        if lo is not None:
+            stmt = stmt.where(TimeEntry.started_at >= lo)
+        if hi is not None:
+            stmt = stmt.where(TimeEntry.started_at < hi)
         row = (await self.ctx.session.execute(stmt)).one()
         return int(row[0]), int(row[1])
 
@@ -599,15 +623,11 @@ class TimeService:
             conditions.append(TimeEntry.task_id == task_id)
         if entry_type is not None:
             conditions.append(TimeEntry.entry_type_key == entry_type)
-        if date_from is not None:
-            conditions.append(
-                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
-            )
-        if date_to is not None:
-            conditions.append(
-                TimeEntry.started_at
-                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
-            )
+        lo, hi = day_window(date_from, date_to, await self.zone())
+        if lo is not None:
+            conditions.append(TimeEntry.started_at >= lo)
+        if hi is not None:
+            conditions.append(TimeEntry.started_at < hi)
         if running is not None:
             # A running timer is not a logged entry: its `minutes` is 0 and it burns no budget.
             conditions.append(
@@ -652,6 +672,7 @@ class TimeService:
         approved: bool | None,
         invoiced: bool | None,
         entry_type: str | None = None,
+        zone: ZoneInfo,
     ) -> list:
         conditions = [TimeEntry.ended_at.is_not(None)]  # running timers aren't reviewable
         if entry_type is not None:
@@ -664,15 +685,11 @@ class TimeService:
             conditions.append(TimeEntry.project_id == project_id)
         if task_id is not None:
             conditions.append(TimeEntry.task_id == task_id)
-        if date_from is not None:
-            conditions.append(
-                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
-            )
-        if date_to is not None:
-            conditions.append(
-                TimeEntry.started_at
-                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
-            )
+        lo, hi = day_window(date_from, date_to, zone)
+        if lo is not None:
+            conditions.append(TimeEntry.started_at >= lo)
+        if hi is not None:
+            conditions.append(TimeEntry.started_at < hi)
         if billable is not None:
             conditions.append(TimeEntry.billable.is_(billable))
         if approved is not None:
@@ -705,6 +722,7 @@ class TimeService:
         """Org-wide entries for the approval/invoicing overview (``time.report.read``)."""
         self.ctx.require("time.report.read")
         conditions = self._report_conditions(
+            zone=await self.zone(),
             user_id=user_id,
             company_id=company_id,
             project_id=project_id,
@@ -780,8 +798,8 @@ class TimeService:
     ) -> list[dict[str, object]]:
         """Per-employee totals for the productivity report (``time.report.read``)."""
         self.ctx.require("time.report.read")
-        start = datetime.combine(date_from, time.min, tzinfo=UTC)
-        end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+        zone = await self.zone()
+        start, end = day_window(date_from, date_to, zone)
         # One grouped statement, the rate chain joined by table name (no import of the leave
         # module) exactly as ``revenue`` and ``team_summary`` join it — so the value beside a
         # colleague's hours is the same euro their hours contribute to the year's omzet.
@@ -797,7 +815,8 @@ class TimeService:
                                WHERE te.approved_at IS NOT NULL
                            ), 0) AS approved_minutes,
                            COUNT(*) AS entry_count,
-                           COUNT(DISTINCT CAST(te.started_at AS date)) AS active_days,
+                           COUNT(DISTINCT CAST(te.started_at AT TIME ZONE :tz AS date))
+                               AS active_days,
                            COALESCE(SUM(
                                te.minutes / 60.0
                                * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
@@ -818,7 +837,7 @@ class TimeService:
                     GROUP BY te.user_id
                     """
                 ),
-                {"org_id": str(self.ctx.org.id), "start": start, "end": end},
+                {"org_id": str(self.ctx.org.id), "start": start, "end": end, "tz": zone.key},
             )
         ).all()
         result = [
@@ -851,12 +870,13 @@ class TimeService:
         self.ctx.require("time.report.read")
         conditions = ""
         params: dict[str, object] = {"org_id": str(self.ctx.org.id)}
-        if date_from is not None:
+        lo, hi = day_window(date_from, date_to, await self.zone())
+        if lo is not None:
             conditions += " AND te.started_at >= :start"
-            params["start"] = datetime.combine(date_from, time.min, tzinfo=UTC)
-        if date_to is not None:
+            params["start"] = lo
+        if hi is not None:
             conditions += " AND te.started_at < :end"
-            params["end"] = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+            params["end"] = hi
         rows = (
             await self.ctx.session.execute(
                 sql_text(
@@ -918,8 +938,7 @@ class TimeService:
         identical to :meth:`revenue` while restricting all work to the requested period.
         """
         self.ctx.require("time.report.read")
-        start = datetime.combine(date_from, time.min, tzinfo=UTC)
-        end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+        start, end = day_window(date_from, date_to, await self.zone())
         row = (
             await self.ctx.session.execute(
                 sql_text(
@@ -977,17 +996,19 @@ class TimeService:
         were before — the per-project view surfaces them as ``unrated_minutes``.
         """
         self.ctx.require("time.report.read")
+        zone = await self.zone()
         params = {
             "org_id": str(self.ctx.org.id),
-            "start": datetime(year - 1, 1, 1, tzinfo=UTC),
-            "end": datetime(year + 1, 1, 1, tzinfo=UTC),
+            "start": datetime(year - 1, 1, 1, tzinfo=zone),
+            "end": datetime(year + 1, 1, 1, tzinfo=zone),
+            "tz": zone.key,
         }
         month_rows = (
             await self.ctx.session.execute(
                 sql_text(
                     """
-                    SELECT CAST(date_part('year', te.started_at) AS int) AS y,
-                           CAST(date_part('month', te.started_at) AS int) AS m,
+                    SELECT CAST(date_part('year', te.started_at AT TIME ZONE :tz) AS int) AS y,
+                           CAST(date_part('month', te.started_at AT TIME ZONE :tz) AS int) AS m,
                            COALESCE(SUM(
                                te.minutes / 60.0
                                * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
@@ -1035,8 +1056,8 @@ class TimeService:
                 ),
                 {
                     "org_id": str(self.ctx.org.id),
-                    "year_start": datetime(year, 1, 1, tzinfo=UTC),
-                    "year_end": datetime(year + 1, 1, 1, tzinfo=UTC),
+                    "year_start": datetime(year, 1, 1, tzinfo=zone),
+                    "year_end": datetime(year + 1, 1, 1, tzinfo=zone),
                 },
             )
         ).all()
@@ -1176,8 +1197,9 @@ class TimeService:
         self, *, day: date | None = None, user_id: uuid.UUID | None = None
     ) -> TimeSummary:
         uid = self._effective_user_id(user_id)
-        day = day or _now().date()
-        start = datetime.combine(day, time.min, tzinfo=UTC)
+        zone = await self.zone()
+        day = day or _now().astimezone(zone).date()
+        start = day_start(day, zone)
         entries = await self._entries_between(uid, start, start + timedelta(days=1))
         minutes = sum(e.minutes for e in entries if not e.is_running)
         running = await self.running(user_id=uid)
@@ -1187,25 +1209,31 @@ class TimeService:
         self, *, week_start: date, user_id: uuid.UUID | None = None
     ) -> Timesheet:
         uid = self._effective_user_id(user_id)
-        start = datetime.combine(week_start, time.min, tzinfo=UTC)
+        zone = await self.zone()
+        start = day_start(week_start, zone)
         entries = await self._entries_between(uid, start, start + timedelta(days=7))
         draft_days = await self.draft_days(week_start) if uid == self.ctx.user.id else []
-        return self._build_timesheet(week_start, entries, draft_days)
+        return self._build_timesheet(week_start, entries, draft_days, zone)
 
     @staticmethod
     def _build_timesheet(
         week_start: date,
         entries: Sequence[TimeEntry],
         draft_days: Sequence[date],
+        zone: ZoneInfo,
     ) -> Timesheet:
-        """Build the weekly grid without another query (also used by ``workspace``)."""
+        """Build the weekly grid without another query (also used by ``workspace``).
+
+        ``zone`` decides which column an entry lands in: the grid is the org's week, so an
+        entry that started at 23:30 local belongs to that day, not to the UTC date after it.
+        """
         days = [week_start + timedelta(days=i) for i in range(7)]
         # rows keyed by (company_id, project_id, task_id)
         rows: dict[
             tuple[uuid.UUID | None, uuid.UUID | None, uuid.UUID | None], list[int]
         ] = {}
         for e in entries:
-            idx = (e.started_at.astimezone(UTC).date() - week_start).days
+            idx = (e.started_at.astimezone(zone).date() - week_start).days
             if 0 <= idx < 7:
                 key = (e.company_id, e.project_id, e.task_id)
                 rows.setdefault(key, [0] * 7)[idx] += e.minutes
@@ -1254,7 +1282,8 @@ class TimeService:
             )
 
         uid = self.ctx.user.id
-        start = datetime.combine(week_start, time.min, tzinfo=UTC)
+        zone = await self.zone()
+        start = day_start(week_start, zone)
         week_entries = await self._entries_between(uid, start, start + timedelta(days=7))
         drafts = (
             await self.ctx.session.execute(
@@ -1277,13 +1306,14 @@ class TimeService:
         ).scalars().first()
 
         day_entries = [
-            entry for entry in week_entries if entry.started_at.astimezone(UTC).date() == day
+            entry for entry in week_entries if entry.started_at.astimezone(zone).date() == day
         ]
         draft = next((item for item in drafts if item.entry_date == day), None)
         week = self._build_timesheet(
             week_start,
             week_entries,
             [item.entry_date for item in drafts],
+            zone,
         )
         return running, week, day_entries, draft, recent
 

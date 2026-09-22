@@ -2,6 +2,7 @@
   import Plus from "@lucide/svelte/icons/plus";
 
   import { t } from "$lib/core/i18n";
+  import { isPending, settledNow } from "$lib/core/streaming";
   import { pageTitle } from "$lib/core/title";
   import MarketingConnectDialog from "$lib/modules/marketing/MarketingConnectDialog.svelte";
   import MarketingDashboard from "$lib/modules/marketing/MarketingDashboard.svelte";
@@ -19,33 +20,49 @@
   let connecting = $state(false);
 
   const company = $derived(data.company);
-  // The metrics stream in behind the shell (docs/PERFORMANCE.md). Resolved into `$state` rather
-  // than awaited in the markup: a raw `{#await}` falls back to its pending branch on every
-  // invalidation, and this dashboard's edit mode holds unsaved tile names and orders that a
-  // `?/saveLayout` round-trip would then throw away.
-  let marketing = $state<CompanyMarketing | null>(null);
-  let pending = $state(true);
+  // The metrics either shipped in the shell or stream in behind it (`$lib/core/streaming`,
+  // docs/PERFORMANCE.md). Seeded from the shell's answer so the server renders the dashboard in
+  // its final shape, and resolved into `$state` rather than awaited in the markup: a raw
+  // `{#await}` falls back to its pending branch on every invalidation, and this dashboard's edit
+  // mode holds unsaved tile names and orders that a `?/saveLayout` round-trip would then throw
+  // away.
+  let marketing = $state<CompanyMarketing | null>(
+    settledNow(data.metrics) as CompanyMarketing | null,
+  );
+  let pending = $state(isPending(data.metrics));
   $effect(() => {
-    const promise = data.metrics;
+    const incoming = data.metrics;
+    if (!isPending(incoming)) {
+      marketing = incoming as CompanyMarketing | null;
+      pending = false;
+      return;
+    }
     pending = true;
-    void promise.then((value) => {
+    void incoming.then((value) => {
       // Ignore a resolution the user has already navigated away from — the period tabs are links,
       // so a quick second click can land two in-flight loads out of order.
-      if (data.metrics !== promise) return;
+      if (data.metrics !== incoming) return;
       marketing = value as CompanyMarketing | null;
       pending = false;
     });
   });
 
   // The leads dashboard, resolved the same way for the same reason (docs/MARKETING.md).
-  let leads = $state<LeadsDashboard | null>(null);
-  let leadsPending = $state(true);
-  let leadsError = $state<string | null>(null);
+  const leadsNow = settledNow(data.leads);
+  let leads = $state<LeadsDashboard | null>(leadsNow?.data ?? null);
+  let leadsPending = $state(isPending(data.leads));
+  let leadsError = $state<string | null>(leadsNow?.errorKey ?? null);
   $effect(() => {
-    const promise = data.leads;
+    const incoming = data.leads;
+    if (!isPending(incoming)) {
+      leads = incoming?.data ?? null;
+      leadsError = incoming?.errorKey ?? null;
+      leadsPending = false;
+      return;
+    }
     leadsPending = true;
-    void promise.then((value) => {
-      if (data.leads !== promise) return;
+    void incoming.then((value) => {
+      if (data.leads !== incoming) return;
       leads = value?.data ?? null;
       leadsError = value?.errorKey ?? null;
       leadsPending = false;

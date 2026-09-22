@@ -3,23 +3,12 @@
  * panel (#188). The API stores/returns UTC instants; the browser only ever converts *from* an
  * instant *to* the org-local day/time (deterministic and DST-safe), never the other way — that
  * direction is the API's job, so a day-drag stays correct across a DST boundary (§8).
+ *
+ * `localDayTime` itself lives in `$lib/core/wallclock` now: the time module needed the same
+ * conversion and may not import a sibling module's internals (§6), so it moved to core and is
+ * re-exported here for the callers that already knew it by this name.
  */
-import { getTimeZone } from "$lib/core/timezone";
-
-/** An instant → its org-local calendar day (`yyyy-mm-dd`) and 24-hour clock time (`HH:MM`). */
-export function localDayTime(iso: string): { day: string; time: string } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: getTimeZone(),
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(iso));
-  const g = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return { day: `${g("year")}-${g("month")}-${g("day")}`, time: `${g("hour")}:${g("minute")}` };
-}
+export { localDayTime } from "$lib/core/wallclock";
 
 /** Whole worked minutes between two instants — the block's length, for the log-time prefill. */
 export function durationMinutes(startsAt: string, endsAt: string): number {

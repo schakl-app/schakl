@@ -4,6 +4,9 @@
  * They live outside the component for one reason: both encode a rule that is easy to get
  * subtly wrong and impossible to see in a screenshot, so both are unit-tested.
  */
+// Relative, extension and all: node's test runner loads this file directly (see `today.ts`).
+import { wallClockIn } from "../../core/wallclock.ts";
+import { getTimeZone } from "../../core/timezone.ts";
 
 /**
  * Does a prefill built for `prefillDate` survive a navigation to `newDay`?
@@ -18,9 +21,14 @@ export function shouldKeepPrefill(prefillDate: string | null, newDay: string): b
   return prefillDate !== null && prefillDate === newDay;
 }
 
-/** The end of the last entry on a day, as `HH:MM`, or null when the day is empty. */
+/**
+ * The end of the last entry on a day, as `HH:MM` on the **org's** clock, or null when the day is
+ * empty. `zone` is the tenant's unless a test names one: reading `getHours()` off the `Date`
+ * gave the *browser's* clock, which is the org's only on a desk in the same zone (§8).
+ */
 export function endOfDay(
   entries: readonly { started_at: string; ended_at?: string | null }[],
+  zone: string = getTimeZone(),
 ): string | null {
   let latest: Date | null = null;
   for (const entry of entries) {
@@ -31,7 +39,7 @@ export function endOfDay(
     if (latest === null || at > latest) latest = at;
   }
   if (latest === null) return null;
-  return `${String(latest.getHours()).padStart(2, "0")}:${String(latest.getMinutes()).padStart(2, "0")}`;
+  return wallClockIn(latest.toISOString(), zone).time;
 }
 
 /**
@@ -44,6 +52,7 @@ export function endOfDay(
 export function nextStartFrom(
   entries: readonly { started_at: string; ended_at?: string | null }[],
   fallback = "09:00",
+  zone: string = getTimeZone(),
 ): string {
-  return endOfDay(entries) ?? fallback;
+  return endOfDay(entries, zone) ?? fallback;
 }

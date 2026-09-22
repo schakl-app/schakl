@@ -20,6 +20,23 @@ if TYPE_CHECKING:
     from authlib.integrations.httpx_client import AsyncOAuth2Client
 
 
+class SourceRefused(RuntimeError):
+    """The credential works and the provider refused *this question* anyway.
+
+    A 401 from SE Ranking's AI Result Tracker on a project whose plan does not include it is
+    permanent, by design, and says nothing about the key — the keyword table on the same
+    credential answers a second later. Read as a bare status it became *"SE Ranking weigert de
+    API-sleutel"* on a drill-down, which sent an agency to re-check a key that was working (the
+    report path had already learned this, `_seranking_part`; the drill-down had not). An
+    adapter raises this with the i18n key that names the entitlement, and the drill-down prints
+    that instead of a verdict on the credential.
+    """
+
+    def __init__(self, message_key: str) -> None:
+        super().__init__(message_key)
+        self.message_key = message_key
+
+
 @dataclass(frozen=True)
 class AccountOption:
     """One pickable account/property/site a connection can reach (#132 picker option)."""

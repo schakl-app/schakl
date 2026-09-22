@@ -32,6 +32,9 @@ export interface ReportSectionRef {
 export interface ReportWarning {
   code: string;
   detail?: string;
+  /** The tenant's own name for the source the sentence is about (#446), resolved by the run
+   *  that wrote it: the review desk holds no labels of its own. Absent on older runs. */
+  source?: string | null;
 }
 
 /**

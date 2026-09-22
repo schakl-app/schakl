@@ -41,7 +41,7 @@ from app.core.ai.schemas import (
     AIUsageFeature,
     AIUsageSummary,
 )
-from app.core.ai.transcribe import DEFAULT_SPEECH_MODEL, can_transcribe
+from app.core.ai.transcribe import DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_MODELS, can_transcribe
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -214,7 +214,7 @@ class AIService:
         return ProviderConfig(
             provider=provider,
             api_key=api_key,
-            model=row.speech_model or DEFAULT_SPEECH_MODEL,
+            model=row.speech_model or DEFAULT_SPEECH_MODELS.get(provider, DEFAULT_SPEECH_MODEL),
             base_url=base_url,
         )
 

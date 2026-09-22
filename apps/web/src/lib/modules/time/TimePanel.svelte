@@ -43,6 +43,7 @@
   import PanelHeader from "$lib/core/ui/PanelHeader.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
   import PersonChip from "$lib/core/ui/PersonChip.svelte";
+  import { localDayTime } from "$lib/core/wallclock";
 
   import EntryQuickEdit from "./EntryQuickEdit.svelte";
   import LogTimeDialog from "./LogTimeDialog.svelte";
@@ -85,12 +86,12 @@
    *  hold are all we can honestly claim, so the notice simply does not appear. */
   const totalEntries = $derived((data.total_entries ?? recent.length) as number);
 
-  // Entry times are wall-clock stored as UTC (`format.ts`), so the day is sliced off the ISO
-  // string rather than parsed through a zone — the same read `TimeEntryRow` and `EntryForm` do.
+  // An entry's start is an instant; its *day* is the org's (§8, `localDayTime`) — the same
+  // conversion `TimeEntryRow` and `EntryForm` read the row with.
   function groupByDay(rows: RecentEntry[]) {
     const groups: { day: string; entries: RecentEntry[] }[] = [];
     for (const entry of rows) {
-      const day = entry.started_at.slice(0, 10);
+      const day = localDayTime(entry.started_at).day;
       const last = groups.at(-1);
       if (last?.day === day) last.entries.push(entry);
       else groups.push({ day, entries: [entry] });

@@ -29,6 +29,8 @@ from app.modules.marketing.jobs import (
     marketing_backfill_link,
     marketing_sync_all,
     marketing_sync_link,
+    marketing_warm_company,
+    marketing_warm_dashboards,
 )
 from app.modules.marketing.mcp import MARKETING_MCP_TOOLS
 from app.modules.marketing.panels import marketing_company_panel
@@ -61,10 +63,16 @@ module = ModuleDescriptor(
     report_sections=MARKETING_REPORT_SECTIONS,
     # Nightly, per org, after the platform's other early jobs (subscriptions runs 05:30). The
     # daily aggregates power the panel/tab/overview without burning Google quota on page views.
-    cron_jobs=[cron(marketing_sync_all, hour=4, minute=45)],
-    # One-off jobs the API/cron enqueue by name: per-link nightly sync and the 13-month backfill
-    # kicked off when a link is first created. Names are globally unique.
-    worker_functions=[marketing_sync_link, marketing_backfill_link],
+    cron_jobs=[
+        cron(marketing_sync_all, hour=4, minute=45),
+        # The tab's Redis keys for the day — leads dashboard and drill-down tables — read
+        # before anyone opens it (docs/MARKETING.md). After the sync, whose links it reads through.
+        cron(marketing_warm_dashboards, hour=5, minute=45),
+    ],
+    # One-off jobs the API/cron enqueue by name: per-link nightly sync, the 13-month backfill
+    # kicked off when a link is first created, and one client's leads warm after a profile
+    # save. Names are globally unique.
+    worker_functions=[marketing_sync_link, marketing_backfill_link, marketing_warm_company],
 )
 
 registry.register(module)

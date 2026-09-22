@@ -143,7 +143,7 @@ class Settings(BaseSettings):
             "interactions", "google", "microsoft", "marketing", "google_ads",
             "google_analytics", "google_search_console", "google_tag_manager", "hr",
             "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
-            "snelstart", "timeon",
+            "snelstart", "timeon", "meetings",
         ]
     )
     default_locale: str = "nl"

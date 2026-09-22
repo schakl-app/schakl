@@ -21,6 +21,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { localDayTime } from "$lib/core/wallclock";
   import { taskBurn } from "$lib/modules/tasks/budget";
   import { billableSettled, projectBillableDefault } from "$lib/modules/time/billable";
   import { endFromDuration, minutesBetween } from "$lib/modules/time/duration";
@@ -168,9 +169,13 @@
     description?: string | null;
     entry_type_key?: string | null;
   } | null;
-  let fDate = $state(entry ? entry.started_at.slice(0, 10) : (restored?.date ?? date));
-  let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
-  let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : (restored?.end ?? ""));
+  // An entry's instants read as the org's day and clock (§8, `localDayTime`) — the same
+  // conversion the row beside this form prints with, so the field opens on the time it showed.
+  const started = entry ? localDayTime(entry.started_at) : null;
+  const ended = entry?.ended_at ? localDayTime(entry.ended_at) : null;
+  let fDate = $state(started ? started.day : (restored?.date ?? date));
+  let fStart = $state(started ? started.time : (restored?.start ?? ""));
+  let fEnd = $state(ended ? ended.time : (restored?.end ?? ""));
   let fBreak = $state<number | null>(entry?.break_minutes ?? restored?.break_minutes ?? 0);
   /** What a new entry on this project bills by default (#284) — false where a subscription
    *  covers it, because the retainer already pays for that work. Mirrors what the API

@@ -161,11 +161,21 @@
   {/if}
 
   {#if loading}
-    <p class="text-sm text-text-muted">{t("marketing.loading")}</p>
+    <!-- Five rows' worth of height, so a section does not grow when its tables land: with the
+         nightly warm they are a Redis hit and arrive together, and a table that replaces one
+         line of text moves everything under it. -->
+    <div class="space-y-2" role="status" aria-busy="true">
+      {#each [0, 1, 2, 3, 4] as i (i)}
+        <div class="h-4 animate-pulse rounded bg-surface"></div>
+      {/each}
+      <p class="text-xs text-text-muted">{t("marketing.loading")}</p>
+    </div>
   {:else if data && !data.available && !editsLabels}
     <p class="text-sm text-text-muted">
       {t("marketing.drilldown_unavailable", {
-        reason: t(data.unavailable_reason ?? "marketing.no_data"),
+        reason: t(data.unavailable_reason ?? "marketing.no_data", {
+          source: label ?? sourceLabel(source),
+        }),
       })}
     </p>
   {:else if (!data || data.rows.length === 0) && !editsLabels}

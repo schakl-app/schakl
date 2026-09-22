@@ -44,7 +44,7 @@
     </p>
     <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
       <span class="tabular-nums">
-        {fmtNumericDate(entry.started_at.slice(0, 10))}
+        {fmtNumericDate(entry.started_at)}
         {formatTime(entry.started_at)}
       </span>
       {#if entry.description}<span class="truncate">{entry.description}</span>{/if}

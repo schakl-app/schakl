@@ -160,10 +160,11 @@ export const actions: Actions = {
 
     const { error } = await apiFor(event).POST("/api/v1/time/entries", {
       body: {
-        // Times are entered + stored as wall-clock (as UTC); the API rolls the end forward a day
-        // if it isn't after the start (overnight spans).
-        started_at: `${date}T${start}:00Z`,
-        ended_at: `${date}T${end}:00Z`,
+        // The typed clock goes over naked — no `Z` — and the API reads it as the org's wall
+        // clock (§8, `as_instant`); it rolls an end that is not after the start forward a day
+        // (an overnight span) rather than refusing it.
+        started_at: `${date}T${start}:00`,
+        ended_at: `${date}T${end}:00`,
         break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
@@ -190,8 +191,8 @@ export const actions: Actions = {
     const { error } = await apiFor(event).PATCH("/api/v1/time/entries/{entry_id}", {
       params: { path: { entry_id: id } },
       body: {
-        started_at: `${date}T${start}:00Z`,
-        ended_at: `${date}T${end}:00Z`,
+        started_at: `${date}T${start}:00`,
+        ended_at: `${date}T${end}:00`,
         break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,

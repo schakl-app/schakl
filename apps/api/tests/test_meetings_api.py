@@ -1,0 +1,465 @@
+"""Meetings end to end: recording, folding, the worker run, review, confirm — with the
+provider faked at the two seams every AI feature here goes through (``stream_chat`` and the
+transcription call), so these exercise the platform's own rules with no network."""
+
+from __future__ import annotations
+
+import base64
+import uuid
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+
+import pytest
+from pwdlib import PasswordHash
+from sqlalchemy import select
+
+from app.config import settings
+from app.core.ai.models import AIUsage
+from app.core.ai.providers import AIEvent, ToolCall
+from app.core.ai.transcribe import Segment, Transcript
+from app.core.auth.models import User
+from app.core.models import Org
+from app.core.storage.models import StoredFile
+from app.db import async_session_maker, set_current_org
+from app.modules.meetings.jobs import run_pipeline
+from app.modules.meetings.models import Meeting
+from tests.conftest import add_membership, auth_cookie, make_tenant
+
+_password_hash = PasswordHash.recommended()
+
+
+@pytest.fixture(autouse=True)
+def _no_queue(monkeypatch) -> None:
+    """The finish and the retry hand the row to the worker; here the worker is called by hand,
+    and the process-wide arq pool would otherwise be bound to the first test's event loop."""
+
+    async def _queued(*args, **kwargs):  # noqa: ANN002, ANN003
+        return object()
+
+    monkeypatch.setattr("app.modules.meetings.service.enqueue", _queued)
+
+SETTINGS_BODY = {
+    "provider": "anthropic",
+    "api_key": "sk-test-super-secret-123",
+    "features": {"meeting_assist": {"enabled": True}},
+    "speech_provider": "mistral",
+    "speech_api_key": "mistral-secret-456",
+}
+WEBM_HEADER = b"\x1a\x45\xdf\xa3" + b"\x00" * 200
+_B64 = lambda raw: base64.b64encode(raw).decode()  # noqa: E731
+
+TRANSCRIPT = (
+    "Goedemorgen allemaal. We hebben besloten dat de nieuwe homepage vrijdag 3 oktober live gaat. "
+    "Sanne pakt de teksten voor de homepage op en levert ze woensdag aan. "
+    "Jan van de klant stuurt het nieuwe logo nog deze week."
+)
+
+
+def _fake_transcribe(seconds: int = 900):
+    async def fake(config, clip, *, language, diarize=False, timestamps=False):  # noqa: ANN001
+        assert clip.extension == "webm"
+        return Transcript(
+            text=TRANSCRIPT,
+            seconds=seconds,
+            segments=(
+                Segment(0.0, 3.0, "Goedemorgen allemaal.", "speaker_0"),
+                Segment(
+                    3.0,
+                    9.0,
+                    "We hebben besloten dat de nieuwe homepage vrijdag 3 oktober live gaat.",
+                    "speaker_0",
+                ),
+                Segment(
+                    9.0,
+                    15.0,
+                    "Sanne pakt de teksten voor de homepage op en levert ze woensdag aan.",
+                    "speaker_1",
+                ),
+                Segment(
+                    15.0,
+                    20.0,
+                    "Jan van de klant stuurt het nieuwe logo nog deze week.",
+                    "speaker_2",
+                ),
+            ),
+        )
+
+    return fake
+
+
+def _fake_stream(events: list[AIEvent]):
+    async def fake(config, **kwargs) -> AsyncIterator[AIEvent]:  # noqa: ANN001, ANN003
+        for event in events:
+            yield event
+
+    return fake
+
+
+def _submit(**fields) -> list[AIEvent]:  # noqa: ANN003
+    return [
+        AIEvent(
+            kind="tool_call", tool_call=ToolCall(id="c1", name="submit_minutes", input=dict(fields))
+        ),
+        AIEvent(kind="done", stop_reason="tool_use", tokens_in=1200, tokens_out=300),
+    ]
+
+
+def _minutes(staff_id: str) -> dict:
+    return {
+        "summary": "Kick-off van de nieuwe homepage; livegang staat op 3 oktober.",
+        "topics": [{"heading": "Homepage", "text": "De teksten en het logo."}],
+        "decisions": [
+            {
+                "text": "Homepage gaat vrijdag 3 oktober live",
+                "quote": "de nieuwe homepage vrijdag 3 oktober live gaat",
+                "at": 5,
+            },
+            {
+                "text": "Iets dat niemand zei",
+                "quote": "we stoppen met de nieuwsbrief per direct",
+                "at": 8,
+            },
+        ],
+        "action_items": [
+            {
+                "title": "Homepageteksten aanleveren",
+                "quote": "Sanne pakt de teksten voor de homepage op en levert ze woensdag aan",
+                "assignee_user_id": staff_id,
+                "due_date": "2026-09-30",
+                "at": 10,
+            },
+            {
+                "title": "Nieuw logo sturen",
+                "quote": "Jan van de klant stuurt het nieuwe logo nog deze week",
+                "owner_label": "Jan (klant)",
+                "at": 16,
+            },
+        ],
+        "open_questions": ["Wie regelt de hosting?"],
+    }
+
+
+async def _record(c, headers, *, company_id: str | None = None, chunks: int = 2) -> dict:  # noqa: ANN001
+    created = await c.post(
+        "/api/v1/meetings",
+        json={
+            "title": "Kick-off homepage",
+            "company_id": company_id,
+            "participants_informed": True,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    meeting = created.json()
+    assert meeting["status"] == "recording"
+    for seq in range(chunks):
+        raw = WEBM_HEADER if seq == 0 else b"\x01" * 300
+        res = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/chunks",
+            json={"seq": seq, "audio": _B64(raw)},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["chunks_received"] == seq + 1
+    finished = await c.post(
+        f"/api/v1/meetings/{meeting['id']}/finish", json={"duration_seconds": 20}, headers=headers
+    )
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["status"] == "queued"
+    return finished.json()
+
+
+async def _run(org_id: uuid.UUID, meeting_id: str) -> None:
+    async with async_session_maker() as session:
+        org = await session.get(Org, org_id)
+        await set_current_org(session, org.id)
+        await run_pipeline(session, org, uuid.UUID(meeting_id))
+
+
+# --------------------------------------------------------------------------- #
+async def test_a_recording_is_only_opened_when_the_others_were_told(client_for) -> None:
+    t = await make_tenant("meet-informed")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        res = await c.post("/api/v1/meetings", json={"title": "x"}, headers=headers)
+        assert res.status_code == 422, res.text
+        assert (
+            res.json()["error"]["fields"]["participants_informed"]
+            == "meetings.error.participants_informed"
+        )
+
+
+async def test_a_recording_needs_a_provider_that_can_transcribe(client_for) -> None:
+    """Off means invisible on the screen; the API says why (409) rather than storing audio
+    nobody could ever turn into words."""
+    t = await make_tenant("meet-noai")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        res = await c.post(
+            "/api/v1/meetings", json={"title": "x", "participants_informed": True}, headers=headers
+        )
+        assert res.status_code == 409, res.text
+        assert res.json()["error"]["code"] == "ai_feature_disabled"
+
+
+async def test_the_worker_folds_transcribes_and_drafts(client_for, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    t = await make_tenant("meet-run")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        meeting = await _record(c, headers, company_id=company["id"])
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        await _run(t.org.id, meeting["id"])
+
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review", detail
+        assert detail["company_name"] == "Nova"
+        # The recording exists as one file; the two pieces were folded into it and dropped.
+        assert detail["audio_file_id"] and detail["chunks_received"] == 0
+        assert detail["transcript_parts"] == 1
+        assert [s["speaker"] for s in detail["segments"]] == ["S1", "S1", "S2", "S3"]
+        assert detail["duration_seconds"] == 20  # the recorder's count; the provider agreed
+        minutes = detail["minutes"]
+        assert minutes["summary"].startswith("Kick-off")
+        assert [d["verified"] for d in minutes["decisions"]] == [True, False]
+        ours, theirs = minutes["action_items"]
+        assert ours["assignee_user_id"] == str(t.user.id) and ours["create_task"] is True
+        assert theirs["assignee_user_id"] is None and theirs["create_task"] is False
+        assert theirs["verified"] is True
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        files = (
+            (await session.execute(select(StoredFile).where(StoredFile.org_id == t.org.id)))
+            .scalars()
+            .all()
+        )
+        assert len(files) == 1 and files[0].content_id is None
+        assert files[0].size_bytes == len(WEBM_HEADER) + 300
+        usage = (
+            (await session.execute(select(AIUsage).where(AIUsage.org_id == t.org.id)))
+            .scalars()
+            .all()
+        )
+        audio = [u for u in usage if u.audio_seconds]
+        assert (
+            len(audio) == 1
+            and audio[0].audio_seconds == 900
+            and audio[0].feature == "meeting_assist"
+        )
+        assert any(u.tokens_in == 1200 for u in usage)
+
+
+async def test_confirm_writes_a_contact_moment_and_the_ticked_tasks(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
+    t = await make_tenant("meet-confirm")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        meeting = await _record(c, headers, company_id=company["id"])
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        minutes = detail["minutes"]
+        # The reviewer corrects the invented decision away, ticks the client's promise too.
+        minutes["decisions"] = minutes["decisions"][:1]
+        minutes["action_items"][1]["create_task"] = True
+
+        res = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/confirm", json={"minutes": minutes}, headers=headers
+        )
+        assert res.status_code == 200, res.text
+        result = res.json()
+        assert len(result["task_ids"]) == 2 and result["skipped"] == []
+
+        interaction = (
+            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+        ).json()
+        assert interaction["kind"] == "physical_meeting"
+        assert interaction["subject"] == "Kick-off homepage"
+        assert interaction["company_id"] == company["id"]
+        assert "3 oktober" in interaction["body_text"]
+        assert {task["id"] for task in interaction["tasks"]} == set(result["task_ids"])
+
+        task = (await c.get(f"/api/v1/tasks/{result['task_ids'][0]}", headers=headers)).json()
+        assert task["title"] == "Homepageteksten aanleveren"
+        assert task["company_id"] == company["id"]
+        assert task["due_date"] == "2026-09-30"
+        assert task["assignee_user_id"] == str(t.user.id)
+        assert "Sanne pakt de teksten" in task["description"]
+
+        done = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert done["status"] == "done" and done["interaction_id"] == result["interaction_id"]
+        assert set(done["task_ids"]) == set(result["task_ids"])
+        # A second confirm is refused: the minutes are a record now.
+        again = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/confirm", json={"minutes": minutes}, headers=headers
+        )
+        assert again.status_code == 409
+
+
+async def test_confirm_reports_a_task_it_could_not_make(client_for, tmp_path, monkeypatch) -> None:
+    """No client on the meeting: the minutes still land, the task is named as skipped with the
+    field the tasks module refused on (§18's split, never a rolled-back confirm)."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
+    t = await make_tenant("meet-skip")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        meeting = await _record(c, headers)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        res = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/confirm",
+            json={"minutes": detail["minutes"]},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["task_ids"] == []
+        assert res.json()["skipped"][0]["fields"] == {"company_id": "errors.tasks_company_required"}
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "done"
+
+
+async def test_a_provider_failure_ends_on_failed_with_a_reason(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+
+    async def refuse(config, clip, **kwargs):  # noqa: ANN001, ANN003
+        from app.core.ai.providers import AIProviderError
+
+        raise AIProviderError("401 invalid key")
+
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", refuse)
+    t = await make_tenant("meet-fail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        meeting = await _record(c, headers)
+        await _run(t.org.id, meeting["id"])
+        status = (await c.get(f"/api/v1/meetings/{meeting['id']}/status", headers=headers)).json()
+        assert status["status"] == "failed" and status["error_key"] == "errors.ai_provider_error"
+        # The audio survived the failure: a retry reads the folded recording back.
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["audio_file_id"] is not None
+        monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        retried = await c.post(f"/api/v1/meetings/{meeting['id']}/retry", headers=headers)
+        assert retried.status_code == 200 and retried.json()["status"] == "queued"
+        await _run(t.org.id, meeting["id"])
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "review"
+
+
+async def test_meetings_tenant_isolation(client_for, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    a = await make_tenant("meet-iso-a")
+    b = await make_tenant("meet-iso-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+    async with client_for(a.host) as ca:
+        await ca.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=a_headers)
+        meeting = await _record(ca, a_headers)
+    async with client_for(b.host) as cb:
+        await cb.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=b_headers)
+        assert (
+            await cb.get(f"/api/v1/meetings/{meeting['id']}", headers=b_headers)
+        ).status_code == 404
+        assert (await cb.get("/api/v1/meetings", headers=b_headers)).json()["total"] == 0
+        assert (
+            await cb.post(
+                f"/api/v1/meetings/{meeting['id']}/chunks",
+                json={"seq": 5, "audio": _B64(b"\x01" * 10)},
+                headers=b_headers,
+            )
+        ).status_code == 404
+        assert (
+            await cb.delete(f"/api/v1/meetings/{meeting['id']}", headers=b_headers)
+        ).status_code == 404
+
+
+async def test_deleting_takes_the_audio_and_needs_its_own_key(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("meet-delete")
+    headers = await auth_cookie(t.user)
+    async with async_session_maker() as session:
+        member = User(
+            id=uuid.uuid4(),
+            email="member-meet@example.com",
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(member)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, member.id, role="member")
+        await session.commit()
+    member_headers = await auth_cookie(member, t.org.id)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        meeting = await _record(c, member_headers)  # a member records
+        # …and may not delete: the seeded member role holds read and write, not delete.
+        assert (
+            await c.delete(f"/api/v1/meetings/{meeting['id']}", headers=member_headers)
+        ).status_code == 403
+        assert (
+            await c.delete(f"/api/v1/meetings/{meeting['id']}", headers=headers)
+        ).status_code == 204
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.scalar(select(Meeting).where(Meeting.org_id == t.org.id))) is None
+        left = (
+            (await session.execute(select(StoredFile).where(StoredFile.org_id == t.org.id)))
+            .scalars()
+            .all()
+        )
+        assert left == []
+
+
+async def test_the_list_is_two_statements_however_many_rows(
+    client_for, tmp_path, monkeypatch, count_queries
+) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("meet-perf")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        for _ in range(6):
+            await _record(c, headers, company_id=company["id"], chunks=1)
+        with count_queries() as counter:
+            res = await c.get("/api/v1/meetings?limit=50", headers=headers)
+        assert res.status_code == 200 and res.json()["total"] == 6
+        assert len(res.json()["items"]) == 6 and res.json()["items"][0]["company_name"] == "Nova"
+        assert len(counter.matching("from meetings")) == 2  # the page and its count
+        # The labels, batched: one ``IN`` over every client on the page (the trash anchor's
+        # ``NOT EXISTS`` inside the two statements above also names ``companies``, by id).
+        assert len(counter.matching("companies.id in")) == 1
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)

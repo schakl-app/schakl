@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from app.modules.marketing.sources.seranking import (
     SeRankingAdapter,
     _keyword_entries,
@@ -338,3 +340,34 @@ async def test_accounts_are_listed_for_linking_never_guessed_from_a_domain() -> 
     assert [option.display_name for option in options] == ["Alpha", "Zeta"]
     assert options[0].external_id == "1"
     assert options[0].config["keyword_count"] == 9
+
+
+async def test_a_tracker_the_plan_does_not_include_is_an_entitlement_not_a_key_problem() -> None:
+    """A project whose plan has no AI Result Tracker answers 401 on the engine list while its
+    positions keep answering on the very same key. Read as a bare status that became *"SE
+    Ranking weigert de API-sleutel"* on the drill-down — a verdict on a credential that was
+    working. The adapter names the entitlement instead, and the report path reads the same
+    refusal as *unavailable* rather than as an outage."""
+    from app.modules.marketing.report_sections import GatheredMarketing, _seranking_part
+    from app.modules.marketing.sources.base import SourceRefused
+
+    client = _Client({"/ai-result-tracker/llm-engines": _Response({}, status=401)})
+    with pytest.raises(SourceRefused) as caught:
+        await ADAPTER.ai_search(client, "1", date(2026, 7, 1), date(2026, 7, 31))
+    assert caught.value.message_key == "marketing.seranking_ai_search_unavailable"
+
+    out = GatheredMarketing(seranking_name="breik. Analytics")
+
+    async def refused() -> list:
+        raise SourceRefused("marketing.seranking_ai_search_unavailable")
+
+    assert await _seranking_part(out, "ai", refused(), default=[]) == []
+    # The warning names the part, not the credential — in the tenant's own word for the
+    # source (#446), because the review desk that prints it later holds no labels.
+    assert out.notes == [
+        {
+            "code": "reporting.warning.seranking_ai_unavailable",
+            "detail": "",
+            "source": "breik. Analytics",
+        }
+    ]

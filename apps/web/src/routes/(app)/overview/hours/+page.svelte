@@ -22,6 +22,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import { localDayTime } from "$lib/core/wallclock";
   import { TIME_REPORT_COLUMNS } from "$lib/modules/time/columns";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
   import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
@@ -326,7 +327,7 @@
 <!-- Cells ------------------------------------------------------------------- -->
 {#snippet dateCell(e: Entry)}
   <span class="block truncate tabular-nums text-text">
-    {fmtNumericDate(e.started_at.slice(0, 10))}
+    {fmtNumericDate(e.started_at)}
     <span class="text-xs text-text-muted">{formatTime(e.started_at)}</span>
   </span>
 {/snippet}
@@ -509,7 +510,7 @@
         action="?/updateEntry"
         deleteAction="?/deleteEntry"
         entry={editingEntry}
-        date={editingEntry.started_at.slice(0, 10)}
+        date={localDayTime(editingEntry.started_at).day}
         companies={data.companies}
         projects={data.projects}
         tasks={data.tasks}

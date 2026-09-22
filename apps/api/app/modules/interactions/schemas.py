@@ -151,8 +151,9 @@ class InteractionRead(BaseModel):
 
 class InteractionLogTime(BaseModel):
     """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
-    same transaction as the interaction. Times follow the *time* module's convention
-    (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet."""
+    same transaction as the interaction. Times follow the *time* module's rule (§8): a naive
+    time is the org's wall clock, an aware one an instant — the entry must round-trip the
+    timesheet."""
 
     started_at: datetime
     ended_at: datetime

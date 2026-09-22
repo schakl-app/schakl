@@ -42,7 +42,7 @@ from dataclasses import dataclass, field, fields
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from app.core.ai.prompts import language_name
+from app.core.ai.prompts import calendar_line, language_name
 from app.core.ai.providers import ChatMessage, ToolDef
 from app.core.ai.service import AIService, enabled_features
 from app.core.tenancy import RequestContext
@@ -270,24 +270,6 @@ def plan_from_call(
         checklist_items=items,
         links=_grounded_links(submitted.get("links"), body=body),
         requires_interaction=requires if isinstance(requires, bool) else None,
-    )
-
-
-def calendar_line(today: date, now: datetime | None = None, *, days: int = 14) -> str:
-    """Today *with its weekday*, the local time, and the next two weeks as weekday → date.
-
-    A model told only "today is 2026-09-14" has to work out for itself that it is a Monday,
-    and gets it wrong often enough that "a.s. vrijdag" landed on the Thursday. Weekday
-    arithmetic is ours to do, so the prompt states every day it may resolve a word against.
-    """
-    clock = f", local time {now:%H:%M}" if now is not None else ""
-    ahead = ", ".join(
-        f"{today + timedelta(days=offset):%a} {(today + timedelta(days=offset)).isoformat()}"
-        for offset in range(1, days + 1)
-    )
-    return (
-        f"Today is {today:%A} {today.isoformat()}{clock}. The days ahead, by weekday: {ahead}. "
-        "A weekday named without 'next' ('vrijdag', 'a.s. vrijdag') is the coming one."
     )
 
 

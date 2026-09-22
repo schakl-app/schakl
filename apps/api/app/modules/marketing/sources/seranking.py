@@ -41,6 +41,7 @@ from app.modules.marketing.sources.base import (
     DailyMetrics,
     DrilldownRow,
     DrilldownTable,
+    SourceRefused,
     register,
 )
 
@@ -578,6 +579,11 @@ class SeRankingAdapter:
         response = await client.get(
             f"{api_v1()}/projects/{external_id}/ai-result-tracker/llm-engines"
         )
+        if response.status_code in (401, 403):
+            # A project whose plan has no AI Result Tracker answers 401 here, permanently,
+            # while its positions and audit keep answering on the same key. That is an
+            # entitlement, not a credential problem, and the sentence has to say so.
+            raise SourceRefused("marketing.seranking_ai_search_unavailable")
         response.raise_for_status()
         engines = _rows(response.json(), "engines")
         out: list[dict[str, Any]] = []

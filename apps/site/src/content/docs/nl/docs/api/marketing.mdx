@@ -7,7 +7,7 @@ sidebar:
 
 De cijfers van de klant, de advertenties die ze bewegen, de container die ze meet, en het maandelijkse document dat ze uitlegt.
 
-120 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+129 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `marketing`
 
@@ -15,7 +15,13 @@ De cijfers van de klant, de advertenties die ze bewegen, de container die ze mee
 | --- | --- |
 | `GET` `/marketing/accounts` | `marketing.link.manage` |
 | `GET` `/marketing/clients` | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/ai-search` | `marketing.metrics.read` |
+| `POST` `/marketing/companies/{company_id}/ai-search/brand` | `marketing.link.manage` |
+| `POST` `/marketing/companies/{company_id}/ai-search/refresh` | `marketing.link.manage` |
+| `PUT` `/marketing/companies/{company_id}/ai-search/settings` | `marketing.link.manage` |
 | `GET` `/marketing/companies/{company_id}/drilldown` | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/leads` | `marketing.metrics.read` |
+| `GET` `/marketing/companies/{company_id}/leads/catalog` | `marketing.link.manage` |
 | `GET` `/marketing/companies/{company_id}/metrics` | `marketing.metrics.read` |
 | `GET` `/marketing/companies/{company_id}/settings` | `marketing.metrics.read` |
 | `PUT` `/marketing/companies/{company_id}/settings` | `marketing.link.manage` |
@@ -23,9 +29,12 @@ De cijfers van de klant, de advertenties die ze bewegen, de container die ze mee
 | `GET` `/marketing/links` | `marketing.metrics.read` |
 | `POST` `/marketing/links` | `marketing.link.manage` |
 | `DELETE` `/marketing/links/{link_id}` | `marketing.link.manage` |
+| `POST` `/marketing/links/{link_id}/ai-visibility/import` | `marketing.link.manage` |
+| `POST` `/marketing/links/{link_id}/ai-visibility/rows` | `marketing.link.manage` |
 | `GET` `/marketing/overview` | `marketing.overview.read` |
 | `GET` `/marketing/settings` | `marketing.link.manage` |
 | `PUT` `/marketing/settings` | `marketing.link.manage` |
+| `GET` `/marketing/settings/seranking/check` | `marketing.link.manage` |
 | `GET` `/marketing/summary` | `marketing.metrics.read` |
 
 <details>
@@ -61,6 +70,50 @@ Queryparameters:
 
 Antwoord: `200` · `MarketingClientList`
 
+#### `GET /api/v1/marketing/companies/{company_id}/ai-search`
+
+**Company Ai Search** — How visible this client's brand is in AI answers (ChatGPT, Perplexity, Gemini, Google's AI Overviews and AI Mode) **last month, against the month before** — SE Ranking's AI Search overview (docs/SERANKING.md): brand presence, link presence, average position and AI opportunity traffic, plus the monthly series behind them.
+
+Recht: `marketing.metrics.read`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `AiSearchOverview`
+
+#### `POST /api/v1/marketing/companies/{company_id}/ai-search/brand`
+
+**Lookup Company Ai Search Brand** — The brand name(s) SE Ranking attributes to this client's target (100 units). Brand presence counts *that* brand's mentions, so a wrong attribution is a wrong number — look it up, and set the brand explicitly where SE Ranking's answer is not the client's trade name.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Request body: `BrandLookupRequest`
+
+Antwoord: `200` · `BrandLookup`
+
+#### `POST /api/v1/marketing/companies/{company_id}/ai-search/refresh`
+
+**Refresh Company Ai Search** — Ask SE Ranking again **now**, whatever is stored. Spends 800 units per configured engine choice — which is why it is the manage permission and its own verb, never a parameter on the read: after a changed key, a topped-up plan or a corrected brand.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `AiSearchOverview`
+
+#### `PUT /api/v1/marketing/companies/{company_id}/ai-search/settings`
+
+**Set Company Ai Search Settings** — This client's AI Search settings, as a diff over the house defaults in Instellingen → Marketing: on/off, engines (``all`` is SE Ranking's cross-engine aggregate), the country database, the scope, the target and the brand. **Posted whole** — a field left ``null`` follows the house default. Saving asks SE Ranking nothing; the next read does.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Request body: `AiSearchCompanySettingsWrite`
+
+Antwoord: `200` · `AiSearchOverview`
+
 #### `GET /api/v1/marketing/companies/{company_id}/drilldown`
 
 **Drilldown** — A live tier-2 drill-down (top pages/queries/campaigns), Redis-cached ~1h.
@@ -79,6 +132,33 @@ Queryparameters:
 | `period` | string | The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. |
 
 Antwoord: `200` · `DrilldownResponse`
+
+#### `GET /api/v1/marketing/companies/{company_id}/leads`
+
+**Company Leads** — The leads dashboard for one client: form, call and e-mail conversions from GA4 and the ad spend behind them from Google Ads, read through the client's measurement profile (docs/MARKETING.md). ``configured`` is false for a client without a profile.
+
+Recht: `marketing.metrics.read`
+
+Padparameters: `company_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | string | The span to report on: a trailing window (30d), a preset (month, last_month), a named period (2026-07, 2026-Q3) or a free span (2026-08-29..2026-09-03). Defaults to the last 30 complete days; a span is clamped to end yesterday. |
+| `f` | string[] | Dimension filters, repeatable, as `dimension:value` on the profile's dimension keys (service, form_type, language, …). Several values of one dimension are OR-ed, different dimensions AND-ed. An unknown dimension is refused, never ignored. (default ``) |
+
+Antwoord: `200` · `LeadsDashboard`
+
+#### `GET /api/v1/marketing/companies/{company_id}/leads/catalog`
+
+**Company Leads Catalog** — What the client's GA4 property and Ads account carry — event names, custom dimensions, key events, conversion actions — so a measurement profile is picked from what exists.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `company_id`
+
+Antwoord: `200` · `LeadsCatalog`
 
 #### `GET /api/v1/marketing/companies/{company_id}/metrics`
 
@@ -163,6 +243,30 @@ Padparameters: `link_id`
 
 Antwoord: `204`
 
+#### `POST /api/v1/marketing/links/{link_id}/ai-visibility/import`
+
+**Import Ai Visibility** — Upload the export of Search Console's Generative AI performance report — the CSV of its Dates table or the zip the console's export button produces — for one Search Console link. Google returns these figures through no API, so this is how the site's impressions in AI Overviews and AI Mode reach the dashboard tile and the report section. Days in the file overwrite the same days; days it does not name are left alone. Multipart; an agent sends the same rows as JSON to `/ai-visibility/rows`.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `link_id`
+
+Request body: `Body_import_ai_visibility_api_v1_marketing_links__link_id__ai_visibility_import_post`
+
+Antwoord: `200` · `AiVisibilityImportResult`
+
+#### `POST /api/v1/marketing/links/{link_id}/ai-visibility/rows`
+
+**Import Ai Visibility Rows** — The JSON twin of the multipart import: the Dates table of Search Console's Generative AI performance report as `[&#123;day, impressions&#125;]`, for one Search Console link. Same rules, same result — a day named here overwrites that day, a day not named is left alone.
+
+Recht: `marketing.link.manage`
+
+Padparameters: `link_id`
+
+Request body: `AiVisibilityRows`
+
+Antwoord: `200` · `AiVisibilityImportResult`
+
 #### `GET /api/v1/marketing/overview`
 
 **Overview** — The morning-coffee grid: one row per linked client, from stored data, server-sorted.
@@ -196,6 +300,14 @@ Recht: `marketing.link.manage`
 Request body: `MarketingSettingsWrite`
 
 Antwoord: `200` · `MarketingSettingsRead`
+
+#### `GET /api/v1/marketing/settings/seranking/check`
+
+**Check Seranking Key** — Which of SE Ranking's two APIs the stored key reaches — the project API (rankings) and the **Data API** (AI Search) — with the Data API plan's units left, and what the AI Search overview costs per month at the current settings. Free: neither probe is a charged call.
+
+Recht: `marketing.link.manage`
+
+Antwoord: `200` · `SeRankingCheck`
 
 #### `GET /api/v1/marketing/summary`
 

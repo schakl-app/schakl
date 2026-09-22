@@ -19,6 +19,7 @@
     "reporting",
     "email_assist",
     "task_intake",
+    "meeting_assist",
   ] as const;
 
   const DEFAULT_MODELS: Record<string, string> = {
@@ -261,6 +262,9 @@
           >
             <option value="">{t("settings.ai.speech_off")}</option>
             <option value="openai">OpenAI</option>
+            <!-- Mistral (Voxtral): three hours in one request, speaker labels, Dutch — what a
+                 recorded meeting needs (docs/VOICE.md). -->
+            <option value="mistral">{t("settings.ai.provider_mistral")}</option>
             <option value="openai_compatible">{t("settings.ai.provider_compatible")}</option>
           </select>
         </div>
@@ -300,7 +304,7 @@
               name="speech_model"
               class={inputClass}
               value={ai?.speech_model ?? ""}
-              placeholder="whisper-1"
+              placeholder={speechProvider === "mistral" ? "voxtral-mini-latest" : "whisper-1"}
             />
           </div>
           <div>

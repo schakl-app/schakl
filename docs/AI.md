@@ -15,6 +15,7 @@ everywhere at once.
 | `anthropic` | yes | **no** — Anthropic has no transcription endpoint |
 | `openai` | yes | yes (`POST {base}/audio/transcriptions`) |
 | `openai_compatible` | yes | yes, if the tenant's server implements it |
+| `mistral` (speech only) | — (its chat API is `openai_compatible`) | yes, with speaker labels and timestamps (`docs/MEETINGS.md`) |
 
 That table is the reason speech has its own credential (see below) rather than reusing the chat
 one. `anthropic` is the settings page default, so "reuse whatever is configured" would leave the

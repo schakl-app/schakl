@@ -139,3 +139,38 @@ async def test_org_zoneinfo_reads_the_configured_zone() -> None:
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
         assert await org_zoneinfo(session, t.org.id) == ZoneInfo("America/New_York")
+
+
+def test_as_instant_reads_naive_as_the_zone_and_keeps_an_aware_value() -> None:
+    """A naive datetime is the org's wall clock; an aware one already names an instant (§8)."""
+    from app.core.timezone import as_instant
+
+    zone = ZoneInfo("Europe/Amsterdam")
+    typed = as_instant(datetime(2026, 9, 19, 12, 40), zone)
+    assert typed.tzinfo is zone
+    assert typed.astimezone(UTC) == datetime(2026, 9, 19, 10, 40, tzinfo=UTC)
+    # Winter: the same wall clock is one hour from UTC rather than two.
+    assert as_instant(datetime(2026, 1, 19, 12, 40), zone).astimezone(UTC) == datetime(
+        2026, 1, 19, 11, 40, tzinfo=UTC
+    )
+    offset = datetime.fromisoformat("2026-09-19T12:40:00+02:00")
+    assert as_instant(offset, zone) is offset
+    utc = datetime(2026, 9, 19, 10, 40, tzinfo=UTC)
+    assert as_instant(utc, zone) is utc
+
+
+def test_day_window_is_the_local_calendar_day_across_a_dst_change() -> None:
+    """The window for a calendar day opens at local midnight and closes at the next — 23 hours
+    long on the night the clocks go forward, never a fixed 24."""
+    from datetime import timedelta
+
+    from app.core.timezone import day_window
+
+    zone = ZoneInfo("Europe/Amsterdam")
+    lo, hi = day_window(date(2026, 3, 29), date(2026, 3, 29), zone)
+    assert lo == datetime(2026, 3, 29, 0, 0, tzinfo=zone)
+    assert hi == datetime(2026, 3, 30, 0, 0, tzinfo=zone)
+    assert (hi.astimezone(UTC) - lo.astimezone(UTC)) == timedelta(hours=23)
+    # An open end on either side stays open.
+    assert day_window(None, date(2026, 3, 29), zone)[0] is None
+    assert day_window(date(2026, 3, 29), None, zone)[1] is None

@@ -9351,6 +9351,203 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meetings */
+        get: operations["list_meetings_api_v1_meetings_get"];
+        put?: never;
+        /**
+         * Create Meeting
+         * @description Open a recording. Refused unless the caller states the participants were told.
+         */
+        post: operations["create_meeting_api_v1_meetings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meeting */
+        get: operations["get_meeting_api_v1_meetings__meeting_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Meeting */
+        delete: operations["delete_meeting_api_v1_meetings__meeting_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Meeting */
+        patch: operations["update_meeting_api_v1_meetings__meeting_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Audio
+         * @description Drop the recording now rather than at the retention date; the words stay.
+         */
+        delete: operations["delete_audio_api_v1_meetings__meeting_id__audio_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Chunk
+         * @description One piece of the recording, base64 in JSON, while it is still being recorded.
+         */
+        post: operations["add_chunk_api_v1_meetings__meeting_id__chunks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Meeting
+         * @description The minutes become a contact moment and the ticked action items become tasks.
+         */
+        post: operations["confirm_meeting_api_v1_meetings__meeting_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Meeting
+         * @description The recorder stopped: the worker folds, transcribes and drafts.
+         */
+        post: operations["finish_meeting_api_v1_meetings__meeting_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/minutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Minutes
+         * @description The reviewer's edits to the draft, kept without confirming.
+         */
+        put: operations["save_minutes_api_v1_meetings__meeting_id__minutes_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Meeting */
+        post: operations["retry_meeting_api_v1_meetings__meeting_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/speakers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Speakers
+         * @description Name the provider's speaker labels — "S2 is Jan".
+         */
+        put: operations["set_speakers_api_v1_meetings__meeting_id__speakers_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meeting Status
+         * @description The one column the detail page polls while a worker holds the row.
+         */
+        get: operations["meeting_status_api_v1_meetings__meeting_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -15201,7 +15398,7 @@ export interface components {
             /** Speech Model */
             speech_model?: string | null;
             /** Speech Provider */
-            speech_provider?: ("openai" | "openai_compatible") | null;
+            speech_provider?: ("openai" | "openai_compatible" | "mistral") | null;
         };
         /** AISettingsWrite */
         AISettingsWrite: {
@@ -15233,7 +15430,7 @@ export interface components {
             /** Speech Model */
             speech_model?: string | null;
             /** Speech Provider */
-            speech_provider?: ("openai" | "openai_compatible") | null;
+            speech_provider?: ("openai" | "openai_compatible" | "mistral") | null;
         };
         /**
          * AITestResult
@@ -15745,6 +15942,8 @@ export interface components {
              */
             period_month: string;
             settings: components["schemas"]["AiSearchSettingsRead"];
+            /** Source Label */
+            source_label?: string | null;
             /** State */
             state: string;
             /** Target Origin */
@@ -24060,8 +24259,9 @@ export interface components {
         /**
          * InteractionLogTime
          * @description The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
-         *     same transaction as the interaction. Times follow the *time* module's convention
-         *     (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet.
+         *     same transaction as the interaction. Times follow the *time* module's rule (§8): a naive
+         *     time is the org's wall clock, an aware one an instant — the entry must round-trip the
+         *     timesheet.
          */
         InteractionLogTime: {
             /**
@@ -26631,6 +26831,276 @@ export interface components {
             locale?: string | null;
         };
         /**
+         * MeetingChunk
+         * @description One piece of the recording, base64 in JSON — the dictation's transport, one hop over.
+         *
+         *     A browser's ``MediaRecorder`` with a ``timeslice`` hands out one blob a minute; only the
+         *     first carries the container header, and byte-concatenating them in order is the whole file.
+         *     So a piece is stored as it arrives and the worker folds them, which is what makes a crashed
+         *     tab or a dead battery lose one minute rather than the meeting. An upload is the same route
+         *     with the file cut into pieces of a few megabytes.
+         */
+        MeetingChunk: {
+            /** Audio */
+            audio: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * MeetingConfirm
+         * @description The reviewer's final word: these minutes become a contact moment and these tasks.
+         */
+        MeetingConfirm: {
+            /** Interaction Kind */
+            interaction_kind?: string | null;
+            minutes: components["schemas"]["MinutesDraft"];
+        };
+        /** MeetingConfirmResult */
+        MeetingConfirmResult: {
+            /**
+             * Interaction Id
+             * Format: uuid
+             */
+            interaction_id: string;
+            /** Skipped */
+            skipped?: {
+                [key: string]: unknown;
+            }[];
+            /** Task Ids */
+            task_ids: string[];
+        };
+        /** MeetingCreate */
+        MeetingCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** @default physical */
+            kind: components["schemas"]["MeetingKind"];
+            /** Language */
+            language?: string | null;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /**
+             * Participants Informed
+             * @default false
+             */
+            participants_informed: boolean;
+            /** Project Id */
+            project_id?: string | null;
+            /** @default microphone */
+            source: components["schemas"]["MeetingSource"];
+            /** Title */
+            title: string;
+        };
+        /** MeetingDetail */
+        MeetingDetail: {
+            /**
+             * Action Item Count
+             * @default 0
+             */
+            action_item_count: number;
+            /** Audio File Id */
+            audio_file_id?: string | null;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
+            /**
+             * Can Write
+             * @default false
+             */
+            can_write: boolean;
+            /**
+             * Chunks Received
+             * @default 0
+             */
+            chunks_received: number;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Confirmed At */
+            confirmed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision Count
+             * @default 0
+             */
+            decision_count: number;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Error Key */
+            error_key?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Interaction Id */
+            interaction_id?: string | null;
+            kind: components["schemas"]["MeetingKind"];
+            /** Language */
+            language?: string | null;
+            minutes?: components["schemas"]["MinutesDraft"] | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Participants Informed At */
+            participants_informed_at?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Segments */
+            segments?: components["schemas"]["TranscriptSegment"][];
+            source: components["schemas"]["MeetingSource"];
+            /** Speakers */
+            speakers?: {
+                [key: string]: string;
+            };
+            status: components["schemas"]["MeetingStatus"];
+            /** Task Ids */
+            task_ids?: string[];
+            /** Title */
+            title: string;
+            /** Transcript Model */
+            transcript_model?: string | null;
+            /**
+             * Transcript Parts
+             * @default 0
+             */
+            transcript_parts: number;
+            /** Transcript Text */
+            transcript_text?: string | null;
+        };
+        /** MeetingFinish */
+        MeetingFinish: {
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+        };
+        /**
+         * MeetingKind
+         * @description Which contact-moment kind the minutes land as — the interactions module's own keys.
+         * @enum {string}
+         */
+        MeetingKind: "physical" | "online";
+        /** MeetingList */
+        MeetingList: {
+            /** Items */
+            items: components["schemas"]["MeetingRow"][];
+            /** Total */
+            total?: number | null;
+        };
+        /** MeetingRow */
+        MeetingRow: {
+            /**
+             * Action Item Count
+             * @default 0
+             */
+            action_item_count: number;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision Count
+             * @default 0
+             */
+            decision_count: number;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Error Key */
+            error_key?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["MeetingKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            source: components["schemas"]["MeetingSource"];
+            status: components["schemas"]["MeetingStatus"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * MeetingSource
+         * @enum {string}
+         */
+        MeetingSource: "microphone" | "tab" | "upload";
+        /**
+         * MeetingSpeakers
+         * @description The reviewer's names for the provider's labels: ``{"S1": "Jan de Vries"}``.
+         */
+        MeetingSpeakers: {
+            /** Speakers */
+            speakers?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * MeetingStatus
+         * @enum {string}
+         */
+        MeetingStatus: "recording" | "queued" | "transcribing" | "summarising" | "review" | "done" | "failed";
+        /**
+         * MeetingStatusRead
+         * @description The one column the detail page polls while a worker holds the row.
+         */
+        MeetingStatusRead: {
+            /** Error Key */
+            error_key?: string | null;
+            status: components["schemas"]["MeetingStatus"];
+            /**
+             * Status At
+             * Format: date-time
+             */
+            status_at: string;
+        };
+        /**
+         * MeetingUpdate
+         * @description The definition fields — title, client, project, kind. The transcript, the speakers and
+         *     the minutes have their own writes below.
+         */
+        MeetingUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            kind?: components["schemas"]["MeetingKind"] | null;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
          * MemberAccountUpdate
          * @description What Instellingen → Gebruikers → Bewerken may change about a colleague's account.
          *
@@ -26957,6 +27427,85 @@ export interface components {
             head: string[];
             /** Up To Date */
             up_to_date: boolean;
+        };
+        /** MinutesActionItem */
+        MinutesActionItem: {
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** At */
+            at?: number | null;
+            /**
+             * Create Task
+             * @default true
+             */
+            create_task: boolean;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Owner Label */
+            owner_label?: string | null;
+            /** Quote */
+            quote?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Verified
+             * @default true
+             */
+            verified: boolean;
+        };
+        /** MinutesDecision */
+        MinutesDecision: {
+            /** At */
+            at?: number | null;
+            /** Quote */
+            quote?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Verified
+             * @default true
+             */
+            verified: boolean;
+        };
+        /**
+         * MinutesDraft
+         * @description What the model drafted and the reviewer edits — the one shape on ``meetings.minutes``.
+         */
+        MinutesDraft: {
+            /** Action Items */
+            action_items?: components["schemas"]["MinutesActionItem"][];
+            /** Decisions */
+            decisions?: components["schemas"]["MinutesDecision"][];
+            /** Open Questions */
+            open_questions?: string[];
+            /**
+             * Partial Input
+             * @default false
+             */
+            partial_input: boolean;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title?: string | null;
+            /** Topics */
+            topics?: components["schemas"]["MinutesTopic"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /** MinutesTopic */
+        MinutesTopic: {
+            /** Heading */
+            heading: string;
+            /** Text */
+            text: string;
         };
         /** ModulesMeta */
         ModulesMeta: {
@@ -33857,7 +34406,8 @@ export interface components {
          *     (#284): a task on a subscription-covered project bills nobody, and a finish prompt that
          *     silently posted ``true`` would be the one write path that forgot.
          *
-         *     Times follow the *time* module's wall-clock-as-UTC convention, like every other entry.
+         *     Times follow the *time* module's rule (§8), like every other entry: a naive time is the
+         *     org's wall clock, an aware one an instant.
          */
         TaskLogTime: {
             /** Billable */
@@ -35783,6 +36333,17 @@ export interface components {
             tld: string;
             /** Valid From */
             valid_from?: string | null;
+        };
+        /** TranscriptSegment */
+        TranscriptSegment: {
+            /** End */
+            end: number;
+            /** Speaker */
+            speaker?: string | null;
+            /** Start */
+            start: number;
+            /** Text */
+            text: string;
         };
         /**
          * TrashDependentCount
@@ -56131,6 +56692,442 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketingSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meetings_api_v1_meetings_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                project_id?: string | null;
+                /** @description Comma-separated set; absent means every status */
+                status?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meeting_api_v1_meetings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meeting_api_v1_meetings__meeting_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_meeting_api_v1_meetings__meeting_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meeting_api_v1_meetings__meeting_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_audio_api_v1_meetings__meeting_id__audio_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_chunk_api_v1_meetings__meeting_id__chunks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingChunk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_meeting_api_v1_meetings__meeting_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingConfirmResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_meeting_api_v1_meetings__meeting_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingFinish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_minutes_api_v1_meetings__meeting_id__minutes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MinutesDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_meeting_api_v1_meetings__meeting_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_speakers_api_v1_meetings__meeting_id__speakers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingSpeakers"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meeting_status_api_v1_meetings__meeting_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingStatusRead"];
                 };
             };
             /** @description Validation Error */

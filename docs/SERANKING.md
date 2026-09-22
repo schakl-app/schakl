@@ -168,6 +168,27 @@ left out all read as **`off`** to a client, which draws no section at all — "e
 SE Ranking-sleutel opgeslagen" names a supplier and a settings screen they cannot open. The
 footer's "merk bepaald door SE Ranking" has a vendor-free twin for the same reason.
 
+**The source is named by the tenant's word for it, in every sentence.** An agency selling SE
+Ranking as "breik. Analytics" (Instellingen → Marketing, the source's own name, #446) read
+*"merk herkend door SE Ranking"* one line under a heading that said breik. Analytics: the
+section's sentences were written with the vendor's name in them. `AiSearchOverview.source_label`
+now carries what this reader calls the source — the tenant's label for everyone, `None` for
+staff where none was typed (the web prints the catalog name), the vendor-free default for a
+client — and every `marketing.ai_search.*` sentence that names the source takes it as
+`{source}`. The same word rides the drill-down refusals (`marketing.seranking_*`) and a
+report's warnings (`reporting.warning.seranking_*`, stored on the note as `source` by the run,
+since the review desk holds no labels). The settings screen that holds the credential and the
+name field keeps the vendor's name: that is where the two are told apart.
+
+**A tracker the plan does not include is not a refused key.** The AI Result Tracker drill-down
+(`kind=ai_search`, `/projects/{id}/ai-result-tracker/llm-engines`) answers **401** on a project
+whose plan has no tracker — permanently, while the keyword and audit drill-downs keep answering
+on the same key. Read as a bare status it printed *"SE Ranking weigert de API-sleutel.
+Controleer hem in Instellingen."* and sent an agency to re-check a key that was working. The
+adapter raises `SourceRefused("marketing.seranking_ai_search_unavailable")` there, the
+drill-down prints that sentence, and the report reads the same refusal as *unavailable* rather
+than as an outage (`_seranking_part`, which had already learned this for the gather path).
+
 A client's page view **may** be the read that fetches the month. That is deliberate: the cost
 is bounded by the claim (one read per client, engine choice and month, whoever asks first),
 the agency switched it on with the price in front of it, and a dashboard that shows a client

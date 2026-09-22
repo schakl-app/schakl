@@ -81,6 +81,20 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
   captured before writing anything. And **the pending state is a state, not an absence** — the
   shell says "laden", never the empty "nothing linked yet" screen, which is a different answer to
   a different question.
+- **A stream needs a head start, or a warm read costs a reflow.** Streaming is the right shape
+  for a read that is somebody else's latency and the wrong one for a read that answers in a
+  hundred milliseconds: the shell lands without it, a placeholder draws, the answer arrives, and
+  the page re-arranges itself for a wait nobody needed. The marketing tab did that three times
+  over — tiles, leads dashboard, AI Search overview, each on its own clock — on a page whose
+  reads are a Redis hit on every ordinary open. `headStart` (`$lib/core/streaming`) waits one
+  short budget (300 ms) for all of a page's streamed reads together: what answered ships *in*
+  the shell, rendered server-side in its final shape, and what did not is returned as the same
+  promise and streams exactly as before. The budget is the most a cold read may delay the shell.
+  Two rules ride along. **The page seeds its `$state` from the settled answer** (`settledNow`,
+  `isPending`), because `$effect` never runs on the server and a page that only resolves in an
+  effect renders the placeholder however fast the read was. And **a placeholder has the shape of
+  what it becomes** — a heading, a row of tiles, a chart — so the cold case moves the page by the
+  difference between an estimate and an answer rather than by the whole section.
 - **Count the requests before you hide them.** The Tag Manager container page was six API round
   trips and **nine** Google requests, and streaming it would have left it nine — which on an API
   whose quota is counted *per user per minute* decides how many times somebody may open the page,

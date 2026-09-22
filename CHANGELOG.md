@@ -2,6 +2,94 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.50.0 — 2026-09-22
+
+A new module records a meeting, transcribes it and drafts the minutes into a contact moment and
+tasks. Hours are stored as real instants and shown in the office's own time zone. The marketing
+tab opens in one piece: its live reads are cached for a day, warmed every night before anyone is
+at their desk, and the page no longer re-arranges itself while they land.
+
+Two migrations, in order: `d2f7c4e1b9a3` (`time_entries_wall_clock_to_instants`, revises
+`c8a3f5d1e7b2`) re-reads every typed, imported or ride-along time entry in its org's own time
+zone, so a start typed as 12:40 stays 12:40 on screen; the timer's own rows are already instants
+and are left alone, and the downgrade is the inverse shift. Take a database backup before this
+one. `d4e7f2a9c1b6` (`meetings_create_meetings`, the new head, revises `d2f7c4e1b9a3`) adds one
+table and is purely additive. The API image now ships `ffmpeg` (a meeting over a speech
+provider's cap is cut into parts; without it, only those recordings are refused). One new
+module, `meetings` (sku `meetings`, off until Instellingen → Modules switches it on), with three
+permission keys: `meetings.meeting.read` and `meetings.meeting.write` default to admin and
+member, `meetings.meeting.delete` to admin. New endpoints under `/meetings` (list, create,
+read, status, chunks, finish, retry, speakers, minutes, confirm, audio, delete). A new AI feature
+key `meeting_assist`, and `mistral` (Voxtral) as a speech-to-text provider beside `openai` and
+`openai_compatible`. Two new nightly jobs: `meetings_sweep_audio` (drops a confirmed meeting's
+recording after 30 days; the words stay) and `marketing_warm_dashboards` (05:45). API callers
+that post time entries with an offset (`2026-09-19T12:40:00+02:00`) now get exactly that
+instant; a naive time still means the org's wall clock. No new environment variables. The
+public API reference and the typed client are regenerated.
+
+### Meetings
+
+- **Record, transcribe, draft.** The microphone, a browser tab's call (Meet, Teams or Zoom in
+  the browser) or an uploaded file. The recording is uploaded a minute at a time while it runs,
+  so a crashed tab loses a minute and never the meeting. The tenant's own speech provider
+  transcribes it with speaker labels; a recording over the provider's cap is cut on a frame
+  boundary and the labels are numbered on through the parts.
+- **Minutes a colleague reviews, then confirms.** Summary, topics, decisions, action items and
+  open questions. Every decision and action item quotes the transcript, and the quote is checked;
+  an item whose words are not there is kept and marked unverified, never dropped. Confirming
+  writes one contact moment on the client and a task per ticked action item, as the reviewer,
+  through the ordinary services. A promise made by the client's side lands with an owner label
+  and no task.
+- **Recording is a statement before it is a capture.** A meeting cannot start until the person
+  confirms the other participants were told, and the screen says what the AVG asks them to say.
+  The audio is dropped 30 days after confirming; the transcript and the minutes stay. A meeting
+  plays on its own page and appears on the client hub.
+- Google Meet's own recordings are the next phase (`docs/MEETINGS.md`).
+
+### Hours
+
+- **An entry's clock is an instant, read in the office's zone.** Hours created through the API
+  with an explicit offset were stored correctly and then listed two hours early, because every
+  screen printed the stored UTC clock as if it were the wall clock; an entry typed at 23:30 fell
+  on the next day in invoicing, on the client hub and in the timesheet reminder. The column now
+  holds what its type claims. The API decides what a clock means (a naive time is the org's wall
+  clock, an aware one the instant it names), every "which day" question is asked in the org's
+  zone (day view, timesheet, workspace, list and report filters, the productivity and revenue
+  figures, the CSV export, the MCP tools), and the screens read an instant back through one
+  helper. Timeon's zone-less date and seconds are translated in the org's zone in both
+  directions.
+
+### Marketing
+
+- **The tab opens in one piece.** The leads dashboard and the eleven drill-down tables under
+  the tiles are live Google and SE Ranking reads. They were cached for an hour and only for the
+  exact view opened, so the first person each hour paid Google's latency on every filter chip,
+  period tab and table, and the page loaded in parts. They are cached for a day now (the span
+  ends yesterday, so the key changes at midnight anyway) and a nightly job reads every client's
+  tab before anyone does: each preset of the leads dashboard, each single-value filter on the
+  default period, and every drill-down. Saving a measurement profile warms that client at once.
+- **No more shifting layout.** The page waits a short beat for its three streamed reads; what
+  answers in time is rendered in its final shape with the shell, and only a genuinely cold read
+  streams in behind a placeholder the size of what it becomes. Drill-down tables reserve their
+  rows while loading.
+- **SE Ranking under the agency's own name, everywhere.** The AI Search section, the drill-down
+  refusals and a report's warnings now use the name the tenant gave the source (#446); only the
+  credential screen keeps the vendor's name. An AI Result Tracker the plan does not include is
+  reported as unavailable, not as a refused key.
+- The leads widget for form errors per page is called what it shows: "Mislukte verzendingen per
+  pagina".
+
+### Upgrade notes
+
+- Back up the database before upgrading: `d2f7c4e1b9a3` rewrites `started_at`/`ended_at` on
+  time entries per org zone. It decides which rows were typed by the row itself (a start more
+  than a minute from its `created_at`); the timer's rows are untouched.
+- Enable `meetings` under Instellingen → Modules when wanted; it needs a speech provider under
+  Instellingen → AI (Mistral Voxtral is the one that labels speakers and takes three hours in one
+  request). Grant `meetings.meeting.delete` to anyone but admins by hand.
+- Nothing to configure for the marketing warm: it runs at 05:45 after the sync, per org, and
+  stands down with the `marketing` licence like the sync does.
+
 ## v0.49.0 — 2026-09-22
 
 The marketing dashboard and the monthly report can now show a client's visibility in AI search

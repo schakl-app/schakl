@@ -7,7 +7,7 @@ sidebar:
 
 Everything cross-cutting: the tenant metadata a client fetches first, files, notifications, automation rules, AI, custom fields, spreadsheets and bulk edits.
 
-218 endpoints across 17 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+267 endpoints across 20 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `ai`
 
@@ -430,7 +430,7 @@ Returns: `200` · `BulkActionResult`
 
 #### `POST /api/v1/bulk/domain/update`
 
-**Bulk Update Domain** — Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+**Bulk Update Domain** — Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`, `billed_until`, `start_date`, `price_override`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
 
 Permission: `domains.domain.write`
 
@@ -490,7 +490,7 @@ Returns: `200` · `BulkActionResult`
 
 #### `POST /api/v1/bulk/subscription/update`
 
-**Bulk Update Subscription** — Set fields on a selection of subscription records: `status`, `type`, `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+**Bulk Update Subscription** — Set fields on a selection of subscription records: `status`, `type`, `company`, `billed_until`, `billed_in_advance`, `notes_on_invoice`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
 
 Permission: `subscriptions.subscription.write`
 
@@ -570,6 +570,7 @@ Returns: `200` · `BulkActionResult`
 | `DELETE` `/custom-fields/definitions/{definition_id}` | `settings.customfields.write` |
 | `GET` `/custom-fields/definitions/batch` | `settings.customfields.read` |
 | `GET` `/custom-fields/entity-types` | `settings.customfields.read` |
+| `GET` `/custom-fields/scopes` | `settings.customfields.read` |
 
 <details>
 <summary>Parameters and schemas per endpoint</summary>
@@ -643,6 +644,20 @@ Returns: `200` · `object`
 Permission: `settings.customfields.read`
 
 Returns: `200` · `array`
+
+#### `GET /api/v1/custom-fields/scopes`
+
+**List Scopes** — The dimensions a definition of ``entity_type`` may be narrowed to, with this tenant's options for each (``scoping.py``). Empty for an entity type no module has registered a dimension for — which is what tells the settings screen not to draw the control (#253).
+
+Permission: `settings.customfields.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `entity_type` | string · required |  |
+
+Returns: `200` · `CustomFieldScopeRead[]`
 
 </details>
 
@@ -2150,6 +2165,181 @@ Returns: `200` · `ImpexInspectReport`
 
 </details>
 
+## `meetings`
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/meetings` | `meetings.meeting.read` |
+| `POST` `/meetings` | `meetings.meeting.write` |
+| `GET` `/meetings/{meeting_id}` | `meetings.meeting.read` |
+| `PATCH` `/meetings/{meeting_id}` | `meetings.meeting.write` |
+| `DELETE` `/meetings/{meeting_id}` | `meetings.meeting.delete` |
+| `DELETE` `/meetings/{meeting_id}/audio` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/chunks` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/confirm` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/finish` | `meetings.meeting.write` |
+| `PUT` `/meetings/{meeting_id}/minutes` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/retry` | `meetings.meeting.write` |
+| `PUT` `/meetings/{meeting_id}/speakers` | `meetings.meeting.write` |
+| `GET` `/meetings/{meeting_id}/status` | `meetings.meeting.read` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/meetings`
+
+**List Meetings**
+
+Permission: `meetings.meeting.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `project_id` | string |  |
+| `status` | string | Comma-separated set; absent means every status |
+| `q` | string |  |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean |  (default `true`) |
+
+Returns: `200` · `MeetingList`
+
+#### `POST /api/v1/meetings`
+
+**Create Meeting** — Open a recording. Refused unless the caller states the participants were told.
+
+Permission: `meetings.meeting.write`
+
+Request body: `MeetingCreate`
+
+Returns: `201` · `MeetingDetail`
+
+#### `GET /api/v1/meetings/{meeting_id}`
+
+**Get Meeting**
+
+Permission: `meetings.meeting.read`
+
+Path parameters: `meeting_id`
+
+Returns: `200` · `MeetingDetail`
+
+#### `PATCH /api/v1/meetings/{meeting_id}`
+
+**Update Meeting**
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MeetingUpdate`
+
+Returns: `200` · `MeetingDetail`
+
+#### `DELETE /api/v1/meetings/{meeting_id}`
+
+**Delete Meeting**
+
+Permission: `meetings.meeting.delete`
+
+Path parameters: `meeting_id`
+
+Returns: `204`
+
+#### `DELETE /api/v1/meetings/{meeting_id}/audio`
+
+**Delete Audio** — Drop the recording now rather than at the retention date; the words stay.
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Returns: `200` · `MeetingDetail`
+
+#### `POST /api/v1/meetings/{meeting_id}/chunks`
+
+**Add Chunk** — One piece of the recording, base64 in JSON, while it is still being recorded.
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MeetingChunk`
+
+Returns: `200` · `object`
+
+#### `POST /api/v1/meetings/{meeting_id}/confirm`
+
+**Confirm Meeting** — The minutes become a contact moment and the ticked action items become tasks.
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MeetingConfirm`
+
+Returns: `200` · `MeetingConfirmResult`
+
+#### `POST /api/v1/meetings/{meeting_id}/finish`
+
+**Finish Meeting** — The recorder stopped: the worker folds, transcribes and drafts.
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MeetingFinish`
+
+Returns: `200` · `MeetingDetail`
+
+#### `PUT /api/v1/meetings/{meeting_id}/minutes`
+
+**Save Minutes** — The reviewer's edits to the draft, kept without confirming.
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MinutesDraft`
+
+Returns: `200` · `MeetingDetail`
+
+#### `POST /api/v1/meetings/{meeting_id}/retry`
+
+**Retry Meeting**
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Returns: `200` · `MeetingDetail`
+
+#### `PUT /api/v1/meetings/{meeting_id}/speakers`
+
+**Set Speakers** — Name the provider's speaker labels — "S2 is Jan".
+
+Permission: `meetings.meeting.write`
+
+Path parameters: `meeting_id`
+
+Request body: `MeetingSpeakers`
+
+Returns: `200` · `MeetingDetail`
+
+#### `GET /api/v1/meetings/{meeting_id}/status`
+
+**Meeting Status** — The one column the detail page polls while a worker holds the row.
+
+Permission: `meetings.meeting.read`
+
+Path parameters: `meeting_id`
+
+Returns: `200` · `MeetingStatusRead`
+
+</details>
+
 ## `meta`
 
 | Endpoint | Permission |
@@ -2301,6 +2491,370 @@ Returns: `200` · `object`
 Permission: _None declared_
 
 Returns: `200`
+
+</details>
+
+## `microsoft`
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/microsoft/calendar/calendars` | `microsoft.connection.manage` |
+| `PUT` `/microsoft/calendar/calendars` | `microsoft.connection.manage` |
+| `GET` `/microsoft/calendar/channels` | `microsoft.calendar.read` |
+| `GET` `/microsoft/calendar/events` | `microsoft.calendar.read` |
+| `POST` `/microsoft/calendar/webhook` | _Deliberately open_ |
+| `GET` `/microsoft/connections` | `microsoft.settings.manage` |
+| `GET` `/microsoft/connections/me` | `microsoft.connection.manage` |
+| `PATCH` `/microsoft/connections/me` | `microsoft.connection.manage` |
+| `POST` `/microsoft/connections/me/disconnect` | `microsoft.connection.manage` |
+| `GET` `/microsoft/oauth/callback` | `microsoft.connection.manage` |
+| `GET` `/microsoft/oauth/connect` | `microsoft.connection.manage` |
+| `GET` `/microsoft/onedrive/browse` | `microsoft.onedrive.read` |
+| `DELETE` `/microsoft/onedrive/files/{drive_id}/{item_id}` | `microsoft.onedrive.write` |
+| `PUT` `/microsoft/onedrive/folder` | `microsoft.onedrive.write` |
+| `POST` `/microsoft/onedrive/folders` | `microsoft.onedrive.write` |
+| `GET` `/microsoft/onedrive/links` | `microsoft.onedrive.read` |
+| `POST` `/microsoft/onedrive/links` | `microsoft.onedrive.write` |
+| `DELETE` `/microsoft/onedrive/links/{link_id}` | `microsoft.onedrive.write` |
+| `POST` `/microsoft/onedrive/provision` | `microsoft.onedrive.write` |
+| `POST` `/microsoft/onedrive/provision-all` | `microsoft.settings.manage` |
+| `GET` `/microsoft/onedrive/state` | `microsoft.onedrive.read` |
+| `POST` `/microsoft/onedrive/upload-session` | `microsoft.onedrive.write` |
+| `POST` `/microsoft/outlook/import` | `interactions.interaction.write` |
+| `GET` `/microsoft/outlook/lookup` | `microsoft.connection.manage` |
+| `POST` `/microsoft/outlook/refresh` | `microsoft.connection.manage` |
+| `GET` `/microsoft/outlook/search` | `microsoft.connection.manage` |
+| `GET` `/microsoft/outlook/status` | `microsoft.connection.manage` |
+| `GET` `/microsoft/outlook/threads/{conversation_id}` | `microsoft.connection.manage` |
+| `GET` `/microsoft/settings` | `microsoft.settings.manage` |
+| `PUT` `/microsoft/settings` | `microsoft.settings.manage` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/microsoft/calendar/calendars`
+
+**Microsoft Calendar List** — The viewer's own calendars — the selection UI's read. Briefly cached; the existing ``Calendars.ReadWrite`` scope covers it, so no re-consent is needed.
+
+Permission: `microsoft.connection.manage`
+
+Returns: `200` · `MicrosoftCalendarListEntry[]`
+
+#### `PUT /api/v1/microsoft/calendar/calendars`
+
+**Microsoft Set Calendar Selection** — Choose which extra calendars sync for the viewer. Deselecting removes the calendar's cached events on the spot; selecting queues a sync so the agenda fills without waiting.
+
+Permission: `microsoft.connection.manage`
+
+Request body: `MicrosoftCalendarSelection`
+
+Returns: `200` · `MicrosoftCalendarListEntry[]`
+
+#### `GET /api/v1/microsoft/calendar/channels`
+
+**Microsoft Calendar Channels** — The viewer's selection off the database alone — what the Agenda's feeds menu reads on every open, so it never costs a Graph call.
+
+Permission: `microsoft.calendar.read`
+
+Returns: `200` · `MicrosoftSelectedCalendar[]`
+
+#### `GET /api/v1/microsoft/calendar/events`
+
+**Microsoft Calendar Events** — The viewer's own cached Outlook events. Reads the local cache, never Graph live.
+
+Permission: `microsoft.calendar.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `date_from` | string · required |  |
+| `date_to` | string · required |  |
+
+Returns: `200` · `MicrosoftCalendarFeedItem[]`
+
+#### `POST /api/v1/microsoft/calendar/webhook`
+
+**Microsoft Calendar Webhook**
+
+Permission: _Deliberately open_
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `validationToken` | string |  |
+
+Returns: `200`
+
+#### `GET /api/v1/microsoft/connections`
+
+**List Connections**
+
+Permission: `microsoft.settings.manage`
+
+Returns: `200` · `MicrosoftConnectionRead[]`
+
+#### `GET /api/v1/microsoft/connections/me`
+
+**My Connection**
+
+Permission: `microsoft.connection.manage`
+
+Returns: `200` · `MyMicrosoftConnectionRead`
+
+#### `PATCH /api/v1/microsoft/connections/me`
+
+**Update My Connection**
+
+Permission: `microsoft.connection.manage`
+
+Request body: `MyMicrosoftConnectionUpdate`
+
+Returns: `200` · `MyMicrosoftConnectionRead`
+
+#### `POST /api/v1/microsoft/connections/me/disconnect`
+
+**Disconnect My Connection**
+
+Permission: `microsoft.connection.manage`
+
+Returns: `204`
+
+#### `GET /api/v1/microsoft/oauth/callback`
+
+**Microsoft Oauth Callback** — Store the grant and land the browser back where the connect started.
+
+Permission: `microsoft.connection.manage`
+
+Returns: `200`
+
+#### `GET /api/v1/microsoft/oauth/connect`
+
+**Oauth Connect** — 302 to Microsoft's consent screen, asking exactly the enabled surfaces' scopes.
+
+Permission: `microsoft.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `include_outlook` | boolean |  (default `false`) |
+| `next` | string |  (default ``) |
+
+Returns: `200`
+
+#### `GET /api/v1/microsoft/onedrive/browse`
+
+**Browse** — Live folder contents **as the viewing user** — Graph's permissions are authoritative.
+
+Permission: `microsoft.onedrive.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `drive_id` | string |  |
+| `folder_id` | string |  |
+| `q` | string |  |
+| `refresh` | boolean |  (default `false`) |
+
+Returns: `200` · `OneDriveBrowseResult`
+
+#### `DELETE /api/v1/microsoft/onedrive/files/{drive_id}/{item_id}`
+
+**Trash Item** — Move an item to the drive's recycle bin — the other half of unlink. Runs as the viewing user; drops every link naming the item, org-wide; refuses a non-empty folder.
+
+Permission: `microsoft.onedrive.write`
+
+Path parameters: `drive_id`, `item_id`
+
+Returns: `204`
+
+#### `PUT /api/v1/microsoft/onedrive/folder`
+
+**Set Folder** — Point a record at an existing folder — the picker's target. The service adds ``microsoft.onedrive.manage`` when the record **already has** a folder (§15's two layers).
+
+Permission: `microsoft.onedrive.write`
+
+Request body: `OneDriveFolderSet`
+
+Returns: `200` · `OneDriveLinkRead`
+
+#### `POST /api/v1/microsoft/onedrive/folders`
+
+**Create Folder** — Create a subfolder inside the folder being browsed, as the viewing user.
+
+Permission: `microsoft.onedrive.write`
+
+Request body: `OneDriveFolderCreate`
+
+Returns: `201` · `OneDriveFolder`
+
+#### `GET /api/v1/microsoft/onedrive/links`
+
+**List Links**
+
+Permission: `microsoft.onedrive.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `entity_type` | string · required |  |
+| `entity_id` | string · required |  |
+| `rollup` | boolean |  (default `false`) |
+| `limit` | integer |  |
+
+Returns: `200` · `OneDriveLinkRead[]`
+
+#### `POST /api/v1/microsoft/onedrive/links`
+
+**Create Link**
+
+Permission: `microsoft.onedrive.write`
+
+Request body: `OneDriveLinkCreate`
+
+Returns: `201` · `OneDriveLinkRead`
+
+#### `DELETE /api/v1/microsoft/onedrive/links/{link_id}`
+
+**Delete Link** — Unlink only. The item is never touched (the dialog says so too).
+
+Permission: `microsoft.onedrive.write`
+
+Path parameters: `link_id`
+
+Returns: `204`
+
+#### `POST /api/v1/microsoft/onedrive/provision`
+
+**Provision Entity** — Queue one entity's folder — the panel's "create folder" button.
+
+Permission: `microsoft.onedrive.write`
+
+Request body: `OneDriveProvisionRequest`
+
+Returns: `202`
+
+#### `POST /api/v1/microsoft/onedrive/provision-all`
+
+**Provision All** — Backfill: a folder for every client that has none (Instellingen → Microsoft 365).
+
+Permission: `microsoft.settings.manage`
+
+Returns: `200` · `OneDriveBulkProvisionResult`
+
+#### `GET /api/v1/microsoft/onedrive/state`
+
+**Onedrive State**
+
+Permission: `microsoft.onedrive.read`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `entity_type` | string |  |
+| `entity_id` | string |  |
+
+Returns: `200` · `OneDriveStateRead`
+
+#### `POST /api/v1/microsoft/onedrive/upload-session`
+
+**Create Upload Session**
+
+Permission: `microsoft.onedrive.write`
+
+Request body: `OneDriveUploadSessionCreate`
+
+Returns: `200` · `OneDriveUploadSession`
+
+#### `POST /api/v1/microsoft/outlook/import`
+
+**Import Outlook Message** — Log one message the poller skipped, filed where the caller says. The declared key is the one for the row this **writes**; reaching into the mailbox is asked for in the service.
+
+Permission: `interactions.interaction.write`
+
+Request body: `OutlookImportRequest`
+
+Returns: `201` · `OutlookImportResult`
+
+#### `GET /api/v1/microsoft/outlook/lookup`
+
+**Lookup Outlook Message** — Resolve a pasted reference to the conversation it names, in the caller's own mailbox.
+
+Permission: `microsoft.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `reference` | string · required | An Outlook on the web link, a Graph message id, or an RFC-822 Message-ID |
+
+Returns: `200` · `OutlookLookupResult`
+
+#### `POST /api/v1/microsoft/outlook/refresh`
+
+**Refresh Outlook** — Poll this mailbox once, now — rate-limited to one manual poll per minute.
+
+Permission: `microsoft.connection.manage`
+
+Returns: `200` · `OutlookRefreshResult`
+
+#### `GET /api/v1/microsoft/outlook/search`
+
+**Search Outlook** — Find a message in the caller's **own** mailbox, by who it was with and when — named fields, never raw KQL, so a colon in an address cannot become an operator.
+
+Permission: `microsoft.connection.manage`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `participant` | string |  |
+| `subject` | string |  |
+| `after` | string |  |
+| `before` | string |  |
+
+Returns: `200` · `OutlookSearchResult`
+
+#### `GET /api/v1/microsoft/outlook/status`
+
+**Read Outlook Status** — When this mailbox was last polled, and whether asking for another one is worth it.
+
+Permission: `microsoft.connection.manage`
+
+Returns: `200` · `OutlookSyncStatus`
+
+#### `GET /api/v1/microsoft/outlook/threads/{conversation_id}`
+
+**Read Outlook Thread** — Every message of one conversation, marked with what is already on the timeline.
+
+Permission: `microsoft.connection.manage`
+
+Path parameters: `conversation_id`
+
+Returns: `200` · `OutlookLookupResult`
+
+#### `GET /api/v1/microsoft/settings`
+
+**Get Settings**
+
+Permission: `microsoft.settings.manage`
+
+Returns: `200` · `MicrosoftSettingsRead`
+
+#### `PUT /api/v1/microsoft/settings`
+
+**Save Settings**
+
+Permission: `microsoft.settings.manage`
+
+Request body: `MicrosoftSettingsWrite`
+
+Returns: `200` · `MicrosoftSettingsRead`
 
 </details>
 
@@ -2918,6 +3472,76 @@ Query parameters:
 | `account_id` | string |  |
 
 Returns: `200` · `TimeonWorkspaceRead`
+
+</details>
+
+## `trash`
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET` `/trash/company` | `companies.company.delete` |
+| `GET` `/trash/company/{entity_id}` | `companies.company.delete` |
+| `DELETE` `/trash/company/{entity_id}` | `companies.company.delete` |
+| `GET` `/trash/company/{entity_id}/preview` | `companies.company.delete` |
+| `POST` `/trash/company/{entity_id}/restore` | `companies.company.delete` |
+
+<details>
+<summary>Parameters and schemas per endpoint</summary>
+
+#### `GET /api/v1/trash/company`
+
+**Trash List Company** — The company records in the trash: who deleted each, when, when it will be purged, and what hangs off it. A record with anything in `blocking` is kept past the retention window until somebody restores it.
+
+Permission: `companies.company.delete`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+
+Returns: `200` · `TrashPage`
+
+#### `GET /api/v1/trash/company/{entity_id}`
+
+**Trash Get Company** — One trashed company record. 404 for a live record: to this surface a row that is not in the trash does not exist.
+
+Permission: `companies.company.delete`
+
+Path parameters: `entity_id`
+
+Returns: `200` · `TrashItem`
+
+#### `DELETE /api/v1/trash/company/{entity_id}`
+
+**Trash Purge Company** — Delete a trashed company record for good. Irreversible; refused (409) while anything in `blocking` still hangs off it. The nightly sweep does this by itself after the retention window.
+
+Permission: `companies.company.delete`
+
+Path parameters: `entity_id`
+
+Returns: `204`
+
+#### `GET /api/v1/trash/company/{entity_id}/preview`
+
+**Trash Preview Company** — What deleting a live company record would do: `blocking` lists the records that stop it (issued invoices, domains, agreements, projects, hours — these outlive a client, so a client holding any is archived rather than deleted), `taken_along` what hides with it and goes when it is purged. Read this before calling DELETE.
+
+Permission: `companies.company.delete`
+
+Path parameters: `entity_id`
+
+Returns: `200` · `TrashPreview`
+
+#### `POST /api/v1/trash/company/{entity_id}/restore`
+
+**Trash Restore Company** — Bring a trashed company record back exactly as it was, with everything that hid with it.
+
+Permission: `companies.company.delete`
+
+Path parameters: `entity_id`
+
+Returns: `204`
 
 </details>
 

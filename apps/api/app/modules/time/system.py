@@ -17,8 +17,21 @@ from typing import Any
 from sqlalchemy import func, select
 
 from app.core.events import EmitContext
+from app.core.timezone import as_instant, org_zoneinfo
 from app.errors import AppError
 from app.modules.time.models import DEFAULT_ENTRY_TYPES, TimeEntry, TimeEntryType
+
+
+async def _instant(ctx: EmitContext, value: datetime) -> datetime:
+    """A naive time is the org's wall clock, an aware one an instant (§8, ``as_instant``).
+
+    The zone is read only for a naive value: the Timeon sync calls these per row with instants
+    it already placed in the org's zone, and a settings read per row would be one query per
+    hour synced for an answer the value already carries (docs/PERFORMANCE.md).
+    """
+    if value.tzinfo is not None:
+        return value
+    return as_instant(value, await org_zoneinfo(ctx.session, ctx.org.id))
 
 
 async def ensure_type_for_kind(
@@ -121,10 +134,13 @@ async def record_entry(
     interaction_id: uuid.UUID | None = None,
     billable: bool | None = None,
 ) -> TimeEntry:
-    """Insert one stopped entry. Times follow the time module's own convention
-    (wall-clock-as-UTC); an end at or before the start rolls forward a day, like the
-    manual-entry path. A zero-length span is a validation error, not a stored zero.
-    ``billable`` left out defers to the project, exactly as the entry form does (#284)."""
+    """Insert one stopped entry. Times follow the time module's own rule (§8): a naive
+    time is the org's wall clock, an aware one an instant (``as_instant``); an end at or
+    before the start rolls forward a day, like the manual-entry path. A zero-length span is a
+    validation error, not a stored zero. ``billable`` left out defers to the project, exactly
+    as the entry form does (#284)."""
+    started_at = await _instant(ctx, started_at)
+    ended_at = await _instant(ctx, ended_at)
     if ended_at <= started_at:
         ended_at += timedelta(days=1)
     minutes = max(0, round((ended_at - started_at).total_seconds() / 60))
@@ -185,7 +201,7 @@ async def revise_entry(
     """
     values: dict[str, Any] = {}
     if "started_at" in touch and started_at is not None:
-        values["started_at"] = started_at
+        values["started_at"] = await _instant(ctx, started_at)
     if "minutes" in touch and minutes is not None:
         values["minutes"] = max(0, int(minutes))
     if "company_id" in touch:

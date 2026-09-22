@@ -3,6 +3,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey, streamed } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { headStart } from "$lib/core/streaming";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
 import { filtersFromUrl } from "$lib/modules/marketing/leads/url";
@@ -35,7 +36,10 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/marketing/companies/{company_id}/leads", {
       params: {
         path: { company_id },
-        query: { period: range, f: Object.entries(filters).flatMap(([d, vs]) => vs.map((v) => `${d}:${v}`)) },
+        query: {
+          period: range,
+          f: Object.entries(filters).flatMap(([d, vs]) => vs.map((v) => `${d}:${v}`)),
+        },
       },
     }),
   );
@@ -50,17 +54,28 @@ export const load: PageServerLoad = async (event) => {
   const company = await companyP;
   if (!company.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
-  return {
-    company: company.data,
-    // The leads dashboard (docs/MARKETING.md), streamed like the metrics — its cold read is
-    // Google's latency, and the shell must not wait for it.
+  // Streamed, not awaited — but with a head start (`$lib/core/streaming`): the tiles are a
+  // stored read, the leads dashboard and the AI Search overview are a Redis hit on every
+  // ordinary open (the nightly warm, docs/MARKETING.md), so all three usually answer well inside
+  // the budget and ship *in* the shell, drawn once in their final shape. A cold one — Google's
+  // latency on a view nobody has opened today, SE Ranking's on a month not stored yet — is
+  // returned as its promise and streams behind the shell exactly as before, into a placeholder
+  // the size of what it becomes. The budget is the most a cold read may delay the shell.
+  const started = await headStart({
+    // The metrics read folds two bounded windows of daily rows across every linked source
+    // (#312); the period tabs, the picker and the page heading need none of it.
+    metrics: metricsP.then((r) => r.data ?? null),
+    // The leads dashboard (docs/MARKETING.md).
     leads: leadsP,
     aiSearch: aiSearchP,
+  });
+
+  return {
+    company: company.data,
+    leads: started.leads,
+    aiSearch: started.aiSearch,
     filters,
-    // Streamed, not awaited: the period tabs, the picker and the page heading are the shell the
-    // user came to interact with, and they need none of this. The metrics read folds two bounded
-    // windows of daily rows across every linked source (#312) — the one slow thing on the page.
-    metrics: metricsP.then((r) => r.data ?? null),
+    metrics: started.metrics,
     range,
     website,
     // Whether to draw the ＋ (#399). This tab used to offer nothing at all on a client with no

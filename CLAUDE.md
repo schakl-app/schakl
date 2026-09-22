@@ -71,6 +71,7 @@ apps/
       projects/
       time/
       leave/        # employee PTO / leave (see §14)
+      meetings/     # a recorded meeting → transcript, minutes, tasks (docs/MEETINGS.md)
       ...
     integrations/  # same descriptor, same registry — a credential for someone else's service (§6a)
       google/      # Workspace: Gmail, Calendar, Drive, Contacts
@@ -237,7 +238,7 @@ had to already know the product to work it out.
 and it is worth having with every third-party account in the world cancelled: `companies`,
 `contacts`, `tasks`, `projects`, `time`, `leave`, `hr`, `invoicing`, `subscriptions`, `domains`,
 `websites`, `hosting`, `interactions`, `notifications`, `automation`, `marketing`, `reporting`,
-`portal`.
+`portal`, `meetings`.
 
 **An integration is a conversation with somebody else's service.** It holds a **credential** for
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
@@ -383,6 +384,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   `scripts/today-check.mjs` (`pnpm today:check`, CI + pre-commit, beside `forms:check` for exactly
   the same reason) refuses a **clock read** by shape and never by filename: converting a value you
   were handed stays legal, because there is no clock in it to get wrong.
+- **A column typed as an instant holds an instant, and the module that typed a clock into it was
+  wrong in exactly the two places nobody typed** (the time module, `d2f7c4e1b9a3`). For a year
+  `time_entries.started_at` was `TIMESTAMPTZ` and held *the wall clock the user typed, stamped as
+  UTC* — `12:40` in the office written as `12:40Z` — and every screen sliced it straight back off
+  the string. Consistent with itself, and wrong for the timer (which stamps the real clock) and
+  for any API or MCP caller sending `12:40:00+02:00`, both of which listed two hours early in
+  summer and one in winter; and already disagreeing with invoicing, whose groupings read the same
+  column `AT TIME ZONE` and filed an entry typed at 23:30 on the next day. Four rules now hold.
+  **The API decides what a clock means** (`app.core.timezone.as_instant`): a naive time is the
+  org's wall clock — what a form, a sheet or an agent means — and an aware one is the instant it
+  names, so the web posts the typed clock *naked* and never converts in the browser (§14's rule:
+  the API is the authority). **Every "which day" is asked in the org's zone** (`day_window`, the
+  timesheet's column, the report's `AT TIME ZONE :tz`, the MCP tools' `date`), because a
+  calendar day is a local fact. **A screen reads the instant back through one helper**
+  (`$lib/core/wallclock.localDayTime`, lifted out of the tasks module, where it had existed all
+  along while the time module grew `started_at.slice(11, 16)` beside it — the "a helper that
+  already exists is not a fix" lesson, one bullet up). And **a data migration decides which rows
+  were typed from the row itself**: a start more than a minute from its own `created_at` was
+  typed and is re-read in the org's zone; one within it was the timer's and is already right. Two
+  rare rows fall on the wrong side and the migration says which, because no column could tell
+  them apart. An integration that mirrors a zone-less clock (Timeon's date + seconds) reads and
+  writes it in the org's zone in **both** directions, which is what keeps a round trip
+  byte-identical and a DST night a non-event.
 
 ## 9. Conventions
 
@@ -2079,6 +2103,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   reply lands on the same three tickets. A lead column beside a roster table is the shape to copy
   for the next link that turns out to be plural.
 
+- **A meeting is recorded a minute at a time, transcribed in as many requests as the provider
+  takes, and nothing the model wrote is a record until a person confirms it** (`meetings`,
+  `docs/MEETINGS.md`). Four rules. **The browser never depends on a provider's limit**: it uploads
+  one piece a minute while it records (`POST /meetings/{id}/chunks`, base64 in JSON — the
+  dictation's transport, so an agent can post a recording too), only the first piece carries the
+  container header, and the worker folds them — a crashed tab loses a minute, not the meeting.
+  **A provider labels speakers per request**, so a recording over its cap is cut with ffmpeg (a
+  copy cut, now in the API image) and the labels are numbered *on* through the parts (S1, S2 ·
+  S3, S4) rather than merged by guesswork; which is the argument for Mistral's Voxtral (three
+  hours, Dutch, speaker labels) as a speech provider of its own — its `diarize` and
+  `timestamp_granularities` fields are what `openai_compatible` cannot send. **Every decision and
+  action item quotes the transcript and the quote is checked** (`minutes.quote_found`, after
+  normalising case, accents and punctuation): an item whose words are not there is kept and
+  marked `verified: false`, never dropped — a reviewer judges a paraphrase in a second and a
+  dropped item is a decision nobody sees; assignees are grounded in the staff shortlist and a
+  client's promise lands with an `owner_label` and no task. And **recording is a statement before
+  it is a capture**: `POST /meetings` refuses without `participants_informed`, the screen says
+  what the AVG asks the person to say, and the audio has a stated retention (30 days after
+  confirming; the words stay). Confirm writes the interaction and the tasks through those
+  modules' own services as the reviewer, and a task the tasks module refuses is *reported* on the
+  result rather than failing the minutes (§18). `meeting_assist` is its own `AI_FEATURES` key for
+  #327's reason — a meeting is mostly other people's words.
 
 ## 11. Working agreement (for Claude Code)
 

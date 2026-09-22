@@ -139,6 +139,7 @@ from app.modules.marketing.sources.base import (
     IMPORTED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
+    SourceRefused,
 )
 from app.modules.marketing.sources.gads import AdsNotConfigured, developer_token_scope
 
@@ -196,7 +197,12 @@ _OVERVIEW_COLUMNS: dict[str, tuple[str, str]] = {
     "conversions": (MarketingSource.GA4.value, "conversions"),
 }
 
-_DRILLDOWN_TTL = 3600  # ~1h, tier-2 lives behind this (issue #133)
+#: How long a drill-down table is served from Redis. A day, for the leads dashboard's reason
+#: (``leads/service.CACHE_TTL``): the key carries the resolved dates and every span ends
+#: yesterday, so it changes at the org's midnight anyway, and an hour meant eleven tables that
+#: said "Laden…" and popped in one by one on the first open of every hour. The nightly warm
+#: (``jobs.marketing_warm_dashboards``) reads the default period's tables before anyone does.
+_DRILLDOWN_TTL = 86400
 
 #: The GA4 metrics a client's ``show_key_events=False`` withholds — key events and their
 #: display alias. Scoped to GA4: Google Ads keeps its own ``conversions`` (#134).
@@ -1293,6 +1299,24 @@ class MarketingService:
             await activity.record("company", company_id, "marketing.report_changed", {})
         if lead_profile_set and previous_profile != row.lead_profile:
             await activity.record("company", company_id, "marketing.lead_profile_changed", {})
+            if row.lead_profile is not None:
+                # A changed profile changes the requests, and with them every Redis key the
+                # dashboard reads through — so the first open after a save would pay Google's
+                # latency on every view. Warm this client now rather than at 05:45. Deferred a
+                # few seconds, because the worker reads committed rows and this transaction has
+                # not committed yet: a job that started at once would warm the *old* profile's
+                # keys. Best effort — the profile is saved either way, and the nightly warm
+                # covers a missing queue.
+                try:
+                    await enqueue(
+                        "marketing_warm_company",
+                        str(self.ctx.org.id),
+                        str(company_id),
+                        _job_id=f"marketing-warm-{company_id}",
+                        _defer_by=timedelta(seconds=5),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("could not enqueue the leads warm for company %s", company_id)
         return await self._company_settings_read(company_id, row)
 
     async def _company_settings_read(
@@ -1652,14 +1676,7 @@ class MarketingService:
         keys mean the code default (:func:`source_label`), translated in the org's own display
         language where a default is substituted: a client reads the tenant's product, in the
         tenant's language, and never a colleague's."""
-        row = await self.ctx.session.execute(
-            select(MarketingSettings.portal_source_labels, OrgSettings.default_locale)
-            .select_from(OrgSettings)
-            .outerjoin(MarketingSettings, MarketingSettings.org_id == OrgSettings.org_id)
-            .where(OrgSettings.org_id == self.ctx.org.id)
-        )
-        stored, locale = row.first() or (None, None)
-        return _shape_source_labels(stored, locale)
+        return await org_source_labels(self.ctx.session, self.ctx.org.id)
 
     def _source_metrics(
         self,
@@ -1829,7 +1846,11 @@ class MarketingService:
                 table = await adapter.drilldown(
                     client, link.external_id, kind, start, end, link.config or {}
                 )
-        except SourceNotConfigured as exc:
+        except (SourceNotConfigured, SourceRefused) as exc:
+            # Two states with a sentence of their own: no credential to ask with, and a
+            # credential that works for everything but *this* (SE Ranking's AI Result Tracker
+            # on a plan without it). Neither is a verdict on the key, which is what the
+            # generic branch below would have made of the second one's 401.
             return DrilldownResponse(
                 source=source, kind=kind, available=False,
                 unavailable_reason=exc.message_key, deep_link=deep_link,
@@ -2325,6 +2346,43 @@ class MarketingService:
 #: Private key inside the portal-label map for the locale the defaults translate in — a
 #: source is never called this, so it cannot collide with a stored label.
 _LOCALE_KEY = "__locale"
+
+
+async def org_source_labels(session: AsyncSession, org_id: uuid.UUID) -> dict[str, str]:
+    """The tenant's source names (#446) as :func:`source_label` reads them — one statement,
+    shared by every path that prints a source's name beside something (the metrics read, the
+    AI Search overview, a report's warnings)."""
+    row = await session.execute(
+        select(MarketingSettings.portal_source_labels, OrgSettings.default_locale)
+        .select_from(OrgSettings)
+        .outerjoin(MarketingSettings, MarketingSettings.org_id == OrgSettings.org_id)
+        .where(OrgSettings.org_id == org_id)
+    )
+    stored, locale = row.first() or (None, None)
+    return _shape_source_labels(stored, locale)
+
+
+async def resolve_source_label(
+    session: AsyncSession, org_id: uuid.UUID, source: str, *, portal: bool
+) -> str | None:
+    """:func:`source_label` for a caller that holds no labels yet — the AI Search overview and
+    the report gatherer, which print sentences *about* a source rather than its metrics row.
+
+    The name is part of every sentence that mentions the source (#446): an agency selling
+    "breik. Analytics" must not read *"merk herkend door SE Ranking"* under it, on the one
+    screen where the two names sit a line apart. ``None`` means the catalog default, which
+    the web resolves in the reader's own language.
+    """
+    return source_label(source, await org_source_labels(session, org_id), portal=portal)
+
+
+def staff_source_name(source: str, labels: dict[str, str]) -> str:
+    """The source's name for a stored sentence a colleague reads later (a report warning),
+    resolved fully because the reader's screen cannot: the tenant's own label, else the
+    catalog name in the org's display language."""
+    return labels.get(source) or translate(
+        f"marketing.source.{source}", labels.get(_LOCALE_KEY)
+    )
 
 
 def _shape_source_labels(stored: dict | None, locale: str | None) -> dict[str, str]:

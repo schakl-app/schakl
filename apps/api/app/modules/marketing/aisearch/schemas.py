@@ -117,6 +117,10 @@ class AiSearchOverview(BaseModel):
     brand_fits: bool = True
     discovered_brands: list[str] = Field(default_factory=list)
     engines: list[AiSearchEngineBlock] = Field(default_factory=list)
+    #: What this reader calls the source every sentence in the section is about (#446) — the
+    #: same rule as ``SourceMetrics.label``: the tenant's own name for everyone, else ``None``
+    #: for staff (the web prints the product name) and the vendor-free default for a client.
+    source_label: str | None = None
     can_manage: bool = False
     # --- managers only (withheld from a reader who cannot act on it, and from a client) ---- #
     #: This client's own stored diff, ``None`` when everything is inherited.
