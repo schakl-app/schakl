@@ -24259,8 +24259,9 @@ export interface components {
         /**
          * InteractionLogTime
          * @description The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
-         *     same transaction as the interaction. Times follow the *time* module's convention
-         *     (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet.
+         *     same transaction as the interaction. Times follow the *time* module's rule (§8): a naive
+         *     time is the org's wall clock, an aware one an instant — the entry must round-trip the
+         *     timesheet.
          */
         InteractionLogTime: {
             /**
@@ -34405,7 +34406,8 @@ export interface components {
          *     (#284): a task on a subscription-covered project bills nobody, and a finish prompt that
          *     silently posted ``true`` would be the one write path that forgot.
          *
-         *     Times follow the *time* module's wall-clock-as-UTC convention, like every other entry.
+         *     Times follow the *time* module's rule (§8), like every other entry: a naive time is the
+         *     org's wall clock, an aware one an instant.
          */
         TaskLogTime: {
             /** Billable */

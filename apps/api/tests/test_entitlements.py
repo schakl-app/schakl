@@ -136,6 +136,10 @@ def test_paid_module_set_is_pinned() -> None:
         "invoicing": "invoicing",
         "leave": "leave",
         "marketing": "marketing",
+        # Recording a meeting and drafting its minutes is a premium capability of its own: it
+        # spends the tenant's speech and model credits on other people's words, and an agency
+        # may want the CRM without it.
+        "meetings": "meetings",
         # Microsoft 365 is Google Workspace's twin: a credential for somebody else's service
         # (Outlook calendar, OneDrive, Outlook mail) that enriches the same modules `google`
         # does, licensed on the same terms and for the same reason.
